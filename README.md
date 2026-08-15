@@ -10,12 +10,15 @@ deptrace/
 │   ├── graph/
 │   │   ├── README.md                 # HydraDB compatibility & setup guide
 │   │   ├── schema.py                 # Canonical graph ontology & query definitions
-│   │   └── test_hydra.py             # HydraDB smoke test and query validation script
+│   │   ├── test_hydra.py             # HydraDB smoke test and query validation script
+│   │   ├── ingest_candidates.py      # Ingests deterministic candidate graph into HydraDB
+│   │   └── verify_ingestion.py       # Multi-hop graph traversal verification script
 │   └── ingestion/
 │       ├── parse_slack.py            # Slack dump parser converting text threads to JSONL
 │       └── build_graph_candidates.py # Deterministic structural graph candidate generator
 ├── tests/
-│   └── test_build_graph_candidates.py # Unit tests for candidate generation
+│   ├── test_build_graph_candidates.py # Unit tests for candidate generation
+│   └── test_ingest_candidates.py      # Unit tests for HydraDB candidate ingestion
 ├── frontend/                         # DepTrace UI client
 ├── .gitignore
 └── README.md
@@ -24,7 +27,8 @@ deptrace/
 ## Features
 
 - **HydraDB Graph Foundation**: Canonical ontology (`Person`, `Team`, `Customer`, `Incident`, `ConfigurationChange`, etc.) with standalone `MERGE` write patterns and multi-hop Cypher queries.
-- **Deterministic Graph Candidate Generation**: Constructs structural graph elements (`Document`, `Channel`, `Message`, `Person`, `Team`) and relationships (`IN_CHANNEL`, `AUTHORED`, `MEMBER_OF`, `PART_OF`) with stable 63-bit integer IDs.
+- **Deterministic Candidate Ingestion (Step 5B)**: Converts candidate graphs into supported standalone `MERGE` statements with embedded properties and integer IDs into HydraDB.
+- **Deterministic Graph Candidate Generation (Step 5A)**: Constructs structural graph elements (`Document`, `Channel`, `Message`, `Person`, `Team`) and relationships (`IN_CHANNEL`, `AUTHORED`, `MEMBER_OF`, `PART_OF`) with stable 63-bit integer IDs.
 - **Slack Log Parsing & Normalization**: Extracts channel metadata, author, team, and multi-line message threads into structured JSONL documents.
 
 ## Getting Started
@@ -63,7 +67,7 @@ deptrace/
    python backend/graph/test_hydra.py
    ```
 
-### Slack Log Ingestion & Graph Candidates
+### Slack Log Ingestion & Candidate Graph Pipeline
 
 1. Parse raw Slack export files into structured JSONL:
    ```bash
@@ -75,7 +79,17 @@ deptrace/
    python backend/ingestion/build_graph_candidates.py
    ```
 
-3. Run unit test suite:
+3. Ingest candidate documents into HydraDB (default: initial 10 documents):
+   ```bash
+   python backend/graph/ingest_candidates.py
+   ```
+
+4. Verify multi-hop graph reads in HydraDB:
+   ```bash
+   python backend/graph/verify_ingestion.py
+   ```
+
+5. Run test suite:
    ```bash
    python -m unittest discover tests
    ```
