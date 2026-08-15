@@ -1,9 +1,0 @@
-incidents
-
-incident-bot
-oncall_alex
-infra_sam
-eng_runtime_liz
-se_claire
-customer_success_maya
-oncall_jin

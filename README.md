@@ -7,31 +7,59 @@ DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tr
 ```
 deptrace/
 ├── backend/
+│   ├── graph/
+│   │   ├── README.md             # HydraDB compatibility & setup guide
+│   │   ├── schema.py             # Canonical graph ontology & query definitions
+│   │   └── test_hydra.py         # HydraDB smoke test and query validation script
 │   └── ingestion/
 │       └── parse_slack.py        # Slack dump parser converting text threads to JSONL
-├── data/
-│   └── enterprise-rag/
-│       ├── parsed/
-│       │   └── slack.jsonl       # Structured JSONL records parsed from Slack logs
-│       ├── slack/                # Raw exported Slack channel logs (.txt)
-│       ├── questions.jsonl       # Benchmark/evaluation questions and ground truth facts
-│       └── slack_slice_0001.zip  # Compressed raw archive slice
 ├── frontend/                     # DepTrace UI client
-└── .gitignore
+├── .gitignore
+└── README.md
 ```
 
 ## Features
 
+- **HydraDB Graph Foundation**: Canonical ontology (`Person`, `Team`, `Customer`, `Incident`, `ConfigurationChange`, etc.) with standalone `MERGE` write patterns and multi-hop Cypher queries.
 - **Slack Log Parsing & Normalization**: Extracts channel metadata, author, team, and multi-line message threads into structured JSONL documents.
-- **Enterprise RAG Dataset**: Ground truth benchmark questions and facts for evaluating RAG retrieval and synthesis accuracy.
 
 ## Getting Started
 
 ### Prerequisites
 
 - Python 3.9+
+- Docker (for local HydraDB instance)
+- `requests` (`pip install requests`)
 
-### Ingestion
+### HydraDB Graph Setup & Smoke Test
+
+1. Start HydraDB with in-memory storage provider:
+   ```bash
+   docker run -d --name hydradb \
+     -p 8443:8443 \
+     -p 7687:7687 \
+     -e CLOUD_PROVIDER=memory \
+     -e GRAPH_ALLOW_PLAINTEXT=true \
+     ghcr.io/hydra-db/hydradb:latest
+   ```
+
+2. Set environment variables:
+   ```bash
+   # PowerShell
+   $env:HYDRA_TOKEN = (docker exec hydradb cat /data/auth-token)
+   $env:HYDRA_URL = "http://127.0.0.1:8443"
+
+   # Bash
+   export HYDRA_TOKEN=$(docker exec hydradb cat /data/auth-token)
+   export HYDRA_URL="http://127.0.0.1:8443"
+   ```
+
+3. Run smoke test:
+   ```bash
+   python backend/graph/test_hydra.py
+   ```
+
+### Slack Log Ingestion
 
 To parse raw Slack export files into structured JSONL:
 
