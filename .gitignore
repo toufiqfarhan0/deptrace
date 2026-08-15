@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.pytest_cache/
 env/
 build/
 develop-eggs/
@@ -46,6 +47,7 @@ data/enterprise-rag/slack/
 data/enterprise-rag/parsed/
 data/enterprise-rag/graph-candidates/
 data/enterprise-rag/semantic/
+data/enterprise-rag/semantic-samples/
 data/enterprise-rag/*.zip
 *.zip
 data/enterprise-rag/questions.jsonl
