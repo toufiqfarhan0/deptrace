@@ -41,10 +41,12 @@ auth-token*
 # HydraDB Local Data
 hydradb-data/
 
-# EnterpriseRAG-Bench Datasets and Raw Files
+# EnterpriseRAG-Bench Datasets and Generated Artifacts
 data/enterprise-rag/slack/
 data/enterprise-rag/parsed/
+data/enterprise-rag/graph-candidates/
 data/enterprise-rag/*.zip
+*.zip
 data/enterprise-rag/questions.jsonl
 
 # IDE & Editors
