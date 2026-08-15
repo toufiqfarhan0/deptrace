@@ -1,20 +1,0 @@
-all-hands
-
-maria: Heads-up from rehearsal 1: intermittent HDMI glitch on main projector. If it happens live we switch to spare laptop + USB capture.
-
-sachin: Spare laptop on table C, USB-C capture ready. Prefer local only unless main stream dies.
-
-jordan: Agreed 1 local recording + mirror slides. Avoid extra network hops.
-
-elaine: Q&A flow: post live questions into the shared sheet. I like an 'asked by' column for followups.
-marta: I take leadership followups. Tag #allhands-followup and assign to me.
-
-maria: Ops checklist: spare laptop, SSD formatted (ext4), OBS fallback loaded, captions running. If HDMI drops, call it here and flip.
-
-devops-bot: Reminder set: at T-5 post Q&A sheet link and captions status.
-sachin: Doing a quick fallback test now, will paste log if green.
-maria: Test log snippet: [11:02:09] obs: profile fallback loaded; [11:02:10] recorder: /mnt/ssd/allhands-backup.mkv
-
-jordan: I post the Q&A doc link at T-5. Keep public answers short; follow-ups offline.
-marta: Also flag roadmap questions for PMs.
-maria: I confirm "ready" at T-2. Keep runbook simple. :thumbsup:
