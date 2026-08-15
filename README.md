@@ -7,7 +7,11 @@ DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tr
 ```
 deptrace/
 ├── backend/
-│   ├── extraction/                   # Semantic extraction foundation (Step 6)
+│   ├── semantic/                     # Semantic extraction schema & validation (Step 6A)
+│   │   ├── __init__.py
+│   │   ├── schema.py                 # Semantic entity, statement & extraction models
+│   │   └── test_schema.py            # Validation unit tests
+│   ├── extraction/                   # Semantic extraction foundation & slice runner
 │   │   ├── __init__.py
 │   │   ├── schema.py                 # Semantic entity and statement schemas + provenance
 │   │   ├── base.py                   # Extractor interfaces and heuristic baseline
@@ -34,7 +38,7 @@ deptrace/
 
 ## Features
 
-- **Semantic Extraction Foundation (Step 6)**: Provider-agnostic extraction architecture, structured schemas (`Customer`, `Project`, `Incident`, `Decision`, `ConfigurationChange`, `Statement`), and bidirectional message/document provenance.
+- **Semantic Extraction Schema & Validation (Step 6A)**: Standardized, strongly-typed semantic extraction contract (`SemanticExtraction`, `SemanticEntity`, `SemanticStatement`) with strict validation rules and provenance tracking.
 - **HydraDB Graph Foundation**: Canonical ontology with standalone `MERGE` write patterns and multi-hop Cypher queries.
 - **Deterministic Candidate Ingestion (Step 5B)**: Converts candidate graphs into supported standalone `MERGE` statements with embedded properties and integer IDs into HydraDB.
 - **Deterministic Graph Candidate Generation (Step 5A)**: Constructs structural graph elements (`Document`, `Channel`, `Message`, `Person`, `Team`) and relationships (`IN_CHANNEL`, `AUTHORED`, `MEMBER_OF`, `PART_OF`) with stable 63-bit integer IDs.
@@ -47,6 +51,7 @@ deptrace/
 - Python 3.9+
 - Docker (for local HydraDB instance)
 - `requests` (`pip install requests`)
+- `pytest` (`pip install pytest`)
 
 ### HydraDB Graph Setup & Smoke Test
 
@@ -98,20 +103,10 @@ deptrace/
    python backend/graph/verify_ingestion.py
    ```
 
-### Semantic Extraction (Step 6 Foundation)
-
-Run semantic extraction on a small deterministic slice of messages:
-
-```bash
-# Sample from initial documents
-python backend/extraction/extract_slice.py --docs 3 --msgs-per-doc 5
-
-# Target specific domain keywords
-python backend/extraction/extract_slice.py --keywords "concurrency,rollback,ACME"
-```
-
 ### Running Tests
 
+Run pytest for schema validation and full suite:
+
 ```bash
-python -m unittest discover tests -v
+python -m pytest -q
 ```
