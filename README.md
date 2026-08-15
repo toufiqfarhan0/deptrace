@@ -7,12 +7,16 @@ DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tr
 ```
 deptrace/
 ├── backend/
-│   ├── semantic/                     # Semantic extraction schema, sampling & validation (Step 6)
+│   ├── semantic/                     # Semantic extraction schema, sampling & Gemini pilot (Step 6)
 │   │   ├── __init__.py
-│   │   ├── schema.py                 # Semantic entity, statement & extraction models
+│   │   ├── schema.py                 # Semantic entity, statement & extraction models (Pydantic)
+│   │   ├── gemini_extractor.py       # Gemini Interactions API extractor (Step 6C)
+│   │   ├── pilot.py                  # 10-message Gemini extraction pilot runner
 │   │   ├── sample_messages.py        # Deterministic 100-message evaluation sampler (Step 6B)
 │   │   ├── test_schema.py            # Schema validation unit tests
-│   │   └── test_sample_messages.py   # Sampler invariant and coverage unit tests
+│   │   ├── test_sample_messages.py   # Sampler invariant and coverage unit tests
+│   │   ├── test_gemini_one.py        # Single message Gemini extraction sanity check
+│   │   └── test_gemini_pilot.py      # Pilot results verification unit test
 │   ├── extraction/                   # Semantic extraction foundation & slice runner
 │   │   ├── __init__.py
 │   │   ├── schema.py                 # Semantic entity and statement schemas + provenance
@@ -40,6 +44,7 @@ deptrace/
 
 ## Features
 
+- **Gemini Semantic Extraction Pilot (Step 6C)**: Extracts structured entities (`Customer`, `Project`, `Incident`, `Decision`, `ConfigurationChange`, `Entity`) and statements (`fact`, `decision`, `claim`, `action`, `outcome`) via the Google GenAI Interactions API (`gemini-2.5-flash` / `gemini-3.6-flash`).
 - **Deterministic Evaluation Sampler (Step 6B)**: Generates a balanced, reproducible 100-message benchmark sample across customer, incident, decision, code, long, short, relationship, and bot categories.
 - **Semantic Extraction Schema & Validation (Step 6A)**: Standardized, strongly-typed semantic extraction contract (`SemanticExtraction`, `SemanticEntity`, `SemanticStatement`) with strict validation rules and provenance tracking.
 - **HydraDB Graph Foundation**: Canonical ontology with standalone `MERGE` write patterns and multi-hop Cypher queries.
@@ -55,6 +60,8 @@ deptrace/
 - Docker (for local HydraDB instance)
 - `requests` (`pip install requests`)
 - `pytest` (`pip install pytest`)
+- `google-genai` (`pip install google-genai`)
+- `pydantic` (`pip install pydantic`)
 
 ### HydraDB Graph Setup & Smoke Test
 
@@ -106,13 +113,22 @@ deptrace/
    python backend/graph/verify_ingestion.py
    ```
 
-### Deterministic Semantic Extraction Sample (Step 6B)
+### Deterministic Semantic Extraction Sample & Gemini Pilot (Step 6)
 
-Generate the 100-message representative sample:
+1. Generate the 100-message representative sample:
+   ```bash
+   python backend/semantic/sample_messages.py
+   ```
 
-```bash
-python backend/semantic/sample_messages.py
-```
+2. Run single message Gemini extraction sanity test:
+   ```bash
+   python backend/semantic/test_gemini_one.py
+   ```
+
+3. Run the 10-message Gemini extraction pilot:
+   ```bash
+   python backend/semantic/pilot.py
+   ```
 
 ### Running Tests
 

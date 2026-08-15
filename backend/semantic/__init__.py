@@ -1,7 +1,8 @@
 """
-Semantic extraction schemas, sampling, and validation for Step 6.
+Semantic extraction schemas, sampling, and Gemini extraction for Step 6.
 """
 
+from backend.semantic.gemini_extractor import GeminiSemanticExtractor
 from backend.semantic.sample_messages import (
     build_sample,
     classify_message,
@@ -21,6 +22,7 @@ from backend.semantic.schema import (
 
 __all__ = [
     "EntityType",
+    "GeminiSemanticExtractor",
     "SemanticEntity",
     "SemanticExtraction",
     "SemanticStatement",

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 
 EntityType = Literal[
@@ -13,7 +14,6 @@ EntityType = Literal[
     "Entity",
 ]
 
-
 StatementType = Literal[
     "fact",
     "decision",
@@ -23,56 +23,65 @@ StatementType = Literal[
 ]
 
 
-@dataclass(frozen=True)
-class SemanticEntity:
+class SemanticEntity(BaseModel):
     type: EntityType
-    name: str
-    confidence: float
+    name: str = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
 
-    def __post_init__(self) -> None:
-        if not self.name.strip():
-            raise ValueError("Entity name cannot be empty.")
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = value.strip()
 
-        if not 0.0 <= self.confidence <= 1.0:
+        if not value:
             raise ValueError(
-                "Entity confidence must be between 0 and 1."
+                "Entity name cannot be empty."
             )
 
+        return value
 
-@dataclass(frozen=True)
-class SemanticStatement:
-    text: str
+
+class SemanticStatement(BaseModel):
+    text: str = Field(min_length=1)
     type: StatementType
-    confidence: float
+    confidence: float = Field(ge=0.0, le=1.0)
 
-    def __post_init__(self) -> None:
-        if not self.text.strip():
-            raise ValueError("Statement text cannot be empty.")
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        value = value.strip()
 
-        if not 0.0 <= self.confidence <= 1.0:
+        if not value:
             raise ValueError(
-                "Statement confidence must be between 0 and 1."
+                "Statement text cannot be empty."
             )
 
+        return value
 
-@dataclass
-class SemanticExtraction:
-    message_id: int
-    document_id: str
-    entities: list[SemanticEntity] = field(
+
+class SemanticExtraction(BaseModel):
+    message_id: int = Field(ge=0)
+    document_id: str = Field(min_length=1)
+
+    entities: list[SemanticEntity] = Field(
         default_factory=list
     )
-    statements: list[SemanticStatement] = field(
+
+    statements: list[SemanticStatement] = Field(
         default_factory=list
     )
 
-    def __post_init__(self) -> None:
-        if self.message_id < 0:
-            raise ValueError(
-                "message_id must be non-negative."
-            )
+    @field_validator("document_id")
+    @classmethod
+    def validate_document_id(
+        cls,
+        value: str,
+    ) -> str:
+        value = value.strip()
 
-        if not self.document_id.strip():
+        if not value:
             raise ValueError(
                 "document_id cannot be empty."
             )
+
+        return value
