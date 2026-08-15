@@ -1,6 +1,6 @@
 # HydraDB Graph Foundation (Track 1)
 
-This directory contains the canonical graph ontology, schema definitions, and validation smoke test for the DepTrace EnterpriseRAG-Bench graph layer backed by [HydraDB](https://github.com/hydra-db/hydradb).
+This directory contains the canonical graph ontology, schema definitions, validation smoke test, deterministic candidate ingestion, and graph verification queries for the DepTrace EnterpriseRAG-Bench graph layer backed by [HydraDB](https://github.com/hydra-db/hydradb).
 
 ---
 
@@ -62,7 +62,7 @@ Defined in [`schema.py`](file:///C:/Users/toufi/Desktop/deptrace/backend/graph/s
 
 ---
 
-## Running the Smoke Test Locally
+## Running Locally
 
 ### 1. Start HydraDB via Docker
 
@@ -95,4 +95,20 @@ export HYDRA_URL="http://127.0.0.1:8443"
 
 ```bash
 python backend/graph/test_hydra.py
+```
+
+### 4. Ingest Candidate Documents (Step 5B)
+
+Ingest the first 10 deterministic candidate documents into HydraDB:
+
+```bash
+python backend/graph/ingest_candidates.py
+```
+
+### 5. Verify Ingested Graph
+
+Execute multi-hop read queries asserting graph relationships:
+
+```bash
+python backend/graph/verify_ingestion.py
 ```
