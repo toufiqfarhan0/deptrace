@@ -45,6 +45,7 @@ hydradb-data/
 data/enterprise-rag/slack/
 data/enterprise-rag/parsed/
 data/enterprise-rag/graph-candidates/
+data/enterprise-rag/semantic/
 data/enterprise-rag/*.zip
 *.zip
 data/enterprise-rag/questions.jsonl
