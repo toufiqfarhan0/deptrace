@@ -1,0 +1,55 @@
+incidents
+
+incident-bot: PAGER: Unusual auth traffic detected from svc-auth-proxy -> high 401/403 spike (approx 6k req/min). Potential token replay and debug log leakage. Severity: P1. Auto-thread created for triage.
+
+sam: Oncall here — acknowledging. Triage started, pulling quick metrics and logs.
+
+sam: Seeing spike correlated with log-forwarder service in staging namespace. Any external egress observed?
+
+jin: I pulled the edge-proxy logs. Found multiple `Authorization` header snippets that look like JWTs. Some snippets also appear in `s3://redwood-staging-debug/debug_logs/edge.log`.
+
+tara: Confirmed — staging bucket has recent uploads with raw headers. Could be an accidental debug dump.
+
+sec-eng: Immediate action: stop writes to that bucket. Can someone run a deny-put policy or pause the forwarder?
+
+eng-infra: Applying temporary bucket block and scaling forwarder to 0. Command: `kubectl scale deployment/log-forwarder --replicas=0 -n infra`. Executing now.
+
+sam: Forwarder scaled down. Also rotating the service account used by forwarder; old keys revoked.
+
+incident-bot: Action taken: rotation ticket created (#ROT-4021). Runbook link posted: <https://redwood/internal/runbooks/rotate-keys>.
+
+sec-eng: We need to enumerate exposed tokens and revoke anything long-lived. I'll run targeted revokes once we have the list.
+
+jin: Extracted ~12 unique token fragments. Matching shows 8 internal sessions and 2 external IPs not recognized. Uploading redacted snippets to ops-sec.
+
+legal: Looping legal for quick exposure assessment. Question: any PII in those logs? Who owns the staging bucket (owner team)?
+
+support: Tier 2 notified and preparing customer impact template. Currently no 5xx customer-facing errors observed. Some clients report auth retries.
+
+tara: Short-term mitigations: 1) rotate forwarder svc acct (done), 2) revoke any exposed API keys, 3) block the two external IPs at the WAF, 4) quarantine the bucket snapshot, 5) start timeline.
+
+eng-infra: WAF blocks applied for 198.51.100.22 and 203.0.113.9 — requests now 403. Confirming edge denies.
+
+sam: Can we confirm whether any production tokens were leaked? Jin?
+
+jin: Quick grep: found keys with prefix `rk_` (staging). No matches for prod prefix `pr_`. No obvious prod principals in the dumps.
+
+sec-eng: Still proceed defensively — rotate any cross-env credentials and revoke tokens with broad scopes. I'll prepare the revoke script (`revoke-token --batch --ids <list>`).
+
+incident-bot: Pager update: severity downgraded to P2 while containment in progress. Postmortem owner assigned: tara. Target ETA for remediation: 3 hours.
+
+legal: Preserve all artifacts and redact per policy before external sharing. Hold customer notification until we confirm possible access to customer data.
+
+support: Drafted a customer-safe notification in #support-drafts, subject to legal signoff.
+
+sam: Handing active coordination to Tara for the next 4 hours. I'm stepping off. @tara please confirm ownership.
+
+tara: Taking ownership. I'll run full scan across buckets, compile affected principals, coordinate revokes, and provide status every 30m.
+
+sec-eng: Starting targeted revokes now. ETA ~20m. I'll post results here.
+
+jin: Packaging the log snippets and redacting sensitive pieces before handing to legal. Will attach to ROT-4021.
+
+eng-infra: Post-change checks: forwarder pods remain 0, WAF rules active, rotation audit logs show new keys issued and old keys revoked.
+
+sam: :thumbsup: Nice work. Keep updates in this thread. If we need to notify customers, use #sec-notify and cc legal.

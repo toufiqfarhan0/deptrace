@@ -1,0 +1,57 @@
+support
+
+alex_support: FYI customer ACME (org_9f2b) says their monthly credit bucket showed 0 across three projects for ~15m around their local midnight, then magically refilled. They ran a demo and hit 429s during the window. Screenshots attached.
+
+maya_se: Can you paste org id + example request ids? We need to correlate API vs UI.
+
+alex_support: Org is org_9f2b. Projects: acme-prod, acme-staging, acme-demo. Customer provided request ids: rq_8c1, rq_8c2, rq_8c7. They say API returned 200 for some early requests after UI showed zero; others got 429.
+
+priya_sre: That sounds like a cache/visibility issue rather than actual refill. UI reads cached quota doc (TTL 120s) + frontend aggregation per-subproject. Billing cutover happened last night; billing team ran a migration at 2026-03-01T00:00Z which may have briefly left DB shard visible empty while refill job ran.
+
+devon_billing: Confirming: we executed a plan migration at 2026-03-01T00:00Z UTC that updated monthly buckets for a subset of migrated tenants. We did a rolling job that writes new bucket rows then flips the ownership flag. There was a short window where the read path hit the old metadata which shows 0 for non-migrated projects.
+
+acme_ops: We were demoing to a partner. Our team saw the UI at 00:00 local (PST) show zero for all three projects, then between 00:03-00:10 credits reappeared. The API responses are inconsistent: some streams resumed mid-request.
+
+maya_se: Can you run this quick check and paste output?
+
+```
+curl -H "Authorization: Bearer $REDFW_KEY" \
+  -H "X-Request-ID: rq_8c1-debug" \
+  https://api.redwood.ai/v1/usage/org/org_9f2b/bucket
+```
+That returns the canonical server-side bucket state. Also include a sample /v1/generate request with `X-Request-ID` header so we can find logs.
+
+alex_support: Customer ran the curl above and got `{"available_tokens":0}` at 2026-03-01T00:00:12Z, then `{"available_tokens":45000}` at 2026-03-01T00:04:51Z. They attached the raw request-id headers.
+
+priya_sre: Ok please collect these logs and send to infra: request ids and node ids. Edge suspicion: UI reads aggregated cache layer (redis) which is partitioned per-tenant and had a TTL refresh during migration; some API reads prefer the authoritative SQL row. That would explain UI showing zero while API shows non-zero later.
+
+devon_billing: Additional note: during the cutover we triggered a refill job which is scheduled on UTC midnight. If a tenant's billing anchor was set to local timezone previously, we might have overlapped two refill flows. Migration tries to normalize anchors to UTC, but a race could leave a tenant considered 'refilled' by the new job while the old anchor's refill still in flight.
+
+priya_sre: Action items:
+- Support: collect request ids (done), customer timezone, and exact local timestamps
+- SE: reproduce in staging by toggling org billing anchor to non-UTC and running simulated cutover job
+- Billing: verify migration logs for org_9f2b, show whether both old/new refill jobs touched the bucket within 10m window
+- Infra: check redis key evictions and read-after-write tput for tenant shard 23
+
+maya_se: For quick mitigation, tell customer to:
+- Stop demo traffic during next scheduled refill (they can pick a manual refill window)
+- As a workaround, query server-side endpoint `/v1/usage/...` before demo to confirm tokens (don't rely on UI)
+
+acme_ops: Appreciate it. We need an RCA for our SOC and a note for our customer demo playbook. Can you confirm SLA impact?
+
+devon_billing: No billing credits were lost; only visibility flapped. We'll prepare a targeted exception if any partner lost paid demo minutes, but preliminary look says no double-charge.
+
+priya_sre: I'll open infra ticket INF-2026-478 and assign to cache team. SE can reproduce with these steps:
+1) create org with billing anchor = America/Los_Angeles
+2) stamp monthly bucket to zero
+3) start simulated migration that writes new bucket rows and flips ownership flag
+4) hammer UI + API concurrently with 10 concurrent clients streaming requests
+Expectation: we should not surface zero in UI if authoritative row exists.
+
+alex_support: I'll update customer with mitigation steps and ask for the logs. tagging @quota-bot for any automated alerts on this org. :eyes::clipboard:
+
+quota-bot: Alert created: QUOTA-ALERT org_9f2b at 2026-03-01T00:01:05Z (detected 429 spike across 3 projects). Ticket QUOTA-1327 auto-created.
+
+maya_se: Closing loop: once infra confirms cache fix we'll notify customer and add a note to the runbook about migration window visibility.
+
+acme_ops: Thanks all. Please cc me on the RCA.

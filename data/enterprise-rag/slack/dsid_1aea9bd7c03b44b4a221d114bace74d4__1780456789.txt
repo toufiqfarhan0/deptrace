@@ -1,0 +1,71 @@
+eng-runtime
+
+incident-bot: INCIDENT: Elevated 5xx rate detected in runtime-eu-west-1 (5m window > 3%). Paging on-call: @maria.
+
+maria (oncall): taking this — looking at dashboards and traces now.
+
+maria (oncall): graphs show queue depth spike across inference workers, p95 latency up, KV cache miss rate doubled. backpressure not keeping up.
+
+sam: joining. any deploys in last 15m?
+
+deploy-bot: deploy to runtime-eu-west-1 completed by @jay at 03:05 UTC — image runtime:v2.4.1.
+
+jay: rolled a canary at 03:05 then started rolling at 03:06 — didn't see anomalies during canary.
+
+ashley: CS reports timeouts from 7 customers, ticket #4321 opened, two customers flagged as high-severity.
+
+maria (oncall): quick mitigation plan: 1) reduce max-in-flight to shed excess work 2) apply aggressive per-customer quotas for noisy tenants 3) increase app-side timeouts to avoid retry storms 4) disable streaming fallback which seems to trigger KV churn. I'll do 1 now.
+
+maria (oncall): running change to enforce shedding:
+```
+rbctl route update --service runtime --region eu-west-1 --max-inflight 120 --shed=true
+kubectl -n runtime patch deploy runtime --patch '{"spec":{"template":{"metadata":{"annotations":{"runtime/max-inflight":"120"}}}}}'
+```
+
+sre-runbook-bot: runbook step "apply max-inflight change" initiated by @maria — reported success after 8s.
+
+sam: queue depth dropping already, 5xx from 6.2% -> 2.4% in ~90s. nice.
+
+jay: applying per-tenant quotas for top noisy accounts to protect control plane:
+```
+trafficctl quota set --region eu-west-1 --tenant ACME --rps 25
+trafficctl quota set --region eu-west-1 --tenant BETA --rps 10
+```
+
+product-ops: note — ACME is enterprise and took ~40% of early errors. CS looped in.
+
+maria (oncall): disabling streaming fallback to stop KV regen pressure (temp):
+```
+flags set runtime.streaming_fallback false --env prod --region eu-west-1
+```
+
+deploy-bot: feature flag change rolled in 3s.
+
+sam: metrics: 5xx down to 1.1%, p95 back near baseline. still seeing a few tail timeouts.
+
+maria (oncall): bumping client timeout to 60s to prevent retries and allow in-flight ops to finish (temporary):
+```
+rbctl config set --service runtime --client-timeout 60s --region eu-west-1
+```
+
+ashley: CS confirms most affected customers recovered. ACME still has occasional errors but much improved.
+
+maria (oncall): handing off to @jay for post-incident follow-up — I'm off at 04:15 UTC (oncall shift end) :wave: 
+
+jay: taking postmortem. immediate action items I'll own: 1) root-cause between streaming fallback and KV cache thrash 2) add dynamic shedding thresholds tied to queue depth 3) emergency quota UI/CLI for CS to throttle noisy tenants quickly 4) revisit default max-inflight per region and make it adaptive. will file tickets.
+
+product-ops: marking incident mitigated. tagging for follow-ups and linking CS tickets. :white_check_mark:
+
+incident-bot: INCIDENT RESOLVED by @maria at 04:12 UTC. Duration ~1h.
+
+maria (oncall): post-incident note — inferred that streaming fallback increases number of short-lived connections that evict hot KV entries; that caused repeated cache warms and CPU spikes which undermined backpressure. prioritizing an evaluation of graceful shedding vs hard caps.
+
+jay: opened IRC-2245, IRC-2246, and IRC-2247 for the action items. assigning owners.
+
+customer-success: sending recovery notes to impacted accounts and offering follow-up call with ACME.
+
+sam: thumbs up on mitigation flow — rate-limits + shedding combo worked well. suggest automating a temporary quota rule in runbook. :thumbsup:
+
+maria (oncall): thanks team — will add metrics to alert for streaming_fallback-induced KV churn so we catch this earlier.
+
+jay: leaving notes for next oncall. handover complete. :handshake:

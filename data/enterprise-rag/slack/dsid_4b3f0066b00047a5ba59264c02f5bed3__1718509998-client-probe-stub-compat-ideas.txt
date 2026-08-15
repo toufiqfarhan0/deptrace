@@ -1,0 +1,58 @@
+architecture
+
+rachael: Quick brain dump — thinking about a lightweight "probe + stub" path for v2->v3 surface migration instead of a heavy gateway shim. Goal: minimal latency impact, explicit opt-in, safe passive sniffing for a short window.
+
+ton y: I like keeping things small. Main wins: easier rollback, fewer moving parts. Main risks: mis-detection and edge-case rewrites.
+
+omar: Agreed. If we do passive sniffing we must be conservative. Prefer explicit header `X-Client-Version: 2` for determinism, but allow passive detection for a 2-week grace window.
+
+sid: Infra note — stub adapters can be hosted on edge proxies (nginx/envoy filters) to avoid extra hop. Need to watch connection pooling and cache key semantics.
+
+mei: From quality side: add a small eval harness — sample 500 canonical prompts, compare outputs before/after rewrite, track semantic diffs. Stop rollout on regression.
+
+rachael: Proposed probe pseudo logic:
+```
+if request.headers['X-Client-Version'] == '2':
+  route = adapter_v2_to_v3
+else if payload.shape == EXPECTED_V2_SHAPE and rand() < PASSIVE_PROBE_RATE:
+  mark.metric('probe.passive_detect')
+  route = adapter_v2_to_v3
+else
+  route = native_v3
+```
+Keep PASSIVE_PROBE_RATE small (0.1-1%) initially. Log original+rewritten payloads to an audit queue (PII redaction).
+
+tony: Telemetry to add: `compat.probe.detected`, `compat.rewrite.success`, `compat.rewrite.error`, plus per-tenant counters. Also tag by detection_mode=explicit|passive.
+
+devops-bot: Scheduled deployment: staging/compat-adapter @ 2024-11-02T03:00Z (canary 5% traffic).
+
+omar: Rollout steps I suggest: 
+1) implement adapter + header opt-in, deploy to staging
+2) add passive probe (0.1%) and telemetry, run 48h
+3) enable rewrite for 5% tenants with strict monitoring
+4) ramp to 25/50/100 with health gates
+
+Open questions: how long to keep the opt-in header? do we require clients to flip header to opt-in eventually?
+
+sid: Also add a circuit breaker in proxy: if `compat.rewrite.error_rate > 0.5%` over 5m for tenant -> skip adapter for that tenant.
+
+mei: For private deployments we should ship an opt-out flag in customer config (they may want control over rewrites).
+
+rachael: Operational checklist for RFC:
+- owner: tony (platform) + omar (runtime) + sid (infra)
+- eval plan + regressions threshold (mei)
+- telemetry + alert thresholds (tony)
+- privacy review for audit logs (security)
+- rollout playbook + rollback triggers
+
+tony: I'll draft an RFC today. Will include sequence diagram and sample metrics dashboard.
+
+rachael: Awesome. Anyone want to take the first pass on the RFC doc? @tony please ping when draft is up. :thumbsup:
+
+omar: I can help with the adapter shim code sketch.
+
+sid: I'll write the Envoy filter notes.
+
+mei: I'll prepare the eval harness data set.
+
+rachael: Great. We'll sync in the arch weekly if needed. Thanks all. :white_check_mark:

@@ -1,0 +1,35 @@
+customer-success
+
+Maria: Quick recap from today's HelioMed onboarding call — they gave a few concrete asks and a couple of pain points we should surface to product. Posting raw notes here for triage.
+Maria: TL;DR: 1) need per-route cost exports for finance 2) onboarding docs confusing around Dedicated vs Private networking 3) embeddings mismatch causing duplicate search results
+Maria: Raw items pasted below (copied from meeting chat):
+- 'Our finance team needs CSVs per route with token usage and allocation tags.'
+- 'When we switched to Dedicated we had to reconfigure VPC peers; docs didn't call out step for subnet ACLs.'
+- 'Search embeddings seem off — identical queries return different ranks between dev and prod.'
+Maria: Also flagged renewal risk (Q3) if we don't deliver clearer cost exports and a short onboarding checklist for Dedicated customers.
+Jamal: Thanks Maria — useful. Can you attach the meeting recording or timestamp for the embedding example?
+Maria: Recording: https://meet.redwood/rec/helio-2026-03-20 (start ~00:12:30). Embedding example: customer query "hypertension care protocol" returned unrelated older docs in prod.
+Sasha: Noted. I'll add the per-route CSV export to the CS->Product intake board. Prioritization ask: is this a P1 (renewal risk) or P2 (nice-to-have)?
+Maria: I'd call it P1 for finance export. Embeddings we should triage as P2 but high-visibility. Docs checklist = P1 for onboarding.
+Leo: For embeddings mismatch we need a reproducible sample. I'll take the prod query and run it through our eval harness. Maria can you paste the example query and one doc id that was incorrectly ranked?
+Maria: Query: "hypertension care protocol"; example doc id: hm-doc-4321. They said it ranks #78 in prod, #2 in dev.
+Leo: Great — I'll run a diff on the encoder checkpoints and vector normalization steps. If it's a quantization/precision drift that's actionable.
+Priya: For the per-route CSV — ops currently exposes token-level logs in S3 per tenant. We can add a small lambda to aggregate by route and tag. ETA?
+Jamal: If engineering approves a small ETL we could have MVP in 3 sprints. Is that acceptable for HelioMed? Maria?
+Maria: HelioMed asked for a sample export by next week to unblock their renewal meeting. 3 sprints feels long. Can we do a stopgap: one-off export + scheduled weekly dumps?
+Priya: We can do an ad-hoc export in 48-72h from the S3 logs. Weekly dump scheduled thereafter.
+Sasha: Ok I'll mark intake card with: Owner=Priya, Type=workaround->platform feature, Due=48h sample, Feature ETA=3 sprints.
+devops-bot: Deploy pipeline note: when we add the weekly dump lambda, need to update infra policy to include S3:GetObject for route-aggregator role.
+Jamal: Thanks — let's also add a short Dedicated networking checklist to the docs site: 1) VPC peer precheck 2) subnet ACL callout 3) test curl to health endpoint. Who can draft?
+Sasha: I can draft the checklist today and ping docs reviewer.
+Maria: Perfect. Action items summary for product triage: 
+- Per-route CSV export: immediate ad-hoc export (Priya, 48-72h) + feature ticket (engineering, 3 sprints) — P1 (renewal risk).
+- Dedicated onboarding checklist: draft by Sasha, review by docs — P1 (onboarding friction).
+- Embeddings regression: Leo to run eval and surface RCA, possible bugfix — P2.
+- Follow-up: Maria to share meeting clip and HelioMed's finance sample spreadsheet.
+Jamal: I'll put the Per-route CSV into the next triage meeting and flag as expedited. Also will surface the Dedicated checklist in the onboarding playbook backlog.
+Maria: Thanks team — please drop quick ack reactions here so I can update HelioMed. :thumbsup:
+Priya: Ack. :white_check_mark:
+Sasha: On it. :rocket:
+Leo: Running the eval now.
+Maria: I'll post the recording timestamp and the finance sample in this thread when available.

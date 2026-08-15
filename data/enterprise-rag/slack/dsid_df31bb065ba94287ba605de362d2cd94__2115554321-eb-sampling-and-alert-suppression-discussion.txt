@@ -1,0 +1,76 @@
+eng-sre
+
+maya: Quick question — our GPU saturation SLI is burning error budget from short preemption spikes. Current rule (Prom) is a 5m avg over node_gpu_saturated_ratio > 0.9 and we alert if X% of pool nodes are saturated. Those 1–2m blips from preemptions are noisy. Anyone comfortable changing sampling/aggregation patterns? :thinking:
+
+sam: +1 saw this yesterday. Two quick levers: recording rules to smooth, and alert debounce ('for') to avoid 1–2m blasts. Also consider switching to percentile-based SLI instead of fraction-of-nodes. :eyes:
+
+jordan: can you paste the rule? want to see the exact query and where it's used in EB calc.
+
+maya: pasted below (current):
+```yaml
+- alert: GpuPoolSaturationHigh
+  expr: avg_over_time(node_gpu_saturated_ratio[5m]) > 0.9
+  for: 2m
+  labels:
+    severity: page
+```
+
+sam: yeah that for:2m still lets 5m avg + 2m for = weird combos. I'd rather record a smoothed metric and use that in both SLI and alerts. e.g.:
+```yaml
+- record: gpu_pool_saturation_smoothed
+  expr: avg_over_time(avg(node_gpu_saturated_ratio) by (pool)[15m:1m])
+```
+then alert on gpu_pool_saturation_smoothed > 0.85 with for:10m.
+
+lee: i like the recording rule but watch cardinality and scrape intervals. we should also avoid using node-level ratio alone — it misses request-level backpressure. can we add queue_depth_p99_by_pool?
+
+ravi: +1 to queue depth. for SLI we should define saturation SLI = percentage of requests that experienced queue wait > 200ms OR GPU allocation delay > 500ms. That ties to customer experience and reduces noise from node churn.
+
+jordan: how would that integrate into EB reporting dashboards? our EB calc job expects a boolean series per minute (good/bad) per pool and rolls up to burn rates.
+
+sam: two options: (A) produce a recording rule that emits a 0/1 timeseries per pool per minute, using the smoothed metric OR the request-level predicate; (B) keep current node-level signal but add a second signal to reduce false positives and combine in the EB job with weighted OR.
+
+lee: example for (A) using request metrics (pseudo):
+```promql
+request_slow = increase(request_waiting_total{pool="$pool"}[1m])
+satisfies = request_slow / increase(request_total{pool="$pool"}[1m]) > 0.01
+record: pool_saturation_sli{pool="$pool"} = bool(satisfies)
+```
+
+maya: i like (A). More work on instrumentation but better fidelity. question: what window do we use for EB (1m, 5m, 1h)? current dashboards show 6h & 24h burn rates.
+
+ravi: EB math: short windows detect fast incidents but are noisy. we should continue to publish both: 1h burn for ops detection, 24h for policy. For alerting, use rolling 30m burn > 5x as pager threshold. For email/ops-review, 24h > 1x.
+
+jordan: Can the EB ingestion job accept a weighted combination? e.g., combine node-signal*0.4 + request-sli*0.6 per minute to produce the boolean. That would prevent a single noisy node from burning too much.
+
+sam: implementation detail: easier to ship a new recording rule that computes weighted_rate = (node_signal * 0.4) + (request_signal * 0.6) and then threshold that to bool. Keep the raw signals around for debugging.
+
+maya: cost/capacity note — if we smooth too aggressively we might hide real saturation during rollouts. need to balance detection vs noise.
+
+lee: Ops suggestion: keep two alert tiers. Tier1: sustained saturation (smoothed > 0.8 for 10m) -> oncall. Tier2: spike detection (raw node_saturation > 0.95 on >10% nodes for 3m) -> infra-channel notify only. reduces pagers.
+
+oncall-bot: runbook link: https://redwood.internal/runbooks/gpu-saturation — includes mitigation steps (drain pool, scale burst, fallback routing).
+
+ravi: also add trace sampling when saturation spikes so we can see request flow. increase trace retention for those windows only.
+
+jordan: action items?
+
+maya: proposed actions: 
+- (maya) add gpu_pool_saturation_smoothed recording rule (15m) and expose in Grafana.
+- (sam) create weighted boolean recording rule for EB ingestion and open PR for eb-ingest to accept it.
+- (lee) update alerting playbook with two-tier thresholds and debounce settings.
+- (ravi) add request-level SLI instrumentation and a dashboard panel for queue_waits.
+
+sam: i'll take the eb-ingest PR.
+
+lee: i'll update playbook.
+
+ravi: i'll add the queue metrics, ETA EOD tomorrow.
+
+maya: thanks — i'll roll the recording rule and update the grafana panel. will post PR link here. :thumbsup:
+
+sam: fyi, we should also add a synthetic test that injects a 2m preemption noise in staging to validate the new rules. avoids rolling blind.
+
+maya: good call. creating ticket now: https://redwood.internal/issue/ENG-4231
+
+jordan: thanks team — let's re-evaluate EB burn on Monday after the change. :spiral_calendar:

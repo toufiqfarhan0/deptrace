@@ -1,0 +1,52 @@
+eng-runtime
+
+max: Heads-up — started a triage on the KV-cache OOMs we saw on the 16k seq perf run. Looks related to recent allocator knob changes (expandable_segments + max_split_size_mb).
+sana: thanks. quick summary?
+kai: short: after bumping max_split_size_mb -> 128 we see fewer tiny splits but much higher fragmentation for long-lived KV allocations. peak reserved memory increased ~20%.
+max: exact profiling: attached snippets below from the canary run. I pasted the allocator summary and a flamegraph note.
+max: ```
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:1,max_split_size_mb:128,garbage_collection_threshold:0.6
+# torch.cuda.memory_summary() (trimmed)
+|allocated|active|inactive_split|reserved|
+|  7.3G  |  7.9G |   1.5G       |  9.6G   |
+# Observed: reserved > allocated by ~2.3G, fragmentation spikes during KV eviction window.
+```
+sana: that reserved delta matches the timeline where KV cache growth + background batching align.
+julie: any repro steps? I can run a smaller repro locally.
+kai: run the 6-stream, seq_len=16k canary with the new allocator env var; use model with kv_cache enabled and a steady stream of incremental prompts to prime prefix caching.
+max: quick diff from nvprof-like timeline: when we deallocate large KV tensors, freed segments don't coalesce due to large split sizes, leaving many unusable holes. Later allocations for attention buffers then trigger OOM even though total free bytes are enough.
+julie: makes sense. sounds like max_split_size_mb too large for our fragmentation patterns.
+sana: question: is expandable_segments suspected to be harmful here? it was enabled to allow the allocator to request new segments instead of splitting, but maybe increases reserved memory.
+kai: expandable_segments lets the allocator create new block metadata and tolerate more fragmentation; it helps small-allocation workloads but for large long-lived KV chunks it increases reserved overhead.
+max: proposed mitigations:
+1) lower max_split_size_mb -> 32 (reduce large splits, promote coalescing)
+2) bump garbage_collection_threshold -> 0.8 to trigger earlier GC sweeps for inactive cached blocks
+3) implement buffer reuse for KV: keep a small pool keyed by (dtype, device, size_class) to satisfy recurring KV shard shapes instead of freeing to allocator
+4) workspace sizing: preallocate attention workspaces per-stream to avoid transient large allocations
+5) add a fallback that moves very large inactive KV shards to pinned CPU memory when GPU pressure > 90% (canary only)
+
+julie: I can prototype (1) and (2) quickly as env var changes and run the canary.
+sana: please also record peak fragmentation and reserved/allocated ratio. add tracer annotation when KV eviction runs so we correlate timeline.
+max: I'll open an infra PR with the env var template and a dashboard tile for reserved vs allocated and fragmentation spikes.
+kai: for (3) buffer reuse: we already have a small pooling API in runtime (gpu_buffer_pool). hooking KV path to it should be low risk — avoids churn of alloc/free. I'll draft a change.
+max: also note: this regression surfaced in nightly after the allocator defaults were switched. We'll need a rollback plan in case canary fails: revert PYTORCH_CUDA_ALLOC_CONF and enable per-model limits on seq_len.
+sana: test plan: canary on dedicated with 8xA100, run the 6-stream 16k workload for 2 hours, compare:
+- qps and p90 latency
+- peak reserved vs allocated
+- fragmentation metric (reserved - active)
+- OOM count / per-model failures
+
+julie: running now with: 
+```bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:1,max_split_size_mb:32,garbage_collection_threshold:0.8
+./ci/canary_runner --workload kv_long_seq --streams 6 --seq 16000 --duration 7200
+```
+
+infra-bot: Canary job queued: canary-17190049-kv-allocator-1 (watch: https://ci.redwood.internal/canaries/17190049) :hourglass_flowing_sand:
+max: thanks — let's let this run for an hour and reconvene. If we see improvement, we'll ship a conservative default change and follow up with pool implementation.
+sana: small note: document the knobs and rationale in the runtime tuning guide (eng-runtime/tools). I can draft that after results.
+kai: one more perf tip: when reusing KV buffers, align to 256 bytes and keep small freelists for common sizes to avoid allocator fragmentation.
+julie: seeing initial numbers — reserved dropped ~1.4G after change, fragmentation reduced by ~60% in first 15min. will post full logs when finished. :thumbsup:
+max: awesome. assign follow-ups: infra PR (max), kv pool prototype (kai), docs (sana), canary monitoring (julie).
+sana: creating tickets now.
+max: thanks team — next update in ~1.5h or when canary finishes.

@@ -1,0 +1,39 @@
+eng-releases
+
+sahil: Quick ops bulletin — shifting the release train priority lanes for the next ~36h to free capacity for the v3.5 rollout. This will temporarily de-prioritize low-latency non-critical model workloads and reduce parallel canaries. Critical routes and emergency SLAs remain unchanged.
+
+anya: Which services are in-scope for the de-prioritization?
+
+sahil: Primary impact: batch embedding jobs, nightly eval jobs, and non-customer-facing internal rerank endpoints. Any user-facing low-latency endpoints (search, chat) are out of scope.
+
+kevin: Noted — we'll hold non-critical deploys on ranking team. Any explicit SLA changes we should expect?
+
+sahil: Yes — temporary SLO relaxation for background routes: 99p latency target moving from 500ms -> 800ms for ~36h starting at the canary window. Again, critical/premium-tier routes remain at current targets. Auto-fallback policies will kick in if critical route latency spikes.
+
+ops-lead: I'll update the on-call runbook and alert thresholds. tagging @release-bot to schedule the window.
+
+release-bot: release-bot: Priority shuffle scheduled by sahil — window_start=2300123600 window_end=2300160000. Auto-notify on-call and disable non-essential parallel canaries during the window.
+
+anya: Canary config suggestion for affected teams:
+
+```
+canary:
+  parallelism: 1
+  duration: 60m
+  rollback_on_error: true
+  fallback_variant: small-quant
+```
+
+kevin: Will add label `hold-low` to open PRs and run `/deploy-block hold-low` where needed. Any changes to caching or KV prefixes we should be aware of?
+
+sahil: No changes to prefix/KV caching plans — caching behavior stays the same. The heavy difference is routing priority and batch scheduling.
+
+olivia: Product here — we'll hold any feature-flags that might trigger large fanout. Also please add a short note in the product channel if there's any meaningful user-visible change.
+
+sahil: Good call — I'll push a short blurb to #product and #general summarizing the SLO tweak and the reason (capacity for v3.5 launch).
+
+ops-lead: I'll set a transient dashboard highlighting 95/99 latency for the affected background routes and wire an alert to page if 99p > 1200ms for >15m.
+
+kevin: ACK. We'll postpone our nightly eval run until the window opens to avoid noise.
+
+sahil: Thanks all. If you hit anything unexpected, call it out here and ops will escalate — otherwise expect the schedule from release-bot and a follow-up summary in ~2h. :thumbsup:

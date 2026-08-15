@@ -1,0 +1,14 @@
+customer-success
+
+toni_cs: Heads-up: GreyMatter account down ~65% WoW after procurement RFP. Procurement mentions a short pilot with PulseAI. Marco (eng lead) still engaged. :red_flag:
+metrics-bot: GreyMatter weekly: calls 9,800 -> 3,400 (-65%), seats 42 -> 39, top endpoint: /reports, error rate flat. Dashboard: https://redwood.metrics/greymatter
+lee_csm: Who's the champion and any execs on the thread?
+toni_cs: Champion Marco, Lina (PM) looped in, legal cc'd. No billing hold yet.
+ram_engineer: Quick systems check: no infra changes, latency and errors normal. Drop concentrated on reporting endpoints and one client token.
+olivia_renewals: I'll assemble a short renewal packet + 10-day pilot counter-offer. Need power-user breakdown and churn score.
+lee_csm: Scheduling 30m sync Wed 11am PT with Marco + Lina. Agenda: usage concentration, competitor scope, targeted enablement, pilot terms. @ram_engineer can you prep a migration/compat blurb?
+ram_engineer: On it. Will include data export, sample config, and a short interop note for PulseAI compatibility.
+toni_cs: Intro + calendar sent. I'll run a quick in-app nudge to the payments/reporting power-users before the call.
+metrics-bot: Churn model flagged account (score 0.79). Case created CS-8420 and renewals notified.
+olivia_renewals: Drafting commercial counter now. After the Wed call we'll decide if an exec QBR is required.
+lee_csm: Thanks team — update thread after call. :thumbsup:

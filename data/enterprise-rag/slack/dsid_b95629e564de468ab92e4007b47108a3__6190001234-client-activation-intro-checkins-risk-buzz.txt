@@ -1,0 +1,41 @@
+customer-success
+
+sam: Quick heads up — kicking off client activation for Cobalt Health today. High-level goals: PoC integration in 14 days, baseline p50 latency <300ms, security review finished before data sync. Need: tech lead, data contact, enablement slot, and an owner for success criteria. Proposed timeline in replies.
+
+maya: I can own success criteria tracking and weekly health syncs. Suggest we set KPIs: weekly DAU on feature, error rate <1%, sla breaches logged. Will take notes during first call. :white_check_mark:
+
+priya: Eng side — tech lead will be @priya. Platform contacts: infra@redwood, dbops@redwood. Tentative infra window: week of Mar 8 (can move). Quick checklist we use for initial integration:
+```
+- API keys created + least-privileged role
+- VPC peering verified / or private endpoint
+- Sample dataset mapping and redaction rules
+- Canary traffic config with 5% ramp
+```
+I'll post the full checklist doc after this thread.
+
+liam: PM/solutions here. Recommend enablement: 2 sessions — 1) product overview + mapping (60m) 2) hands-on integration lab (90m). Available slots: Tue 11am PT or Thu 2pm PT next week. Also capture customer success champion for internal training. :spiral_calendar:
+
+sam: Noted — renewal is coming up month 11 per CRM, flagged as medium risk because they have tight SSO/compliance needs. Let's add a checkpoint at day 30 to review adoption and open blockers. :warning:
+
+maya: For day-30 health check I propose these artifacts: adoption dashboard, feedback log (GDocs), outstanding tech blockers list. Can own the dashboard template. Also want to collect NPS-style feedback after first week.
+
+priya: FYI: one potential infra blocker — they may require HSM-backed keys. If so, timeline + costs shift. Can we surface to procurement now?
+
+liam: I'll loop procurement and sales. Sam — do we have an estimated ARR / contract term to prioritize procurement?
+
+sam: Contract details: 12mo term, ARR $180k first year. Procurement lead is @jess from Cobalt — copying on the meeting invite.
+
+oncall-bot: Meeting created: "Cobalt Activation — Week0 Sync" scheduled Wed 10:00 AM PT. Calendar link: https://cal.example/meet/6190001234. Organizer: sam.
+
+maya: Action items from thread:
+- maya: own success tracking and dashboards (action)
+- priya: share full infra checklist + confirm HSM requirement (action)
+- liam: schedule enablement and loop procurement (action)
+- sam: confirm customer contacts + update CRM with risk flag (action)
+Please react with :thumbsup: when you have the first deliverable up.
+
+priya: Will post checklist by EOD and start infra pre-check.
+
+liam: Picking Thu 2pm PT for enablement unless objections.
+
+sam: All good. Thanks — short sync Wed then full enablement Thu. :rocket:

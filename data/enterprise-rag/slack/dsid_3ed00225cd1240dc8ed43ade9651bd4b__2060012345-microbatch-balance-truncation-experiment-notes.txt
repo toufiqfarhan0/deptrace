@@ -1,0 +1,49 @@
+eng-runtime
+
+Sam H: quick postmortem from the microbatch experiment run earlier — noticed a sharp p99 jump when we increased microbatch size from 8 -> 16
+Priya N: numbers?
+Sam H: throughput +18% vs baseline, p95 flat (~220ms) but p99 went 380ms -> 980ms on tail windows
+Kevin L: interesting. did KV cache hit-rate change?
+Sam H: yes — eviction rate spiked to ~12% for sequences > 2k tokens, lots of cache churn. spike aligns with GPU kernel switch times too
+Ava Z: can you paste profiler snippets?
+Sam H: pasted profiler output below (flame collapsed)
+```
+nvprof: kernel A (attn_opt)  60% samples
+nvprof: kernel B (generic_attn) 25% samples
+KV cache op: 12% of time in eviction/serialize
+host->device stall: noticeable at tails
+```
+Priya N: so tail requests trigger large KV work and fall back to slower kernel path -> multiplies latency
+Kevin L: possible mitigations: (1) smaller microbatch cap for long sequences (2) soft max_tokens cap with graceful truncation (3) pre-check kv hit-rate and force lightweight kernel
+Ava Z: +1 on graceful truncation. production risk if we hard-cut. propose: dynamic max_tokens = min(lookup(traffic_quantile), 1024) and prefer prefix-drop for long prompts
+Sam H: ran a quick config test: dynamic cap at 512 for heavy-tail queues reduced p99 to ~420ms, throughput only -6%
+infra-bot: noted deploy log: rollout/mb-opt-v5 started for canary cluster at 2060012900 by @SamH
+Priya N: curious about effect on quality — any eval regressions?
+Sam H: ran 400 eval prompts: pass-rate delta <1.5% on relevance, hallucination unchanged. longer-context QA suffers some precision on edge cases
+Kevin L: kernel-routing idea: if kv-eviction-rate > 8% then route to cached-optimized instance with more KV capacity (higher mem) or prefer attn-approx kernel. cheaper than truncating sometimes
+Ava Z: tradeoffs: routing adds complexity and burst capacity cost. truncation + soft-timeout cheapest and easiest for now
+Sam H: suggested safe defaults in config snippet below:
+```
+batching:
+  microbatch_size: 16
+  microbatch_token_cap: 2048
+  dynamic_long_seq_cap_enabled: true
+  dynamic_long_seq_cap_policy: "queue_depth_based"
+timeouts:
+  per_request_ms: 5000
+  soft_deadline_ms: 3000
+truncation:
+  policy: "prefix-drop"
+  max_tokens_soft: 512
+  max_tokens_hard: 2048
+  allow_partial_when_soft_exceeded: true
+kv_cache:
+  eviction_target_pct: 5
+  telemetry_window_s: 30
+```
+Priya N: can we add a short-circuit: if soft_deadline hit then return best-effort partial tokens + "truncated" flag in metadata? frontends can show summary
+Kevin L: yep. and instrument a new metric: tail_truncation_rate, correlated with p99. alert if >0.8% for 5m
+Sam H: action items: (1) deploy soft truncation config to canary (2) add tail_truncation_rate metric + dashboard (3) benchmark kernel-routing sketch next week (4) run 10k eval prompts with truncation to validate quality impact
+Ava Z: I'll own dashboard and alerting. assign to infra-bot for rollout tracking?
+infra-bot: rollout/mb-opt-v5 status: canary 1/3 healthy, 1/3 degraded, 1/3 pending. tracking issue: #4567
+Sam H: thanks all — will update thread after canary finishes. tagging follow-up for next eng-runtime sync :calendar: 

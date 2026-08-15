@@ -1,0 +1,39 @@
+design
+
+zoe: quick one 30 uploaded a small update to the Rollout inspector: added a "quick actions" row under each version and a compact 'history scrubber' to preview traffic shifts. figma: https://figma.redwood/inspector/compact-scrub 
+
+lee: looks promising. two concerns: 1) quick actions could make rollback too discoverable, 2) scrubber hover previews are not keyboard-friendly.
+
+arjun: agree with lee. suggestion: hide destructive quick actions behind a chevron so theyre not inline for prod. allow a non-destructive "Pause" inline only.
+
+faye: accessibility note  when the inspector opens, call out focus to the inspector header and announce "Rollout inspector opened for Service Y" via aria-live. avoid hover-only reveal.
+
+zoe: noted. copy question: inline label for Pause should be "Pause rollout" or just "Pause"?
+
+arjun: explicit helps screen readers. use "Pause rollout" and aria-label="Pause rollout for Service Y".
+
+lee: scrubber behavior: on keyboard focus show a condensed preview panel. avoid showing diffs until user activates "view diff". condensed preview rows should have aria-expanded on the toggle.
+
+aria: small microcopy: condensed row pattern -> "v3.4.2  4 files changed  deployed by @lee  30m ago" (use em-dash for separation). keep tooltip copy minimal.
+
+faye: contrast check: the tiny status pills are failing at 12px with current tokens. bump to 14px or darken the bg. also ensure focus ring is 3px min visible.
+
+arjun: keyboard shortcut idea: allow J/K to move rows, Enter to expand, but require Shift+R to open rollback modal. modal then requires typing ROLLBACK to enable Submit.
+
+zoe: love Shift+R. add a help hint in the inspector footer: "Keyboard shortcuts: J/K to navigate, Enter to open, Shift+R to start rollback (type-to-confirm)". must be dismissible.
+
+lee: dev note: global shortcut registry required; will scope keys to the inspector route to avoid collisions. also will not enable shortcuts by default until user opts in.
+
+faye: aria snippet for handoff (small): 
+```html
+<div role="dialog" aria-labelledby="inspector-title" aria-modal="true">
+  <h2 id="inspector-title" tabindex="-1">Rollout inspector 3 Service Y</h2>
+  <div aria-live="polite" class="sr-only">Opened Rollout inspector for Service Y. Use J/K to navigate versions.</div>
+</div>
+```
+
+aria: one more: tooltips should use role="status" for dynamic scrub previews so SR users hear updates but not be overwhelmed.
+
+ux-bot: created task #5102 "rollout-inspector-compact-actions-a11y". reminder due 48h. (reaction: :white_check_mark:)
+
+zoe: final: i'll make the prod quick-action chevron default collapsed, add the help hint, and push updated contrast tokens. planning to finalize for handoff tomorrow morning. thanks all :sparkles:

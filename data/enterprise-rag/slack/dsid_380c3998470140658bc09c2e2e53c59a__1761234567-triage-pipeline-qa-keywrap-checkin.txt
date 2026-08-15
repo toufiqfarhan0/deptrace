@@ -1,0 +1,47 @@
+sales
+
+Aisha Kaur: quick async standup — what I did: demo'd Redwood Dedicated to MacroHealth yesterday, looped in infra for KMS questions; got PR #482 merged for the new pricing card. blockers: MacroHealth asked about keywrap latency with customer-managed keys (they want <10ms for token ops) and whether we can demo private KMS flow in staging. Today: coordinate with eng-runtime + sec to confirm latency numbers and schedule a short demo (30m) this afternoon if possible.
+
+Marco Ortega: noted. I can run a quick perf probe against staging with customer-managed keys — will need the test key and a short script. ping me when you have the key details. :gear:
+
+Priya Shah: FYI Sec asked for the threat model doc and the KMS integration checklist before any demo. I uploaded the checklist here: https://redwood-internal/repo/security/kms-checklist.md — share with MacroHealth pre-demo.
+
+Aisha Kaur: thanks @Marco @Priya — MacroHealth is ok with redacted key material for the demo, they just want latency numbers and an architectural walkthrough. I can share the checklist link in the meeting invite.
+
+Evan Li: quick heads-up — for <10ms we might need to use the dedicated path (no NAT gateway hops). I'll validate from a staging pod in the same AZ. If we can't hit <10ms, propose fallback messaging for the customer (bounded SLA + batching suggestion).
+
+Samir Rao: @Aisha adding SecOps context — we need to log key-wrap operations to the audit stream and show KMS rotation policy in the demo. Also confirm whether customer-managed keys are proxied or direct. If proxied, note the proxy adds ~2–5ms.
+
+Aisha Kaur: noted Samir — can you confirm proxy vs direct for the staging env by 1pm PT? I'll try to lock demo for 3pm PT.
+
+Marco Ortega: starting perf probe now, script: 
+```bash
+wrk -t2 -c50 --latency "https://staging.redwood.internal/kms/wrap" -H "Authorization: Bearer test-token"
+```
+I'll paste raw numbers in a follow-up.
+
+deploy-bot: Deployment queued: perf-probe-job-324 at 12:21 PT — started.
+
+Evan Li: also, small ask for sales ops — include the 'private deployment network diagram' in the invite attachments. That answers the NAT/proxy question visually. I uploaded a draft: https://redwood-internal/diagrams/pvt-network-v2.png
+
+Aisha Kaur: plan for today: 1) get proxy/direct confirmation from Samir by 1pm; 2) Marco to post latency numbers by 12:40pm; 3) Priya to attach checklist + threat model to invite; 4) I will send 3pm demo invite if numbers look good. if not, propose 4pm fallback after we try dedicated path.
+
+Priya Shah: ack — I'll update invite and ping contacts at MacroHealth to confirm 3pm tentative.
+
+Marco Ortega: results quick summary: p50 6.8ms, p95 14.2ms, p99 23.7ms (staging with proxy). Raw logs attached to the perf job.
+
+Aisha Kaur: thanks Marco — those p95/p99 numbers are above their ask. @Samir any chance staging can use direct KMS link (no proxy) for a short demo?
+
+Samir Rao: we can spin up a direct-link staging pod but need a security exception ticket for audit stream routing — creating SEC-1147 now. ETA ~40m.
+
+Evan Li: if we get direct link, re-run the probe, should drop p95 under 10ms. Also will prepare the fallback messaging: "recommended: dedicated path or bounded batching to ensure sub-10ms experience" — short bullet list to include in the demo.
+
+Aisha Kaur: perfect. I'll hold off on inviting MacroHealth until we have direct numbers. Thanks all — will update thread when SEC-1147 is created and when probe finishes. :thumbsup:
+
+Marco Ortega: perf re-run (direct link) — p50 4.1ms, p95 7.9ms, p99 11.4ms. Logs in perf-probe-job-325.
+
+Aisha Kaur: great — looks like we can hit their target. I'll send the 3pm invite and include the network diagram, checklist, and the fallback bullets.
+
+Samir Rao: SEC-1147 created and approved for demo window only. I'll DM Aisha the exception details and auditors' contact.
+
+Aisha Kaur: sending invite now. Thanks team! :rocket:

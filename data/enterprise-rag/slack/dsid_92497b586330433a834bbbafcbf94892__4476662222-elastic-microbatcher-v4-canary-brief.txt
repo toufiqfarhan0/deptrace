@@ -1,0 +1,34 @@
+eng-runtime
+
+anya: quick heads-up — rolled out elastic-microbatcher-v4 to canary (10% traffic) at 18:02 PT. results look promising
+mike: bench summary?
+anya: short version: p95 down ~27% (220ms -> 160ms), p99 down ~28% (580ms -> 420ms), overall token cost ~12% reduction on our chat workload distro
+jas: can you paste the raw numbers?
+anya: ```
+Benchmark: chat-gen-4k (50k req sample)
+Baseline: p50 35ms p95 220ms p99 580ms cost/unit $0.0123
+elastic-mb-v4: p50 32ms p95 160ms p99 420ms cost/unit $0.0108
+Throughput: +8% sustained at 95th percentile load
+CPU tail: +0.02% on some hosts (within margin)
+```
+jordan: did you run with prefix-cache warm vs cold? any surprises?
+anya: yes — with warm prefix cache p95 improves another 8-12ms. cold-cache tails grow but net cost still better. we added a quick fallback to legacy microbatcher when kv-cache evict errors spike
+olivia: experiment id / where's the data?
+anya: exp-20260322-mb4, results uploaded to bench-datalake path: /bench/exp-20260322-mb4/results.csv. I'll drop a pointer in the perf-docs in a bit
+infra-bot: deploy CI report: canary rollout completed — 10% traffic — no deploy errors reported :white_check_mark:
+mike: any user-facing errors during canary?
+anya: 0 user-facing errors. we saw 4 internal incidents where kv-cache eviction coupled with an edge race caused brief 502 spikes; mitigated by circuit fallback and small rate-limit tweak. tracking in #incidents/2468
+jas: what are rollout criteria for wider ramp?
+anya: ramp to 50% tomorrow 14:00 PT if (1) p95 <= 170ms, (2) error rate delta < 0.01%, (3) infra CPU tail <= +0.05% for 3 rolling windows. docs: https://redwood.internal/ops/microbatcher-v4 (internal)
+mike: can we get a 2-slide to show in all-hands? execs like cost/latency wins
+anya: will prep 2 slides and a one-paragraph TL;DR for the release notes
+jas: nice work everyone :rocket:
+anya: small note for infra: please watch KV eviction metrics for region eu-west-1 — that region showed slightly higher evict churn during canary
+infra-bot: alerting: added temporary threshold + notification for kv.evictions.eu-west-1
+deploy-bot: circuit fallback enabled for elastic-mb-v4: on error -> fallback to legacy microbatcher
+anya: thanks team — fuller writeup + perf graphs coming in #eng-runtime-docs later today
+mike: agree we should highlight the cost delta with a small example customer workload in the notes
+anya: done — adding two customer-pattern snapshots to the doc. will ping once posted
+jas: celebratory virtual donuts tomorrow? :doughnut:
+anya: i'll bring the donut gif :grimacing:
+anya: closing thread for now, will update after the 50% ramp check

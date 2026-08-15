@@ -1,0 +1,33 @@
+eng-platform
+
+anya: heads up — we're seeing a gap in traces for route-policy svc after the otel-sink rollout a few mins ago. parent spans exist but the last child spans are missing for ~30% of requests :confused:
+liam: looking now. do you have an example trace id?
+anya: sent one in #alerts (trace: 0f3a2b7c). saw it in jaeger before the deploy. after the sink redeploy the child spans never reached the exporter.
+marta: any exporter errors in otel-sink logs? i scanned last hour, only normal reconnects.
+anya: nothing obvious. attaching the small log snippet i grabbed:
+```
+2026-03-20T17:02:31Z INFO flush started batch_id=478 seq=1023
+2026-03-20T17:02:31Z INFO export attempt batch_id=478 exporter=zipkin status=200
+2026-03-20T17:02:31Z INFO flush completed batch_id=478
+2026-03-20T17:02:31Z WARN reorder detected gap from seq=1018 to seq=1024 count=6
+```
+liam: ah — reorder detected. sink emits a reorder warning when in-memory queue compaction runs during drain. if a batch is partially acked and the seq space is reused downstream we can lose sampled child spans that were in-flight.
+josh: timeline: we redeployed sink with new compact-queue change that rotated seqs on restart to avoid unbounded memory. looks like that rotation collides with exporter dedupe logic that uses seq as part of the key.
+marta: so exporter thinks already-seen spans are duplicates and drops them? even though they were never exported?
+liam: exactly. dedupe key = <traceid>-<seq>. seq reset -> new spans get old seqs and dedupe map still contains entries pointing to older (now GCed) batches, so sink believes it already shipped them.
+anya: that matches: parent shows up (was flushed in earlier batch) but children that came in later are missing.
+aga: @eng-runner-bot any recent config changes for zipkin exporter dedupe?
+eng-runner-bot: config change applied: exporter.zipkin.enable_dedupe=true at 2026-03-20T16:58:04 by josh.
+josh: i turned dedupe on to reduce duplicates we saw during partial retries. didn't connect it to seq rotation. my bad.
+marta: temporary mitigation: flip enable_dedupe=false on all sink replicas and restart exporter rollouts. that should let everything through while we fix the keying.
+liam: also add preserve_order: true to the sink config so compaction doesn't reorder when draining. it will increase memory retention slightly but avoids seq reuse edge case.
+anya: can someone run the rollback/mitigation? i'll keep watch on example trace id.
+ops-bot: rollback playbook initiated by marta: set exporter.zipkin.enable_dedupe=false in k8s secret and trigger rolling restart of otel-sink (strategy=OnDelete).
+josh: i'm working on a proper fix: switch dedupe key to use persistent batch_uuid instead of seq, and add metric sink.dedupe_hits and sink.reorder_count so we'll detect this earlier. will open PR in ~30m.
+liam: quick verification plan: after rollback watch for missing children on the example trace + check sink.reorder_count drops to 0. also validate no DUP spikes in zipkin.
+anya: confirmed — after the rollback start i'm already seeing previously missing child spans appear for new traces. thanks! :tada:
+marta: filing an incident note with root cause and remediation steps. add timeline + PR link when josh has it.
+josh: PR opened: github.com/redwood-inference/otel-sink/pull/1297 — key change: dedupe_key = sha1(traceid + batch_uuid) and avoid seq reuse on restart. includes test that simulates restart+compaction.
+liam: sweet. i'll schedule a small canary to enable dedupe=true with the patch behind a feature flag and monitor sink.dedupe_hits for anomalies.
+anya: great work team. recommend follow-up to add alerting on sink.reorder_count > 0 and expose reorder_count on the console per-cluster.
+marta: noted — will add to backlog and link to incident. closing the slack thread unless more shows up.

@@ -1,0 +1,37 @@
+eng-security
+
+rachel: CI runner in staging printed a KMS resource path + truncated ciphertext in the job logs. not plaintext but treat as sensitive.
+
+tony: paste snippet? which runner/job id?
+
+rachel: redacted line: 
+ERROR: decrypt failed: projects/prod/locations/global/keyRings/ephemeral/cryptoKeys/ephemeral-key: ciphertext=Zk9a...9Lp
+
+tony: running quick grep across recent builds. found 2 occurrences from runner-ci-42 and runner-ci-44. looks like a flaky unwrap path on our backup step.
+
+devops-bot: Creating audit export for project-prod (KMS/IAM/GCS) -> gs://sec-exports/inc-3310001234/audit.tar.gz
+
+oncall: Ack. exporting 72h of logs now, will DM link when finished.
+
+tony: immediate actions: 1) remove cryptoKeyEncrypterDecrypter role from backup service account in staging, 2) snapshot audits, 3) schedule KMS rotation, 4) plan rewrap. running gcloud remove-iam-policy-binding now.
+
+rachel: done a quick bucket scan, I see ~5 objects in gs://backups/staging/2026-03-23/ with metadata pointing at the old ciphertext header. owners listed in metadata.
+
+vault-bot: Transit rotation requested for projects/prod/locations/global/keyRings/ephemeral/cryptoKeys/ephemeral-key. Request id: rot-3310.
+
+vault-bot: Rotation complete. New primary version: 3. Audit log: audit/inc-3310001234/rotation.log
+
+tony: propose rewrap script for owners (48h window):
+for o in $(gsutil ls gs://backups/staging/2026-03-23/*); do
+  python tools/rewrap.py --object "$o" --new-key projects/prod/locations/global/keyRings/ephemeral/cryptoKeys/ephemeral-key/cryptoKeyVersions/3
+done
+
+rachel: owners notified, ticket INC-2026-0320-03 created (sev3). attaching audit export once @oncall posts it.
+
+devops-bot: Opened PR sec/redact-logs to strip KMS resource names from backup job logs and replace with redacted id. unit tests added.
+
+oncall: Audit export uploaded -> gs://sec-exports/inc-3310001234/audit.tar.gz (attached to ticket).
+
+tony: after rewrap window we'll rotate again and restore least-privileged roles. scheduling 30m postmortem tomorrow.
+
+rachel: summary: detection -> RBAC revoke -> audit snapshot -> KMS rotation -> owner rewrap -> logging scrub -> postmortem. INC-2026-0320-03 tracking. :white_check_mark:

@@ -1,0 +1,47 @@
+marketing
+
+Maya: Hey team — draft for the product launch post is up. Key asks: confirm benchmark callouts, finalize hero line, and lock the webinar CTA. Doc: https://docs.redwood.com/drafts/launch-hero-v3
+
+Liam: skimmed. Nice flow. Two nitpicks: the '2x cheaper' stat needs a source link to the benchmark CSV, and the performance chart labels are swapped for tail latency.
+
+Priya: noted — I'll replace exact cost claim with 'significantly lower unit cost for short requests' unless Legal ok's the number. alternative hero candidate in doc: "Serve LLMs at predictable latency and lower token costs."
+
+Jordan: quick legal check: any customer quotes? if so we need written consent. Also avoid comparative claims vs unnamed vendors unless substantiated.
+
+Maya: no customer quotes in this draft. The benchmark is internal against open-model baseline; will attach the CSV.
+
+Sam (Design): hero image options uploaded in the doc. prefer option B for mobile. small ask — can marketing provide 1200x628 and 800x800 crops for socials?
+
+Ava (Sales Ops): heads-up — webinar registration needs to route leads to SDR queue + tag 'launch_webinar'. Can we get a HubSpot form id by EOD? cc @Sam for landing layout.
+
+Maya: @Ava will add a placeholder form id in the doc; final id once devs hand off. Also want to confirm CTAs: [Read blog], [Join webinar], [Request demo].
+
+Liam: for CTAs, please double-check the demo flow — demo requests should include model/runtime selection. backend team: can we capture that on the form?
+
+deploy-bot: scheduled landing publish job queued for 2026-06-02T10:00Z (ticket #L-4321)
+
+Priya: CTA labels suggestion: "Read the launch post", "Save your seat — webinar", "Request a demo — capacity plan". Shorter is better for top hero button.
+
+Jordan: approved from legal on wording edits (minor) — removing any absolute comparative language. OK to publish once bench CSV attached and HubSpot flow confirmed.
+
+Maya: attaching benchmark CSV now and adding a footnote with test conditions. link: https://s3.redwood-inference.com/benchmarks/launch_v3.csv
+
+Sam (Design): added web-ready hero crop. Updated mobile spacing.
+
+Ava: HubSpot form id: 87654 — routing to SDR queue "Launch-SDR" and tag set. Also added UTMs: utm_campaign=launch_v3&utm_source=blog
+
+Liam: great. I added a small tech callout box that explains the quantization/serving variants so readers understand tradeoffs.
+
+Priya: last pass done — tightened headline and intro, removed the numeric claim, updated CTAs.
+
+Maya: OK locking copy at 17:00 PT unless any last-minute blockers. Please :thumbsup: if good, or post exact blocker.
+
+Jordan: :thumbsup: from Legal.
+
+Sam (Design): :thumbsup: layout looks good, ready to export.
+
+Ava: :thumbsup: form and routing confirmed.
+
+Liam: one tiny tweak to callout wording — pushed a commit to the doc.
+
+Maya: thanks all. Scheduling publish + webinar email sequence tomorrow. Will update the release checklist ticket after publish.

@@ -1,0 +1,9 @@
+product
+
+Hiro: Quick check: can we add a 'quiet window' rule for canaries that avoids running experiments during major customer marketing events?
+Meena: Yes. We'll support calendar-based exclusions. Product to maintain event calendar and orchestrator checks it before ramping.
+Alex: Orchestrator should accept an override with 2 approvers during emergencies.
+Jordan: Add 'hold period' after any failover: no new ramping for 24h and require root-cause analysis.
+Luis: Observability: also correlate canary traffic with rate limit errors; if per-tenant rate limits spike, pause.
+Rachael: I'll add this to the threshold doc.
+SRE-Bot: note: canary-orchestrator configured with calendar-exclude checks.

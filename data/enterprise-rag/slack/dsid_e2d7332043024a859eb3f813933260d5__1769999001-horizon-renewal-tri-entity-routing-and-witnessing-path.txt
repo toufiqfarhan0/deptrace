@@ -1,0 +1,49 @@
+customer-success
+
+Sam (CS): FYI – Horizon Health renewal due next month. They want: split invoice across US / EU / APAC entities, a 12mo dedicated capacity commit for 8 GPUs, and wet signatures for APAC finance. Pricing ask: keep current 15% discount but shorten payment term to Net30. Thoughts?
+Maria (RevOps): @Sam noted. Need to confirm revenue recognition on split invoicing. Do we have precedent for tri-entity invoices? :thinking_face:
+Tom (Finance): We processed a 2-entity split for Kestrel last year but tri-entity is new. Quick checklist for me: tax IDs for each entity, correct bill-to party, and wire vs card routing per region. Also SOC2 attestation required?
+Sam (CS): I'll ping the customer for tax IDs. They said SOC2 is fine but want KMS/HSM confirmation for Private deployments — might be a blocker for Dedicated if we can't confirm key custody.
+Jess (Legal): For wet signatures in APAC we need to confirm local notarization rules. If it's just an acceptance signature (vs power of attorney), we can do a clause addendum. Send me the draft and I'll review tomorrow.
+Carmen (Enablement): Also they requested an onboarding workshop split into two sessions (product + infra). If we do Dedicated, schedule dep steering call and infra runbook. Available slots next week: Tue/Thu morning PT.
+Maria (RevOps): Pricing nuance: 8 GPUs reserved = committed throughput. Recommend a blended rate: hosted rate * 0.22 + dedicated uplift for isolation. I'll model two options and share.
+Tom (Finance): Also they asked for Net30 but legal typically pushes Net45 for enterprise EMEA customers. If they insist Net30 we need cc fallback for first invoice.
+Sam (CS): Customer message: "we can do Net45 for EU, Net30 for US, and APAC will pay on wire within 14 days". So mixed terms.
+Jess (Legal): Mixed payment terms are fine if reflected per-entity on SOW + invoices. We'll need a signature matrix listing signers per entity.
+Maria (RevOps): I'll prepare SOW template with per-entity billing lines. Example invoice lines: 
+```
+- US Entity (EIN: 12-3456789): Dedicated 8GPU reserve – $X/month – Net30
+- EU Entity (VAT: GB999999999): Shared infra surcharge – $Y/month – Net45
+- APAC Entity (CN tax ID: 123456789): One-time onboarding + wet-sign fee – $Z – Wire within 14 days
+```
+Tom (Finance): Good. For APAC wet signature fee — estimate $250 per notarization + courier. Add a line item.
+Sam (CS): Customer also asked about SLA: 99.9% uptime for Dedicated with credits. Is that in our standard dedicated SLA?
+Jess (Legal): Yes, standard Dedicated SLA has 99.9% with service credits. Will confirm verbiage for APAC.
+DeployBot: DOCS LINK: https://redwood.example.com/dedicated-sow-template — latest template v2.3 uploaded by @Maria
+Maria (RevOps): Uploading the draft SOW now. Please review sections: billing_by_entity, signing_matrix, onboarding_schedule.
+Tom (Finance): Quick question on taxation: will we need to include withholding tax language for APAC? If so, include gross-up clause.
+Jess (Legal): Include a withholding clause with gross-up opt-in. If customer refuses, we mark as customer responsibility.
+Carmen (Enablement): Scheduling note: Customer prefers Wed 9am APAC / Tue 11am US for workshop. I'll propose Tue 11am PT and Wed 9am SGT.
+Sam (CS): Action items: @Maria prepare SOW w/ per-entity billing lines and pricing options; @Tom confirm APAC fee estimates and gross-up language; @Jess draft signing matrix + wet-sign addendum; @Carmen propose enablement times. I'll get tax IDs and KMS confirmation from customer.
+Maria (RevOps): Will do. ETA for draft SOW: EOD today.
+Tom (Finance): I'll confirm fees and tax treatment by EOD.
+Jess (Legal): I'll draft signing matrix and addendum tomorrow morning.
+Carmen (Enablement): Sending proposed calendar invites after SOW lands.
+Sam (CS): Thanks team. One more: client asked whether we can pre-provision a staging slot in Dedicated to validate KV cache behavior before cutover. Can infra/eng sign off?
+Tom (Finance): We need to price staging capacity as transient capacity — maybe a 2-week free trial followed by billed on pro rata.
+Maria (RevOps): I can add a temporary staging line item with proration formula.
+Jess (Legal): Add trial terms clause, 14-day staging, auto-bill if not terminated.
+Sam (CS): Perfect. I'll update Horizon contact and ask for tax docs and signer names.
+Customer (quoted by Sam): "We can get all tax IDs this week. For KMS, we'll need an architecture diagram showing key custody flows."
+Jess (Legal): We'll need that architecture doc for Private deployment sign-off. @Sam ask them to redact secrets and endpoints.
+DeployBot: ATTACHMENT: redwood-soc2-summary.pdf (version 2025-11) — link: https://redwood.example.com/soc2-summary.pdf
+Tom (Finance): SOC2 attached looks good. For KMS we can provide high-level HSM integration options. I'll loop in Security if needed.
+Sam (CS): OK — I'll chase Horizon for the architecture diagram and signer list. Circle back once SOW draft is in. :thumbsup:
+Maria (RevOps): Draft pushed: https://redwood.example.com/drafts/1769999001-horizon-sow-v1 — PTAL and comment inline.
+Jess (Legal): Reviewing now.
+Carmen (Enablement): Once SOW is final, I'll lock workshop times.
+Sam (CS): Last note: reject any changes that increase provisioning beyond 8 GPUs at onboarding — will require new pricing. Let's keep that locked in SOW.
+Maria (RevOps): Noted, add clause: "Provisioned capacity defined at signing; any changes subject to repricing and 30-day notice."
+Tom (Finance): Sounds good.
+Jess (Legal): OK to proceed with that clause.
+Sam (CS): Great — thanks everyone. I'll update thread with customer tax IDs when I get them. :wave:

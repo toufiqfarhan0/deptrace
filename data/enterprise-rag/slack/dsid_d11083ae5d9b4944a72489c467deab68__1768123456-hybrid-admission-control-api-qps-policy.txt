@@ -1,0 +1,39 @@
+eng-runtime
+
+anya: Heads-up — we need to lock down the rate-limit design that actually reflects GPU pool saturation. I sketched a hybrid approach (token-bucket + admission queue)
+kevin: +1, can you paste the sketch? trying to keep burst behavior for interactive users but prevent thundering at pool limits
+anya: here:
+```
+# high-level pseudocode
+org_token_bucket[org].refill(rate = base_qps + reserved_capacity_weight)
+if token_available: serve_immediately
+else if queue_size < dynamic_queue_limit: enqueue(request, priority)
+else reject(429 or 503 depending on policy)
+
+# queue limit scales down as pool_utilization > 70%
+if pool_utilization > 0.7: dynamic_queue_limit = max(20, base_queue * (1 - (util-0.7)))
+```
+enrico: hmm I like scaling the queue, but we need backpressure to clients earlier — when util spikes we should proactively reduce refill rates for best-effort orgs
+maya: agree. also need separate buckets for "interactive" vs "batch" tokens so batch jobs don't starve low-latency calls
+kevin: proposal: per-org base bucket + per-api-key short-term burst bucket. base refill is tied to org's committed/reserved capacity. burst bucket is small and drains faster
+anya: yes. and the refill rate should be adjusted by region/pool weight. e.g., request hitting a GPU-pooled region with 90% utilization has refill_multiplier=0.5 for best-effort orgs
+sre-bot: deploy-sim: new admission-controller v0.1 would reject ~3% of requests during p99 load peaks in simulation (most are retries) :chart_with_upwards_trend:
+alex: important callout: we cannot return 503 for auth failures — 429 for rate limit, 503 for overload? which do we prefer for queue-drop vs token-exhaust?
+enrico: 429 for token exhaustion (client exceeded QPS), 503 for queue overflow due to cluster overload. That tells client whether to back off vs retry later with jitter
+maya: add fairness: weighted deficit round robin between orgs within a pool, weight = min(1.0, committed_capacity / pool_capacity). Prevent one org from consuming bursts that push others behind SLO
+kevin: operationally, we need metrics: per-org tokens_left, refill_rate_current, pool_utilization, enqueue_depth, rejects_by_reason. Dashboards + alerts on rejects_by_reason > 0.5%
+anya: also suggestion: a fast-path for low-token small completions (<=64 tokens) that bypasses queue to reduce tail latency but consumes burst bucket
+alex: cryptic edge: streaming calls hold KV cache and GPU for longer. treat them as higher cost: cost_per_request = base_cost + streaming_penalty, consume more tokens accordingly
+enrico: agree. map tokens to "cost units" not just QPS. For example: 1 token = 1 cost-unit; streaming 1s = 5 cost-units. Then token-bucket enforces cost consumption rather than raw requests
+sre-bot: note: if we switch to cost-units need to migrate telemetry names. Preparing migration plan...
+maya: on failure modes: - if queueing causes higher response latencies, we should surface rate-limit signals in response headers: X-RateLimit-Remaining, X-Queue-Position, X-Pool-Utilization
+kevin: for orgs with dedicated pools (Dedicated customers) bypass the shared admission queue and use per-pool buckets with SLA weight. But still emit same headers so SDKs behave consistently
+anya: security note: per-api-key buckets must be derived from org bucket but isolated — keys can be suspended without affecting org quota accounting (still counts against org's totals)
+enrico: corner case: cross-region routing. If routing fallback sends request to different region with different utilization, we should recalculate tokens on transit and possibly downgrade the refill multiplier
+kevin: rollout plan idea: 1) enable read-only token accounting + headers (no enforcement) 2) enable soft-enforcement with low penalties (429 but allow some overage) 3) full enforcement with queueing and reject policies
+anya: timeline: try to get read-only telemetry in next 2 sprints, soft-enforce in 4 sprints, full enforce in 6 sprints. Need help from eng-sre for chaos tests and eng-platform for SDK header changes
+maya: I'll take SDK header work. enrico can you own the cost-unit mapping?
+enrico: yes, will prototype mapping and run sim against historical traffic
+alex: one last thought: per-org token refill should be smoothed by exponential moving average of recent pool utilization to avoid oscillations
+ya: thanks all. can someone create a short RFC PR with the code snippets above and the rollout plan? I'll start the draft and @kevin please add the fairness algorithm details
+kevin: on it. :thumbsup:

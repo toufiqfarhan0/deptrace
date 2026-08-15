@@ -1,0 +1,41 @@
+eng-runtime
+
+jin: quick heads-up — ran a 6h profile on prefix cache during a high-traffic canary. saw hit-rate collapse from 87% → 23% after the heap compaction job kicked in :thinking:
+alex: heap compaction? do you mean the GPU memory reclamation we enabled last week?
+jin: yep. when compaction runs it moves KV slabs around and we see lots of small gaps. suspect fragmentation + our LRU chaining is losing locality. logs show large numbers of single-key evictions.
+maria: any correlation with specific models or kernels?
+jin: mostly rtx-colossus-q4f and the int8 kernels. latency spikes align with kernel fallback too (kernel_selector picked a fallback for some sequences). stacktrace:
+```
+2026-02-28T14:12:07Z cache_evict: evicted=1623 keys reason=fragmentation node=gw-12
+2026-02-28T14:12:07Z kernel_fallback: model=rtx-colossus-q4f seq=1024 -> fallback_kernel=matmul_generic
+```
+sam: hm. could be two orthogonal issues: compaction causing fragmentation; and batcher pushing long sequences that pick slow kernels — both worsen OOM and eviction churn.
+jin: agree. my notes from profiler:
+- prefix_hitrate overall: 87% pre, 23% post-compaction
+- median latency +42ms during churn windows
+- batch_size distribution shifted: p95 batch tokens +60%
+
+alex: actionable ideas:
+1) disable compaction during peak windows (temporary)
+2) increase GPU cache size by 2GB for top-tier pools
+3) pin top-5% prefixes in a protected slab (no eviction unless reserve low)
+4) add async warmup worker to prefetch KV for new model rollouts
+
+maria: pinning sounds good, but risk starvation for new prefixes. TTL tuning could help — shorter TTL for low-use keys, longer for hot ones. maybe adaptive TTL based on recency/weight.
+sam: also consider using a 'soft-lru' where we demote rather than evict immediately. avoids endless churn during compaction.
+jin: ok i prototyped a soft-lru flag. config example:
+```
+{"eviction_policy":"soft_lru","protected_slab_mb":512,"gpu_cache_mb":8192,"ttl_map":{"hot":86400,"cold":600}}
+```
+alex: need metrics to validate. can you add a new sampling check in cache_profile that reports fragmentation ratio, contiguous_free_pct, and eviction_by_size? use this query:
+```
+python tools/cache_profile.py --since 1h --metrics fragmentation,contig_free,evict_size_hist --out /tmp/hitdump.json
+```
+jin: will do. also adding a kernel-selection trace to correlate fallback events.
+ops-bot: scheduled: compaction-disable window 15:00-18:00 UTC on 2026-03-01 (created by alex)
+deploy-bot: rolling config: enable soft_lru=true on pool=dedicated-pool-3 (canary 10%)
+alex: let's watch p95 and hit-rate for the canary for 3 hours. if hit-rate >70% and p95 within 10ms of baseline, we'll promote.
+maria: one more: batching heuristics — add a small sequence-length-aware bucketing so kernel_selector doesn't flip to generic kernels mid-batch. reduces fallback thrash.
+jin: thanks all — i'll post the sample output and a short runbook for emergency rollback.
+sam: awesome. if we still see fragmentation after protected_slab, we should try defragment on a cold node offline and repro.
+alex: please tag me when you have the sample. :thumbsup:

@@ -1,0 +1,35 @@
+eng-releases
+
+izzy: Starting v2 slowstart (EU) at 10% for 15m. Includes proxy header normalization.
+
+deploy-bot: canary scheduled: 10% (12 hosts) for 15m.
+
+rafa: Heads-up: some legacy mobile clients send mixed-case Authorization header; could be impacted.
+
+mike: If needed we can pin tenants with old SDKs. Recommend pinning shop-old and beta-tenant for the window.
+
+izzy: please run the pins.
+
+mike: running:
+```
+deploybot pin add shop-old --until 2026-05-01 --reason "legacy sdk auth header"
+deploybot pin add beta-tenant --until 2026-05-01 --reason "legacy sdk auth header"
+```
+deploy-bot: pins added by mike for shop-old, beta-tenant.
+
+harper: SRE: set auto-revert if v2 5xx > 0.7% sustained for 4m or p95 latency up >250ms.
+
+izzy: Canary started at 09:05 UTC. Monitoring dashboards.
+
+rafa: seeing a 0.8% 429 spike localized to eu-edge-2 at 09:07 UTC. Likely header normalize collision.
+
+mike: flipping flag on that pool: `infra flag set eu-edge-2 header_normalize=false`
+deploy-bot: feature flag updated for eu-edge-2 by mike.
+
+harper: 429s dropped to baseline within 2 minutes. p95 stable.
+
+izzy: hold ramp and keep canary at 10% with header normalization disabled on affected edge pools. Reopen when mobile SDK patch is published.
+
+docs-bot: updated release notes: "Temporary disablement of header normalization on impacted EU edge pools; customers with older SDKs been pinned to v1."
+
+izzy: Action items: (1) mobile to release SDK patch (owner: mobile-team) (2) SRE to watch alerts (harper) (3) ops to maintain pins (mike) (4) comms updated (rafa). Reopen thread for re-enable plan. :white_check_mark:

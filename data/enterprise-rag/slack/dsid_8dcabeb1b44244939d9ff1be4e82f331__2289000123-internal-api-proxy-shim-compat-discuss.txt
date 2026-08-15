@@ -1,0 +1,55 @@
+eng-platform
+
+maya (devex): quick heads-up — I'm proposing a tiny proxy/shim in the SDKs to translate old routing headers to the new internal routing policy format so we can roll the console change safer. thoughts?
+
+sam (eng-platform): can you sketch the compatibility surface? last time we had header mismatch it broke canaries.
+
+maya (devex): idea: SDK will accept legacy header X-Redwood-Route and emit X-Redwood-Policy-V2 to the control plane. It'd be opt-in by default (env var or client flag) and report telemetry toggles.
+
+jordan (sdk): seems doable in py/ts/go. question: should we mutate requests or add a parallel header? mutating might confuse downstream proxies.
+
+lee (console): parallel header + a Console flag to prefer V2 when present. That way old clients keep working. Also want a console UX toggle to show "shim usage" in rollout page.
+
+maya (devex): agreed, parallel header. sample curl we were thinking: 
+```
+curl -H "Authorization: Bearer $REDWOOD_KEY" \ 
+  -H "X-Redwood-Route: customer:low-latency" \ 
+  -H "X-Redwood-Policy-V2: route=customer:ll;fallback=balanced;prio=low" \ 
+  https://api.redwood.example/v1/generate
+```
+
+sam (eng-platform): small nit: include a version tag in the V2 header (e.g., ;v=1) so we can evolve grammar without ambiguity.
+
+jordan (sdk): will add v param. also propose an env var REDWOOD_ROUTE_SHIM=enabled to gate behavior. default OFF for now.
+
+maya (devex): rollout plan I sketched: 1) SDK shim behind opt-in env var 2) server accepts both headers and logs shim usage to a new telemetry metric 3) enable console UI to visualize shim-enabled requests 4) after 2 weeks of opt-in testing, start soft opt-in for a small percentage via client releases.
+
+tess (eng-runtime): telemetry is key — need per-token and per-route attribution so billing and quota are correct. If shim rewrites cause attribution drift we must fail-closed (i.e., keep legacy attribution).
+
+lee (console): can we add a fallback policy for quotas? e.g., if policy header present but unknown, use customer's pinned model routing rather than rejecting. Graceful.
+
+sam (eng-platform): agree on fallback. also need to coordinate with rate-limiter: the shim must not bypass quota buckets. SDK should forward original route header in a meta header so runtime can attribute to old bucket if needed. maybe X-Redwood-Route-Orig.
+
+jordan (sdk): ok will add X-Redwood-Route-Orig on rewrite. small PR checklist: unit tests for header pass-through, e2e against staging runtime, env var matrix.
+
+maya (devex): UX/Docs items: update quickstart with env var example, add migration guide for internal API teams, and console rollout doc showing how to enable the shim metric.
+
+sam (eng-platform): security note: ensure we sanitize header values to avoid header injection. add validation and length limits.
+
+jordan (sdk): implementing validation now. also will add a debug flag to log header transforms at debug level only.
+
+ops-bot: deploy-bot noticed new staging config: "routing-policy-acceptance" enabled in us-east-1 staging cluster.
+
+tess (eng-runtime): I'll wire the telemetry metric (shim.transform.count) and a histogram for policy parse latency. share the dashboard link when done.
+
+lee (console): once metric is live, I can add a console card under Rollouts -> Integrations showing percent of traffic using shim and error rate.
+
+maya (devex): action items: jordan PR for shims (py/ts/go), sam + tess runtime acceptance + telemetry, lee console card, maya docs. aim for opt-in beta release next Tue. @jordan @sam @tess pls ack if that timeline works. :rocket:
+
+jordan (sdk): ack. will open PR today.
+
+sam (eng-platform): ack. coordinating runtime patches.
+
+tess (eng-runtime): ack. starting telemetry wiring.
+
+maya (devex): thanks — will draft the migration doc and link it here. :thumbsup:

@@ -1,0 +1,38 @@
+customer-success
+
+ellen_saffron: Hey team — Saffron Bio is asking to onboard a 14B private model for clinical-note summarization. Requirements: PHI-safe redaction, on-prem HSM for keys, VPC-only control plane. Can we confirm feasibility + an eval plan?
+
+alex_cs: Thanks @ellen_saffron. Quick clarifying Qs — expected steady qps, peak qps, and target latency SLO? timeframe for pilot vs prod?
+
+ellen_saffron: Pilot target is 10 qps steady, spikes to ~40 qps. Latency target 300ms p50, 600ms p95. Hope to pilot in ~4 weeks.
+
+marie_se: Noted. From CS side: renewal conversation tied to this rollout (customer said performance + PHI compliance are gating). If we miss SLA they flagged renewal risk. We'll need tight enablement + clear rollout milestones.
+
+kim_ml: For the model: we need artifact format (HF/gguf), whether they want int8 quant or fp16, and expected max seq len. Safety: propose 3 eval suites — PHI redaction recall/precision, factuality on summarization, and adversarial hallucination tests. I can draft the eval harness.
+
+alex_cs: Can you include an example eval command so we can estimate runtime/cost?
+
+kim_ml: Sure — sample local eval run: ```
+./eval_harness --model saffron-14b.gguf --quant int8 --prompts phitest_200.jsonl --metrics redaction,factuality,latency --out saffron_eval.json
+```
+This will run 200 annotated notes for initial pass. Expect ~6h on a single A100 for full suite.
+
+deploy-bot: Deployment ticket created: RB-4589 — private-onboard / saffron-bio / 14b. HSM integration flag set.
+
+dave_product: Flagging renewal as medium-high risk. If the pilot misses p95 latency or redaction thresholds, they'll consider a cheaper vendor. Suggest canary rollout with fallback to 7B model and SLA credit terms in contract.
+
+marie_se: Action items: 1) @kim_ml to produce formal eval plan + dataset spec by EOD Friday (3 actionables: redaction test set, fidelity prompts, adversarial suite). 2) @alex_cs to coordinate customer kickoff + enablement workshop (schedule next week). 3) Eng infra (cc @dave_product) to confirm HSM connectivity & VPC private control plane by Monday. 4) CS to mark renewal watch in account dashboard.
+
+ellen_saffron: Thanks — for the kickoff, invite Sr. infra lead (Maya), Head of Data Ops (Ravi), and product owner (me). Prefer workshop Tue 10am PT.
+
+alex_cs: Got it — I'll send calendar invite and prep a short runbook.
+
+marie_se: I'll update the renewal risk flag and add onboarding milestones to the account plan.
+
+kim_ml: I'll upload the draft eval plan to the shared folder and post link here when ready.
+
+alex_cs: Quick note — if we need lower-latency we should discuss model sharding vs. smaller fallback model. I'll loop in eng-runtime if kim's eval shows p95 > 600ms.
+
+ellen_saffron: Appreciate it. We'll share the model artifact by EOD tomorrow.
+
+marie_se: Thanks everyone — tracking in the CS board (ticket CS-7214). :white_check_mark:

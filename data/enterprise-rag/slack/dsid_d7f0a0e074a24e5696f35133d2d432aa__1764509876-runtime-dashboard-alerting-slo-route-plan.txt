@@ -1,0 +1,27 @@
+eng-platform
+
+Sam: Quick sync request — we need to lock down alert thresholds + pager routing for the new model-serving runtime dashboards. Eng-runtime, eng-sre, console: can we align today? :eyes:
+Arjun: Can do. Current exportable metrics (today): token_latency_p95, token_latency_p99, batch_size_avg, batch_size_p95, kvcache_hit_ratio, gpu_utilization, req_queue_depth, model_fallback_rate
+Lee: For SLO burn rules I suggest: 5m burn-rate > 6x => page, 1h sustained burn-rate > 2x => page. Otherwise slack warning. Keeps noisy pages down.
+Tess: Console side needs label->owner mapping so alerts show the right team and we can silence by team. Also want a "silence for rollout" toggle in the rollout UX.
+Aisha: Paging routing proposal: severity=page -> infra-oncall PD; severity=warning -> #platform-alerts slack; escalation: 3m -> current oncall, 10m -> team lead, 30m -> eng-sre escalation. Canary pages go to platform first (no PD) unless escalated.
+Miguel: Product ask: don't page for canary traffic blips. We need a canary window override and a minimum request volume check before pages.
+Arjun: Agree on canary window. Example alert rule for the latency SLO (rough sketch):
+```
+alert: TokenLatencySLOBurn
+expr: increase(slo_error_count{service="model-serving"}[5m]) / increase(slo_total_count{service="model-serving"}[5m]) > 0.06
+for: 5m
+labels:
+  severity: page
+  team: runtime
+annotations:
+  runbook: https://redwood.internal/runbooks/token-latency
+  note: "ignore during canary if label 'canary=true' present"
+```
+Arjun: Also emitting token_latency_p95 per model + traffic_volume per model so we can gate pages on volume threshold.
+Lee: LGTM. Add an alternate alert: p99 spike -> warning only unless accompanied by fallback_rate > 0.01.
+Tess: For the console API: we need endpoints to attach PD service IDs and slack channels to alert labels. I'll open a quick RFC and small API PR.
+Sam: Action items: (1) Arjun export metrics + open prometheus rules PR with the canary volume gate, (2) Tess add owner mapping API + rollout silence toggle, (3) Aisha update PD routing & escalation policy, (4) Lee draft runbook link and test playbook. Aim: EOW. :thumbsup:
+devops-bot: deploy-bot: prometheus-rules PR merged to infra-config (https://git.redwood/p/infra/alerts/pulls/72)
+Aisha: I'll update PD rotation now and add the escalation times. Ping me when the PR includes the 'team' label so I can map PD services.
+Sam: Sweet. If anyone sees cases where the 5m rule still pages too often, flag and we'll relax thresholds or add more gating. Thanks all. :partyparrot:

@@ -1,0 +1,35 @@
+incidents
+
+Mike: Quick reconciliation from INC-892 postmortem — we still need clear owners and rollback criteria for the cross-team items blocking the canary. Can folks please confirm ownership + due dates?
+
+Mike: Current quick list (plz ack or reassign):
+```
+1) Canary routing fallback (cross-region) — owner: ? — due: Fri EOD
+2) Cache invalidation gap (frontend) — owner: ? — due: Mon
+3) DB index backfill (bulk) — owner: ? — due: Mon noon
+4) Runbook update & rollback steps — owner: ? — due: Fri EOD
+```
+
+Anya: I can take #3 (DB index backfill). ETA Mon 12:00 — will open PR by EOD today.
+
+Devon: I'll pick up #1 (canary routing fallback). Need eng-platform confirmation on quota and a short playbook for fallback toggles. @Sara can you confirm infra constraints?
+
+Sara: Confirm infra has the spare capacity for the fallback path, but the routing change needs two things: a short maintenance window (5m) and a consistent KV version. Rollback criteria idea: error rate >1% for 5m OR 99th latency >2s for 3m.
+
+Devon: Perfect — I'll add those rollback thresholds to the runbook and draft the playbook. Proposed due: Fri EOD.
+
+Anya: ack. Also FYI item #2 (cache invalidation) depends on #3 finishing; I'll coordinate once the backfill PR lands.
+
+Mike: Great. I'm assigning #4 (runbook update) to myself; I'll collate the inputs and publish the runbook doc by Fri EOD.
+
+Sara: Minor ask — can someone add a calendar block for the maintenance window? makes coordination easier.
+
+Devon: I'll create a 5m calendar event for Friday 10:00 PT and invite the oncall rotation.
+
+Mike: Thanks team. Summary update going into the postmortem doc shortly. Please react to confirm ownership.
+
+Devon: :thumbsup:
+Anya: :eyes:
+Sara: :white_check_mark:
+
+incident-bot: Postmortem updated: https://redwood/internal/incidents/INC-892 (actions updated with owners).

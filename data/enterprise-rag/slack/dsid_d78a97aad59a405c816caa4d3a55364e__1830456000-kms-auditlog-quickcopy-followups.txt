@@ -1,0 +1,35 @@
+all-hands
+
+Rita: Following up from the all-hands sec/privacy Q&A  dropping clarifications for sales/support. Short answers only so folks can copy-paste.
+
+Omar: Quick: is SOC2 covering Hosted in eu-west-1 yet? A customer asked.
+
+Rita: Short: No. Current SOC2 report covers Hosted in us-east-1 and us-west-2 and Dedicated. EU regions are monitored but not audited yet.
+
+Jules: What about ISO27001 timeline? Someone pressed for a date.
+
+Rita: We're targeting ISO27001 certification within 12 months. Will add milestones to the roadmap next week.
+
+Omar: KMS/BYOK for Hosted? Can we tell customers yes/no?
+
+Jules: Hosted uses Redwood-managed keys today. BYOK is available for Private deployments; Dedicated BYOK is planned for H2 2026.
+
+PolicyBot: note: compliance playbook updated -> /internal/compliance/short-answers-for-support (v2026-03-22)
+
+Omar: Log retention numbers for quick replies?
+
+Rita: Defaults: cloud audit logs = 365 days, app/structured logs = 90 days. Extended retention is available as add-on.
+
+Jules: Are audit logs tamper-evident? Customer asked if we can show integrity guarantees.
+
+Rita: We use append-only storage and signed hashes for audit evidence; we can include attestations in evidence packs.
+
+Omar: Who compiles evidence packs when requested?
+
+Jules: Compliance owns sign-off; Infra provides infra configs/diagrams; Eng provides app logs. Compliance will redact PII before delivery.
+
+Rita: Action items: Jules to draft one-paragraph BYOK/retention blurb for support by 2026-03-29. Omar to add an FAQ entry with region scope by 2026-03-28. I'll coordinate evidence pack requests.
+
+Jules: I'll also paste a short CloudTrail query snippet into the playbook.
+
+Rita: Thanks everyone. If more customer follow-ups come in, drop them here and we'll route. :white_check_mark:

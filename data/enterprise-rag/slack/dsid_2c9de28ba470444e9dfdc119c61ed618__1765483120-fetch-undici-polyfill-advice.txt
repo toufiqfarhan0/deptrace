@@ -1,0 +1,29 @@
+devex
+
+Ira P: quick sync  customers hitting "ReferenceError: fetch is not defined" in lambdas and older Node. How should SDK behave by default?
+Mina C: short: prefer globalThis.fetch, fallback to undici via runtime import, and do NOT add undici to runtime deps.
+Hector G: agreed. bundlers sometimes pull dynamic imports into edge bundles though. we should document how to keep undici out of edge builds (next/noExternal, vite externals).
+Ira P: can we show exact polyfill snippets for peoples' entrypoints? that usually solves tickets.
+Mina C: yes. copy/paste in docs. ESM entrypoint polyfill:
+```js
+// esm entrypoint (e.g. index.mjs)
+if (typeof globalThis.fetch !== 'function') {
+  globalThis.fetch = (await import('undici')).fetch;
+}
+```
+CJS entrypoint polyfill:
+```js
+// cjs entrypoint (e.g. index.js)
+(async () => {
+  if (typeof globalThis.fetch !== 'function') {
+    globalThis.fetch = (await import('undici')).fetch;
+  }
+})();
+```
+Hector G: also include a one-liner for package.json scripts: `node -r ./polyfill.js index.js` for older setups.
+Yuna S: TS note: many teams don't enable DOM libs. Recommend adding "lib": ["ES2020", "DOM"] or use our exported type `FetchLike`. Example in docs: `import type { FetchLike } from '@redwood/inference'`.
+Support Bot: CI: added a bundle-check job to ensure undici not present in examples/edge builds.
+Ira P: propose runtime resolver behavior: 1) return globalThis.fetch if present; 2) try native require('undici') for CJS; 3) await import('undici') for ESM fallback; 4) throw a prescriptive error if none found with exact remediation.
+Mina C: error text suggestion: `Error: @redwood/inference requires a Fetch API implementation. For Node <18 run: npm install undici && add a startup polyfill (see https://docs.redwood.ai/sdk/fetch).`
+Hector G: add examples folder: examples/node-legacy, examples/next-edge, examples/deno. Make sure next-edge build fails if undici bundled.
+Ira P: OK we'll land small adapter + docs + examples. Mina -> adapter + tests, Hector -> bundler docs + CI job, Yuna -> TS typing docs, Ira -> PR + changelog.

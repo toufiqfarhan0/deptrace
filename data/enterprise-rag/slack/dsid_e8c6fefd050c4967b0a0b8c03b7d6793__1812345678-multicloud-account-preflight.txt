@@ -1,0 +1,41 @@
+eng-infra
+
+Alex Kim: Quick preflight for the new org 'orion-ai' — want to consolidate cloud quota requests before we open support cases. goal: 200 A100-equivalent GPUs across aws/gcp, private deploys in us-west/eur-west.
+Teri Patel: Nice. Let's run a short checklist first: org/project creation, billing link, required IAM roles, resource tags, VPC/subnets, required APIs, desired regions, current quotas + target numbers, estimate monthly cost.
+Mohit Singh: For GCP notes: availability varies. us-west1 has limited A100 stock; us-central1 usually OK. We'll need to request QUOTA: 'NVIDIA_TESLA_A100_40GB' (or equivalent) per region. Start request for 80 GPUs in us-central1 and 40 in us-west1 as a first pass.
+Sara Liu: AWS: prefer p4d vs p4de depending on region. p4d available in us-west-2 / us-east-1 but limits are low by default. Requesting EC2 quota increases for 'p4d.24xlarge' and vCPU increases. Also EBS gp3 throughput and ENIs per subnet if we spin many nodes.
+Alex Kim: Required IAM: billing.admin on the billing account for the person filing support case, project creator roles for infra svc acct, and dedicated service accounts with roles/iam.serviceAccountUser for k8s nodes. Add example tags/labels: team:inference, cost-center:platform-eng, env:prod, app:orion.
+Teri Patel: Networking items: private VPC per env, subnet /24 minimum for node scaling, NAT gateways for egress, firewall rules (allow outbound 443, 22 from admin bastion only), reserve internal IP ranges for cross-region peering. Enable VPC flow logs for 30d retention.
+Mohit Singh: GCP support request snippet (paste into case):
+```
+We are provisioning project 'orion-ai-prod' under org XYZ. Requesting quota increases for GPU resources in us-central1 and us-west1:
+- A100 (type: NVIDIA_A100_80GB): increase to 80 in us-central1, 40 in us-west1
+- CPUs (all regions): increase cores by 1024 for batch workloads
+Please advise ETA and any constraints.
+Contact: Mohit Singh (mohit@redwood.example.com)
+```
+Sara Liu: AWS support template:
+```
+We need quota increases for account 123456789012 for region us-west-2:
+- EC2 Limits: p4d.24xlarge instances: 10 -> 40
+- vCPUs: increase by 1536 across region
+- EBS gp3 throughput: 10000 MB/s -> 30000 MB/s
+Please confirm expected approval window.
+Contact: Sara Liu (sara@redwood.example.com)
+```
+infra-bot: Reminder: tagging policy enforced by org policy. Required labels: project, owner, team, cost-center, env. Missing labels will block provisioning via infra pipelines.
+Alex Kim: Cost sanity check: estimated burn for 200 A100 eq ~ $1.8M/month raw if fully utilized — but we'll use autoscale + spot/reserved mix. Need finance signoff for committed spend if we reserve.
+Teri Patel: Action items: 1) Mohit open GCP case w/ quota numbers (due EOD Tue). 2) Sara open AWS support for p4 quotas (due EOD Tue). 3) Alex to create billing account link + share Billing ID to both. 4) I will draft project naming + label policy and share.
+Mohit Singh: I'll also attach screenshot of current quotas and include per-region GPU SKU codes. I'll ping GCP rep directly after creating case.
+Sara Liu: I'll include throughput / ENI numbers for network planning. also confirm if EFA / Elastic Fabric Adapter is needed for chosen instance types.
+Alex Kim: For private deployments we need KMS/HSM readiness and on-prem rack planning — but that can be parallel. For cloud preflight, main blockers are quotas + billing link.
+Teri Patel: Quick reminder: project naming convention = org-project-env-purpose, e.g., redwood-orion-prod-inference. Please avoid underscores.
+Mohit Singh: Added note: ask for soft-credits for new account to allow initial test runs (GCP sometimes provides pro quotas temporarily).
+Sara Liu: tagging examples in AWS are slightly different — make sure Terraform templates populate tags on all resources (EC2, EBS, Subnet, ENI).
+Alex Kim: Sounds good. If everyone agrees I'll mark this thread as the canonical preflight and paste final checklist into the infra repo. :thumbsup:
+Teri Patel: Agree. Please keep replies here with case IDs once opened.
+Mohit Singh: Opening GCP case now. will paste case# shortly.
+Sara Liu: Opening AWS case now.
+infra-bot: Case created: none yet — waiting on humans.
+Alex Kim: Thanks — small follow-up: if quota requests are denied, fallback plan is to spread region usage + use mixed instance types and fallback to older gen GPUs until capacity frees up.
+Teri Patel: Noted. end of thread for now.

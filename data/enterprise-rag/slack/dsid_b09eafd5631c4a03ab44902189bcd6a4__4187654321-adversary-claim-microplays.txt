@@ -1,0 +1,26 @@
+marketing
+
+clara: FYI OmniServe just launched a banner claiming 'One API, instant perf on any hardware' — want microplays for SDRs + one-slide webinar callout by tomorrow. :eyes:
+mona: thanks. can someone grab the landing screenshot and paste the exact line?
+diego: pasted screenshot. exact copy: 'One API. No infra work. Instant low latency.' also a p50 chart vs 'typical setups'.
+rick: core framing: 'one API' is fine for access but misses serving realities — kernel selection, KV caching, batching, and routing matter for production.
+lucy: SDR microplay drafts (one sentence each):
+- For engineers: 'Runtime tuned to your model and traffic patterns for more predictable production latency.'
+- For product execs: 'Consistent latency and transparent unit-cost controls across hosted, dedicated, and private deployments.'
+mona: shorten engineer line to 'We tune runtime to your workload for more predictable latency.'
+diego: webinar micro-slide bullets (3):
+1) Serving-first optimizations: kernel selection, batching, KV caches
+2) Cost levers: batching, caching, quantization guidance
+3) Ops-grade visibility: token-level cost & latency breakdowns
+rick: add a one-line footnote under bullets: 'Claims of "no infra work" skip per-workload tuning that affects tail latency and unit cost.' keep it plain.
+lucy: legal flag: avoid 'tail latency' term. use 'latency' or 'predictable latency' instead.
+mona: agreed. change footnote to: '"No infra work" claims can gloss over per-workload tuning that drives latency and cost.'
+diego: suggested SDR quick rebut for live chat (very short):
+`OmniServe: 'no infra work'`
+`Redwood: 'We tune runtime to workload so production apps see more predictable latency and lower unit costs.'`
+clara: action items:
+- @lucy: finalize the two SDR 1-liners (tech + exec) and drop in Notion by 11:00 PT
+- @diego: create the 1-slide webinar frame with the 3 bullets + the revised footnote by EOD
+- @mona: quick legal check on final wording, call out any banned phrases
+ops-bot: Reminder set: Notion drop due 11:00 PT today (channel: #marketing).
+clara: excellent. keep everything one sentence, avoid numbers unless ops approves. :thumbsup:

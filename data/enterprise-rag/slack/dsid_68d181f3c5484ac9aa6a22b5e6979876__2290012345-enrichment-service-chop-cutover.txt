@@ -1,0 +1,69 @@
+architecture
+
+Sam: Quick follow-up from the RFC — proposing we split the current request-enrichment pipeline into two services: a lightweight stateless 'enricher' (injects ephemeral signals + feature flags) and a small stateful 'context-store' (persists long-lived per-session context).
+
+Priya: high-level +1. why split now vs incremental decoupling?
+
+Sam: two main drivers: (1) velocity — teams want to iterate on enrichment rules without touching the heavy state path; (2) ops — we keep the hot path lean to meet p95 SLOs. incremental is possible but we risk contended state additions.
+
+Drew: what about latency penalty for the extra RPC hop? we measured ~1.8ms median for an additional call but tail can spike. Do we plan co-location? :thinking_face:
+
+Sam: good call. plan is co-locate enricher and runtime on same node for Dedicated, use in-process shim for Private, and fall back to RPC with mTLS for Hosted. early perf spike expected during cutover.
+
+Jen: team bandwidth — this is a non-trivial migration. can we phase it so feature teams aren't blocked?
+
+Sam: yes. propose phased rollout: phase A (read-only context-store, enrichment reads from old store), phase B (write path cutover for low-traffic tenants), phase C (global cutover + deprecate old store).
+
+Sana: question on ownership: who owns the enricher runtime rules? product teams or platform? we should avoid rule sprawl.
+
+Priya: platform should own the service + infra, but ruleset namespace and validation owned by product teams. we should add strict schema + eval harness before rule deployment.
+
+Drew: caching strategy? enrichment can be bursty. suggest per-request in-memory LRU + edge TTL, and keep a small async write-behind for context-store to avoid hot writes.
+
+Sam: agreed on LRU + client-side short TTL. write-behind sounds good but increases complexity. we can start with synchronous writes and switch to async in phase B.
+
+Jen: migration data: do we need a backfill? some sessions have large blobs that product teams rely on.
+
+Priya: backfill plan: export keys > 5k usages, run sanitized transform to new store format. do it tenant-by-tenant during low-traffic windows. we should also track schema migrations in the audit log.
+
+Drew: failure modes? if context-store is unavailable, enricher should still operate with degraded signals and mark requests for fallback. add circuit-breaker + token-bucket to avoid cascading failure.
+
+Sam: adding that to runbook. also propose a proxy header X-Context-Version to let runtime route to new vs old store during canary.
+
+Sana: security: context often has PII-ish keys. confirm KMS usage, RBAC, and retention policies.
+
+Priya: yes. context-store will use existing KMS + field-level encryption for sensitive keys. retention configurable per-tenant with platform defaults.
+
+infra-bot: infra ticket created: INFRA-17422 — allocate 2x co-located lanes for enricher on dedicated pools. deployment window: 2027-03-12 -> 2027-03-19.
+
+Sam: rolling canary plan: 1% tenants -> 5% -> 20% -> 100%. each step gated by latency, error rate, and correctness evals.
+
+Jen: how do we validate correctness? small eval harness + replay dataset?
+
+Drew: capture live-sampled traffic -> replay against enricher + context-store in staging. add checksum diff + semantic checks (no silent drop of keys).
+
+Sana: agree. also add automated privacy checks during replay to flag sensitive fields leaking into logs.
+
+Sam: deployment policy: feature-flag controlled rollout, transparent metrics in Console (per-tenant latency, enrichment hit-rate, failed-fallbacks).
+
+Priya: residual tech debt: we'll leave a compatibility shim for 6 months. add a tech-debt ticket list and owner for each item.
+
+Sam: proposed owners + dates: Sam (API surface + proxy) - 2027-03-01, Priya (schema + rules infra) - 2027-03-08, Drew (cache + replay harness) - 2027-03-05, Jen (migration/runbooks) - 2027-03-10.
+
+Jen: can we get a short spike to validate latency on staging tomorrow? 30m top.
+
+Sam: yes — scheduling spike. putting notes in the RFC thread.
+
+Drew: one more: downstream consumers that currently mutate context directly — need client libs update + deprecation warnings. don't forget SDKs.
+
+Priya: will draft SDK compatibility plan.
+
+Sana: ok from security side, but we need an encrypt-at-rest checklist and a short audit before global cutover.
+
+Sam: good. I'll post the phased plan and action items in RFC doc and link infra ticket. thanks all :rocket:
+
+Jen: :thumbsup:
+
+Drew: :+1:
+
+infra-bot: ticket INFRA-17422 updated: added labels [enricher, context-store, canary].

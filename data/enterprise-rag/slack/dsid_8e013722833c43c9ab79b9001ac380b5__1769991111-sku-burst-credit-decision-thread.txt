@@ -1,0 +1,66 @@
+product
+
+laura_pm: Quick proposal for pricing simplification + burst model. Goal: reduce tier confusion, make quotas predictable, and offer a purchasable short-burst add-on. Open to bikeshedding.
+
+ryan_eng: Can you put concrete limits in the PRD? engineers need target numbers for token-bucket sizing and autoscaler SLOs. :thinking: 
+
+laura_pm: Sketch below — feel free to critique.
+```
+Free: 10k tokens/day, 5 rps sustained, 30s burst 50 rps
+Core: 200k tokens/day, 25 rps sustained, burst 250 rps for up to 60s
+Enterprise: 10M tokens/day, 1k rps sustained, burst 5k rps for up to 120s
+Burst Credits: pre-purchase credits that allow short bursts beyond SKU limits. Metered separately.
+Overage: soft-throttle -> invoice; alert at 85% and 95% usage.
+```
+Also want admin override capability and per-route quotas for heavy embedding routes.
+
+mira_infra: Implementation notes: token-bucket per-tenant + leaky reserve for bursts is doable. Need control-plane changes to allocate permit tokens for burst windows. Autoscaler needs to be burst-aware or we'll spin up lots of GPUs and spike costs. ETA: ~3 sprints for robust solution with circuit-breakers. Risk: bill shock if burst credits misused.
+
+omar_gm: From GTM: sales want purchasable burst credits and the ability to negotiate custom burst SLAs for mid-market deals. If we do a pre-purchase model it helps conversion.
+
+kevin_sales: We have two PoCs asking for predictable 2k rps bursts for 2-3 minutes during load tests. Strict throttles will kill these deals. Need a sales-facing way to increase burst for a customer quickly.
+
+ryan_eng: API error model: return 429 with Retry-After for quota exhaustion. Add a specific error code field (e.g., quota.exceeded.burst) so SDKs can do smarter backoffs. If we are capacity-constrained we return 503. Need clear doc for SDKs and customers.
+
+billing-bot: Heads-up 536: our billing schema currently lacks a first-class "burst credits" SKU. Options: (A) extend schema and metering pipeline (2-4 sprints), (B) emit usage events to a reconciliation queue and do manual billing for MVP.
+
+mira_infra: Short-term workaround: control-plane issues ephemeral "burst permits" that the runtime consumes. Emit usage events with permit ids so billing can reconcile. This avoids immediate metering changes and gives us data to design full metered SKU.
+
+laura_pm: Trade-offs: Option A (MVP, Q2): permit-token approach, manual reconciliation, admin UI overrides, heavier monitoring. Option B (Q3): full billing integration + polished UI + self-serve burst purchase. Vote?
+
+omar_gm: :one: (ship faster)
+
+kevin_sales: :one: (we need to close deals)
+
+ryan_eng: :two: (prefer proper metering to avoid accounting surprises)
+
+mira_infra: :one: if we implement strong circuit-breakers and cost alarms before rollout.
+
+laura_pm: Leaning to Option A to unblock sales and collect real usage signals. Proposed rollout checklist: 
+- PRD + product spec (laura_pm)
+- Infra design doc: token-bucket + permit tokens + error codes (ryan_eng)
+- Billing feasibility & reconciliation plan (billing-bot)
+- Admin console prototype for quota overrides (laura_pm + design)
+- SDK docs: error codes, retry guidance, example clients (devex)
+- SLOs/alerts + synthetic smoke tests and cost forecasts (mira_infra)
+- Legal review for invoicing/terms on burst credits (legal)
+
+ryan_eng: Action: I'll draft infra doc this week. Questions: are per-route quotas mandatory at MVP or nice-to-have? per-route adds complexity.
+
+laura_pm: Per-route quotas: make embeddings and batch-retrieval routes first-class for quotas (customers frequently spike there). Mark as MVP-lite: basic per-route limits for top 3 heavy routes.
+
+billing-bot: Will prepare a migration plan for billing schema; MVP manual reconciliation process documented with team owners. Expect a 2-week dev+ops window to instrument events.
+
+mira_infra: I'll produce cost-guardrail checklist and templates for circuit-breaker thresholds. Also propose a playbook for emergency throttle/unlock by SRE on customer request.
+
+omar_gm: For GTM: we need pricing language (web + sales decks) that distinguishes pre-purchase burst credits vs. negotiated dedicated capacity. I'll start draft copy and sample add-on packages.
+
+laura_pm: Decision recap: MVP Option A approved by PM, GTM, infra (+ some engineers preferring B abstained). Next steps + owners above. I'll post PRD draft here: <https://docs.redwood.dev/prd/burst-credits-md|PRD draft> 02:00. Please review by EOD Friday.
+
+kevin_sales: Thanks! I'll surface prioritized prospects who want burst credits so we can test the flow.
+
+ryan_eng: Noted. I'll include API error examples and a small client snippet in infra doc.
+
+billing-bot: Created ticket BILL-4397 for schema changes and BILL-4398 for MVP reconciliation.
+
+laura_pm: Closing notes: keep feedback coming. We'll have a triage meeting Wed 10am to finalize scope for Q2 work.

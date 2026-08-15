@@ -1,0 +1,47 @@
+3023456789
+
+AlertBot: Paging: BlueCliff (enterprise, VPC) experiencing sustained 429s from dedicated pool bc1 since 09:12 UTC. Error rate 18% over 5m, latency increased. Pager: sev2. https://re/internal/incidents/3023456789 :rotating_light:
+Jordan (sre-oncall): looking. seeing a big spike in request rate from a handful of tenant keys, likely a noisy-job. isolating now.
+Priya (platform): Jordan — are they on Dedicated reserved nodes or a shared burst pool?
+Jordan (sre-oncall): Dedicated pool bc1 (4xA100s), pinned model rdx-13b-v2. Throttle counters show per-tenant fairshare kick-in but still hitting 429s upstream.
+Mateo (runtime): quick check: KV cache miss rate jumped to 92% for that model from that tenant. Could be due to long prompt templates.
+Zoe (acct-mgr): I just got BlueCliff on the line, they say traffic pattern changed after a batch job deploy yesterday. They need immediate throughput while we triage. asking for temporary higher contract limits.
+Lin (solutions): customer says some jobs are time-sensitive (payment scoring), they can queue but need throughput for next 3 hours.
+Jordan (sre-oncall): running tenant isolation now: moving BlueCliff to quarantine pool QP-3 to protect other tenants. executing reroute in 2m.
+OpsBot: Command accepted: reroute-tenant --tenant bluecliff --from bc1 --to QP-3 --preserve-slo-params
+Priya (platform): QP-3 has smaller instance types. we can spin up a hot warmdedicated node in us-east-1 to give them extra capacity. ETA ~6m.
+Mateo (runtime): alternative: enable emergency-quantization for rdx-13b-v2 (int8 dynamic) for bluecliff only — token throughput up, minor quality risk. need thumbs.
+Emily (support): customer happy to accept minor quality delta if it removes 429s immediately. Confirming with BlueCliff technical lead.
+Zoe (acct-mgr): Confirmed — product accepts quantized route and temporary throughput bump. They also asked about a formal contract override for tonight.
+Jordan (sre-oncall): ok doing two-step: 1) temporary routing to hot node + turn on int8 profile for tenant 2) file for emergency contract override so they don't get billed dispute. Executing now.
+Mateo (runtime): Applying model profile:
+```
+apply-profile --tenant bluecliff --model rdx-13b-v2 --profile int8-emergency --cache-priority high
+```
+Mateo (runtime): profile applied, rolling restart of runtime replica 2/3.
+OpsBot: Runtime rolling restart initiated for replica ids [rep-92, rep-93].
+Jordan (sre-oncall): bumped session concurrency for tenant to +40% on hot node. watching error rate.
+AlertBot: Metrics update (09:20 UTC): 429 rate dropped from 18% -> 3.2% within 3m of mitigation. Latency reduced 28%.
+Lin (solutions): BlueCliff tech confirms decreased 429s on their end. They're still seeing some throttled requests for long-context jobs.
+Priya (platform): spun up one n1-hot node in us-east-1 and attached to QP-3, capacity up ~3k reqs/min.
+Zoe (acct-mgr): Preparing a short note for billing: request emergency override for tonight (3 hours window) so they are not negatively impacted while we observe. Will escalate to finance.
+Jordan (sre-oncall): leaving note: we've isolated tenant, applied int8 emergency profile, added hot node. recommended next steps: 1) keep isolation for 4 hours, 2) run backlog queue runner to smooth spikes, 3) schedule follow-up with BlueCliff for prompt/usage optimization.
+Mateo (runtime): logging snippet from runtime around the spike:
+```
+[09:11:54] tenant=bluecliff conv_len=421 kv_miss=0.94 reqs=1200/s
+action=spawn_batch token_util=0.87
+```
+Jordan (sre-oncall): I'm handing off on-call to Priya in 15m for monitoring window. Priya, take over and call SRE if we see regression.
+Priya (platform): taking handoff. Added watch alert: if 429s >5% for 5m, escalate to pager duty.
+Emily (support): I've updated the BlueCliff ticket: summary of mitigations + next steps + contact window. Customer thanks the team for quick action.
+Zoe (acct-mgr): Finance contact cc'd on thread: @finance — please approve emergency credit for BlueCliff: 3-hour uplift, reason: enterprise critical batch.
+OpsBot: Note: emergency-credit requests must include PO or acct approval within 24h. Logged request id ec-3023456789.
+Jordan (sre-oncall): leaving a short runbook entry for follow-up:
+- Check tenant fairshare metrics and cache miss patterns
+- Review prompt length spikes and suggest chunking/streaming
+- Evaluate model quantization impact on quality with BlueCliff devs
+- Consider scheduled dedicated hotburst for nightly jobs
+Priya (platform): I'll monitor and keep this thread updated. If all stable by 10:00 UTC we plan to drain QP-3 and revert int8 flag after a QA pass.
+Lin (solutions): Setting up a 1:1 with BlueCliff engineers at 09:45 UTC to review prompt patterns.
+Zoe (acct-mgr): I'll draft the emergency override message for legal/finance approval.
+Jordan (sre-oncall): thanks all. tagging final status in 30m. :white_check_mark:

@@ -1,0 +1,42 @@
+partnerships
+
+oliver: QuasarSystems wants a joint perf/W spotlight for the marketplace tile + a short co-announcement. They care about steady-state perf/W and transparent configs.
+
+meera: Proposed minimal public checklist:
+- model: redwood-10b (fp16)
+- context: 512 tokens, KV cache warm for prefixes
+- measurement: wall watts via PDU, steady-state window 300s after warmup
+- runs: 3 steady runs, report mean and stddev
+
+ben: From infra: we need the kernel micropatch merged (cacheprefetch-x9). That patch gives ~8% perf/W in our lab. I'll open the PR and include a reproducible smoke command.
+
+ben: ```
+# reproducible smoke command
+./bench_driver --model=redwood-10b --seq=512 --warmup=180 --steady=300 \
+  --runs=3 --collect=tokens_per_s,p99_latency,pdu_watts --kernel=cacheprefetch-x9 \
+  --out=artifacts/quasar-3run.csv
+```
+
+quasar-eng: We'll put an engineer on the call. A few asks: include PDU wiring notes, CRAC setpoint, and the hero image (16:9). We'll only sign off on numbers once we see raw CSVs + kernel commit hash.
+
+meera: Acceptance thresholds for tile (must be met across the 3 runs):
+- sustained tokens/s >= 10,500 per rack
+- perf/W >= 12.5 tokens/s/W (mean)
+- p99 <= 270ms at 512 context
+Tile is strict; blog can explain kernel uplift and include config snippet.
+
+oliver: Ops: schedule a staging sweep tomorrow AM on Rack-F and paste CSVs here. If we hit thresholds, marketing will prepare marketplace copy. Legal needs to review co-announcement language (expect ~48h). ops-bot, open ticket?
+
+ops-bot: Created ticket LEGAL-931. Estimated turnaround: 48h. Calendar invite sent for Wed 9am PT cross-org test.
+
+ben: I'll run the 3x sweeps and post raw CSV + a summary table (mean/std) by EOD today. Will also include the kernel commit hash and a short README describing the micro-optimizations.
+
+quasar-eng: We'll share rack spec and hero image by EOD. Note: our PDUs report wall watts as total across both legs; include wiring note so numbers are comparable.
+
+meera: Marketing note: tile will include one conservative stat and two bullets. Copy will read something like: "QuasarSystems + Redwood Inference: 12.5 tokens/s/W for redwood-10b on QuasarSystems Rack-F (verified)" — but we'll finalize after legal signoff.
+
+oliver: One more reproducibility ask: include KV-cache preheat steps and exact network topology (top-of-rack switch model) in the artifact bundle. That avoids ambiguous replication attempts.
+
+ben: Agreed. I'll add a reproducibility.md with commands and network notes. Posting preliminary numbers in ~2h. :hourglass:
+
+quasar-eng: We'll be on the Wed 9am PT call to co-verify. If anything slips, we'll call it and reschedule. :white_check_mark:

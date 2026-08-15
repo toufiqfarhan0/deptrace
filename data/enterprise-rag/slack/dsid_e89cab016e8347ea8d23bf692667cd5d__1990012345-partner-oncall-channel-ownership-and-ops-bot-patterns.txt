@@ -1,0 +1,23 @@
+partnerships
+
+Samir: Quick sync — yesterday's VendorX incident exposed a gap: who actually owns the partner SEV Slack channel lifecycle? we had two people creating separate channels and missed cross-posts.
+Alisha: +1, we need a single source of truth. propose: partnerships creates the channel for partner-facing war rooms, eng-oncall is copied in and can promote to full SEV if needed. naming: `partner-<vendor>-sev-YYYYMMDD` so it's discoverable.
+Mike: sounds good. also recommend a bot-backed canonical channel creation flow so we don't get duplicates. something like `/partner-sev open VendorX P1 --owner @alisha` which creates the channel, posts the template, and pins the runbook.
+Sofia: tiny clarification — when should we escalate from partner-only to internal SEV? my suggested rules: if internal customer impact OR more than 2 failed rollbacks OR data exposure risk, escalate and tag `@eng-oncall` and `@prod-incident` (i.e., promote). otherwise keep partner-only.
+Alisha: agree. add the rubric to onboarding checklist for new partners, and add a checkbox in the marketplace onboarding flow so sales/partnerships know this step.
+Mike: ops-bot prototype message (what it would post on channel creation):
+```
+ops-bot: Channel created: #partner-vendorx-sev-20260301
+ops-bot: Owner: @alisha
+ops-bot: Template pinned -> /runbooks/partner-sev-template.md
+ops-bot: To escalate: `@ops-bot promote` (will notify eng-oncall + open incident)
+```
+Sofia: +1. also add a short message template for external comms so partner-facing PMs have a single copy to send to their support team.
+Samir: who takes the action items: Alisha to add flow to partner onboarding doc, Mike to wire the `/partner-sev` command with ops-bot, Sofia to draft the escalation rubric and external comms template. I'll own the rotation/ownership doc and sync with SRE on promote flow.
+Alisha: I'll update the partnerships runbook and add a step in the marketplace checklist by EOD Friday. :thumbsup:
+Mike: I'll queue the bot task in eng-platform backlog and prototype the channel creation in the sandbox this week. will tag you for review.
+Sofia: drafting the rubric now, will drop in the channel later for feedback.
+Samir: thanks all. once the bot is live we should enforce via channel creation audit (no manual channels for active partners). also thinking a weekly sweep script that lists `partner-*sev*` channels and cross-checks owners.
+Alisha: good call — we can add that to the partnerships pager rotation SOP.
+Samir: OK closing this thread, we'll convert to a doc after the PRs land.
+deploy-bot: Reminder: new channel template created in sandbox for VendorX testing -> #sandbox-partner-vendorx-sev-20260301 (automated)

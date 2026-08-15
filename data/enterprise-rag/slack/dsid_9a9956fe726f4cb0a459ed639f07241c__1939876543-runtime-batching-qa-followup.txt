@@ -1,0 +1,27 @@
+eng
+
+Alex: Pushed more changes to PR https://github.com/redwood/repo/pull/842 — addressed the kv-cache eviction logic and added a tiny perf harness to validate no regression. PTAL when you get a minute.
+
+Mei: quick skim — overall ok. left a nit about a noisy log in batching/runner.go. also CI failed on windows, saw a flake in tests/io_util_test.
+
+Alex: good catch. removed the noisy log and added a retry wrapper for that test. pushed a new commit.
+
+CI Bot: CI started for commit 3f8a2b1 — jobs: linux-build, windows-build, unit-tests.
+
+Sanjay: can you add a short canary rollout plan to the PR description? we should mention target traffic %, rollback criteria, and telemetry dashboard to check.
+
+Alex: done — added canary steps and telemetry dashboard links. Also included a migration note for older model shards.
+
+Taylor: PTAL — I'll take final pass after green CI. minor suggestion: collapse the perf harness into testutil to reuse elsewhere.
+
+Mei: windows CI passed, all green now.
+
+CI Bot: All checks passed — linux-build ✔ windows-build ✔ unit-tests ✔
+
+Taylor: LGTM :shipit: — small styling nit ignored as non-blocking.
+
+Alex: Thanks! merging in 10m and will watch canary metrics. calling out: watch latency_p50 and error_rate_explainer on prod-canary for the first 30m.
+
+Sanjay: noted. ping here if anything unusual. Thanks all.
+
+Alex: merge done — canary rolling out. :tada:

@@ -1,0 +1,41 @@
+eng-sre
+
+alert-bot: MULTI-PAGER: 27 pages for /v1/embeddings across multiple routing-proxies in 3m. grouping indicates high alert churn. rule: alerts/high-error-rate-v2 triggered repeatedly.
+Lena Gomez: saw this — paging noise again during small-tenant spike. looks like many 4xx/429 bursts from a partner integration. paging is masked as P1 due to global rule.
+Tom Baker: i'm digging into which tenants produced the most pages. running a quick query on metrics-store.
+Ravi Menon: FYI support-ops flagged user-reported slowness on REDWOOD-SMB-301 but support says errors are client-side rate spikes.
+alert-bot: ALERT DETAILS: high-error-rate-v2 \u2014 condition: 5xx or 429 > 5% over 2m OR > 100 p50 latency increase. triggered on clusters: apac-gpu-*, eu-gpu-* 
+Lena Gomez: proposal: change routing so small-tenant bursts create tickets not immediate pages. page when either (a) customer-impacting SLA breach for top-100 tenants OR (b) system-wide error rate > 12% for 3m. otherwise create a P0 ticket to #incidents-tickets.
+Tom Baker: +1. We should also add suppression windows per-tenant for known noisy integrations. e.g., if tenant generates >2000 errors but <1% of total traffic, suppress page and create ticket automatically.
+Ravi Menon: quick mitigation: temp mute repeated alert rule for 10m while we triage so oncall can focus on latent issues. I can mute via alerting UI.
+Lena Gomez: do it, but add a policy note in the alert so mute shows "muted_for_noise".
+Ravi Menon: muting high-error-rate-v2 for 10m with annotation "muted_for_noise: partner-burst-2026-03-15".
+support-bot: NOTE: Support repeated that REDWOOD-SMB-301 saw 429s during 13:12-13:20 UTC, they retried and recovered. No SLA breach recorded.
+Tom Baker: query results: top noisy tenants: REDWOOD-SMB-301 (43% of pages), REDWOOD-PART-88 (22%), rest scattered. pages correspond to bursts of 429s, not persistent 5xx.
+Lena Gomez: action items during incident: (1) mute rule short-term (done), (2) open DOT-789 for alert policy change (per-tenant routing + thresholds), (3) create dashboard for per-tenant page-rate and per-route latency, (4) add runbook snippet for "how to assess tenant-impact quickly".
+Ravi Menon: creating DOT-789 now. draft acceptance criteria: - page only when top-100 tenant SLA breach OR system-wide >12% for 3m; - tickets for tenant-only bursts with auto-link to support workflow; - implement tenant-level dedupe and suppression.
+alert-bot: TICKET CREATED: DOT-789 \u2014 alert routing policy revamp \u2014 assignee: eng-sre \u2014 link: https://tracker.internal/DOT-789
+Tom Baker: for the dashboard mock, I'll add panels: tenant page count (time-series), route-level p50/p95 latency, per-host CPU/GPU pressure, and active suppressions table. ETA 3h.
+Lena Gomez: can we add a tiny config snippet for the alert change so SRE/alerts team can review? thinking something like: 
+```
+alert: tenant-aware-high-error
+expr: (error_rate > 0.12 and sum by(cluster)(requests) > 1000) or (tenant_top100_sla_breach == 1)
+for: 3m
+labels:
+  severity: page
+  channel: eng-oncall
+else:
+  severity: ticket
+  channel: incidents-tickets
+```
+Ravi Menon: that looks good but we'll need to surface tenant dimension and noise suppression rules. also prefer sigma-based anomaly gating: page if >5 sigma for that tenant vs baseline.
+Tom Baker: adding to DOT-789 acceptance criteria. Also propose alert runbook change: include immediate triage steps: check per-tenant page-rate, check support queue for customer reports, check host OOMs.
+Lena Gomez: handoff note: i'm on call until 13:40 UTC, Tom will take over at 13:40 if still open. Tom, please ensure the mute is lifted after we have DOT-789 created and triage complete.
+Tom Baker: taking handoff at 13:40. I'll follow up with a short summary in #eng-sre after DOT-789 fleshed out.
+Ravi Menon: follow-up engineering tasks: 1) implement tenant-level metric cards in metrics-pipeline (PR queued), 2) add suppression config to alert-manager (config PR), 3) update runbooks. assigning to eng-mon and eng-runtime.
+Lena Gomez: agree. Also recommend adding a dedicated channel mapping: tenant-impacting -> #support-ops + #eng-oncall-pager, infra-impacting -> #eng-sre-pager only. reduces cross-team noise. add this to severity-policy doc.
+Tom Baker: noted. will include mapping in DOT-789.
+alert-bot: NOTE: mute will expire at 1954321600 unless extended.
+Ravi Menon: final note: make sure we don't accidentally suppress genuine regressions. we will add a 'force-page' toggle for SRE leads when a suspected true incident occurs.
+Lena Gomez: agreed. closing thread once DOT-789 has owners and the dashboard PR is opened. Thanks all :thumbsup:
+alert-bot: INCIDENT UPDATE: multi-pager noise mitigated (temporary mute) \u2014 resolved for now at 1954321065

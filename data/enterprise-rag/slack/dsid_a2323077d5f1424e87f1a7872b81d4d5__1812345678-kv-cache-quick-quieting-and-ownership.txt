@@ -1,0 +1,15 @@
+eng-oncall
+
+ava: Woke to 3 kv-cache flap pages overnight, all ~40-80s. They still page. Can we agree a short-term quieting + follow-up owner?
+diego: yeah saw them. Rule model_serving.kv_cache.flap pages on any 5x spike. Short-term: require 3m `for` to page, demote <3m to warning. Add 10m suppression keyed by fingerprint(region,instance).
+sara: +1. Also: emit kv_cache_flap_suppressed_total so we can measure noise. I'll own remediation tracking.
+diego: I'll open a PR with the 3m/10m changes + suppressed metric and push to staging for validation.
+ava: please make suppression configurable per-cluster via configmap so dev clusters stay noisy for testing.
+diego: good call. I'll add override docs in the PR. Opening PR: https://git.internal/repo/prom-alerts/pull/900
+oncall-bot: Staging deploy recorded: prometheus/rules updated by diego at 1812345760.
+sara: created RMD-5010 "kv-cache flap noise follow-up". Tasks: runbook blurb (48h), dedupe key PR (1wk), dashboard panel for suppressed metric (72h).
+diego: canary plan: two low-traffic clusters tomorrow 09:00 PT, 30m watch, then full rollout if green. Posting deploy note before canary.
+sara: scheduling 30m sync Fri 15:00 UTC to review suppressed counts and firing frequency. After sync I'll close RMD-5010 with owners + dates.
+ava: one-paragraph for oncall playbook: "If single <2m kv-cache flaps without 5xx/latency signals, treat as noise; do not escalate." I'll draft and attach to the ticket.
+diego: monitoring now, will report regressions here.
+sara: thanks team. :white_check_mark:

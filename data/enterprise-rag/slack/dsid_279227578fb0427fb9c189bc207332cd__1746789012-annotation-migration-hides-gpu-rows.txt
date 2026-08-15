@@ -1,0 +1,56 @@
+support
+
+emma: Customer report: Dedicated dashboard showing 0 GPUs for pool `dedicated-east-1a` after cluster maintenance. UI list is empty but customer VMs show GPUs attached. Can we triage?
+
+liam: which cluster/pool id and a screenshot/link?
+
+emma: cluster: prod-eu-1, pool: pool-dedicated-east-1a, customer ticket #CS-4249. Screenshot: https://console.redwood.dev/dedicated/pools/pool-dedicated-east-1a -> shows empty GPU rows.
+
+jia: any errors in inventory sync service or agent versions? when was the annotation change done?
+
+emma: ops did an annotation rename during deploy ~2h ago (old key `redwood.gpu-count` -> new `inference.gpu.count`). Customer noticed immediately after. Quick checks: kubectl shows nodes and allocatable GPUs.
+
+emma: ```
+$ kubectl get nodes -l pool=pool-dedicated-east-1a -o wide
+node-23   Ready  4d   v1.26  4 gpus
+node-24   Ready  4d   v1.26  8 gpus
+```
+
+emma: but internal inventory API returns empty for that pool:
+```http
+GET https://internal-inventory.prod.svc/pools/pool-dedicated-east-1a/gpus
+Response: 200
+[]
+```
+
+inventory-bot: ALERT: inventory-syncer mapped annotation mismatch detected for cluster prod-eu-1. Key present: `inference.gpu.count`. Expected: `redwood.gpu-count`. Skipping node mapping.
+
+liam: ok this explains it — the syncer still looks for the old annotation key. We need either to update the syncer config to accept new key or roll back annotation rename. Can we confirm configmap version for inventory-syncer?
+
+jia: configmap `inventory-config` in namespace `telemetry` shows allowedAnnotationKeys: `["redwood.gpu-count"]`. Patch suggestion below to add the new key.
+
+jia: ```
+kubectl -n telemetry patch configmap inventory-config --type=json -p '[{"op":"add","path":"/data/allowedAnnotationKeys","value":"redwood.gpu-count,inference.gpu.count"}]'
+```
+
+liam: after patch, we should trigger a rolling restart of the daemonset so it picks up the config.
+
+liam: ```
+kubectl -n telemetry rollout restart daemonset/inventory-agent
+# and then call the resync endpoint
+curl -X POST https://internal-inventory.prod.svc/admin/resync -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+ops-bot: Resync job queued (job id 8a9f). Estimated time: ~30s.
+
+ops-bot: Resync job completed. 2 nodes re-mapped, 12 GPU entries added.
+
+emma: checked the pool UI — GPU rows are back. Customer notified via ticket.
+
+liam: can we add a migration step to update `inventory-config` automatically when annotation keys change? Also add a short healthcheck to surface mapping mismatches in the console (e.g., a banner for pools with nodes but zero inventory rows).
+
+jia: filing infra task INF-1123 to add key reconciliation + UI banner. Also adding a one-off alert for mapping mismatch logs.
+
+emma: note for runbook: when dashboards show 0 GPUs but kubectl shows nodes -> run `kubectl get configmap inventory-config -n telemetry` and check allowed keys, then restart daemonset and POST /admin/resync.
+
+liam: thanks — glad it was a mapping mismatch rather than data loss. :thumbsup: :eyes:

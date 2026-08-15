@@ -1,0 +1,41 @@
+eng-platform
+
+Liam: Thinking out loud — prototype idea: hybrid reservoir head sampling per-route combined with tail sampling for error/high-latency traces, and a retention-aware exporter that marks samples with TTL so we can prioritize storage by customer tier. Trying to keep observability costs bounded without losing debug signal for paid tiers.
+Olivia: Sounds promising. Quick q: how do you see retention TTL interacting with our existing S3 retention buckets? Would exported spans get a separate tag and then the storage job respects it? :thinking_face:
+Samir: We can tag the span with `x-retention-ttl` in the exporter and let the archiver job read that header. OTEL->exporter change only. Avoid changing ingest schema.
+Marta: For dashboards we need deterministic sampling rates by route so SLA dashboards don't fluctuate wildly. If head sampling is stochastic per-request, dashboards could be noisy for low-traffic routes.
+Liam: Agree. Proposal: deterministic route-prefixed reservoir for head samples (hash(request_id) % N) so it's stable, plus probabilistic tail triggers for error/latency spikes. Tier multiplier adjusts reservoir window and tail prob.
+Devon: Concern: billing alerts rely on sampled traces to detect regressions. If we reduce head samples for free tier too much we might miss regressions that affect enterprise customers. How do we make sure critical regressions surface?
+Samir: Tie an override rule: any route flagged as 'prod' for enterprise tenants bumps tail/prob sampling to x3 and forces retention TTL >= 90d. Also emit a deterministic metric `sampling.effective_rate.{route}.{tier}` for dashboards.
+Liam: Example config (prototype):
+
+```yaml
+sampling:
+  default_head_reservoir: 1000
+  route_overrides:
+    /api/generate:
+      head_reservoir: 5000
+      tail_trigger: 0.02
+  tier_multipliers:
+    free: 0.5
+    standard: 1.0
+    enterprise: 2.0
+exporter:
+  retention_tag: x-retention-ttl
+  default_ttl_days: 7
+  tier_defaults:
+    enterprise: 90
+    standard: 30
+    free: 7
+```
+
+Liam: OTEL change is small: sampling processor + exporter adds `x-retention-ttl` attribute on sampled spans. Storage pipeline will inspect that and route to the correct retention class.
+Olivia: Are we planning to do per-tenant quotas at ingest too? Can't let a noisy tenant exhaust the head reservoir for a route.
+Samir: Yes — quota-aware admission control before sampling. Admission uses a leaky-bucket per-tenant+route. If the tenant is over quota, we reduce head or demote to minimal tail-only sampling.
+Marta: UX note: Console needs a way to preview effective sampling for a route+tenant combo (simulate traffic) and a simple slider for retention tier. Otherwise support will field a bunch of "where are my traces" tickets.
+Devon: Ops: we should add a canary where we run this config on a single collector farm and export to a test S3 bucket. Add guardrails to fallback to full capture for 24hrs if error rate jumps > 2x.
+otel-bot: collector-ops deployed sampling-config v0.1 to canary cluster at 2026-03-20T14:02:01Z
+Liam: Cool — I'll open a PR with the prototype sampler + exporter and add the dashboard metrics. Plan: canary for 48h, then ramp to 10% routes if stable. @Samir @Marta can you help define the console preview UI fields? :white_check_mark:
+Olivia: Happy to pair on preview UX. I'll draft the mockups tomorrow.
+Samir: Will add metrics and the quota admission logic. If we keep the head reservoir deterministic this should play nice with dashboards.
+Marta: I'll add support tickets / knowledge base text so CS knows how retention tags map to billing tiers. Good plan. :thumbsup:

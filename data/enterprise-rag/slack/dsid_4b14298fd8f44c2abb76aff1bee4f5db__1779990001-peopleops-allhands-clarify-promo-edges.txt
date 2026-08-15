@@ -1,0 +1,27 @@
+people-ops
+
+Meera (People Ops): Quick follow-up from today's all-hands Q&A — wanted to consolidate the promo/leveling/comp questions that came up and answer a few edge cases. Drop anything we missed and we'll update the doc.
+Sam (Eng Manager): thanks! 2 quick ones: if an IC transitions to a manager mid-cycle, are they eligible for promotion this cycle or next?
+Meera (People Ops): short answer: usually next cycle. Longer: manager track promotions require a full-cycle calibration window so we evaluate starting the next formal cycle unless the manager role was offered with an explicit timeline (exception by HR+Director). @Sam we can handle exceptions case-by-case. :white_check_mark:
+Alex (IC): and for ICs who switch teams at the end of the cycle — does the receiving manager get to advocate for a late evidence packet?
+Meera (People Ops): receiving manager can provide feedback but late evidence must be submitted to people-ops within 7 days of transfer for us to consider it in the current cycle. Otherwise it's deferred. We added this to the FAQ doc.
+Natalie (Finance): payroll clarification: retroactive increases that are approved in a given month take effect the next payroll run. Example: change approved 4/4 -> processed in payroll cutoff on 4/15 -> reflected in 4/30 paycheck. If you need faster processing for comp corrections, ping payroll ops with the ticket number.
+Sam (Eng Manager): thanks — what's the cutoff to guarantee next-cycle processing?
+Natalie (Finance): cutoff is EOD on the 10th of the month for the mid-month run, EOD on the 25th for month-end. If approval lands after cutoff it goes to the next cycle. We'll publish a calendar.
+Alex (IC): about raises + parental leave — is someone who is on active parental leave during calibration eligible for merit? Heard both yes/no.
+Meera (People Ops): eligible. We treat leaves as protected time — managers should include the full-period contribution summary. If work was paused due to leave, manager can note that but still recommend based on demonstrated impact. We do not disqualify based on leave.
+Alex (IC): appreciate that. Also what's the process for an appeal if an IC thinks calibration missed a key project?
+Meera (People Ops): appeals are for calibration/process errors or missed evidence (not subjective disagreements). Steps: 1) Manager submits a calibration correction form within 7 days of notification. 2) People Ops reviews with Finance+Director. 3) Outcome within 10 business days. Use this template: ```Subject: Calibration Correction - [Name] - [Cycle]
+Summary of error: 
+Evidence omitted: 
+Requested fix: 
+Manager sign-off: [manager name]```
+peopleops-bot: Helpful link: <https://redwood-internal.company/policies/leveling-promo#appeals|Leveling & Promotions FAQ> :link:
+Jon (CEO): big +1 to the parental leave policy clarity — thanks Meera & Natalie. Managers please prioritize evidence capture during handoffs so we don't need a ton of appeals later. :thumbsup:
+Sam (Eng Manager): one more nit: how do we handle promotions that were contingent on headcount approvals that came late? Back-dated or effective when headcount clears?
+Meera (People Ops): contingent promotions are effective on the approval date. If leadership explicitly approves retroactive comp, Finance will process as a correction; otherwise effective date = approval date. We'll update the playbook with a flowchart.
+Natalie (Finance): quick FYI — for retroactive corrections we need the signed approval + updated org chart + payroll ticket. Without docs we can't process.
+Alex (IC): cool — any update on whether market adjustments will be part of the next cycle or a separate batch?
+Meera (People Ops): market adjustments are being scoped now; likely separate batch this quarter (not mixed into merit promos) — we'll announce timing once Finance finalizes budget.
+Meera (People Ops): thanks all — I'll pull this thread into the follow-up doc and tag relevant managers. If you want a 1:1 clarification, book time on the people-ops calendar.
+Jon (CEO): thanks everyone — appreciate the quick clarifications.

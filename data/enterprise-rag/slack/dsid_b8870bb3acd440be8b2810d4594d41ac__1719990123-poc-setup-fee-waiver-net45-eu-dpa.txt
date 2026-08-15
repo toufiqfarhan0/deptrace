@@ -1,0 +1,42 @@
+sales
+
+jordan-ae: Heads-up team — Nina from Helix pushed redlines on the MSA/DPA + order form. They want the POC gated to signed docs and the one-time onboarding fee removed. Can we triage? Need to provision by next Tuesday if signed.
+
+emily-legal: I'll take the redlines. Quick flags: we're ok to waive small PO setup fees for evaluation customers (<$15k ARR). Liability cap needs to stay; propose: "aggregate liability capped at fees paid in prior 12 months". For the DPA they want EU residency assurances — add subprocessors list and EU transfer mechanism (SCCs).
+
+sam-se: tech constraints: Dedicated VPC = ~4 working days to provision after signature. Hosted sandbox can be live same day but no VPC. Performance variance noted. Also need an expected GPU quota for billing so ops can size it.
+
+paul-procure: Finance policy = standard net30. Customer requesting net60; can escalate to net45 for strategic deals. If we do net45 we need approvals; will start that now. DocuSign ok for signature routing.
+
+nina-customer: We can accept net45, but the setup fee is a hard blocker for our procurement. DPA must state data will be processed in EU region for POC. Legal contact: marcel.legal@helix.io. Finance: paula.finance@helix.io.
+
+jordan-ae: Thanks. @emily-legal can you draft the MSA language and DPA appendix (subprocessors + SCCs)? @paul-procure can you confirm net45 escalation ETA? I'll align SE to provisioning timeline.
+
+emily-legal: Draft below — please review: 
+"Liability cap: Customer's aggregate liability to Redwood Inference shall not exceed the total fees paid by Customer to Redwood Inference in the twelve (12) months preceding the claim."
+"POC SLA: For trial or evaluation deployments, SLA objectives are targets only and do not qualify for service credits or penalties."
+"DPA Appendix: Subprocessors include AWS (eu-west-1), GCP (europe-west3), Datadog, Sentry. Transfers rely on EU Standard Contractual Clauses (SCCs)."
+
+paul-procure: Escalation submitted to Finance — expect decision within 24 hours. If approved, we'll accept net45 and mark setup fee waived for POC < $15k. Will prepare PO template once docs executed.
+
+sam-se: Confirming hosted sandbox option if they want to start earlier. If Helix signs today we can schedule Dedicated VPC for next Tue. Need final billing contact to set quotas.
+
+jordan-ae: Billing contact: paula.finance@helix.io — send invoice to AP@helix.io. PO number will be required for invoice.
+
+docsign-bot: DocuSign envelope prepared: env_3f7a — signers: Marcel Legal (Legal), Paula Finance (Finance). Link: https://docusign.redwood/env/env_3f7a
+
+nina-customer: Marcel signed. Routing to Paula now.
+
+docsign-bot: Envelope env_3f7a completed at 1719992000. All signers completed.
+
+paul-procure: Received executed MSA/DPA/order form. PO# 78122 created and entered. Uploading to internal system and generating invoice instructions to AP.
+
+emily-legal: Filed executed copies to contracts repo: https://redwood.internal/contracts/archive/78122-msadpa. MSA redline incorporated liability & POC SLA language; DPA updated with SCCs and subprocessors.
+
+sam-se: Provisioning ticket created: ticket# INF-9221. Dedicated VPC schedule confirmed for Tue. Ops will reach out with onboarding link once ready.
+
+jordan-ae: Great work. Marking CRM: POC -> contract-executed, provisioning scheduled. Thanks everyone — looping in CS for onboarding. :raised_hands:
+
+paul-procure: Closing — finance approved net45 and setup fee waiver for this POC. Invoice to reference PO# 78122.
+
+nina-customer: Thanks team! Looking forward to the POC.

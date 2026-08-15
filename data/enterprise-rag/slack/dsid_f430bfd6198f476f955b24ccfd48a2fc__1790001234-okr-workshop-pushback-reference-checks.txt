@@ -1,0 +1,45 @@
+people-ops
+
+kelly (People Ops): Dropping an OKR workshop + manager pushback kit: anti-patterns, short rewrite templates, a 1-paragraph self-review example with evidence links, and a reference-check blurb for Hiring Ops. Use/copy/adapt.
+
+omar (Eng Manager): love it. show the OKR anti-patterns and a quick rewrite example for vague KRs.
+
+kelly (People Ops): OKR ANTI-PATTERNS (3 quick callsout):
+1) 'Activity KR' 1: "Run X meetings" (doesn't measure outcome).
+2) 'Too many KRs' 1: >4 KRs dilutes focus.
+3) 'Unmeasurable language' 1: "Improve reliability" (no metric).
+
+kelly (People Ops): QUICK REWRITE (vague -> specific):
+- Vague: "Improve onboarding experience."
+- Rewritten: "Objective: Improve new-hire onboarding. KR1: Reduce median time-to-first-meaningful-PR from 20d to 10d. KR2: Reach 90% completion rate for the onboarding checklist within 14 days."
+
+ting (Product): any tiny rules-of-thumb for setting 1-2 KRs for ICs vs teams?
+
+kelly (People Ops): RULES-OF-THUMB:
+- IC goal: 1 Objective + 1-2 KRs tied to a measurable outcome the person can own.
+- Team goal: 1 Objective + 2-3 KRs that require cross-functional work.
+- Keep quarterly targets ambitious but achievable (stretch ~15-30%).
+
+omar (Eng Manager): nice. show a manager 'pushback' line when a KR is unrealistic or vague. want something firm but friendly.
+
+kelly (People Ops): MANAGER PUSHBACK SNIPPET (pasteable):
+"Thanks for drafting these. The objective looks right, but the KR as written is hard to measure. Can you add a baseline and a numeric target (e.g., median time X -> Y) and remove unrelated action items? If it's team-level work, let's define owners for each KR. Happy to review the next draft by Friday"
+
+lucy (Hiring Ops): can you add a one-liner Hiring Ops reference-check blurb we can send managers when they're short on time?
+
+kelly (People Ops): REFERENCE-CHECK BLURB (one-liner to paste into messages):
+"Quick ask: could you share 3 examples of the candidate's ownership and one example where they navigated ambiguity? A 10-min reply is fine  thanks!"
+
+kelly (People Ops): SELF-REVIEW EXAMPLE (one paragraph, evidence-first):
+"This cycle I led the embeddings latency project (links: PR#342, dashboard: /d/latency). Result: reduced median latency for 256-token requests from 220ms to 150ms (31% improvement) and decreased per-inference cost by ~8%. I partnered with infra and SDK to add batching and a KV cache; I ran two rollout rehearsals and coordinated post-launch monitoring. For the next cycle, I want to own cross-team reliability and drive a further 10% latency reduction"
+
+ting (Product): that self-review example is helpful. any short timeline phrase for managers to set improvement expectations?
+
+kelly (People Ops): TIMELINE PHRASE (pasteable):
+"We1ll try this approach for the next 6 weeks with a 2-week check-in; if progress is steady we continue, otherwise we iterate."
+
+perf-bot: Reminder: Q-cycle calibration session scheduled in 9 days. Use /add-to-agenda to propose items.
+
+omar (Eng Manager): this is great  will run a 30-min OKR clinic with my team. thanks!
+
+kelly (People Ops): if you want role-level KR examples (IC2/IC3/Senior/Staff) we can draft a separate doc; react with :doc: to request.

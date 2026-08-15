@@ -1,0 +1,31 @@
+eng-releases
+
+maria: Heads-up — incident in eu-controlplane causing slow api-to-orbit calls. I'm pausing the EU canary and asking deploy-bot to auto-pause other queues. Please confirm.
+deploy-bot: deploy-bot: Canary pause initiated for release 2026.3.4-eu-canary. Queue drain started. Reason: controlplane timeouts (503 x 12m).
+sam: Noted. Ops is looking at the controlplane alerts. ETA 15m to triage.
+tara: Is this affecting dedicated capacity also or just hosted endpoints?
+maria: Mainly hosted EU region for now. Dedicated pools show increased tail latency but still within SLO.
+jonas: Rolling window for the US still green. Recommend we stop cross-region rollouts until cleared.
+oncall-sre: We're seeing a cascading backlog on request-queue-3 → kvcache pressure. Flushing prefix cache is in progress.
+sam: Working on a temporary cache eviction rule. I'll post the command once we confirm safe clearance.
+maria: Decision: place an incident-triggered hold on all new release windows for 2 hours and reschedule queued deploys. Also pin current controlplane client lib to 1.12.2 for any rollback if needed.
+tara: +1. Can we move the queued canaries to a staged requeue after validation window? Prefer 30m after fix.
+deploy-bot: deploy-bot: Pausing scheduled releases: 84 jobs paused (staggered). To resume: `deploy-bot resume <job-id>` after approval.
+jonas: I'll prepare a quick rollback plan for release 2026.3.4 in case controlplane flaps again (steps + smoketest checklist).
+maria: Action items:
+- sam: apply cache eviction rule and post ETA
+- oncall-sre: monitor controlplane fix and confirm nominal
+- jonas: draft rollback/runbook
+- tara: coordinate customer comms if we extend hold beyond 2h
+
+sam: Cache eviction applied (`/ops/cache/evict --prefix orbit/eu --confirm`). Observing queue drop in 3m.
+oncall-sre: Metric: request_queue_length EU decreased from 920 → 120 in 4m. Latency tail improving.
+maria: OK thanks. Let's requeue staged canaries for a soft-launch at +45m. Keep the main release window pinned and do no global rollouts.
+tara: I'll update Release Notes slack thread & notify CS.
+jonas: Rolling pin set: controlplane client @1.12.2, canary image tagged `2026.3.4-eu-canary-locked`.
+deploy-bot: deploy-bot: Requeue scheduled jobs: 12 moved to staged-run at +45m, 72 remain paused.
+maria: Postmortem expectation — include timeline of queue spike, cache pressure, and decision to hold. Assigning to sam and jonas to lead.
+sam: Acknowledged, starting timeline capture now.
+oncall-sre: I'll keep monitoring for the next 2h and alert if anything regresses.
+tara: Thanks all. I'll send a short note to #product and #customers-ops after the 45m soft-launch goes green. :thumbsup:
+maria: Good coordination. We'll reconvene if anything changes. :white_check_mark:

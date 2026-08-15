@@ -1,0 +1,51 @@
+eng-security
+
+alex: Heads-up — we need to coordinate RBAC + KMS changes for the base-image rebuild (runtime images) scheduled Tue 03:00 UTC. This touches signer SA, runtime pod SA, and audit logging. Who can own the rollout plan?
+maria: I can own the RBAC PR. quick q: are we changing which key we use or just granting access to existing key? :thinking_face: 
+sam: We need a new dedicated KMS key per-region for signing. Reason: rotation boundaries and least privilege for canaries. Also want to use KMS-backed cosign signing.
+priya: OK. For cosign with AWS KMS the key URI looks like: `awskms://arn:aws:kms:us-west-2:123456789012:key/abcd-ef01-2345` — make sure the key policy includes the image-signer SA and the build CI role.
+jordan: For GCP cosign uses `gcpkms://projects/…/locations/…/keyRings/…/cryptoKeys/…` — and we need Cloud KMS CryptoKey IAM roles: `roles/cloudkms.cryptoKeySigner` for the signer principal. Also enable Cloud Audit Logs for Admin Read/Write and Data Access.
+amazon: 
+(not a real sender — ignore)
+ alex: @sec-bot can you paste the audit log checklist we use for signer ops?
+sec-bot: Required audit checks: 1) KMS Admin+DataAccess logs enabled 2) CloudTrail + Event selectors include KMS operations 3) Log retention >= 90d for forensics 4) Alert on cross-account key grants.
+maria: RBAC changes we'll need: grant `iam.serviceAccountUser` to the CI runner for `image-signer` SA, and add a new ClusterRoleBinding for `runtime-image-puller` with `get/list/watch` on secrets in namespace runtime. Draft snippet:```yaml
+# minimal RBAC for signer
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cosign-signer-role
+  namespace: infra
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cosign-signer-binding
+  namespace: infra
+subjects:
+  - kind: ServiceAccount
+    name: image-signer
+    namespace: infra
+roleRef:
+  kind: Role
+  name: cosign-signer-role
+  apiGroup: rbac.authorization.k8s.io
+```
+sam: Nice. Also we need to avoid storing raw KMS keys in pods. Use Workload Identity (GCP) or IAM Roles for Service Accounts (IRSA) on AWS for the build pods — grant short-term creds only.
+priya: Vulnerability triage note: rebuild will pull in a new glibc patch — we already have CVE-2024-xxxx open. Confirmed test suite fails on edge OS images; need canary with 5% traffic to canary runtime.
+jordan: Proposed rollout plan: 1) Create per-region KMS keys + key policies (security review) 2) RBAC PR for signer + puller 3) Enable/verify audit logging 4) Create image signers via cosign + attach provenance 5) Canary deploy runtime for 24h 6) Full cutover.
+alex: Timeline: KMS keys + policies by Mon EOD, RBAC PR by Tue 01:00 UTC, image build + sign Tue 02:00 UTC, canary Tue 03:00 UTC. Does that work?
+maria: I'll open the RBAC PR now and tag @sam and @priya for review.
+sam: I'll own KMS key creation. Quick checklist: key policy must include `kms:Sign` for signer SA and explicitly deny `kms:CreateGrant` to external principals. 
+priya: I'll prepare the canary test plan and the alerting rules (errors > 1% or increased tail latency > 200ms). Add a regression eval prompt set for generation quality — failing quality should halt rollout.
+jordan: Fallback: if signer fails, revert to previous signed image (we keep last 3 signed tags) and pause rollout. If KMS auth errors appear in logs, rotate to a backup key and investigate.
+alex: One more ops detail — ensure cosign verification is added to runtime pod startup: `cosign verify --key gcpkms://... <image>` or using a verification sidecar. We need a JIRA to track that.
+sec-bot: Security checklist reminder: create KMS key rotation schedule, add KMS key access reviews in quarterly audit, log exports to SIEM, and run a dry-run of signing in staging.
+maria: PR: https://git.company/repo/pull/987 — diff includes Role + RoleBinding + a docs/README. Please review.
+sam: Created AWS KMS keys in us-west-2 + eu-central-1, policy drafts in: https://git.company/infra/kms-policies/blob/main/drafts.md
+priya: Test plan doc: https://wiki.company/runbooks/runtime-image-canary — added smoke tests and regression prompts.
+alex: Great. Owners: maria (RBAC PR), sam (KMS keys), priya (canary/tests), jordan (rollout coord). I'll post a final runbook this afternoon and schedule the Tue window. Thanks all :thumbsup:

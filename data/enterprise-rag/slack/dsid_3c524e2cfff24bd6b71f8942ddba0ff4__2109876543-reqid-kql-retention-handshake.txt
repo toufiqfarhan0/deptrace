@@ -1,0 +1,59 @@
+support
+
+marie_support: Escalation — customer reporting intermittent 503s during peak. They gave req id `req_0a1b2c3d` around 2026-03-14 17:22 UTC. Can someone pull server logs + trace? Need repro steps and debug bundle for handoff.
+
+alex_infra: On it — can you paste the full req id + tenant? Quick check: are they on Hosted or Dedicated?
+
+marie_support: req_id=req_0a1b2c3d tenant=acme-inc. They said hosted-us-west. They also sent a curl repro (I pasted below).
+
+sam_engineer: FYI logs live in kibana indices `logs-*-2026.03.14*` for hosted. TTL is 30 days; older stuff goes to S3 archive. I'll check retention but we should try KQL first.
+
+alex_infra: Query I'll run (KQL):
+```
+request_id: \"req_0a1b2c3d\" OR message:\"req_0a1b2c3d\"
+service.keyword: (gateway OR edge OR inference)
+@timestamp:[2026-03-14T17:00:00 TO 2026-03-14T18:00:00]
+```
+Or via log API: 
+```
+curl -H 'Authorization: Bearer $LOG_API' \"https://logs.redwood.ai/search?q=request_id:req_0a1b2c3d&from=2026-03-14T17:00:00&to=2026-03-14T18:00:00\"
+```
+
+kai_sre: Heads up — edge sometimes strips underscores in request ids in some log emission paths, so they can appear as `req0a1b2c3d`. I'll grep both variants. Also watch rotated files; pattern `edge-YYYY-MM-DD-HH.log`.
+
+sam_engineer: If not in primary index, check S3: 
+```
+aws s3 ls s3://redwood-logs-archive/acme-inc/2026/03/14/ | grep req_0a1b2c3d
+```
+I can kick off an archive export/restore if needed.
+
+devops_bot: debug-bundle-bot created debug bundle db-789e for req_0a1b2c3d — link: https://internal.redwood.ai/debug/db-789e (includes baseline traces).
+
+marie_support: For customer repro, please include this curl (they ran similar):
+```
+curl -X POST https://api.redwood.ai/v1/generate \
+  -H 'Authorization: Bearer <USER_KEY>' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"gpt-like","input":"short"}' \
+  -i
+```
+They received `HTTP/1.1 503 Service Unavailable` and response body contained `request_id: req_0a1b2c3d`.
+
+alex_infra: I'll run the KQL + s3 grep now and post results in ~20m. Note: if we need a restore from archive, typical restore time is ~2-4 hours.
+
+marie_support: :thumbsup: I'll keep the customer updated. @kai_sre can you watch for the restore request? If infra needs to expedite, I'll ping the on-call.
+
+kai_sre: Watching. If restore is requested, ping me with debug bundle ID and tenant, I'll prioritize.
+
+alex_infra: Quick update — found entries in gateway and edge with that req id, attaching a tiny snippet: 
+```
+2026-03-14T17:22:05Z gateway ERROR request_id=req_0a1b2c3d upstream=504
+2026-03-14T17:22:06Z edge INFO request_id=req_0a1b2c3d kvcache-miss
+```
+I'll attach full logs to db-789e.
+
+marie_support: Perfect — sending snippet + debug bundle link to customer with repro steps. Will close loop once they confirm the timeline.
+
+devops_bot: debug-bundle db-789e updated: logs attached (gateway.log, edge.log).
+
+marie_support: Thanks everyone — marking this tracked. If customer sees recurrence, I'll re-open and include the bundle id.

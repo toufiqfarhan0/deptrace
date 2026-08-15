@@ -1,0 +1,41 @@
+all-hands
+
+marco: Thanks everyone for joining today's all-hands. Quick thread to capture Q&A items that need follow-up and owners.
+
+elaine: Can you confirm the Dedicated GA date? I thought it was end of Q2 but the roadmap slide showed 'summer'.
+
+marco: Good catch — target is July 18 (tentative). Official GA announcement will go out once we finish the final perf run and SLA wording. I'll post the announcement draft later.
+
+devin: Are there any backward-incompatible SDK changes in the new client we should flag? I have a couple of customers on pinned v1 clients.
+
+jonah: There's a small change in the auth header parsing. PR linked: https://git.internal/r/inference/sdk/PR-452. Short diff:
+```
+- Authorization: Bearer <token>
++ Authorization: Redwood <token>
+```
+We added a compatibility mode but will need to communicate it.
+
+ana: I can own the SDK migration doc and draft a compatibility guide. ETA 3 business days. @devin can you send me the list of affected customers?
+
+devin: Yup, will DM the list by EOD. Also please include a snippet for server-side proxy config.
+
+deploy-bot: deploy 2171234600: infra/dedicated/perf-run v3 promoted to staging — all checks passed :white_check_mark:
+
+marco: For SLA questions: we plan 99.9% for Dedicated at GA, with a path to 99.95 for enterprise customers. Final numbers in the SLA doc here: https://redwood.example.com/legal/sla-draft (internal access)
+
+elaine: Will we have migration assistance for customers moving from hosted to dedicated? That's a common ask.
+
+ana: Yes — proposing a 2-week onboarding bundle (setup +1 workshop + 30 days priority support). I'll add costs to the internal pricing doc and loop in sales.
+
+marco: Owners summary:
+- Dedicated GA announcement & announcement draft: marco
+- SDK compatibility guide: ana
+- Affected customers list: devin
+- Pricing + onboarding package: ana + sales
+- SLA finalization: product (cc @product-bot)
+
+ana: I'll create the internal PR and a short README in docs/site. Link here when ready.
+
+devin: Thanks everyone. If anyone needs to be looped in for technical review ping me.
+
+marco: Closing for now — if you have follow-ups drop them here or open a ticket in #support-requests. :thumbsup:

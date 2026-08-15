@@ -1,0 +1,23 @@
+eng-security
+
+ravi_ops: We're flipping archive buckets + DB snapshots to CMK-managed keys tonight. Plan: require ephemeral grants for uploader/rehydrator + manifest file. Any immediate blockers?
+
+lena_sec: Two musts: CloudTrail capture of CreateGrant/RetireGrant/Decrypt and removal of any principal with account-wide kms:* before flip.
+
+marc_infra: Rehydration workers sometimes span 40m. We'll implement grant-refresh in the orchestrator. Default TTL 15m + heartbeat refresh.
+
+tara_backup: Manifest schema: {sha256,key-id,created_by,ts}. Backup operator should tag manifest with service identity.
+
+ravi_ops: Also add IAM condition deny kms:Decrypt unless request context tag:backup-manifest=true is present.
+
+kms-bot: Ticket ENC-4410 created: "CMK flip + ephemeral grants + manifest audit" assigned to @marc_infra and @lena_sec. ETA 6h.
+
+marc_infra: Staging run in 30m: create grant -> upload -> manifest -> canary restore -> retire grant. Will post results.
+
+lena_sec: Post-rollout checklist: RBAC diff, CloudTrail sample (Encrypt/Decrypt/CreateGrant/RetireGrant), and watch failed-decrypt alerts for 7d.
+
+ravi_ops: If canary fails, immediate rollback of alias + incident channel. @tara_backup prepare runbook.
+
+tara_backup: Runbook ready. PR for rehydrator grant refresh: https://git.company/backup/merge/403
+
+ravi_ops: Proceeding with staging. :rocket:

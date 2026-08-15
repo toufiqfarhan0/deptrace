@@ -1,0 +1,107 @@
+eng-platform
+
+Ethan Park: Question for SRE + telemetry folks: for Dedicated staged rollouts, how should gate eval behave if metrics are missing / delayed (telemetry lag, ingest outage, etc.)? We need to pick fail-open vs fail-closed before we lock the state machine.
+
+Peter Holtz: +1. we saw “Unknown” gates during last week’s dogfood when prometheus remote_write was backpressured. Promotion logic needs a deterministic rule.
+
+Logan Wright: Missing can mean a few things:
+- no traffic (0 reqs) => some metrics legitimately absent
+- traffic exists but tag mismatch / cardinality drop => stage labels not present
+- ingest delay => data is there but late
+- hard outage => no data at all
+We should distinguish “no samples” vs “telemetry stale”.
+
+Sean Gallagher: SRE preference: default should be fail-closed for *promotion*. If you can’t prove it’s healthy, don’t advance. But we need an escape hatch (force-promote) with audit + RBAC.
+
+Jordan Lee: Agree on deterministic. If gate evaluation returns UNKNOWN due to missing data, treat as FAIL for the policy engine decision (block auto-promotion). But we should also surface “why unknown” so oncall isn’t guessing.
+
+Allison Grant: +1 on surfacing reason codes. Can we standardize:
+- PASS
+- FAIL
+- UNKNOWN_NO_DATA (no samples in window)
+- UNKNOWN_STALE (data older than staleness threshold)
+- UNKNOWN_ERROR (query execution error)
+Then promotion logic uses a mapping.
+
+Ethan Park: That works. We also have the “manual gates” phase (operator checked) in Phase 1. In that case, missing metrics shouldn’t hard-block manual promote, but should warn.
+
+Rafael Mendes: careful: even for “manual”, the UI should still show the gate status as UNKNOWN and require a reason string if you override. We need paper trail for change mgmt.
+
+Kaitlyn Nguyen: On RBAC: force-promote should be a separate permission (admin-only) vs normal “promote” (operator). And force-promote should *require* `reason` + ticket link if possible.
+
+Jordan Lee: Mechanically in policy engine, I propose:
+1) Gate evaluation returns (status, observed_value?, threshold?, window, samples, reason_code)
+2) Promotion eligibility:
+- if any gate FAIL => block
+- if any gate UNKNOWN_* => block (same as FAIL) unless `override=true`
+3) Override path is explicit action: `POST /promote?override=true` with audit event capturing reason_code(s) + freeform justification.
+
+Peter Holtz: what about abort/rollback triggers? If metrics go missing *after* promotion to a stage, do we auto-abort? That’s different than blocking promotion.
+
+Sean Gallagher: yeah, we shouldn’t auto-abort just because telemetry blips for 2 mins. But we also can’t keep progressing. I’d say:
+- auto-promotion stops if telemetry is unknown
+- auto-abort only on explicit fail signals (error rate, saturation, OOM)
+- if telemetry is stale beyond X minutes while in an early stage, raise an alert + optionally auto-hold
+
+Logan Wright: +1. We can implement staleness detection using the max timestamp in the timeseries. e.g. `now() - last_sample_ts > 3m` => STALE.
+Also, we should treat “0 traffic” specially: for error-rate / latency gates, if req_count < min_samples, status should be UNKNOWN_NO_DATA (not PASS).
+
+Allison Grant: we already have min sample size standards for SLO alerting. Can reuse: e.g. min 100 reqs over window, or min 5 req/min sustained for 10m. But Dedicated can be low volume.
+
+Ethan Park: Dedicated low volume is real esp for some enterprise batch jobs. For those, do we allow promotion w/ low samples?
+
+Rafael Mendes: I’d keep the rule consistent: if you don’t have enough samples, you don’t have enough confidence. But then force-promote exists. Also we can allow stage duration to be longer (wait for samples) rather than relaxing min_samples.
+
+Jordan Lee: +1. We can add “max_wait” / “min_duration” per stage. Promotion requires:
+- stage >= min_duration
+- all gates PASS
+If min_samples not met, gates are UNKNOWN => stage just waits.
+
+Peter Holtz: Make sure waiting doesn’t deadlock the rollout forever. Need a “held” state or “timed out” event.
+
+Priya Natarajan: Popping in — directionally I want fail-closed for promotion. We got dinged in the last incident retro for “blind” changes. But product needs an operational escape hatch.
+Concretely:
+- default behavior: UNKNOWN blocks promotion
+- manual override allowed for admins with reason + audit
+- UI should loudly indicate telemetry outage / staleness
+- do NOT auto-rollback on UNKNOWN alone; do auto-hold and alert after some threshold
+
+Ethan Park: Thanks @Priya Natarajan. What’s the staleness threshold? 3m? 5m?
+
+Logan Wright: For our pipeline, p95 end-to-end latency is ~45s, p99 around 2m during load. I’d set staleness at 5m to avoid false STALE during normal backpressure.
+
+Sean Gallagher: 5m is fine. But the eval window might be 10–15m; if you’re stale for 5m, you’re already missing half the window. The status should be UNKNOWN_STALE and block.
+
+Allison Grant: +1. Also add a distinct alert: “Gate eval stale” should page telemetry oncall if it’s global, vs ticket if it’s pool-specific tag mismatch.
+
+Jordan Lee: We can detect global vs pool-specific by checking a control query (no stage tag) and comparing. If base metrics exist but stage-tagged ones don’t => likely tagging / cardinality issue.
+
+Peter Holtz: that would’ve caught SUP-28605 earlier (gate evidence empty due to tag mismatch). +100.
+
+Kaitlyn Nguyen: Re audit fields, please include:
+- actor
+- pool_id
+- rollout_plan_id
+- from_stage -> to_stage
+- override=true/false
+- override_reason
+- gate_snapshot (list of gate statuses)
+Even if we don’t store full payload, we need enough for compliance.
+
+Ethan Park: ok summarizing proposal:
+- Gate eval returns PASS/FAIL/UNKNOWN_* with reason codes + samples + window.
+- Promotion: fail-closed on UNKNOWN.
+- Auto-abort: only on FAIL (objective fail), not on UNKNOWN.
+- If UNKNOWN persists > 10m (config), transition to HELD + alert.
+- Override requires admin RBAC + reason, emits audit.
+I’ll thread this into the design spec + policy engine PR.
+
+Priya Natarajan: Sounds good. Please make sure Product understands “unknown blocks promotion” so we don’t surprise anyone in beta.
+
+Logan Wright: I’ll add to telemetry backlog: expose `gate_eval_data_freshness_seconds` and tag-mismatch detector. Also document “no traffic” vs “missing telemetry”.
+
+Jordan Lee: I’ll update the policy engine contract to include `reason_code` and `staleness_ms`. We should keep the response stable for Console.
+
+Sean Gallagher: :thumbsup: once you have the exact mappings, post in #eng-sre too so oncall playbook matches.
+
+Ethan Park: will do. closing loop after I write it up.

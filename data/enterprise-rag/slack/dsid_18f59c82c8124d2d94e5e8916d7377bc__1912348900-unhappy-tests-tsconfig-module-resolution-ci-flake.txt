@@ -1,0 +1,48 @@
+devex
+
+maria: Hey team — CI started failing on the new Edge adapter rollout. Tests pass locally but CI (node 18) shows ESM import errors in a handful of Jest/Vitest suites. Anyone seen this lately?
+kevin: ugh, saw something similar last week. Is the repo using \"type\": \"module\" in package.json now?
+maria: yes, we switched to \"module\" to keep ESM everywhere. failing stack: 
+```
+  Error: Cannot use import statement outside a module
+  at Object.Module._extensions..js (internal/modules/cjs/loader.js:1158:10)
+  at Module.load (internal/modules/cjs/loader.js:988:32)
+  at Function.Module._load (internal/modules/cjs/loader.js:829:14)
+```
+kevin: that usually means a CJS runner trying to load ESM file. Are we running jest or vitest on CI?
+ashley: CI runs both depending on package matrix — jest for legacy tests, vitest for fast unit suites.
+sam: for vitest we added the edge runtime plugin which emits ESM-only code. Vitest supports ESM but mocking of CJS modules can be messy.
+maria: repro steps were simple: `pnpm -w test:ci` in the main workflow. Locally I run Node 20 and everything green. CI uses Node 18 LTS image.
+kevin: Node version mismatch might matter but the error looks like test runner trying to require() an ESM file. Try configuring transform to transpile ESM to CJS for the runner or run the runner in ESM mode.
+ashley: I tried adding `--experimental-vm-modules` to jest in the container and it got further but then failed on `jest.mock()` calls for default exports.
+sam: sharing our jest config snippet that works locally (simplified):
+```
+module.exports = {
+  transform: {
+    '^.+\\.tsx?$': 'ts-jest'
+  },
+  testEnvironment: 'node',
+  moduleNameMapper: {
+    '^@/utils/(.*)$': '<rootDir>/src/utils/$1'
+  }
+}
+```
+maria: but in the edge-adapter packages we use `vite` build and `esbuild` for dev, so many packages ship ESM-only output. ts-jest won't touch node_modules by default.
+kevin: try adding `transformIgnorePatterns: ['/node_modules/(?!(@my-scope|some-esm-lib))']` for jest, or for vitest set `deps.inline = ['@my-scope/*', 'some-esm-lib']`. That helped for us.
+ashley: note: `transformIgnorePatterns` is CJS style, with ESM runners you want to inline deps instead.
+qa-bot: @maria opened issue #1287: CI flakes with ESM modules in jest/vitest matrix. Link: https://git.internal/rdw/issues/1287
+maria: thanks — I added the link in the PR. Another wrinkle: TypeScript `tsconfig.json` has `module: \"ESNext\"` and `moduleResolution: \"node16\"`. Locally tsc resolves fine, but test runner resolution differs.
+sam: for vitest, `node16` resolution can require `--conditions node` or setting `resolve.alias` in vite config. Also ensure `package.json` exports field doesn't block CJS access.
+kevin: quick checklist I used:
+- For Jest: enable `transform` for the ESM packages, set `testEnvironment: 'node'`, add `extensionsToTreatAsEsm: ['.ts']` if running in ESM mode.
+- For Vitest: set `test: { deps: { inline: ['@my-scope/*'] }, environment: 'node' }` in vite.config.ts.
+ashley: adding `extensionsToTreatAsEsm` changed behavior drastically for us — some legacy mocks needed switching from `jest.mock()` to `vi.mock()` and updating imports to `import * as foo from 'foo'` instead of `require`.
+maria: is there a recommended minimal change we can do in CI to stabilize while we migrate everything to ESM?
+kevin: simplest temporary fix: pin CI Node to 20 so runner natively supports more ESM behavior and add a small `transform` rule for the handful of packages that are ESM-only. Also add `--show-config` logs for jest/vitest to diagnose.
+sam: we also added a tiny wrapper in CI before tests: `node --input-type=module ./scripts/run-tests.mjs` which sets env and runs the ESM-aware runner; helped our flaky suites.
+ashley: watch out for sourcemap paths in vitest — they can confuse stack traces in CI and hide the real failure.
+infra-bot: CI workflow `edge-tests` retried 1/3 — currently blocked on jest ESM failures. See run: https://ci.internal/rdw/runs/4523
+maria: ok I'll try: pin node to 20 in CI matrix, add `deps.inline` for vitest for the edge adapter packages, and add `transformIgnorePatterns` tweak for jest. I'll post updates. Thanks all :thumbsup:
+kevin: if you hit more weirdness ping me and I can share our internal repo snippet that normalizes ESM/CJS for both runners.
+maria: posting patch PR now with the CI change and a comment explaining the temporary wiggle.
+qa-bot: automated note: test matrix run scheduled after merge — will report back.

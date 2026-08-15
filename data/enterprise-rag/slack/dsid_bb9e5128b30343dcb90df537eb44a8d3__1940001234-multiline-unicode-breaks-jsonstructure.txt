@@ -1,0 +1,31 @@
+support
+
+alice-support: Heads-up — customer Acme reporting structured (JSON) mode parse failures on multi-line user input with emojis. Model response causes client SyntaxError on parse.
+
+alice-support: Customer pasted API response (raw):
+```json
+{"text":"Line1 \\nLine2 \\ud83d\\ude04"}
+```
+
+acme-dev: Repro steps:
+1) POST /v1/generate
+2) body: {"mode":"json","input":"Hello 👋\nThis is line two"}
+3) set stream=true
+Result: client throws "Unexpected end of JSON input" when assembling chunks.
+
+tom-engineer: My guess: streaming chunk boundaries splitting UTF-16 surrogate pairs or escaped sequences, leaving a dangling backslash or half surrogate (e.g. \ud83d) at end of chunk.
+
+ingrid-ml: Also seen with CRLF inputs. If a chunk ends with a lone backslash ("\\" in the combined string) the concatenated string becomes invalid escape. Two options: force model to emit fully-escaped sequences, or ensure server-side chunk reassembly doesn't cut escapes.
+
+sre-bot: Alert: elevated parse errors for /v1/generate in us-west-2 between 2025-11-03T14:20 and 14:30 UTC — error rate +6%. :chart_with_upwards_trend:
+
+alice-support: Action items:
+- @acme-dev: please upload the raw streaming capture (all chunks) and client assembly code.
+- @tom-engineer: reproduce locally with stream=true and split buffer at different boundaries.
+- @ingrid-ml: run model eval on prompt set with emojis and CRLF to see escape behavior.
+
+acme-dev: Uploaded capture to the ticket: https://redwood.internal/tickets/ACME-778
+
+tom-engineer: Quick workaround for clients: buffer until you see matching top-level braces and then JSON.parse; or set stream=false for now. Also patch: when concatenating, treat lone '\u' sequences at end of buffer as incomplete and wait for next chunk.
+
+alice-support: Thanks — keeping customer updated. will escalate to infra if we see server-side cutoff in chunking.

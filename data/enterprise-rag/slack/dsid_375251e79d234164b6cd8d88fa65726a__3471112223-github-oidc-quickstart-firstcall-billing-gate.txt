@@ -1,0 +1,19 @@
+devex
+
+lee: Heads-up: I ran the docker quickstart with GitHub OIDC and my first /v1/chat call returned 401 then 403 (billing: workspace_unprovisioned) even though the org shows provisioned in the console. Anyone run into OIDC + quickstart?
+
+olga: Are you mounting the token from GH Actions or minting locally? GH OIDC tokens rarely have email.
+
+lee: Mounting from the runner. Logs: ```auth: validated oidc token sub=repo:org/repo:ref:refs/heads/main\ncaller=client.go status=401 msg=\"unauthorized: missing org_claim\"\ncaller=client.go status=403 msg=\"billing: workspace_unprovisioned\"```
+
+ben: Same class of issue as app-only flows. Our provisioning needs an org mapping (email or org claim). For short term add header x-redwood-org with org id.
+
+lee: Confirmed adding header fixes it. Example: curl -H "Authorization: Bearer $TOKEN" -H "x-redwood-org: org_03X9" https://api.redwood.ai/v1/chat
+
+olga: Can we update quickstart to accept REDWOOD_ORG env and set the header in samples? Also SDKs should surface a clearer error than workspace_unprovisioned.
+
+ben: Filed INF-4890 for quickstart env + docs, and INF-4891 for SDK parity on auth/billing errors. Assigning to devex.
+
+devex-bot: quickstart-image v0.8.7 has env support on staging (deployed 2026-03-22T22:00:00Z).
+
+lee: Workaround steps in case anyone else hits this: 1) set REDWOOD_ORG in container / add x-redwood-org, 2) use a user-scoped token for initial testing. After header first-call succeeded for me. :thumbsup:

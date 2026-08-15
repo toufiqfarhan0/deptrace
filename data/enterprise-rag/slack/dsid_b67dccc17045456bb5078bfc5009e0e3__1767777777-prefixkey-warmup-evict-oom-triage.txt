@@ -1,0 +1,60 @@
+eng-runtime
+
+alex: Heads-up — after last night's kernel_selector rollout we're seeing ~18% drop in prefix cache hit-rate on prod-rw and two GPU OOMs. Posting profiling snippets and logs below.
+
+sandeep: Pulled KV metrics for 03:00-06:00. Short-prefix hit-rate dropped from 72% -> 54%. TTL churn doubled and eviction rate spiked. Quick stats: 
+```json
+{
+  "window": "03:00-06:00Z",
+  "prefetch_hit_rate_short_prefix": "0.54",
+  "prefetch_hit_rate_short_prefix_baseline": "0.72",
+  "eviction_rate_per_min": "1900",
+  "eviction_rate_baseline": "950",
+  "gpu_mem_pressure": "+22%"
+}
+```
+
+maria: Looking at the kernel_selector diff — it now canonicalizes tokens for the +quant execution path. That normalization is different from the prefill key we use, so cache keys no longer match. Short example: 
+```
+// old cache key (pre-roll)
+prefix_key: "user:prompt:how_to_install:v1:tokenized:10002_1024"
+// new cache key (post-roll)
+prefix_key: "user:prompt:how_to_install:v1:tokenized:10002|1024"  // uses '|' and normalizes numeric spans
+```
+This subtle separator change plus dropping leading-zero preservation means many entries miss.
+
+jen: I did a quick local A/B: with warmup enabled (2-minute warmup) we recover ~7% of hit-rate. Without warmup there is more churn and more model fallbacks. Also noticed TTL default was lowered from 5m -> 2m in the same deploy (probable config drift). That combination explains both hit-rate drop and higher reloads.
+
+ops-bot: [alert] GPU0 OOM at 2026-03-17T03:24:11Z (eviction failed to free enough contiguous KV slots); fallback policy triggered -> model-fallback to smaller variant for 12s.
+
+bench-bot: Quick bench after rollback-prep: 99p latency +40ms vs baseline, throughput -9%, estimated cost/token +6% due to more frequent model reloads and fewer cache hits.
+
+sandeep: Fragments look like GPU KV fragmentation more than raw memory growth. Eviction churn is creating many small free slots which the allocator can't coalesce quickly because of slab affinity. Short-term mitigations: raise TTL to 10m for short prefixes, disable aggressive slab compacting in allocator, and revert the key-normalization change in kernel_selector.
+
+maria: I can open a revert PR for the normalization behavior and add a compatibility shim to canonicalize to the old format at lookup time. Patch sketch: 
+```diff
+- canonicalize_key(token_seq) -> use '|' sep and drop-leading-zeros
++ canonicalize_key(token_seq) -> use '_' sep and keep original numeric formatting
++ // compatibility: if miss, try legacy_normalize(token_seq) as fallback
+```
+This preserves performance for the +quant path while restoring hits.
+
+jen: I'll run an A/B on canary with TTL bump + warmup enabled (config: ttl_short_prefix=600, warmup=true, allocator.compact=false). Will report back with hit-rate and eviction_rate per 15m.
+
+alex: Plan: 1) rollback kernel_selector change in canary immediately (sandeep to coordinate infra rollback), 2) apply TTL bump + disable compact on canary (jen), 3) maria to send revert PR + compatibility shim, 4) run 2-hour canary window and monitor redwood_kv_hit_rate / eviction_rate / gpu_ooms. If stable, promote.
+
+maria: ack, starting PR now.
+
+sandeep: I'll prepare a safe rollback ticket and chain the infra job. Also adding a temporary alert for eviction_rate > 1200/min.
+
+jen: On it — kicking off canary job, will post metrics link.
+
+alex: thanks team. Postmortem note: this was a cascade: keying change + TTL drift + allocator compacting == hit-rate collapse -> cache misses -> model reloads -> fragmentation -> OOM. Add to the checklist: any kernel-level key-format changes must include cross-checks against live cache key histograms and a compatibility shim.
+
+bench-bot: Prometheus snippet for quick checks: 
+```
+redwood_kv_prefetch_hit_ratio{env="prod"}
+sum(rate(redwood_kv_eviction_events_total[5m])) by (instance)
+```
+
+alex: Action items summarized: [maria] revert PR + compatibility shim, [sandeep] rollback plan + new alert, [jen] run canary with ttl + warmup + no-compact, [ops] keep OOM alerting on. Re-check in 2h. :thumbsup:

@@ -1,0 +1,31 @@
+eng-releases
+
+deploy-bot: CONFIG-ONLY deploy queued for change window 23:00-01:00 UTC. Canary 5% -> will monitor 20m. Changes: routing.policy.weighted_global 0.85 -> 0.74, batching.max_requests 16 -> 12, batching.max_tokens 2048 -> 1536, request.timeout_ms 28000 -> 35000. Diff: https://git.redwood/repo/commit/abc123. Rollback triggers: error_rate increase >0.5% sustained 10m OR p99 latency +200ms vs baseline. Auto-unpin enabled if gateway errors >0.3%. Dashboards: https://console.redwood/boards/config-smoothing (watch token-level and per-tenant p95/p99). Please ack and note any tenant pins.
+
+maria.g: ack — on call watch from 22:50. I'll keep an eye on premium tenants (they were pinned last week). If we see KV cache miss spikes I'll escalate.
+
+samk: quick question — the routing weight change is global, right? Could that steer more load to cheaper variants and harm quality for some PLG cohorts?
+
+deploy-bot: routing change is global but model-variant pins take precedence. Premium tenants pinned to variant v2 are unaffected. This shift mainly nudges unpinned PLG traffic toward the slim variant; we expect ~3-5% latency drop and small quality delta for tail queries.
+
+oliver: KV cache pressure — any warmup plan for the smaller batch sizes? dropping max_tokens may increase kvcache churn.
+
+qa-bot: small monitoring snippet (run locally to check cache hitrate):
+```
+curl -H "Authorization: Bearer $MON" https://metrics.internal/api/query?metric=kvcache_hit_rate | jq .value
+```
+Expect hit_rate > 0.92 pre-change.
+
+oncall-amber: I'll be on standby in #eng-oncall. If deploy-bot posts a rollback recommendation ping me and I'll approve if the automated checks fire. Manual rollback threshold: sustained error_rate >0.4% for 5m and ops consensus.
+
+maria.g: noted. Also adding a note to release notes: "Config-only: routing weight smoothing, smaller batches, longer request timeout — aimed at tail latency smoothing and cost stability." I'll paste the release blurb in the doc.
+
+samk: :eyes: will watch quality evals (prompt set A/B) during canary.
+
+deploy-bot: Canary started at 23:05 UTC — 5% traffic. Initial 5m checks: error_rate 0.02%, p99 +15ms, kvcache_hit_rate 0.93. Continuing to monitor for 20m.
+
+deploy-bot: Canary stable at 15m. Promoting to 25% at 23:30 UTC.
+
+maria.g: :thumbsup: thanks everyone. If anything odd appears revert plan: unpin global routing, revert batching.max_requests, and re-run warmup job. I'll update the incident checklist and release notes.
+
+oncall-amber: I'll stay until 00:30 UTC and handoff to normal oncall after that unless we see alerts.

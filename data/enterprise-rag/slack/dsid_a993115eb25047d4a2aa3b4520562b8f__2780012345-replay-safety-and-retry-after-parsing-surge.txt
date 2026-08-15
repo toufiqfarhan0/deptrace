@@ -1,0 +1,35 @@
+devex
+
+tara: Flagging a small but consistent problem after last night's SDK roll: our webhook sample sends duplicate payloads when receivers return 429. Not huge (~0.4% in staging) but reproducible.
+build-bot: deploy: python-sdk@2.7.0 promoted to staging (2026-03-26T04:10:12Z) :package:
+omar: Can you paste an example trace? key thing: does the server return `Retry-After` as seconds or a date string?
+tara: Sanitized trace pasted below:
+```
+POST /hooks -> 429
+Response: Retry-After: Mon, 26 Mar 2026 04:12:00 GMT
+Client retried immediately -> 200 (duplicate delivered)
+```
+dina: Looks like the SDK's change to the retry middleware used `int.Parse(retryAfter)` and threw on date format, which caused the middleware to fall back to immediate retry.
+omar: Oof. Two orthogonal fixes: 1) Make all SDKs accept both delta-seconds and HTTP-date (RFC7231) for `Retry-After`. 2) Add idempotency tokens on outgoing webhooks (`X-Redwood-Idempotency`) so receivers can dedupe if needed.
+henry: For safety, let's add a small feature flag `sdk_honor_retry_after` default true, and a runtime toggle for `attach_idempotency_header` default enabled. That lets us rollback fast if something else regresses.
+dina: I'll open the Go + Python PRs with parsing tests: unit tests for numeric RA and RFC1123 date RA, plus an integration test that returns an HTTP-date and asserts the client waits.
+omar: CI: add a sample-app rule that fails if outgoing webhook code paths do not either attach an idempotency header or explicitly opt-out. That should catch new samples.
+ tara: Telemetry: emit `webhook_duplicate_detected` when we observe the same payload delivered twice within a short window. We can feed that to an alert on >0.1% for staging/prod.
+henry: I'll add the metric and a tiny dashboard. Also add a staging smoke job that simulates 429s with both numeric and date RAs.
+dina: Proposed pseudo for parsing (Go-like):
+```
+ra := resp.Header.Get("Retry-After")
+if secs, err := strconv.Atoi(ra); err == nil {
+  wait = time.Duration(secs) * time.Second
+} else if t, err := http.ParseTime(ra); err == nil {
+  wait = time.Until(t)
+} else {
+  wait = defaultBackoff
+}
+wait = clamp(wait, 0, maxBackoff)
+wait += jitter()
+```
+omar: Small doc change in devex onboarding: recommend always attaching idempotency header on callbacks and document the Retry-After parsing contract.
+tara: Assigning: dina -> SDK PRs + tests, omar -> CI lint + docs, henry -> telemetry + staging smoke, tara -> release note and customer migration checklist. ETA: PRs today, staging validation tomorrow.
+henry: Will also add a short migration note for customers self-hosting old SDKs so they know to upgrade.
+tara: Thanks team. Keep this thread updated. :thumbsup:

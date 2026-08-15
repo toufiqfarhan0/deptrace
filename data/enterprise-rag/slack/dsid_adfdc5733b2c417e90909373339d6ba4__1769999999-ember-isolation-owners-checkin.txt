@@ -1,0 +1,27 @@
+incidents
+
+Maya (eng-sre): Follow-up from Ember on-prem postmortem — compacting action owners and short timelines. I will track daily until handoff next Mon.
+
+Maya (eng-sre): Quick actions:
+- Ibrahim: fix peering route propagation ordering + add 10s reconcile backoff (owner) — target: Thu EOD
+- Carmen: rollback playbook + canary harness (owner) — target: Wed 11:00 PT
+- Diego: peer-health probe + route-stale alerting (owner) — target: next sprint kickoff
+- Renee: customer note + provision mirrored tenant for canary (owner) — target: Tue afternoon
+
+Ibrahim (eng-platform): Taking peering fix. Will gather BGP withdraw/announce logs and open PR.
+
+Carmen (eng-runtime): Need ephemeral mirrored tenant token. Renee — can you grant 48h? Will build smoke + KV prime checks.
+
+Renee (prodops): Token provisioned: ember-mirror-48h, TTL 48h. Sync with customer scheduled Tue 15:00 PST.
+
+Diego (infra): Probe plan: 2m cadence, alert on 3 failures, detect route churn. Start with pager-only; auto-failover considered after sustained 15m anomalies.
+
+triage-bot: Created issue #5222 "ember-onprem-peering-propagation" and linked to postmortem. Assignee: Ibrahim. Due: 2024-06-17.
+
+Maya (eng-sre): Recurring patterns added to the board: (1) BGP flaps during high-write windows -> transient isolation; (2) route reconciliation races on on-prem re-advertise. Please post one-liner updates here.
+
+Ibrahim (eng-platform): PR opened https://github.com/redwood/infra/pull/815 (WIP). Adding Carmen for review.
+
+Carmen (eng-runtime): Canary infra provisioned, smoke 4/4 green. Starting small load step.
+
+Maya (eng-sre): Daily close: Ibrahim PR -> WIP; Carmen canary -> green; Diego probe -> staging; Renee comms -> scheduled. Next check-in Fri 10:00 PT.

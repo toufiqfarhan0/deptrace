@@ -1,0 +1,55 @@
+eng-platform
+
+Anita: Heads-up — PrismLink just escalated to P1. They saw repeated 503s on our hosted inference endpoints for ~20m. Customer-facing error spike and they want an ETA for a stable workaround. pinging owners /cc @Mike @Omar @Jess
+
+Mike: Seen the graph. CPU/gpu looks ok but tail qps spike + request queuing. I’m +1 to short-term circuit: route PrismLink to their dedicated pool if we can. Need confirm from infra.
+
+Jess: Customer has compliance constraints so we can only move them within their dedicated cluster (they already have a reserved pool but we haven't routed there automatically). I can ask account if immediate pool switch is allowed.
+
+Omar: I can run a quick probe and open a routing ACL if account approves. Quick checklist: is the dedicated pool warmed with the model variant? If not, coldstart could be worse.
+
+Lina: Model variant on dedicated is v1.2-q8 with quantization; latency profile is slightly higher but capacity should absorb. We need to verify KV cache state — if we flip traffic they'll see initial p99 spikes for ~30s.
+
+Anita: Ok, so immediate path: 1) Ask PrismLink if they allow routing to their dedicated pool (Jess) 2) If yes, Omar to execute routing + healthcheck 3) Lina to run warmup script to pre-populate KV cache 4) Mike to monitor and be ready to rollback routing. Can we get slas on timing?
+
+Jess: Reached out — customer approved dedicated pool switch for next 10m. Confirmed they accept short tail latency.
+
+Omar: Starting routing change now. Command I'm running:```sh
+./routerctl route --customer prismlink --to dedicated-pool-prismlink --dry-run && ./routerctl route --customer prismlink --to dedicated-pool-prismlink --apply
+```Will post logs.
+
+deploy-bot: routing request submitted by Omar at 4444440450. Change id: r-20260318-77. Preflight OK.
+
+Omar: Apply done. health check: 200/200 on /health for all endpoints. Running warmup (Lina please run your script).
+
+Lina: Warmup triggered: ```python
+# warmup snippet
+for i in range(50):
+  curl -s -X POST https://dedicated-prismlink/infer -d '{"prompt":"warmup"}' >/dev/null
+```Starting now. ETA ~40s.
+
+Mike: Observability: I see request rate shift. p50 stable, p95 dipping but p99 spikes at ~1.2s for ~30s. No new 503s in the last 3m. Logs show prior failures were a queuing fallback hitting the generic pool.
+
+Anita: Great. Next: we need a short postmortem + permanent plan. Action items:
+- Omar: confirm r-20260318-77 is tagged to the incident and leave rollback window open until EOD (owner)
+- Lina: add warmup to routing playbook + exact commands (ETA 2h)
+- Mike: tune autoscale policy for this customer on dedicated pool (lower scale threshold) (ETA 4h)
+- Jess: update customer with status and proposed timeline for root cause follow-up (ETA 30m)
+
+Jess: Will send the customer a summary and next steps in 10m.
+
+Omar: Logged the change and left the rollback flag set. If we see errors > 5% on 503 in next 15m I'll revert and notify.
+
+Lina: I already filed a small PR to add KV warmup and a note about coldstart p99 into the runbook: https://git.redwood/repo/pr/582. Marking ETA 1.5h for merge + roll.
+
+Mike: Also recommending a short-term rate-limiter change for their route to avoid queue saturation if a client retries aggressively. I'll open a CR.
+
+Anita: Thanks all. We'll treat this as a critical customer escalation follow-up. I'll own coordinating the postmortem doc. For traceability: incident id INF-2026-0318-01. Last check: no 503s for 6m. Can we reconvene async with final RCA by tomorrow EOD? :thumbsup:
+
+Jess: Yup. Sending customer note now.
+
+Omar: monitoring alert configured to ping eng-oncall if 503 > 0.5% for 5m.
+
+deploy-bot: alert rule created (rule-id a-773).
+
+Anita: Closing thread for now — will post PM notes and assign follow-ups in the incident doc. Thanks team. :white_check_mark:

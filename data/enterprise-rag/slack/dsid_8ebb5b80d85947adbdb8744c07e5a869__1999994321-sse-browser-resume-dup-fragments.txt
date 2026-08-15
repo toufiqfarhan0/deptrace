@@ -1,0 +1,42 @@
+devex
+
+eve_h: Observed a streaming glitch in the browser sample: after an auth refresh the UI shows duplicated partial tokens in the middle of output.
+
+eve_h: Repro steps (flaky): start gen -> trigger auth refresh (short disconnect) -> reconnect with resume token -> UI shows fragment duplication + wrong order.
+
+breno: Which resume mechanism? Last-Event-ID or resume param? Browser uses Last-Event-ID by default.
+
+eve_h: Last-Event-ID in this case. Wire snippet:
+```
+: ping
+event: message
+id: 402
+data: {"seq":402,"part":1,"text":"Good m"}
+
+connection: reset
+
+: ping
+: ping
+event: message
+id: 403
+data: {"seq":403,"part":1,"text":"orning"}
+event: message
+id: 402
+data: {"seq":402,"part":2,"text":"orning"}
+```
+
+breno: Oof. So the resumed part (402 part 2) arrives after a newer seq 403 started. Browser SDK currently appends chunks as they arrive.
+
+lina: Short fix: buffer by (id, part) and apply ordering before rendering. That avoids UI flicker.
+
+ops-robot: created ticket STREAM-BROWSER-21 for runtime/proxy investigation.
+
+breno: Long term: runtime should honor resume window semantics and not interleave replayed fragments with newly generated fragments. Add explicit headers X-Chunk-Seq + X-Chunk-Part so clients can reorder deterministically across transports.
+
+eve_h: I'll open a tiny PR to the browser-sampleapp that buffers and reorders on resume, plus an integration test emulating a flappy auth refresh.
+
+ci-bot: deploy: sampleapp/browser/1.3.1 -> canary at 2026-03-22T11:24:00Z by eve_h :rocket:
+
+lina: Thanks. We'll coordinate runtime change in PROXY backlog.
+
+eve_h: PR link when ready. Will follow up with canary results.

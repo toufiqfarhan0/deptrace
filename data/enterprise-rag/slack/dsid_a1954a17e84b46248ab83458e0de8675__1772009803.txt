@@ -1,0 +1,63 @@
+eng-platform
+
+Dev Patel: hey folks — last gap before we publish the escalation playbook refresh: can you confirm Platform ownership boundaries + who Support should page for (1) SSO/login loops, (2) audit log delivery lag, (3) quota / rate-limit header weirdness? trying to avoid the “page 5 teams” pattern. also need backup contacts for after-hours.
+
+Priya Natarajan: yep, let’s lock this down. high level: if it’s *control plane / auth / console / entitlements* it’s Platform first. if it’s *service degradation (latency/error spikes)* it’s SRE/#incidents first (we’ll pull Platform as needed).
+
+Rachel Kim: +1. for enterprise comms we also need a single “owner team” for each category so updates don’t bounce.
+
+Ethan Park: for SSO/login loop:
+- Owner: Platform Control Plane
+- Support page: **PagerDuty: platform-oncall (primary)**
+- Backup: platform-oncall (secondary) (same PD service, just escalate policy)
+What to include: customer org slug, IdP type (Okta/AAD), `samlRequestId` if present, browser + console URL, and whether it’s all users vs subset.
+
+Naomi Feldman: reminder for SSO tickets: don’t ask customers to send raw SAML assertions over email/Slack. metadata + timestamps ok; if we need assertions, use the secure upload path.
+
+Dev Patel: perfect. we’ll add that to intake checklist + macro.
+
+Mina Haddad: audit logs:
+- Owner: Platform Data Services (Audit Log Pipeline)
+- Support page: **platform-oncall** if it’s “no logs / lag” for a specific tenant; we’ll loop in SRE if it looks like backlog across regions.
+- Escalate directly to #incidents if: multiple enterprise tenants impacted OR lag > 30m with increasing trend.
+Info to include: org id, region, destination (S3/Splunk/etc), approximate event time range missing, and whether API reads are also delayed vs just delivery.
+
+Priya Natarajan: + to be explicit: if it’s a general infra issue (Kafka/queue backing up, DB saturation) SRE will run the incident, Platform Data will be secondary.
+
+Benji Okafor: for the playbook contacts section: can we list a named “Audit Log Pipeline DRI” or keep it to PD + channel? names drift.
+
+Priya Natarajan: keep the canonical page targets + channels. we can add DRIs in the internal-only appendix, but playbook should be stable.
+
+Dev Patel: makes sense. (we’ll keep names in the restricted page)
+
+Dev Patel: quota + rate limit headers is the messy one — Support keeps getting “429 but customer says they’re under quota” and “headers inconsistent across endpoints.” who owns first look?
+
+Ethan Park: first look = Platform Entitlements (part of Control Plane). specifically:
+- Owner: Platform Control Plane / Entitlements
+- Support page: **platform-oncall**
+Support should attach: response headers (`x-ratelimit-*`), org id, endpoint, SDK version, and 3-5 request IDs spanning the issue.
+If it’s clearly tied to a runtime deploy / region errors, then route via SRE/#incidents.
+
+Mina Haddad: and if Support suspects fallback routing is involved (pinned model vs what customer sees), tag Routing as secondary. but don’t treat that as quota by default.
+
+Priya Natarajan: +1. we’ll add a line in the playbook:
+- “Quota enforcement / headers / entitlements” => Platform
+- “Model fallback / routing policy / pinning confusion” => Routing (Platform can help triage, but Routing owns)
+
+Rachel Kim: can we add a crisp “don’t promise” note? we’ve had customers interpret “we’ll raise your quota” as guaranteed.
+
+Priya Natarajan: yes. language: “We can review limits and recommend next steps; quota changes require approval per tier/contract.”
+
+Dev Patel: got it. I’ll update Confluence escalation contacts section with:
+- SSO/login loop -> Platform Control Plane (PD: platform-oncall)
+- Audit log lag -> Platform Data Services (PD: platform-oncall; SRE if multi-tenant/backlog)
+- 429/quota/header mismatch -> Platform Entitlements (PD: platform-oncall)
+- Fallback/pinning confusion -> Routing (secondary) + include routing metrics link
+
+Benji Okafor: also add the Slack channel for non-page questions: `#eng-platform` and for audit logs `#eng-platform` is fine (we’ll triage + redirect internally).
+
+Naomi Feldman: pls also add the “sensitive data” callout to the playbook page (SSO + audit logs). happy to review the final wording.
+
+Dev Patel: will do. thanks all — I’ll ping once the page is updated for a quick :thumbsup: sign-off.
+
+Priya Natarajan: :thumbsup: once you paste the exact bullets here, we’ll confirm it matches on-call reality.

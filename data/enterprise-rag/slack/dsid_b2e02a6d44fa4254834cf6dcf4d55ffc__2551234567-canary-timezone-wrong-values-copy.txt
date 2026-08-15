@@ -1,0 +1,24 @@
+eng-releases
+
+maya: Heads up — deploy-bot just kicked the eu-west canary at 01:00 UTC but our change window was entered as 01:00 LOCAL (CEST). looks like the scheduler used the local TZ value from the chart values copy.
+adrian: Wait, which chart was deployed? we thought we pinned to 4.2.1 for the canary.
+maya: It deployed chart=redwood-api:4.3.0 with values copied from staging (overrides: staging.features.experiment=true). i only noticed because the metrics dashboard showed the new endpoint latency spike.
+deploy-bot: INFO: canary-job 2026-03-20T01:00Z started -> canary-id=canary-2551234567, chart=redwood-api:4.3.0, replicas=2, traffic-shift=10pct
+ryan: Ugh timezone drift + wrong values. two separate problems. Suggest we cancel the canary and pin to 4.2.1 then reschedule into the proper change window (03:00 UTC).
+sre-oncall: If we cancel mid-shift we might leave partial traffic split. what's the current traffic percent?
+deploy-bot: STATUS: canary-id=canary-2551234567 traffic=10% progress=2/2 pods healthy.
+adrian: Can we abort and immediately run a canary rollback to baseline (4.2.1) with a short abort window?
+ryan: Commands: ```deploy-bot cancel canary-2551234567 --reason \"tz-mismatch + wrong values\"``` then ```helm upgrade --install redwood-api redwood/redwood-api --namespace prod --version 4.2.1 --values values/prod-pinned.yaml --set forceRollout=true```
+maya: Doing the cancel now. @deploy-bot cancel please.
+deploy-bot: ACK: cancel request queued.
+(30s later)
+deploy-bot: NOTICE: canary-id=canary-2551234567 cancelled by maya. reason=\"tz-mismatch + wrong values\". rollback-suggestion=manual-pin
+adrian: Thanks. I'll open a quick PR to pin chart version in release branch and update release notes: \"Pin redwood-api to 4.2.1 for scheduled rollout; revert accidental 4.3.0 staging values copy.\"
+sre-oncall: Once pinned, let's run a controlled rollout with traffic-shift=5% and 15m steps to be safe. Also add a short preflight that checks that values.source != "staging".
+ryan: Agree. Also adding a deploy-bot pre-check to validate TZ fields: ```if values.release.window_tz != \"UTC\": warn()``` — we should default to UTC for scheduled releases.
+maya: Action items: 1) adrian PR to pin chart + release notes; 2) infra to add values preflight check (ryan); 3) reschedule canary to 03:00 UTC after PR merges (maya).
+adrian: PR opened -> https://git.internal/redwood/release/PR-482 (notes in description).
+maya: OK will re-run the canary after the PR is merged and we'll monitor latency + errors. thanks folks :thumbsup:
+ryan: Also logging for postmortem: include exact pod logs from canary-2551234567 and diff of values/prod.yaml vs values/staging.yaml.
+sre-oncall: I'll keep the rollback playbook on standby. if we see error-rate>1% during re-run -> immediate rollforward to pinned 4.2.1.
+maya: closing the thread once PR merged and canary rescheduled.

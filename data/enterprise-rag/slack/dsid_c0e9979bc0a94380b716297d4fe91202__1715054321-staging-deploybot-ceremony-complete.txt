@@ -1,0 +1,29 @@
+eng-releases
+
+deploy-bot: Deploy started to staging (env: staging-us-west-2) — tag: release-3.4.1, commit: `9b7c2a`.
+
+maria (release-manager): Thanks. Rolling canary to 10% now. Monitoring smoke.
+
+tom: tailing logs — runtime pods are coming up clean.
+
+kai: perf dashboards look steady, p50 ~ 80ms across canary.
+
+sre-bot: Incident watch update: no active alerts, health checks passing.
+
+maria (release-manager): Can we pin the reranker to `v2.1-quant` for this wave? Need predictable latency.
+
+tom: done — pinned reranker in overlay and pushed to repo (`kustomize/overlays/staging/reranker.yaml`).
+
+deploy-bot: Deploy finished to staging — SUCCESS. Completed in 00:12:18. 24 instances updated. Canary traffic: 10%.
+
+maria (release-manager): Leave at 10% for 30m, then increase if no regressions. I'll attach release notes to RDW-1423.
+
+kai: running a quick eval on the standard prompt set now.
+
+sre-bot: Autocheck summary: health=pass, cpu<70%, mem<65%, errors=0.
+
+maria (release-manager): If anything flares, @oncall please escalate. Otherwise let's plan prod change window for tomorrow 09:00 UTC.
+
+tom: ack :thumbsup:
+
+deploy-bot: Details: https://deploys.redwood/internal/1715054321

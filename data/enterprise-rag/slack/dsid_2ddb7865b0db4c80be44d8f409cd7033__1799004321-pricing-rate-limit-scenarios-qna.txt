@@ -1,0 +1,37 @@
+all-hands
+
+carol: Thanks everyone — quick follow-up from today’s all-hands on pricing/packaging. Filing a thread for specific questions about rate limits, quotas, and credits so leadership can answer cleanly. Drop short Qs and we’ll reply. :wave:
+
+tara: Two quick ones — 1) If we hit a rate limit, do we return 429 + retry-after? 2) Are rate limits per-project or per-API-key? :thinking:
+
+matt (Product): Good Qs. Yes, current behavior is 429 + Retry-After header. Limits are per-API-key by default; tenants on Dedicated can opt for project-level policing. We’ll document exact headers this week.
+
+sam (CEO): To add — we’ll offer config overrides for enterprise customers (e.g., per-route limits) as part of Dedicated/Private packages.
+
+alex (Finance): On credits: self-serve credits expire 90 days after issuance by default. Annual enterprise credits are handled per contract (rollover negotiable). If somebody needs an exception, contact Customer Success and we’ll handle case-by-case.
+
+jin (Eng): Small note on enforcement: burst windows are token-bucket based to avoid noisy spikes. Typical config we use in infra: ```burst_capacity=100; refill_rate=10/sec; sustained_rate=10/sec``` — that’s an example, not final numbers.
+
+tara: Thanks, helpful. Follow-up — how does billing look if request falls back to a cheaper model due to capacity (routing/fallback)? Will customers still be charged at original model rate?
+
+matt (Product): Good nuance. Short answer: customers are charged based on the model that actually served the request. If you request Redwood-XL and we fall back to Redwood-Lite, you are billed at Redwood-Lite price. We surface the fallback event in the response metadata so apps can track it.
+
+carol: Quick ask from support: can we get a sample event payload for fallback events for docs and telemetry?
+
+jin (Eng): Yep — example event we’ll add to docs: ```{"event":"fallback","from_model":"redwood-xl","to_model":"redwood-lite","reason":"capacity","timestamp":"..."}```. We’ll make it machine-readable and include trace id.
+
+tara: Another user question — are rate limits relaxed for retries from webhooks or background jobs?
+
+sam (CEO): We treat all traffic equally by default to keep fairness; customers can request special considerations (e.g., higher sustained quotas) via Dedicated commitments or enterprise support agreements.
+
+alex (Finance): Also flag on credits + partial refunds: we don’t refund consumed credits, but we will provide retroactive credit in cases of major outages where SLA was missed — governed by contract.
+
+matt (Product): We’ll publish a one-pager with: rate-limit semantics, sample headers, quota window lengths, credit expiry rules, and fallback billing behavior. Expect this in the docs repo by EOD Friday.
+
+ops-bot: Meeting notes link added: https://redwood.company/docs/all-hands/2026-03-23-pricing-faq — pinned. :pushpin:
+
+tara: Thanks — last small ask: can we include example CLI/SDK responses showing the Retry-After header and fallback metadata? Micro copy helps support.
+
+jin (Eng): On it. I’ll add examples for Node/Python responses and a small cURL snippet.
+
+carol: Perfect. If anyone else has short Qs, drop them here today so we can batch answers for the doc. :thumbsup:

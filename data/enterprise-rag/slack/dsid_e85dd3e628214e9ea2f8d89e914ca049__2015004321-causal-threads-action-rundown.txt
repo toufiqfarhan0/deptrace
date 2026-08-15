@@ -1,0 +1,61 @@
+incidents
+
+maria: Quick heads-up — I'm pulling together causal threads across the last 6 months to propose a focused remediation sprint. Wanted to surface the top recurring signals and ask for owners + short timelines. TL;DR coming below.
+
+devon: SGTM. do you have the query you ran?
+
+maria: pasted the query I used to group by downstream service + error signature:
+```sql
+SELECT service, signature_hash, count(*) AS hits
+FROM incidents
+WHERE created_at >= now() - interval '180 days'
+GROUP BY 1,2
+ORDER BY hits DESC
+LIMIT 50;
+```
+results filtered out noisy auto-restarts and infra-only alerts.
+
+lee: nice. are we excluding known flaky_pools? last sprint fixed two but i still see noise from pool42.
+
+maria: yes excluded flaky_pools tag; pool42 still shows up in the top 10 but at lower severity.
+
+jon: quick ask: can we map signatures to postmortems and their open action items? that's the only way to avoid duplicating work.
+
+maria: already cross-referenced. here's the condensed list I want to propose for a 3-week remediation sprint (owner — short plan — ETA):
+1) tokenizer OOM during long-context generation — devon — add streaming chunking + KV memory cap + test harness — 2w
+2) node warmup deadlock on autoscale — lee — implement async warmup + metric guardrail + canary — 3w
+3) cache eviction race for prefix cache — heather — strong TTL + eviction audit + sim test — 2w
+4) model-variant fallback misroute under load — jon — routing policy fix + fallback unit tests — 1.5w
+5) monitoring gap: request->model latency attribution missing — devon — trace headers + dashboard — 1w
+
+heather: I can take #3. will add a short RFC and schedule a pairing session.
+
+devon: taking #1 and #5. for #1 I want to add a stress test in prod-like infra; might need extra GPU time.
+
+lee: #2 works for me but 3w includes canary in dedicated — hope infra can prioritize. I put a jira epic: RED-9876 (remediation/warmup).
+
+ops-bot: Reminder: new remediation board created — https://redwood.internal/boards/remediation-2026. Tickets: RED-9876, RED-9877, RED-9878, RED-9879, RED-9880.
+
+maria: thanks. next steps: owners create short task cards (what/why/acceptance) by EOD Friday, list any infra blockers. I'll synthesize into the sprint backlog and book a 30m kickoff Mon.
+
+jon: can we add an entry to the runbook for 'fallback debugging checklist'? saved us last time.
+
+maria: yes — add as acceptance criteria for #4 and i'll add to runbook repo.
+
+heather: pinging @devops on infra hours for stress test; if we can't get GPUs, propose a scaled sim first.
+
+devon: noted. also flagged a smaller quick-win: limit max_context_tokens for public demo routes to avoid hitting tokenizer path. low-risk patch, can be done in a day.
+
+lee: can we add a recurring 1h monthly signal review to prevent drift? short agenda: new signals, recurring heatmap, open remediation status.
+
+maria: yes — i'll set up a recurring invite and a lightweight template for the agenda.
+
+jon: last ask — let's tag each remediation with a 'recurrence_risk' score (1-5) so product + eng can prioritize.
+
+maria: good idea. owners, please add recurrence_risk to your cards.
+
+heather: added RED-9878 -> recurrence_risk=4.
+
+devon: RED-9877 -> recurrence_risk=5 for tokenizer OOM.
+
+maria: perfect. I'll update the remediation board and share the sprint kickoff invite shortly. Thanks all — short, focused work here will reduce the monthly noise by >40% if we finish these items. :rocket:

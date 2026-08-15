@@ -1,0 +1,53 @@
+sources/slack/eng-ml/1775552468-quant-workload-presets-and-fallback-priorities.json
+
+Anika R: Quick follow-up from the RFC — I sketched a small proposal for workload-class presets + fallback priorities. Wanted to get quick take before I put it in the repo.
+
+Josh L: cool, high level?
+
+Anika R: idea = classify endpoints into workload classes (interactive, batch, embeddings, rerank). Each class gets a default quant profile tier (quality-first, balanced, cost-first). Runtime will only pick lower-tier within same model family unless threshold triggers.
+
+Maria C: +1 to the workload split. question: how do we detect "threshold triggers"? latency, chirps?
+
+Anika R: telemetry-driven. two signals: degscore (quality regression on eval prompt set) and token-error-rate (numeric mismatches for structured output). if degscore > X or token-error-rate delta > Y => immediate fallback to next tier.
+
+Ryan P: need hysteresis. otherwise noise will flip us. propose: require 3 consecutive 5m windows above threshold OR single window with > 5x severity.
+
+Josh L: agree. also add a cooldown after manual rollback (30m?) to avoid flipflop during triage.
+
+Samira K: ops question — if we fallback, what is priority order? we can't always spin up higher-precision for every shard.
+
+Anika R: priority order proposal in code block below. basic idea: prefer same-binary higher-precision profile -> compatible quantized variant on same pod -> remote fallback to higher-tier pool -> last resort: degrade gracefully with partial-pass caching.
+
+```
+# fallback_order pseudo-config
+workload_presets:
+  interactive: balanced
+  batch: cost-first
+fallback_order:
+  - same_model_higher_precision
+  - same_cluster_compatible_variant
+  - remote_dedicated_pool
+  - partial_kv_graceful_degrade
+hysteresis:
+  windows_needed: 3
+  cooldown_minutes: 30
+telemetry_thresholds:
+  degscore: 0.12
+  token_error_rate_delta: 0.02
+```
+
+Maria C: that looks reasonable. for same_cluster_compatible_variant we need to ensure kernel compatibility (FP8 vs INT8) and KV cache format. else we'd pay state migration cost.
+
+Anika R: yes — runtime should check compatibility table (model_id x variant -> kv_compatible boolean). if not compatible, skip to remote_dedicated_pool.
+
+Ryan P: ops-bot: could we get an alert rule prototype that fires when degscore > 0.12 for 3 consecutive windows? I want paged alert only for prod endpoints marked 'customer-facing'.
+
+ops-bot: created alert rule #ML-DEGSCORE-1775 -> triggers on prod, 3x 5m windows, degscore > 0.12. Notification: #eng-ml on-call + pager.
+
+Josh L: one more edgecase: embeddings. numeric drift sometimes small but matters for faiss indexes. We should treat embeddings as quality-first by default and require stricter thresholds.
+
+Samira K: for billing side, cost-first batch jobs should still be able to opt-in to quality-first for A/B tests. add per-endpoint override?
+
+Anika R: yep override allowed via endpoint config: `precision_profile: "force_quality_first"` — but it must be approved for high-cost tenants. We'll add a policy check.
+
+Maria C: can we add a small shadow-sampling job that runs 1% of requests through the higher-precision path and stores diffs? that helps early detection without immediate fallback.

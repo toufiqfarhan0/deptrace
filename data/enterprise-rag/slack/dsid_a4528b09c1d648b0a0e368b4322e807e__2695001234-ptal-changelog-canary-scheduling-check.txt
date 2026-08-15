@@ -1,0 +1,21 @@
+eng
+
+Alex Kim: PTAL on PR #5123 — addressed the review comments from last week. Split the noisy helpers into utils/, added unit tests for scheduler, and updated CHANGELOG.md with the canary behavior. CI passed on linux but the windows integration test flaked once in CI.
+Maya Singh: Thanks Alex — quick q: did you change the default canary window? I need to plan the Dedicated canary tomorrow.
+Alex Kim: nope, default still 24h. I added a new config flag `scheduling.canary_window_hours` and left default=24. See snippet:
+```
+# config.yaml
+scheduling:
+  canary_window_hours: 24
+```
+Jordan Lee: LGTM overall, I left one small nit about renaming `helper.go` to `scheduler_helpers.go` for clarity. Also can you add a 1-sentence summary at the top of the changelog entry?
+Alex Kim: good catches — renamed and added a short blurb.
+Samir Patel: Also, we should make sure the canary schedule is non-overlapping with the Dedicated maintenance window. Can you add a check or a comment in the PR?
+Alex Kim: added a validation in the PR; see the new unit test `TestCanaryNoOverlap`. Pushed.
+CI Bot: PR #5123 — build succeeded (all tests passed) — link: https://ci.redwood.ai/5123/build/89 :white_check_mark:
+Maya Singh: Awesome. Can someone from infra confirm the canary slot for tomorrow at 11am PT? @Jordan ?
+Jordan Lee: I can take that. Planning to reserve 11-12 PT in the calendar and will coordinate rollback plan.
+Alex Kim: thanks — PTAL when you have a sec, mainly the changelog + `scheduler_helpers.go` rename. I'm going to schedule the canary after Jordan confirms infra.
+Maya Singh: PTAL bump. :thumbsup:
+Jordan Lee: Reviewed final diffs — lgtm. Merge after a quiet window (no active canaries).
+Alex Kim: merging now, will watch metrics during canary.

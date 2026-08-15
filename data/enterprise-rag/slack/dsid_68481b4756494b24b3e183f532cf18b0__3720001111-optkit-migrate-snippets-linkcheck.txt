@@ -1,0 +1,46 @@
+docs
+
+claire: quick sync one-line goal: migration doc for Optimize toolkit covering new batch API, KV prefetch recipes, and a compact quant-profile example. Need fast eyes on snippets and links.
+ben: I can review. Prefer tiny copy-paste snippets (py + js) and one YAML q-profile.
+yasmin: I'll draft the KV prefetch examples and a short note about when NOT to prefetch (very short seqs). Also add an observability checklist.
+claire: thanks. Draft batch/auth snippet (to include in docs):
+```py
+# v1 (old)
+client = Client(api_key=os.environ['OLD_KEY'])
+res = client.generate(model='redwood-opt-3b', prompt=p, batch_size=12)
+
+# v2 (new)
+from redwood import RedwoodClient
+rc = RedwoodClient(token=os.environ['REDWOOD_TOKEN'])
+res = rc.text.generate(model='redwood-opt-3b', inputs=[p1,p2], max_tokens=200, batch_hint=8)
+```
+ben: looks good. For the migration note add a tiny table explaining param mapping: batch_size -> batch_hint, api_key -> token.
+yasmin: KV prefetch samples (JS + py):
+JS: `await client.kv.prefetch(keys, {limit: 64, prefer_local: true})`
+Python:```py
+async def prefetch(keys, limit=64):
+    await client.kv.prefetch(keys[:limit])
+```
+yasmin: UX note: "Avoid prefetch for short sequences (<32 tokens); prefer small LRU cache instead."
+claire: quant profile (compact) — yasmin can you propose?
+yasmin: here's a minimal q-profile YAML to drop in snippets/optkit:
+```yaml
+quant_profile:
+  model: redwood-opt-3b
+  dtype: q6_k
+  perf_targets:
+    latency_p95_ms: 150
+    throughput_rps: 30
+  metrics_to_watch:
+    - answer_exact_match
+    - latency_p95_ms
+  fallback: route_to_nonquant
+```
+ben: Good. Add one sentence under the snippet: "Start conservative and iterate using a fixed eval sample set." Also include canary suggestion: 10% for 24h.
+claire: observability checklist to include in doc: emit prefetch_hit_rate, prefetch_queue_depth, model_variant_used per request, and compare answer_exact_match vs baseline.
+docs-bot: docs-snippet-checker: changed files flagged: docs/optimize/migrate-v1-to-v2.md, snippets/optkit/{kv-prefetch.py,kv-prefetch.js,quant-q6k.yaml}. Run `make docs-lint` and `scripts/format-snippets` before opening PR.
+link-bot: link-scan complete: found 2 stale internal links: /optimize/old-quant -> 404, /guides/kv-prefetch-old -> 404. Recommend replacing with /optimize/quant-guide and /guides/kv-prefetch. Report: /tmp/link-scan-3720001111.log
+claire: I'll patch links, add snippets under snippets/optkit, run linters, and open a draft PR this afternoon. Will ping here for reviews.
+ben: happy to review the PR (focus on param mapping and rollout wording).
+yasmin: I'll validate the q6_k profile against the profile test harness and post results here.
+claire: thanks all :rocket:

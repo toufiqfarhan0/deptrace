@@ -1,0 +1,51 @@
+docs
+
+maria: Quick heads-up—opened PR to add a compact troubleshooting example for 429s that shows progressive fallback (reducing context, switching to a compatible lower-latency model, heuristic backoff). PR: https://github.com/redwood-inference/docs/pull/842
+
+sam: Nice. Can you include SDK snippets for Python+Node? Consumers keep asking for short pasteable bits.
+
+olga: Also add an example where the client trims context proactively before retry. I can paste a snippet:
+
+```python
+def trim_prompt(prompt, max_tokens=2048):
+    # naive: drop oldest messages
+    while tokens(prompt) > max_tokens:
+        prompt = prompt.split('\n', 1)[1]
+    return prompt
+```
+
+sam: For Node we do:
+
+```js
+function trimPrompt(prompt, maxTokens=2048) {
+  while (tokenCount(prompt) > maxTokens) {
+    prompt = prompt.substring(prompt.indexOf('\n') + 1)
+  }
+  return prompt
+}
+```
+
+kai: I ran the playground scenarios locally—observed a 429 pattern under burst load then graceful fallback when switching to a compatible lower-latency model. Works but we should document latency/cost tradeoffs and expected success rates.
+
+docs-bot: CI: docs linting passed ✅, example-snippets/trim.py formatted.
+
+maria: Thanks. Two asks: 1) a short diag or bullet list explaining when to prefer context-trim vs server-side fallback; 2) add a note about rate-limit headers (Retry-After) and using them before retries.
+
+olga: I'll add a 3-line decision table and add header parsing example:
+
+```js
+const retryAfter = parseInt(res.headers['retry-after'] || '0', 10)
+if (retryAfter > 0) {
+  await sleep(retryAfter * 1000)
+}
+```
+
+sam: Minor: avoid using "gpt-lite" name in docs unless it's a verified catalog model — use "compatible lower-latency model" per voice guide.
+
+maria: Good catch. I'll update wording. Can someone quick-review PR #842? Would like to merge today if no objections.
+
+kai: LGTM with the naming tweak.
+
+sam: Reviewing now. If I find small style nits I'll push a commit.
+
+maria: thanks all :thumbsup:

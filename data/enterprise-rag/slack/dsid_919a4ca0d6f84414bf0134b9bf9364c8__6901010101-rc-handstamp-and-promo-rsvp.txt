@@ -1,0 +1,49 @@
+eng-releases
+
+alex: Cutting an RC from main for tonight's promo window. Tagging rc/2026-03-21. Build passed on CI, artifacts ready (sha abc1234). Requesting: pin the rc, QA signoff, canary plan, and a promote at 21:00 UTC.
+
+deploy-bot: buildkite:artifact: rc-6901010101 created (sha: abc1234). Pin record created: pin-rc-6901010101.
+
+alex: Quick release-note sketch: 
+- Fix: KV cache warmup to avoid cold requests on startup
+- Perf: batching improvements reduce per-token latency for short prompts
+- Telemetry: add route tag to generation spans
+(Will paste final blurb once approved)
+
+maria: QA ran smoke on staging — all green except an flake in SSO test that I re-ran and passed. LGTM for functionality.
+
+jamie: @sre-oncall can you confirm we’re happy with latency thresholds for canary?
+
+sre-oncall: watching. Proposed canary: 5% for 10m -> 25% for 20m -> 100% if stable. Rollback triggers: p50 latency > 120ms sustained for 2m OR error rate (generation.error) > 0.3% over 5m. KV cache warm job scheduled at t+5m to pre-populate hot shards.
+
+nina: I'll post the release note blurb to the site after promo completes. Also note: docs deploy needs a separate pin (I'll open PR).
+
+alex: Pin request: please approve pin-rc-6901010101 for the 21:00 UTC promo window. If no objections by 20:30 UTC we'll go ahead with schedule.
+
+jamie: approved :thumbsup:
+
+maria: approved :heavy_check_mark:
+
+deploy-bot: deploy-bot: promote job queued: promote --rc rc-6901010101 --to prod --at 2026-03-21T21:00:00Z --pin pin-rc-6901010101
+
+# (21:00 UTC) deploy-bot: promote started: rolling canary to 5%
+
+deploy-bot: canary 5% -> metrics check: error_rate=0.04%, p50=78ms, p95=210ms (within expected). Proceeding to 25%.
+
+deploy-bot: canary 25% -> metrics check: error_rate=0.06%, p50=82ms, p95=215ms. No rollback.
+
+deploy-bot: promotion to 100% completed. All healthy.
+
+nina: Release notes posted: 
+- KV warmup fix reduces cold-start tail latency
+- Batching perf improvements for short prompts
+- Telemetry: route tag on spans
+Thanks all — great job :tada:
+
+alex: Thanks team. I'll follow up with a short postmortem if anything weird pops up.
+
+maria: tagging for visibility: @product @support for the minor behavior changes (telemetry + perf).
+
+sre-oncall: I'll keep the alert thresholds tightened for the next 2 hours and watch dashboards.
+
+alex: closing thread, will mark release notes and release ticket as done.

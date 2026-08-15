@@ -1,0 +1,14 @@
+all-hands
+
+Ruth - Customer Success: Quick sync from today's all-hands Q&A — can everyone drop one line on why we won or lost the highlighted deals so we can prioritize follow-ups?
+Evan - Product: Win: Nimbus chose us for predictable token costs and the streaming API; the console trace + TTL cache clinched it.
+Diego - Sales: Loss: Argent Bank required HSM key escrow and SOC2 Type II evidence; our Dedicated offering was fine but docs/certs missing.
+Hana - Eng: Argent tech note: long transcripts + audit hooks caused both perf spikes and compliance questions. We can prototype an HSM adapter + audit shim.
+Claire - CEO: Action items: 1) sales battlecard for compliance gaps, 2) Dedicated onboarding checklist, 3) short eng runbook for long-sequence customers. Evan, can Product own 1+2?
+Evan - Product: Yes. Will draft battlecard and checklist. Need Eng + Sales SMEs to review. Diego, can you nominate reviewers?
+Diego - Sales: I'll assign Ruth and Priya (AE) to review. Also need a 1-pager risk blurb for RFP attachments.
+Hana - Eng: I'll own the long-sequence runbook. ETA 7 business days. I'll include a prefix-cache snippet and canary rollout steps.
+Ruth - Customer Success: I'll post the list of deals and exact asks by EOD so owners have context.
+Miles - Marketing: I'll make a short "why customers pick Redwood" one-pager for GTM — quick bullets (cost predictability, unified runtime, safe rollouts).
+bot-reminder: Created ticket RW-1623 "All-hands: compliance battleground & long-seq runbook" and assigned to Evan + Hana.
+Claire - CEO: Thanks team. Please keep updates brief in this thread so we can track progress. :thumbsup:

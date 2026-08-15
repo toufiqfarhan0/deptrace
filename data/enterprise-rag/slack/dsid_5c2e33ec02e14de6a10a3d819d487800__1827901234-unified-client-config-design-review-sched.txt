@@ -1,0 +1,32 @@
+eng-platform
+
+alex: Quick sync — we need a design review for the Unified Client Config (API + SDK + Console UX). Prefer next-week window. I've put a short pre-read draft here: https://paper.redwood.internal/unified-client-config (please skim)
+jamie: I can do Tue/Wed afternoon (PST). Prefer 45m so we can iterate on the UX flows.
+sara: Wed 1–3pm PDT works for me. I'll present the API surface and sketch sample requests.
+matt: Thurs morning for me. if we do Wed, can we include QA and Docs owners? @emily @vincent
+emily: I can join Wed 2pm and I'll add Docs checklist. Also please add a brief canary/rollback section.
+vincent: FYI engineering leads: would like a 10-min perf/latency expectations block. added a quick note to the pre-read.
+alex: Thanks — updated the pre-read with a short "rollout+rollback" section and perf bullets.
+
+Pre-read checklist (short):
+- Link to RFC/draft: https://paper.redwood.internal/unified-client-config
+- API surface & example payloads (Sara)
+- SDK ergonomics proposal + code example (Alex)
+- Console mockups (Design)
+- Canary plan + rollback triggers (Matt)
+- Perf targets (p50/p95), cost impact estimate (Vincent)
+- Docs checklist + migration notes (Emily)
+
+Agenda (45m):
+``` 
+0–5m: goals & success criteria
+5–25m: API + SDK walkthrough
+25–35m: Console UX and screenshots
+35–40m: Rollout, canary, perf
+40–45m: Action items & owners
+```
+jamie: I'm +1 for Wed 2pm PT. Can we ask infra to keep a node warm for a quick latency demo? @eng-infra
+alex: Good call — I'll ping infra after we lock time. Also assigning owners in the doc.
+calendar-bot: Created event "Design Review — Unified Client Config" Wed 2026-04-08 14:00 PT (45m) — invites: alex, jamie, sara, matt, emily, vincent
+sara: I'll upload API examples and a short curl snippet to the pre-read by EOD Monday.
+alex: Perfect. If anyone has blockers to that time, shout now otherwise I'll finalize invites and preread reminders tomorrow :thumbsup:

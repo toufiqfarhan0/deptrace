@@ -1,0 +1,24 @@
+devex
+
+taylor: Hey team — quickstart works locally but CI's first call to /v1/chat/completions returns 402 Payment Required. Anyone seen this pattern?
+
+nirav: paste the body (redact keys). 402 != auth, it's billing on the workspace the credential belongs to.
+
+claire: fyi our sample app suggests using a repo SA; make sure that SA is created in the org workspace with billing attached.
+
+taylor: error blob:
+HTTP/1.1 402 Payment Required
+Content-Type: application/json
+{"error":{"code":"workspace.billing_required","message":"Workspace requires billing to use API"}}
+
+nirav: run `rwctl sa get --id <sa-id>` or check Console > Settings > Service accounts to see workspace_id. CI SAs often end up in ephemeral onboarding workspaces.
+
+taylor: confirmed — SA's workspace is w_temp_99. That workspace never had a payment method. Switched CI to an org SA and pipeline passed.
+
+claire: can we add a quick note to quickstart README advising org SA or workspace billing check? This keeps new teams from tripping over it.
+
+nirav: agree. Filing DEVEX-900: "Document service account workspace billing guidance for quickstart" and add a CLI hint to `rwctl` to show workspace id on error.
+
+devex-bot: created DEVEX-900 and linked to quickstart docs PR draft.
+
+taylor: thanks — will open the README PR and mark CI change with rotation notes. :white_check_mark:

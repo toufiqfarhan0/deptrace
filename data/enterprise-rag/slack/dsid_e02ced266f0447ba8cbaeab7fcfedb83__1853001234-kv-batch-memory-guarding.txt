@@ -1,0 +1,57 @@
+eng-runtime
+
+mike: seeing a couple of OOMs on worker-12 this morning, looks correlated with large batches that include long-context requests + heavy KV usage. stack traces point at kv->allocate_map and then a big matmul alloc.
+
+anna: thanks for the ping — do we have a repro? any profile/artifacts?
+
+mike: yes repro attached to the job run: `profile://runs/2026-03-17/worker-12/kvmem-oom`. quick summary: when batch size hits ~10 with avg seq_len 6k and one request with 32k seq, total KV footprint spikes and we exceed the per-gpu KV cap.
+
+sudha: hmm 32k in single request is brutal. Is the batching logic counting KV tokens per request or just output tokens?
+
+mike: current admittance uses token_count = request.context_tokens + expected_completion_tokens. KV reserve is computed post-hoc by summing per-request kv_estimate where kv_estimate ~= context_tokens * kv_ratio (empirically ~0.55 for our models). So it underestimates heavy long-contexts and we end up over-committing when k-v cache allocations happen concurrently.
+
+kevin: another factor: kernel selection picks the large GEMM kernel when max_seq in batch > 8192 which has higher temporary memory usage. So even if kv_estimates are accurate, kernel tmp buffers push us over.
+
+mike: exact — profiling shows two peaks: kv map growth and kernel temporary workspace. They happen sequentially during token generation as the KV cache is materialized then the kernel runs.
+
+anna: proposed heuristics: (1) introduce a soft per-batch KV token budget that accounts for kernel tmp memory headroom, (2) prefer ordering admission by descending short-context-first (SJF-ish) to reduce tail long-seq waiting, (3) split extreme requests (>16k) into streaming/partial-kv mode.
+
+sudha: +1 for soft budgets. Can you sketch the math? what's the headroom factor?
+
+mike: sketch: available_kv_mem = KV_MEM_LIMIT - reserved_system - kernel_tmp_estimate. kernel_tmp_estimate = max_seq_in_batch * kernel_tmp_per_token. soft_kv_tokens_budget = floor(available_kv_mem / avg_kv_bytes_per_token). For admission we require sum(request.kv_tokens) <= soft_kv_tokens_budget * (1 - slack_pct). slack_pct default 0.12.
+
+kevin: we should compute kernel_tmp_per_token per-model and expose in model profile. Already have some numbers in model-catalog: `model_profiles/*.json` can be extended with `kernel_tmp_per_token` and a threshold `kernel_switch_seq`.
+
+mike: yep sample config snippet i ran locally:
+
+```
+batcher:
+  kv_budget_pct: 0.78
+  slack_pct: 0.12
+  per_worker_reserve_mb: 256
+  long_seq_threshold: 16000
+  streaming_mode: true
+  admission_order: "short-first"
+```
+
+anna: curious: what does streaming_mode do here? partial KV materialization?
+
+mike: streaming_mode avoids fully materializing KV for the tail portion and emits partial outputs while keeping an on-disk/pooled representation for older KV pages — higher latency for that request but preserves overall throughput and avoids OOM. prototype uses compressed KV pages + mmap but needs ops review.
+
+sudha: we also need queue-level throttling: enforce a global inflight_kv_tokens cap to prevent many workers being overloaded by simultaneous batches. If each worker has soft budget, multiple workers can still coincide.
+
+kevin: agree. Add a central token-bucket (controller) with refill tied to observed kv_free_mb telemetry. If free drops below threshold, controller starts rejecting new admissions with `retry-after` headers. infra-bot can emit alerts.
+
+infra-bot: detected policy change request: "kv-batch-admission-v2". CI run triggered: `ci://runs/kv-admit/1853001234`.
+
+mike: next steps: 1) add `kernel_tmp_per_token` to model profiles (kevin), 2) implement soft_kv_budget in batcher with slack_pct fallback (sudha + mike), 3) add controller-level inflight cap and retry semantics (anna + infra), 4) dogfood on staging with synthetic long-context workload and collect `kv_free_mb` and `kernel_tmp` histograms.
+
+anna: can we add a small experiment matrix? vary slack_pct in [0.05,0.12,0.2] and long_seq_threshold in [8k,16k,32k], measure OOMs, p99 latency, and cost per token.
+
+mike: yup I'll spin up runs tomorrow. posting the basic repro script here: `scripts/oom_repro.sh --mix 80:20 --max-seq 32k --workers 8` (quick and dirty).
+
+sudha: sounds good. minor ask: log the kernel choice in traces so we can correlate kernel_tmp spikes with specific batches.
+
+kevin: will add an annotation in runtime trace events: `kernel_choice` and `kernel_tmp_bytes`.
+
+mike: thanks all — if we converge on safe defaults we should roll to prod behind feature-flag. I'll create a short RFC with the math + config defaults later today. :pray:

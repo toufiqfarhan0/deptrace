@@ -1,0 +1,78 @@
+eng-security
+
+anita_sec: Heads-up: prepping evidence packaging for the upcoming external pentest. Need signoff on a few operational controls before we hand things over. Quick list: object-lock on evidence bucket, presigned URL TTL limits, ephemeral role window for vendor, and KMS envelope key policy.
+
+pt-coordinator-bot: pentest kickoff scheduled Mon 09:00 PT. Assessment duration ~48h. Vendor requested immutable snapshots + read-only access.
+
+kai_sre: object-lock: strong +1. We should also snapshot runtime caches and app request traces for the 24h lead-up. Proposal: snapshot window = -24h..+24h around kickoff.
+
+anita_sec: agreed. Tom, can infra create the snapshot prefix and set object-lock? Also need retention at least 14 days.
+
+tom_infra: yes. Plan: s3://pt-evidence/176888/ with Object Lock (COMPLIANCE) + retention 2026-04-10. Will tag objects with {purpose: "pt-evidence", run: "176888"}. I'll share presigned GETs with vendor with max TTL 7 days.
+
+sophie_app: Vendor asked about presigned PUTs for logs — we should avoid that. Only GETs for them. If they need additional artifacts, they must request through the evidence channel.
+
+anita_sec: correct, no write access. We'll also publish a short access statement in the runbook: who can decrypt KMS.
+
+pt-coordinator-bot: vendor question: can they verify envelope key material (keywrap) behavior? They want to run decrypt tests.
+
+anita_sec: ACL answer: decrypt allowed only to roles tagged pt-assessor=true and the infra-security principal. No cross-account decrypt. I'll paste the policy excerpt.
+
+anita_sec: policy excerpt:
+```json
+{
+  "Sid": "AllowPtDecrypt",
+  "Effect": "Allow",
+  "Principal": {"AWS": ["arn:aws:iam::123456789012:role/infra-security","arn:aws:iam::123456789012:role/pt-assessor"]},
+  "Action": ["kms:Decrypt","kms:DescribeKey"],
+  "Resource": "*"
+}
+```
+
+kai_sre: note: ensure the PT role is ephemeral and expires at end of window. Use STS AssumeRole with duration_seconds limited to 12h. We should log all AssumeRole calls into the evidence snapshot.
+
+tom_infra: agree. I'll create an ephemeral role template. Sample command to create STS session and fetch creds:
+```bash
+aws sts assume-role --role-arn arn:aws:iam::123456789012:role/pt-assessor --role-session-name pt-176888 --duration-seconds 43200
+```
+
+anita_sec: presigned URL TTLs: vendor asked for artifact access for 7 days. We will generate one-time GET links and rotate them if they request extended access. Documented in runbook.
+
+sophie_app: can we whitelist vendor IPs for read-only access to the evidence bucket? That would reduce blast radius of leaked presigned links.
+
+tom_infra: we can add a bucket policy restricting GETs to vendor IP CIDR 203.0.113.0/24 and our audit principal. Will apply to the prefix only.
+
+kai_sre: logging: include CloudTrail, ALB logs, app-runtime audit, and internal token-exchange traces. Export to /tmp and then bundle. Compression + sha256 checksum included. Example bundle name: snapshot-176888.tgz and checksum file snapshot-176888.tgz.sha256.
+
+anita_sec: important: compute and store checksums both in the object metadata and in a signed manifest stored separately in the evidence bucket with stronger retention. This helps the retest verification.
+
+pt-coordinator-bot: vendor requested retest window Tue-Wed next week. They also want fast-track retest criteria.
+
+anita_sec: draft fast-track criteria:
+- Low: config-only or header missing. Owner verifies fix in staging and SRE validates in production mirror; retest within 48h.
+- Medium: code change requiring canary on Dedicated for 1h smoke then full rollout; retest within 72h.
+- High: architectural/cryptographic break 12 requires design review and formal patch timeline; retest scheduled per engagement.
+
+kai_sre: add one more: "evidence repro step required" 12 if vendor cannot reliably reproduce with provided evidence, escalate to intake owner. That can delay a fast retest.
+
+anita_sec: ownership mapping: intake & verification = security (me); infra/key issues = tom_infra; runtime fixes = kai_sre; app fixes = sophie_app. I'll create a small ownership table in the tracker.
+
+tom_infra: open question: do we pause KMS automatic rotation? If we do, we must ensure no other ops depend on rotation event triggers.
+
+anita_sec: prefer pausing rotation for the primary envelope key for the 72h window (-24..+48). Tom, can you scope impacts?
+
+tom_infra: will check dependents and post a rollback plan. If pause is risky, alternative is snapshot the CMK material usage logs and note exact key version used per object in manifest.
+
+pt-coordinator-bot: action items recap:
+- tom_infra: create object-lock bucket prefix, apply IP-restrict GET policy, pause rotation or confirm alternative, post run commands.
+- kai_sre: collect runtime+trace snapshots, generate checksums, add AssumeRole logs.
+- anita_sec: publish short KMS ACL excerpt, fast-track criteria, and intake owner mapping in tracker.
+- sophie_app: confirm no presigned PUTs and add app-side artifact export instructions.
+
+anita_sec: I'll open the tracker entry and tag owners. Link: https://docs.internal.redwood/pt/176888 (will update after PRs).
+
+sophie_app: quick Q: who runs the retest verification? I assume security will confirm with vendor and then close the ticket?
+
+anita_sec: yes, security verifies evidence + vendor confirmation, then marks remediation as "accepted-for-retest" and assigns to vendor retest slot. Close only after vendor confirms fix.
+
+pt-coordinator-bot: reminder: tabletop dry-run Fri 14:00 PT. Please be available.

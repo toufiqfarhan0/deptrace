@@ -1,0 +1,38 @@
+partnerships
+
+Nadia Park: FYI - CloudPartner asked for a minimal reference they can import into their marketplace CI. Scope: single terraform module (marketplace_shim), tiny example app, arm/x86 notes, optional KMS, and a one-page onboarding runbook. Keep examples <200 LOC.
+Owen Grant: I like a new tiny repo that pins our common refkit modules rather than copying. One module surface simplifies reviews.
+Saira Khan: I will draft variables.tf and a short main.tf today. Vars: name, image, region, arch (arm|x86), enable_kms (bool). Provide a local map for instance types.
+Nadia Park: Partner compliance asked to see an explicit KMS resource example and an audit-log sink placeholder. Make KMS opt-in by default.
+Owen Grant: CI proposal: GitHub Action smoke.yml that runs terraform fmt -> tflint -> terraform init/plan -> terraform apply (auto-approve in ephemeral test workspace) -> run container and curl /health -> terraform destroy. Keep tests bash-based to avoid heavy deps.
+Saira Khan: Draft module snippet: 
+```
+# modules/marketplace_shim/main.tf
+terraform {
+  required_providers {
+    partner = { source = "partnercloud/partner" version = ">= 1.0, < 2.0" }
+  }
+}
+variable "arch" { type = string default = "x86" }
+variable "enable_kms" { type = bool default = false }
+locals { instance_by_arch = { arm = "c7g.small" x86 = "c6i.small" } }
+resource "partner_market_listing" "this" {
+  name = var.name
+  image = var.image
+  instance_type = local.instance_by_arch[var.arch]
+  region = var.region
+}
+resource "partner_kms_key" "optional" {
+  count = var.enable_kms ? 1 : 0
+  purpose = "ENCRYPTION"
+}
+output "listing_id" { value = partner_market_listing.this.id }
+```
+Nadia Park: Great. Add README matrix with supported regions + recommended instance types per arch and a WARNING: avoid GPUs requiring host-level driver installs.
+Owen Grant: Example app: FastAPI with /health and /invoke that returns a fake model_output. Dockerfile uses python:3.11-slim. Keep app ~40 LOC.
+Saira Khan: Docs: add ONBOARDING.md with steps: fork -> pin providers -> run smoke CI -> create release tag -> notify Redwood for verification. Also show example provider pinning and module semver.
+partner-bot: Checklist: https://redwood-internal/partner-checklists/marketplace-onboard (auto-post)
+Nadia Park: Owners: Saira -> initial PR + module, Owen -> module review, Nadia -> docs/compliance. We'll schedule a 30m walkthrough post-PR if partner requests.
+Owen Grant: I'll add .tflint.hcl and commit terraform.lock.hcl. CI will run tflint and terraform fmt -check.
+Saira Khan: Will keep examples tiny and free of heavy libraries. Will post PR link here when ready.
+Nadia Park: Thanks team. Remember LICENSE (Apache-2.0) and CONTRIBUTING.md for partner contributions.

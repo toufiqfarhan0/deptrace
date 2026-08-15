@@ -1,0 +1,18 @@
+random
+
+tori: quick heads-up 00: we quietly crossed 20M monthly requests this morning. small rooftop fika at 3pm? bring your own mug, i'll grab a pesky cucumber cake (yes it's a thing). low-key, 15 mins.
+noah: wow!! massive. count me in. can we livestream a bit for remote folks?
+jamal: streaming from conference room b is fine. ill set a laptop. congrats team 389
+mindy: love the cucumber cake idea. can we also have a few savory bites? i'm voting for mini quiches.
+lee: tiny poll for cake vs cupcakes: react 1 = cake, 2 = cupcakes. remote folks react too.
+cecilia: also, shout-out to infra team for today's autoscaling tweak 44f p95 dropped by 120ms. that helped hit this milestone.
+tori: big applause for infra. ill make sure they get a special slice.
+ops-bot: Facilities note: Roof access granted for up to 20 people. Please complete rooftop use form here: https://intranet/redwood/facilities/rooftop. No open flames.
+joamal: (typo) hmm jamal meant to say "thanks" :)
+jamal: lol noted. also, remote folks: we'll paste a short highlight reel in #announcements after the toast. if you have a 1-line kudos for someone, DM me.
+noah: suggestion: match $300 in gift cards to a local school for celebration. volunteer sign-up?
+mindy: love that. ill coordinate with People Ops.
+lee: can someone snap a few candid pics? cecilia, you free to be photographer?
+cecilia: on it. remote folks, toss gifs in thread if you want to be included in the montage.
+tori: ok roof at 15:00, 15 min max. bring warm layers 301 and your best celebratory noises. thanks all 60a
+ops-bot: Event scheduled: "20M monthly requests mini-fika" at 15:00 on Rooftop. Calendar invites sent.

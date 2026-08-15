@@ -1,0 +1,60 @@
+eng-runtime
+
+marta: Heads-up: I ran a quick prototype for a bucketed block-index for paged-attn. Goal: reduce blocktable fragmentation and make eviction O(1).
+
+owen: Nice. what's the layout? small bullets pls — I skim.
+
+marta: Layout: compact 16-byte header per bucket, fixed block slots per bucket (configurable), separate free-list per bucket. Hash bucket = (seq_id >> slot_shift) % N_BUCKETS.
+
+raj: How does that interact with KV pager? last time we saw cross-bucket evictions cause hot-kv churn.
+
+marta: Good call. I added an LRU ring per bucket + a global aging pass every 10s to avoid hot-item scattering. Eviction is local-first; only if bucket full and all entries aged -> global steal from low-usage buckets.
+
+ciara: Can you paste the alloc path? I want to compare to slab-style we used.
+
+marta: Sure, pseudo: ```
+alloc_slot(seq):
+  b = bucket_for(seq)
+  if b.free_slots > 0: return b.pop_free()
+  if b.find(seq): return replace_existing()
+  if b.age_top() > AGE_THRESH: return b.evict_lru()
+  return global_steal()
+```
+
+owen: Metrics? latency and p99 tokens/sec for fused-attn vs paged?
+
+benchmark-bot: Automated run #421 results:
+- fused-attn (flash-variant A, no paging): throughput 620 tok/s, p99 48ms
+- paged-attn (bucketed-index prototype): throughput 485 tok/s, p99 62ms
+- paged-attn w/ larger bucket (x2 slots): throughput 510 tok/s, p99 60ms
+- baseline paged-attn (current slab): throughput 470 tok/s, p99 66ms
+
+raj: So bucketed wins over slab baseline on throughput and p99 improved. Good. But memory overhead? header count went up?
+
+marta: Header overhead +4% for N_BUCKETS=16384, but net token-cost drops due to fewer refills.
+
+ciara: Any regression with FlashAttention variant B (fused kernels)? We saw weird RT spikes before.
+
+benchmark-bot: FlashA vs FlashB quick: FlashB fused kernel reduced compute by ~8% on long sequences but increased variance (p99 +10ms) when combined with paging due to kernel-launch jitter.
+
+owen: Might be worth a hybrid: bucketed-index + opportunistic per-request prefetech for sequential keys. If we detect steady seq growth, pre-allocate next k slots in same bucket.
+
+marta: I prototyped prefetch k=4: reduces refill rate by ~22% on streaming chat traces. But it increases transient memory by a few MB.
+
+raj: Concern: global_steal may cause cross-bucket thrash under QPS spikes. Can we add rate-limited stealing or a token-bucket gate?
+
+ciara: +1 for rate-limit. Also add a metrics label on evictions: bucket_id and reason (local_evict/global_steal/prefetch-drop).
+
+marta: Will add. Also instrumented allocator to emit: `alloc_attempts`, `local_hits`, `global_steals`, `avg_age` per 10s.
+
+deploy-bot: staging deploy queued for paged-attn/bucketed-index prototype -> build 2026.3.12-rc3.
+
+owen: Let's run longer 24h A/B comparing traffic with canary 5% before wider rollout. Focus on long-tail chats and multi-turn regen tests.
+
+marta: Agreed. I'll push the metrics + prefetch opt with flag `--bucket-prefetch=4` and a rate-limit param `--global-steal-rate=50/s`.
+
+raj: Also add a small synthetic that simulates shard skew to ensure steal heuristics don't overload a single donor.
+
+ciara: Thanks — great progress. If the A/B passes, next step is tuning bucket sizes per model profile (short vs long context).
+
+marta: Yep. I'll drop a follow-up thread with per-model recommendations and initial telem after 24h. :thumbsup:

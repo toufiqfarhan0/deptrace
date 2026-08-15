@@ -1,0 +1,64 @@
+eng-security
+
+Amelia (sec): Heads-up — vendor asked for a 3h retest window for the latest PT findings. Need to lock down RBAC changes, KMS access, and audit log forwarding before we hand back. Prefer Tue Apr 6 22:00-01:00 UTC.
+Omar (SRE): That window works for SRE if we have a clear rollback corridor. Do we want a deploy freeze during the window? :thinking_face:
+Kevin (infra): Yes on freeze. Also we need an ephemeral KMS key for the assessor, not full IAM KMS admin. Suggest: create a kms-enclave role scoped to the test bucket and set a 4-hour TTL.
+Nadia (eng): Agreed. Who owns the RBAC change PR? I can do the limited clusterrolebinding change but need exact subjects.
+Amelia (sec): I’ll produce the list of assessor principals and the minimal perms. We'll do timeboxed role binding: namespace test-pt + annotation expiry.
+Omar (SRE): For audit logs, can audit-bot confirm we can forward the assessor's events to the retest-readonly S3? We need object-level retention for 90 days.
+audit-bot: Audit forwarding pipeline is OK. Please tag events with `pt_run_id` and include `assessor_id` in metadata. Destination bucket: s3://redwood-pt-retests-logs (retention=90d).
+Kevin (infra): For KMS proxy, here's the quick command to create an ephemeral key via the key-operator:
+```
+kubectl apply -f - <<EOF
+apiVersion: keys.redwood/v1
+kind: EphemeralKey
+metadata:
+  name: pt-assessor-2026-04-06
+spec:
+  ttl: 4h
+  allowedServices:
+    - s3
+    - logs
+EOF
+```
+Nadia (eng): Perfect. On RBAC, minimal clusterrolebinding sample:
+```
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pt-assessor-readonly
+subjects:
+- kind: User
+  name: assessor@vendor.com
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io
+```
+Amelia (sec): Thx. Two policy asks: 1) No interactive shell access to prod nodes during window. 2) Any remediation PRs from the assessor go to the pentest-triage board, not direct merges.
+Omar (SRE): Noted. We'll enforce no-shell via temporary sshd denylist and monitor via telemetry.
+Kevin (infra): Who is the single point for rollback if something fails? I nominate Omar (SRE) + runbook.
+Nadia (eng): I'll create the RBAC PR and tag @Amelia for approvals. Expect it by EOD tomorrow.
+Amelia (sec): I'll assemble a concise checklist for the assessor with exact perms, KMS key name, log bucket path, and the rollback steps. Putting in the runbook repo: https://git.internal/runbooks/pt-retest-2026-04-06 (doc will be short).
+Omar (SRE): Can we add a small smoke test after bindings applied? e.g., `kubectl auth can-i get pods --as=assessor@vendor.com -n test-pt`
+Nadia (eng): Yes — will include that in PR description.
+Amelia (sec): Also need to confirm monitoring alerts: create a temporary alert to page on >5% 5xx delta in auth components during the window.
+Omar (SRE): I’ll add a Grafana alert and link it in the runbook.
+Kevin (infra): One more: rotate the kms key name post-window and revoke the assessor principal TTL. We should emit an audit event for the rotation.
+Amelia (sec): Good call. audit-bot — please list the exact event fields we expect for both creation and revocation so we can validate evidence in the post-test packet.
+audit-bot: For key create/revoke events include: `event_type`, `timestamp`, `actor`, `resource_id`, `pt_run_id`, `assessor_id`, `action` (create|revoke), `signature`. Will forward sample JSON schema to the runbook.
+Nadia (eng): I'll add a remediation tracking column in the pentest board called "Awaiting Retest" and wire an automation: when PR labelled `pt-fix-ready` it moves there.
+Amelia (sec): Final items: confirm assessor NDA still valid, get assessor contact for scheduling, and ensure they have read-only access to the issue tracker per policy. I'll ping Legal and the vendor.
+Omar (SRE): Sounds good. I'll prepare the rollback script and make it a one-click job in the oncall console.
+Amelia (sec): Great — summary checklist:
+- RBAC PR (Nadia)
+- Ephemeral KMS key (Kevin)
+- Audit forwarding + schema (audit-bot)
+- Deploy freeze + rollback job (Omar)
+- Runbook + smoke tests (Amelia/Nadia)
+Please react with :thumbsup: if you're owning each bullet.
+Nadia (eng): 👍 (own RBAC)
+Kevin (infra): 👍 (own KMS)
+Omar (SRE): 👍 (own rollback & freeze)
+audit-bot: ✅ schema queued to runbook.
+Amelia (sec): I'll schedule the planning call tomorrow 10:30 PT and ping the assessor. Thanks everyone — will post the runbook link when ready.

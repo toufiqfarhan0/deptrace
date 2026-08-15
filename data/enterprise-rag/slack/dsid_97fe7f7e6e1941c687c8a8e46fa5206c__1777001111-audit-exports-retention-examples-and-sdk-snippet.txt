@@ -1,0 +1,34 @@
+docs
+
+anna: Heads-up: I'm landing a docs PR that adds a small "audit exports" migration guide, a couple of sanitized examples per retention tier, and a Console anchor fix. Draft: https://github.com/redwood-inference/docs/pull/1569
+josh: Nice. Can you paste the examples you're planning to publish so we can check for PII and SOC2-safe phrasing?
+anna: Sure. High-level plan: - One REST curl POST (masked) - One py SDK snippet showing new method name - A short table-style list (inline text) that maps retention tiers to example retention values. Also a short compliance blurb.
+maria: Important: avoid saying "we keep logs for X days" as a blanket SOC2 claim. Use "Retention is configurable per org and data type; default retention for audit events is 90 days unless overridden." Also add a sentence: "Exports contain internal identifiers; raw PII is not included by default."
+anna: Good call. Here's the curl example (sanitized):
+```bash
+curl -X POST "https://api.redwood.ai/v1/audit-exports" \\\
+  -H "Authorization: Bearer <API_KEY>" \\\
+  -H "Content-Type: application/json" \\\
+  -d '{"filter":{"start":"2024-06-01T00:00:00Z","end":"2024-06-30T23:59:59Z","types":["access"]},"destination":{"type":"s3","bucket":"<YOUR_BUCKET>"}}'
+```
+josh: Looks good. Change bucket placeholder to <S3_BUCKET> and add a one-line RBAC note: "Only org admins may start exports." Also add UTC note: "All sample timestamps are UTC (Z)."
+anna: Will do. Python SDK snippet:
+```py
+# old: client.audit.export_logs(start, end)
+# new:
+job = client.audit.start_export(
+  filter={"start": "2024-06-01T00:00:00Z", "end": "2024-06-30T23:59:59Z"},
+  destination={"type": "s3", "bucket": "<S3_BUCKET>"}
+)
+print(job["id"])
+```
+maria: For the py example, prefer dict keys with quotes as you have. Replace print(job["id"]) with a comment noting it returns an export id. And please avoid showing any ARNs or credentials.
+anna: Updated in branch. Retention inline examples I plan to add (one-line each): "short: 30 days (sensitive-logs)", "standard: 90 days (default)", "extended: 365 days (audit-retention)" with a preceding sentence that retention is configurable and auditors should consult the retention page.
+josh: Small wording nit: instead of numeric-only labels use human-friendly text: "Short (30 days) - for ephemeral debug events; Standard (90 days) - default; Extended (365 days) - for regulated workloads."
+maria: Also add a one-liner about auditability: "Retention policy changes are recorded in the audit stream as policy.update events." Link to /docs/compliance/retention.
+compliance-bot: Reminder: public docs must not include real emails, SSNs, IPs, ARNs, or credential examples. Use placeholders or internal ids. Suggested callout text: "Audit logs record security-relevant events and use internal identifiers; exports do not include raw PII by default unless explicitly configured."
+anna: Adding the callout plus the RBAC + UTC notes and linkfix. One more: the Console page anchor we used was /console/audit#exporting but the site anchor is /console/audit#exports  I'll change links and add a tiny redirect note.
+josh: LGTM after those edits. Also add a short migration checklist at top: 1) rename method, 2) add destination object, 3) update placeholders, 4) run PII scan.
+maria: Perfect. Thanks for doing the careful copy-edit for SOC2-safe phrasing.
+anna: Updated and pushed. PR 1569 now includes: sanitized curl + py snippet, RBAC note, UTC note, SOC2-safe callout, retention examples, auditability line, and the anchor/linkfix. Marking resolved for now.
+compliance-bot: Pre-merge: PR 1569 will run link checks and automated PII scan on next push.

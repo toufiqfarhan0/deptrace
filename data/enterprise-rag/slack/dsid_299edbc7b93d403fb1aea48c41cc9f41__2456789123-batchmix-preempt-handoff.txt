@@ -1,0 +1,97 @@
+eng-oncall
+
+incident-bot: :rotating_light: PAGED eng-oncall — p99 tail latency spike detected for continuous-batching path in us-west-2 (alerts: contbatch_p99 > 1500ms). Initial burst started at 2456789100 and persists.
+
+maria.chen: I'm on it. seeing p95 ~ 380ms (normal ~80ms) and p99 ~ 1.9s on streaming endpoints. Correlates with sustained mixed-seqlen traffic 20:1 long:short.
+
+ajay: Confirmed. Dashboard: https://graf.redwood/infr/contbatch/usw2 -> CPU on batcher nodes ~92%, batch sizes drifting to 32 for long sequences. Streaming stalls show stalled recv on kv-cache lookups.
+
+sanjay.r: logs from one affected batcher (node-cc-12):
+```
+I0321 12:45:23 scheduler.cpp:432] picked batch id=987 size=28 seqlens=[1024,14,12,900, ...]
+W0321 12:45:23 kv_cache.cpp:87] kv-cache miss for key=tok128... fallback to fetch
+E0321 12:45:24 streaming_mux.cpp:211] stall detected waiting_for_kv (timeout=250ms)
+```
+
+maria.chen: That kv miss + huge batch size for mixed seqlens is amplifying tail. When long sequences join a batch of mostly shorts, padding + kv warmups blow up p99.
+
+tony.keller: Any recent deploys? infra-bot, were any scheduling or batcher kernel flags changed in the last hour?
+
+infra-bot: deploy-bot: No material deploys to contbatch runtime in the last 2 hours. Autoscaler triggered scale-up earlier but failed to stabilize due to oom on node-cc-14.
+
+ajay: Replayed traces show scheduling favored fill-to-max batching to maximize throughput. Need to reduce max batch window and prefer seqlen-aware scheduling. Quick mitigations: reduce batch_max_size from 64 -> 12 for streaming routes; enable preemptive_shed for > 1024 tokens; route streaming to dedicated streaming-capable pool.
+
+maria.chen: I'm going to apply two live mitigations now: 1) lower batch window to 15ms for streaming route, 2) set batch_max_size=12 for model v1-stream. Doing this via runtime config. If it stabilizes, we keep and then plan longer-term schedule fairness fix.
+
+ajay: +1 for that. Please also patch routing so long-seq requests prefer dedicated kv-warm nodes (kv-hot) to avoid cold misses.
+
+sanjay.r: Executing commands:
+```
+# set streaming route params
+redwoodctl runtime update-route --route streaming.v1 --set batch.window_ms=15 --set batch.max_size=12
+# enable preemptive shedding for long tokens
+redwoodctl runtime update-runtime --set sched.preemptive_shed.token_threshold=1024
+```
+
+maria.chen: Ran both commands. Watching metrics.
+
+(kate.cs has joined the thread)
+kate.cs: saw a support spike — a handful of customers reported partial streams cut mid-message. ticket refs: CS-8921, CS-8923. Customers using long-generation chat. Impact seems limited but visible.
+
+maria.chen: After change: p95 dropped to 160ms, p99 dropped to 720ms in the streaming slice. Errors from streaming stalls reduced by ~70% in the next 2 minutes. Still above baseline but moving in right direction.
+
+ajay: Nice. We should also do a temporary routing fallback: for requests with seq_len > 800, route to q8_compat model variant that runs on dedicated nodes to avoid blocking contbatch core. Suggest rule: if requested_output_tokens + input_tokens > 800 -> route to dedicated-llama-q8-usw2.
+
+maria.chen: Adding that rule now.
+```
+redwoodctl routing add-rule --name longseq-fallback --if "input_tokens + output_tokens > 800" --to dedicated-llama-q8-usw2 --priority 50
+```
+
+infra-bot: routing rule applied.
+
+sanjay.r: Observing KV eviction thrash on node-cc-14. I'll perform targeted kv_evict and bump kv-cache size on hot nodes.
+
+sanjay.r: command:
+```
+redwoodctl node exec node-cc-14 -- /opt/redwood/bin/kvtool evict --pattern "user:*:prompt_kv" --dry-run=false
+redwoodctl node update node-cc-14 --set kv_cache.size=8g
+```
+
+tony.keller: While you're doing that, I'll temporarily bump up dedicated streaming pool by +2 instances to absorb long seq traffic.
+
+maria.chen: Scaling dedicated pool +2.
+
+infra-bot: scaling action accepted, requested +2 instances, target pool dedicated-streaming-usw2. Estimated warmup 45s.
+
+ajay: We should prevent similar regressions: 1) add seqlen-awareness to batching decision (weight long seqs lower), 2) add fast-path for short streaming sequences, 3) introduce an alert that ties p99 to batch-size distribution skew.
+
+maria.chen: Agreed. I'll open a postmortem ticket and work with scheduling owners. For now immediate action summary for next oncall:
+- Mitigations applied: lowered streaming batch window->15ms; batch_max_size=12 for streaming.v1; preemptive_shed threshold=1024; routing fallback longseq->dedicated-llama-q8; kv evict + kv-cache bump; scaled dedicated pool +2.
+- Impact: p95 improved from 380ms->160ms; p99 improved from 1900ms->720ms; streaming stall errors down ~70%; affected customers: CS-8921/8923 (partial streams).
+- Next steps (owners): scheduling team (ajay, sanjay) to implement seqlen-aware scheduler; infra (tony) to stabilize kv-cache sizes; devex to add regression eval for mixed-seqlen workloads.
+
+ajay: I'll take on the seqlen-aware scheduler story. Planning spike to prototype token-weighted scoring in the next sprint.
+
+tony.keller: I'll follow up on kv sizing + autoscaler oom on node-cc-14 — looks like a memory regression on runtime 2.3.7. Will revert node image if needed.
+
+maria.chen: Handing off to ajay for the remainder of the incident. Ajay, you're the responder going forward — next update in 30m or sooner if p99 rises.
+
+ajay: Taking over. Summary for new owner: see above. I'll monitor and escalate to SRE if p99 creeps back past 1200ms.
+
+kate.cs: I'll update CS with the mitigation notes and ETA for a follow-up.
+
+incident-bot: HANDOFF recorded: from maria.chen -> ajay at 2456789435. Priority: Sev-2.
+
+maria.chen: Thanks team. Leaving a short runbook snippet here for the handoff:
+```
+1) If p99 > 1200ms: set batch.window_ms=10 and set preemptive_shed.token_threshold=768
+2) If streaming error rate > 5%: enable fallback routing to dedicated-llama-q8 immediately
+3) If autoscaler OOMs: revert node image to 2.3.6 and drain instances
+4) Postmortem: tag as contbatch-mixed-seqlen and include sample prompt sets
+```
+
+ajay: Got it. I'll post updates in this thread. :thumbsup:
+
+maria.chen: handing off — offline for quick break, reachable on pager for escalations.
+
+(last message) ajay: p99 holding ~700ms, continuing to monitor. Will reopen if regression.

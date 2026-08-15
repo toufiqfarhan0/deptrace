@@ -1,0 +1,43 @@
+docs
+
+claire: Quick FYI - migration guide has a stale anchor (/private/networking#egress) and a couple of customers asked for a tiny Rust SDK example for `kms` unix transport in air-gapped installs. Also a SELinux permission note would help. Can we do a small docs PR?
+
+miguel: I can fix the anchors and add an alias so external links don't break if headings change again. Will add a 1-line micro-migration tip about stable IDs.
+
+aaron: Ill add a compact Rust snippet + a systemd pre-start example to ensure the PKCS11 socket perms are correct, and include a selinux chcon tip. Keeping everything short for quick copy-paste.
+
+claire: Rust snippet should be <=20 lines. Suggest the minimal example below for the quickstart:
+```rust
+use redwood::{Client, Config};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+  let mut cfg = Config::default();
+  cfg.kms_transport = "unix".into();
+  cfg.kms_socket = "/var/run/kms.sock".into();
+  let client = Client::new(cfg)?;
+  client.health_check()?;
+  Ok(())
+}
+```
+
+aaron: Adding systemd ExecStartPre lines for the installer unit and a SELinux callout:
+```
+[Unit]
+Description=Redwood PKCS11 socket helper
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/chown redwood-installer:installer /var/run/pkcs11.sock
+ExecStartPre=/bin/chmod 660 /var/run/pkcs11.sock
+# If using SELinux, allow installer access:
+# chcon -t container_file_t /var/run/pkcs11.sock
+```
+
+claire: Also include a tiny checksum verification example for offline bundles:
+`curl -sS https://downloads.redwood.ai/bundles/redwood-offline.sha256 | grep redwood-offline-bundle.tar.gz`
+`openssl dgst -sha256 -verify pubkey.pem -signature redwood-offline-bundle.sig redwood-offline-bundle.tar.gz`
+
+miguel: Draft PR opened: https://github.com/redwood-inference/docs/pull/834 - fixes anchors, adds Rust example, systemd + SELinux note, and a 1-line migration tip about stable heading IDs.
+
+docbot: link-checker: 2 broken links detected in /private/migration.md - addressed in PR 834. Preview deployed.
+
+claire: Preview looks good; snippets render and SELinux callout is clear. Merging in a few. Thanks! :tada:

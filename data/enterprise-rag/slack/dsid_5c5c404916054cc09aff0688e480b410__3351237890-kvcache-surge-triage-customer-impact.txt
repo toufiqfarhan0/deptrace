@@ -1,0 +1,45 @@
+incidents
+
+Incident Bot: Pager: hosted-prod - KVCache memory spike on continuous-batching pool. Alerts: OOMs on 3 GPUs, error rate up 6% across hosted endpoints. Please acknowledge and follow on-call runbook.
+Mia (oncall): Ack. I'm on it, pulling logs.
+Mia (oncall): Observed gradual memory growth correlated with a burst of long prompts ~> 64k token sessions, looks like prefix amplification + prefetch growth.
+Ashwin: @Mia do we have active rollouts or recent config changes to batching/prefetch?
+Mia (oncall): Deploy bot shows no model code deploys in last 12h. But we did flip prefetch policy to "aggressive" for a canary yesterday.
+Samir P: Confirming, we enabled aggressive prefetch in hosted-canary for latency experiments at 03:20 UTC. It was meant for 1% traffic.
+Jen D: Paging in SLOs: some customers reported 5xxs and higher latency. Can we triage impact tiers?
+Alice R: From support logs: 8 customers had >3 errors in last 10m, 2 of them are high-tier. CS notified.
+Mia (oncall): Immediate mitigation option: lower prefetch factor + apply short-term per-session KV cap. Also can reduce continuous-batching window to limit batch growth.
+Ashwin: Agree. Let's throttle prefetch to 0.15 and set per-session kv_limit to 192MB for hosted-prod. Doable as runtime config change.
+Jen D: @ops-bot can we push a runtime config hotpatch to hosted-prod with targeting rule: service=served-llm, pool=continuous-batching? Need fast rollback plan.
+ops-bot: Received hotpatch request. Validating patch.
+Mia (oncall): Pasting proposed config (small snippet):
+```
+{
+  "pool": "continuous-batching",
+  "prefetch": { "mode": "adaptive", "factor": 0.15 },
+  "kv_limits": { "per_session_mb": 192 },
+  "batching": { "max_window_ms": 48 }
+}
+```
+Ashwin: That looks safe. Keep canary at 2% for 5m then escalate to 25% if metrics look good.
+ops-bot: Hotpatch applied to hosted-canary (2%) at 3351238005.
+Mia (oncall): Monitoring: memory growth rate dropped immediately on canary hosts. Error rate on canary down from 5.9% -> 1.2% within 60s.
+Samir P: Good signal. Schedule ramp to 25% now.
+ops-bot: Hotpatch ramped to 25% at 3351238140.
+Jen D: Noting customer-facing action: CS message drafted to the two high-tier customers with mitigation ETA of 10m. @Alice R pls send once we confirm 100% rollout.
+Alice R: Will hold until final confirmation.
+Mia (oncall): Rolling to 100% now with a 60s stagger. ops-bot, kick it.
+ops-bot: Hotpatch rolled to 100% at 3351238355.
+Mia (oncall): Post-rollout metrics: memory OOMs ceased, host memory usage stable, overall error rate back to baseline 0.6%. Latency slight increase +20ms p50.
+Ashwin: Action items: 1) Revert canary aggressive prefetch experiment until we have proper KV budgeting logic. 2) Add alerting for sustained per-session KV > 150MB. 3) Postmortem to include root cause analysis of prefetch growth with extremely long prompts and continuous-batching interaction.
+Samir P: I'll file the postmortem and include timeline + config diff.
+Jen D: Need a customer impact summary for finance and CS: list of affected customers, durations, errors counts. Alice, Samir — please coordinate.
+Alice R: On it. Draft will be ready in 30m.
+Mia (oncall): Handoff: I'm handing to Ashwin for follow-up and postmortem lead. Leaving paging channel open for 15m.
+Ashwin: Taking over. Will run root cause follow-up and schedule a deep-dive with runtime + ML infra. Thanks @Mia.
+Incident Bot: Incident status changed to: mitigated -> monitoring.
+Mia (oncall): Thanks team, nice quick triage. :thumbsup:
+Ashwin: ETA for postmortem draft 24h. I'll include reproducible test that simulates a 60k token prefix and continuous batching under prefetch=aggressive.
+ops-bot: Note: rollback option available if memory trend reverses.
+Mia (oncall): Closing my shift now. Leaving notes in incident doc: "hotpatch prefetched throttle + per-session kv cap applied; canary -> 100% rollout; memory stable".
+Ashwin: Acknowledged, will continue.

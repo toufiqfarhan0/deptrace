@@ -1,0 +1,20 @@
+marketing
+
+Maya (Mktg): Heads-up: microlaunch cadence for 'Microbench' webinar tomorrow. Need X thread, LinkedIn post, and two post-webinar follow-ups. Can we finalize assets and schedule by EOD? Link: https://redwood.example/webinar/microbench
+Ibrahim (Design): I can deliver hero + 15s clip + 1 carousel. Prefer square + 16:9. Need two headline variants for overlays.
+Ruth (Content): Draft captions: A) 'Microbench: real serving wins from production teams. Free webinar  register  https://redwood.example/webinar/microbench' B) 'Reduce p99 and cost: our serving playbook. Join the panel  register: https://redwood.example/webinar/microbench'
+Kai (Growth): Timing rec: X announce 9:00am PT, X thread 9:05am, LinkedIn 9:30am, reminder X 12:30pm. Also need UTMs.
+Len (Analytics): utm_source=social&utm_medium=xlink&utm_campaign=microbench_q1_2026&utm_content={variant}. Add event webinar_signup with demo_flag.
+Tess (Sales): Route demo requests to SDR queue with tag "webinar_demo". Immediate Slack ping + create lead in SFDC. I'll own mapping doc.
+Maya (Mktg): Ibrahim: include both headlines and a separate transparent CTA layer. CTA text: 'Reserve your spot'. Button color #ff6a00.
+Ibrahim (Design): ETA 3pm PT, will push to Figma: https://figma.com/file/micro123/microbench-assets and export PNG/MP4.
+Kai (Growth): Ops: QueueBot please schedule posts per timing above, default to Caption A, thread CTA uses Caption B. Attach UTMs.
+QueueBot: Campaign queued: job#81002. Announcement at 1777779600, thread 1777779900, LinkedIn 1777780200, reminder 1777787400. Posts set from @redwoodinc.
+Tess (Sales): Confirmed Slack alert workflow and SF mapping. Daily digest at 4pm PT + immediate pings.
+Len (Analytics): Published tracking mapping. Will add watch_recording event for replay.
+Ruth (Content): Pasted thread bullets and micro-variants into campaign doc.
+Maya (Mktg): Locking plan unless objections. Thanks team  final check: will SDRs get the raw form data in Slack?
+Tess (Sales): Yes. Immediate alert includes form fields and demo_flag.
+Ibrahim (Design): Upload complete, exported files attached in Figma.
+QueueBot: job#81002 executed for announcement (1777779600).
+Maya (Mktg): Great job, everyone. We'll monitor engagement and feed into the benchmark narrative tomorrow AM. :rocket:

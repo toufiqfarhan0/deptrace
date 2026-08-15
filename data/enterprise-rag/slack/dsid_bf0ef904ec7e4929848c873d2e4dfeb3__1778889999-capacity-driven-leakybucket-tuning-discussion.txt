@@ -1,0 +1,38 @@
+eng-infra
+
+Maya: Heads-up — we're seeing sustained GPU pool saturation in us-west-2 for the last ~40m, latency SLOs are slipping for a subset of org keys. :warning:
+Jon: Any numbers? which pools and what percent saturated?
+Maya: us-west-2-gpu-pool-a mostly. avg utilization ~92%, 95th tail latency for small-gen route jumped from 120ms -> 420ms. Requests queued at frontend up by ~3x.
+Liam: Is this caused by a specific customer burst or overall traffic bump?
+Maya: Looks mixed. A few orgs spiking (large image/long-context jobs) + overall higher baseline from yesterday's scheduled jobs.
+InfraBot: ALERT: gpu-pool-us-west-2-a CPU/GPU saturation threshold breached (92%). Incident opened: INC-2026-0456.
+Sarah: We should enable capacity-aware admission control temporarily. Can we throttle at key/org level with capacity-proportional refill?
+Alex: I sketched a leaky-token approach last week that might be simpler to roll out quickly: per-org leaky bucket where the leak rate is computed from pool allocation share. Pro-rate refill by active-gpu-count.
+Jon: Pseudocode? small config we can test?
+Alex: Paste: ```
+# per-org config example
+org_alloc_share = org_pool_quota / total_pool_capacity
+base_leak_rate = global_base_rps
+effective_leak_rate = base_leak_rate * org_alloc_share * pool_health_factor
+# pool_health_factor in [0,1], derived from (1 - current_utilization)
+```
+Maya: Love the pool_health_factor idea — it lets us degrade everyone gracefully as capacity tightens. We need hard caps for burst wallets though.
+Liam: How do we handle API keys vs org-level? If we do token-bucket per API key, small keys could hammer because their aggregate per-org exceeds pool share.
+Sarah: We should enforce both: a fast token-bucket per key for local fairness, and a backstop leaky-bucket per org tied to pool capacity. Key flow control short-circuits early.
+Jon: Ops question — where to compute pool_health_factor? at admission proxy or centralized service?
+Maya: Admission proxy keeps local view of GPU health (eviction counts, local util). It can apply local modifiers, but we should have a heartbeat from control-plane with authoritative pool capacity and allocations.
+Alex: Implementation detail: compute org_alloc_share from committed reservations + recent average usage (decayed). That prevents gaming by ephemeral spikes.
+Maya: Agreed. Also add a decay window to reservations: reserved_score = reserved_gpus + alpha * recent_avg_usage. alpha ~ 0.6.
+Liam: What about cold-cache penalties? If we reduce leak rate aggressively, cold KV cache misses will increase latency per request. Need adaptive grace for requests that hit cache vs miss.
+Sarah: We can tag requests via routing (cache_hit=true) and give a slightly higher effective_leak_rate multiplier for cache hits. Cheap heuristic to preserve latency while shedding load on heavy offline ops.
+Jon: Safety net: implement an emergency global shed that limits low-priority routes (embeddings-batch, long-seq) to X% when pool_util > 95%.
+Maya: Can we roll this as a staged feature flag? Start in rate-metering-only mode (observe effect), then enable enforcement for one pool, then global.
+Alex: I can open a PR for admission-proxy: add fields `pool_health_factor`, `org_alloc_share` and a config toggle `enforce_capacity_leak` with rollout flag.
+Maya: Please include metrics: per-org allowed_rps, actual_rps, tokens_dropped, queue_time, and pool_util. Dashboards needed.
+InfraBot: NOTE: Runbook update suggested — add steps for toggling `enforce_capacity_leak` and emergency-shed thresholds.
+Sarah: I'll update runbook. Also propose a conservative default leak curve: linear down to 0.5x at 85% util, then exponential beyond 90%.
+Liam: Any cost discussion? If we throttle more, customers might increase reserved capacity — good for revenue but need clear comms.
+Maya: We'll prepare a comms/FAQ for customers explaining transient enforcement + guidance to reserve capacity for steady-state.
+Jon: OK next actions: Alex to PR, Maya to prepare dashboards + experiment plan, Sarah to update runbook, Liam to simulate multi-tenant spikes with the new leak function.
+Alex: I'll target a draft PR by EOD tomorrow.
+Maya: Thanks — let's aim for a limited rollout to us-west-2 pool next week, observe for 48h. :rocket:

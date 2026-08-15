@@ -1,0 +1,40 @@
+eng-security
+
+sam: Quick sync — drafting PRD for scoped API tokens. Need to lock acceptance criteria and edge cases before eng starts. cc @anya @ravi @maria
+
+anya: I dropped an initial draft here: https://redwood.app/prd/scoped-tokens (private). Key Q: org vs project scope semantics. Proposal: token.scopes = ['org:read','proj:write:<proj_id>'] — allow multiple proj ids.
+
+ravi: Do we allow wildcards like 'proj:read:*'? Edge case: project deleted while token active — needs revocation hook.
+
+maria: We also need RBAC mapping for api keys vs service accounts. Acceptance criteria draft:
+```
+- Tokens can be issued with scopes: org:{read,write}, proj:{read,write}
+- Tokens must include optional `project_ids` list
+- Token minting requires a parent principal with corresponding permission
+- Token revocation is immediate and audited
+- Expiration auto-enforced
+``` 
+
+bryce: Prioritization: customers request project-limited tokens most. Suggest MVP = project-limited + expiration + revoke + audit. Defer delegated grants, token chaining.
+
+deploy-bot: spec-lint: 1 file passed, 0 errors :white_check_mark:
+
+sam: Decision so far: MVP scopes = org:{read,write}, project:{read,write}, support for multiple project IDs, wildcard support = opt-in (flag). Non-goals: token delegation, cross-org tokens. Launch criteria:
+- Docs + SDK examples
+- Backfill audit logs
+- E2E tests for revoke + expiry
+- Canaries on Dedicated for 48h
+
+anya: Edge cases called out: revoked resource -> tokens referencing it should fail fast; project renames; permission changes for parent principal post-issuance; token rotation for long-lived tokens.
+
+ravi: Spike: implement quick revocation index (token->object refs) this week. I'll PR a DB schema: `token_revocations(token_id, resource_id, revoked_at)` and a middleware that checks cache first.
+
+maria: I'll author acceptance-test matrix. Example tests: mint token w proj scope, delete project, ensure token returns 403; mint token with expired `exp` -> 401; rotate naming collisions.
+
+sam: OK next steps: @anya update PRD by Thu EOD, @ravi spike + PR by Fri, @maria tests by next Wed. @bryce please capture customer ask notes. If no objections by EOD we'll mark P0 and loop in product support for docs.
+
+anya: ack, will update.
+
+bryce: capturing notes now. :memo:
+
+sam: thanks team :rocket:

@@ -1,0 +1,23 @@
+eng-ml
+
+mira: quick heads-up, lichen3b v0.9 (int8) onboarding: regbench shows ROUGE drop and we hit OOMs with batch=8. anyone seen similar?
+jon: paste the bench run?
+mira: ```
+redwood bench --model lichen3b --variant int8 --batch 8 --max_new_tokens 512 --prefetch=true
+Throughput: 210 toks/s
+p95: 860ms
+mem_peak: 13.2GB
+error: OOM at decoder alloc step 3
+slot_compactor: reclaimed=0
+kv_cache: evict=0
+```
+deepa: ROUGE numbers?
+mira: ROUGE-L -2.1, PPL +5.4 vs fp16 on 1k regbench.
+sam: temp mitigation: batch=4, max_new_tokens=256, prefetch=false, kv_evict_threshold=0.6, enable soft-reserve. stops OOMs in quick microbench.
+jon: sounds like quant calibration + prefetch/kv interaction. did you use per-channel?
+deepa: initial run used global scale. will run per-channel calibration + --head-bias-correct.
+ci-bot: perf-checker: canary failed: latency +12%, mem +1.8GB. logs: https://ci.redwood/lichen3b/runs/4421
+mira: with batch=4/pretech off -> no OOM, p95 220ms, throughput -15%, ROUGE delta ~0.3% -> acceptable for canary.
+jon: propose quick onboarding checklist: 1) per-channel calibration on 2k samples 2) run regbench 3) mem-frag probe with --mem-frag-probe 4) canary config (batch=4,max_new_tokens=256,prefetch=false,kv_evict_threshold=0.6) 5) 24h soak 6) auto-fallback to fp16 if regressions persist
+deepa: i'll post calibrations tonight. if per-channel fixes quality we can proceed.
+mira: created issue ML-1123 and will schedule canary. ping infra when ready :thumbsup:

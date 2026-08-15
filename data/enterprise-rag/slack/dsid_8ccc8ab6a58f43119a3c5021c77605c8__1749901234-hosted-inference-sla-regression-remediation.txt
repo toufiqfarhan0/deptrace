@@ -1,0 +1,68 @@
+incidents
+
+morgan: Quick postmortem follow-up from today's SLA regression (hosted inference 5xx/timeouts). Root cause timeline in short: autoscaler ramp + auth-proxy token refresh storms caused request spikes to backend pool which hit a new per-node connection limit -> queue growth + proxy 502s. We saw customer impact (5xx rate ~3.2% and p95 latency spike).
+
+raj: TL;DR: triggering factor was an autoscaler config change rolled last night (shorter cooldown + aggressive scale-down) that left the pool underprovisioned during bursty auth refreshes. Auth proxy had a token refresh wave that amplified fanout.
+
+sarah: Can we reproduce? What are repro steps and exact logs to attach to the runbook?
+
+morgan: Repro steps I ran locally (dev cluster):
+1) deploy small loadgen with 80ms inter-arrival (--rps ~12) and --keepalive=false
+2) force auth refresh by rotating the dev KMS key (simulates token churn)
+3) revert autoscaler cooldown -> observe queue growth then 502s at the gateway
+Logs I saw:
+```
+inference-gateway ERROR conn_pool_exhausted=true pending=482 node=pool-4 ts=2024-11-04T03:12:22Z
+auth-proxy WARN token-refresh spike=1.8x t=2024-11-04T03:12:20Z resp=429
+```
+
+jordan: Ops traces and short links captured during the incident: https://internal.redwood/trace/abcd1234 (internal)
+
+eli: Action items I propose (assign priority):
+- (P0) rollback autoscaler cooldown change and pin the previous config on hosted for 24h (mitigates immediate risk)
+- (P1) implement a gateway circuit-breaker to fail-fast when conn pool pending > threshold
+- (P1) add jitter and exponential backoff in auth-proxy retries to avoid synchronized token refresh storms
+- (P2) enforce a per-request request_id header and route tagging so support can map customer tokens to requests for billing/correlations
+
+raj: Also need targeted customer communications for the top 5 impacted customers. Support should own outreach + include request_ids.
+
+support-bot: @channel Support queue updated: tickets #12345 #12346 created and assigned to @sarah for outreach.
+
+sarah: I'll take customer A & B comms. Draft below — please sanity check wording: "Hi <Customer>, between 03:10-03:40 UTC you may have received 5xx responses from our hosted API due to an internal scaling regression triggered by simultaneous token refreshes. We reverted a config change and are monitoring closely. Detailed root cause and remediation steps: <internal link>"
+
+morgan: I'll own rollback and runbook edits. Jordan, can you add a repro curl snippet to the runbook and a short checklist for on-call?
+
+jordan: Repro curl snippet (add to runbook):
+```
+TOKEN=$(cat ~/.token)
+for i in {1..500}; do curl -s -H "Authorization: Bearer $TOKEN" https://hosted.redwood.inference/v1/generate & done
+```
+Note: disable keepalive on loadgen to match the production symptom.
+
+eli: Monitoring changes: add metric alert for inference.gateway.conn_pool_pending > 200 sustained for 2m, and an SLO guard that prevents scale-down below min_replicas when pending > 100.
+
+raj: Also add an e2e canary that simulates token refresh load so this auth-proxy pattern is exercised nightly.
+
+morgan: Timeline summary: config rolled at 02:52 UTC, first 5xx observed at 03:09 UTC, mitigation rollback at 03:27 UTC, postmortem published 07:10 UTC.
+
+sarah: Postmortem owners assigned: morgan (lead), raj (infra), eli (runtime), jordan (runbooks), support (customer comms). I'll open the JIRA and assign tasks.
+
+ops-bot: JIRA created: REDWOOD-8675 "SLA regression: autoscaler cooldown + auth-proxy token storm - remediation" assigned to morgan.
+
+eli: Billing note: we observed some misattributed tokens due to missing request_id header on a subset of proxied requests. Action: enforce request_id middleware and run a retroactive log join to map impacted requests to customers.
+
+support-bot: Customer outreach: initial notifications sent to custA and custB; tickets updated for follow-ups.
+
+raj: Action deadlines proposed:
+- rollback config pin: today EOD
+- circuit-breaker prototype: 3 days
+- auth-proxy backoff + jitter: 2 days
+- metric alerts + SLO guard: 24h
+- runbook + repro snippet: 24h
+- customer comms follow-up: 48h
+
+morgan: Thanks all. If no objections I'll create the Jira checklist, start the rollback, and schedule a 30m sync in 1h to walk action owners through the playbook.
+
+sarah: lgtm. :thumbsup:
+
+[end thread]

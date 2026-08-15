@@ -1,0 +1,40 @@
+customer-success
+
+laura_cs: quick heads-up — noticed several trials showing activity on acct_Alpha123 and acct_alpha123 simultaneously. renewal queue counts look off.
+miguel_data: sample ids? curious if this is a merge issue or duplicate creation
+laura_cs: acct_Alpha123 (legacy import), acct_alpha123 (new canonical). both have trial_started events but different owners. one even has two trial-nudge emails sent yesterday.
+riley_eng: ugh. sounds like case-sensitivity in the merge key. can you paste a log or query? even a small SQL helps
+miguel_data: running quick dedupe check:
+```
+SELECT lower(account_key) as key_norm, array_agg(account_id) as accounts, count(*) as cnt
+FROM accounts
+WHERE account_key ILIKE '%alpha%'
+GROUP BY key_norm
+HAVING count(*) > 1;
+```
+miguel_data: result: key_norm='alpha123' => accounts=[acct_Alpha123, acct_alpha123], cnt=2
+jasmin_ops: we also saw playbook runs:
+```
+2026-07-22T09:12:10Z playbook trial-nudge account=acct_Alpha123 run=run_aa1 template=tmpl_trial_nudge
+2026-07-22T09:12:12Z playbook trial-nudge account=acct_alpha123 run=run_bb2 template=tmpl_trial_nudge
+```
+laura_cs: consequence: two nudges, renewal queue double-counted, and owner assignment split between two reps. Customers got confused.
+crm-bot: note: last crm-merge job ran 2026-07-20T02:00Z using merge_key=account_key (case-sensitive)
+riley_eng: root cause likely: legacy merges used case-sensitive key; new ingestion normalizes to lower-case. our merge job didn't normalize, so both persisted. fix: update merge job to compare lower(account_key) and backfill.
+jasmin_ops: immediate ask: can we suppress tmpl_trial_nudge outbound for 2 hours while we reconcile? also need a CSV of affected accounts and owner emails for owner-reassignment work
+miguel_data: exporting CSV now -> s3://redwood-cs-temp/case_collisions_1849998888.csv
+miguel_data: csv link: s3://redwood-cs-temp/case_collisions_1849998888.csv
+riley_eng: patch plan: 1) change merge pipeline to normalize keys (lowercase + trim) 2) run dedupe pass to consolidate duplicate accounts into canonical id 3) backfill playbook events to canonical account 4) add unit/integration test for case-insensitive merge
+laura_cs: also need a runbook step: when merges happen, pause playbooks that are keyed by account_key for 30m to avoid double firing
+jasmin_ops: applying suppressor: CRM.template_suppress tmpl_trial_nudge=true until 2026-07-22T12:00Z
+sync-bot: merge-pipeline job scheduled: job_77821 at 2026-07-22T10:00:00Z (dry-run)
+riley_eng: running dry-run now on subset (100 accounts). preview shows 48 collisions in sample, canonical chosen = earliest created account_id
+miguel_data: after dry-run, generating canonical map and owners CSV for CS handoff
+laura_cs: owners: riley_eng = merge patch + backfill, miguel_data = canonical map + CSV, jasmin_ops = suppressor + broker communication to reps
+riley_eng: dry-run validated. scheduling full run at 2026-07-22T11:00Z with canary mode (10% traffic) then ramp
+crm-bot: audit ticket created RED-CRM-CASE-2026 for retro and customer comm template
+jasmin_ops: CS will hold outreach for affected accounts until owner reconciliation completes. will also scope who received duplicate emails and send a clarification template
+laura_cs: long-term: add normalization to ingestion, add merge test in CI, and add metric alert if same-normalized-key >1 accounts. filing retro ticket: https://redwood.atlassian.net/browse/CS-CRM-9123
+miguel_data: uploaded canonical map: s3://redwood-cs-temp/case_collisions_1849998888_canonical.csv
+riley_eng: merge run started (canary=10%) at 2026-07-22T11:00:05Z. monitoring for duplicate playbook re-fires
+jasmin_ops: will un-suppress template after confirmation. thanks all for quick triage :thumbsup:

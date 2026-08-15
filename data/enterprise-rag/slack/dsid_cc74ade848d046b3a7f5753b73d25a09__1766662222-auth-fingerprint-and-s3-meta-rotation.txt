@@ -1,0 +1,71 @@
+1766662222
+
+incident-bot: HIGH Severity pager: unusual auth fingerprinting + staging S3 object metadata in logs. 401s spike from 3 IPs (EU/US/ASIA). Investigate for potential credential scraping. Link: https://ops.redwood/example/alerts/1766662222 :rotating_light:
+
+oncall-ivan: saw it, joining now. @sre-jack can you grab logs + recent deploys?
+
+sre-jack: pulling logs from staging-forwarder, tailing auth proxy. quick snippet: ```2026-02-14T18:03:12Z proxy auth 401 ip=3.11.22.33 user_agent="curl/7.8" path=/v1/generate x-request-id=abc123 meta: s3://staging-backups/2026-02-14/manifest.json``` seeing repeated range for same IPs.
+
+security-ana: tagging: could be crawler trying creds. prioritize: 1) block and sink IPs, 2) confirm whether any production keys present in leaked staging manifests, 3) begin scoped key rotation for affected service accounts.
+
+eng-ops: creating block rule on WAF now for IPs [3.11.22.33, 18.204.11.9, 45.77.12.5] and rate-limit patterns. ETA 2 min.
+
+oncall-ivan: good. @support-sam, any customers reporting errors?
+
+support-sam: no inbound tickets yet. monitoring for 5xx rise — none so far. some delayed jobs in staging but no prod alerts.
+
+security-ana: jack — can you grep manifests for access keys/secret patterns? Use this regex: ```(AKIA[0-9A-Z]{16}|[A-Za-z0-9_\-]{40})``` and search S3/backup snapshots created in last 48h. If anything matches, escalate immediately.
+
+sre-jack: running scan now (job id scan-17666). Found a single manifest with a base64-encoded env blob that decodes to a short-lived svc token. appears to be staging-only but referencing svcacct-prod-read as role arn:aws:iam::123456:role/svcacct-prod-read -> flagging.
+
+security-ana: treat as potential cross-env leak. plan: (A) rotate the svcacct-prod-read keys, (B) revoke any active sessions tied to those keys, (C) update deployment secrets as they are rolled. I'll open a security incident ticket.
+
+oncall-ivan: agree. start rotation playbook. @devex-ryan can you coordinate PRs/CI changes so deployments pick up new keys?
+
+devex-ryan: on it. I'll create a transient secret in Vault and a rolling update job to pick it up. CI will run smoke tests before cutover. ETA 20m for PR and pipeline.
+
+legal-lori: filing notice checklist — do we need to notify customers? based on initial assessment it looks staging-only but referencing prod role. hold until security confirms prod keys exposed.
+
+security-ana: initial assessment: no confirmed production data exfil; manifest contained a staging token that had AssumeRole to prod-read but no direct prod credentials. We must still rotate the role keys and audit AssumeRole logs for unusual principals.
+
+incidents: 1766662222 — created security-176666 (internal link: https://redwood.company/incident/176666)
+
+eng-ops: WAF blocks in place. rate-limit rule added. confirmed SYN/conn drop for flagged IPs.
+
+sre-jack: completed grep across snapshots. Only the one manifest in staging matched. ran quick revocation of that token (sts:RevokeSession simulated) and removed manifest from staging bucket. Uploaded cleaned manifest to quarantine S3://security-quarantine/176666/manifest.json and made read-only for audit.
+
+security-ana: start role key rotation now. Steps: 1) create new keys for svcacct-prod-read, 2) update trust policies if needed, 3) publish new keys to Vault with short TTL, 4) update deployments behind feature flags, 5) monitor auth logs for failed AssumeRole attempts.
+
+devex-ryan: PRs open: #4321 (vault write + env var), #4322 (rolling update). CI builds passing. will merge on green and then do gradual rollout to prod lanes.
+
+oncall-ivan: who will join the live bridge? need SRE + Security + Support + Legal. I'll stand up a quick Zoom bridge: https://zoom.redwood/incident-176666 (bridge pinned in ticket).
+
+support-sam: I'll draft a customer-facing note in the ticket but hold until legal approves.
+
+legal-lori: will review wording. if we confirm no PII exposure, short 'informational' outreach may suffice.
+
+security-ana: monitoring hooks: added an alert for AssumeRole failure rate > 5 per minute, and a query to check CloudTrail for source IPs matching flagged list.
+
+sre-jack: rotation: rotated service role keys at 18:28:12Z, deployed new keys to Vault, and kicked rolling restarts for core services using role. No deployment failures so far.
+
+eng-ops: observability: token-use metrics show expected decrease. no obvious spike in customer-facing latency.
+
+oncall-ivan: status update for execs: staging manifest with ephemeral token referenced prod role assume but we found no prod credentials; keys rotated; WAF blocks in place; ongoing audit of CloudTrail for suspect AssumeRole calls; customer impact: none observed.
+
+security-ana: recommended next steps: full post-incident audit (48h), re-scan all backups for similar manifests, tighten staging access policy so AssumeRole cannot reference prod roles, and add automated manifest scanning to CI.
+
+devex-ryan: will add manifest scanning job to CI pipeline as task #devx-987.
+
+support-sam: customer comms drafted and queued for legal review.
+
+legal-lori: review complete. no regulatory notification required at this time. approve customer note: "We detected suspicious activity in a staging backup that referenced a production service role. We rotated keys and found no evidence of customer data exposure. We are taking steps to prevent recurrence."
+
+oncall-ivan: closing loop: incident severity downgraded to low after 2h once rotation + scans completed. leaving ticket open for postmortem. 
+
+sre-jack: saving runbook updates under docs/runbooks/rotate-service-keys.md and adding checklist items for oncall.
+
+security-ana: postmortem owners: security-ana, sre-jack, devex-ryan. ETA: 3 business days.
+
+support-sam: will monitor support queue for 24h and escalate any customer concerns. :white_check_mark: 
+
+incident-bot: incident 176666 closed (status: downgraded).

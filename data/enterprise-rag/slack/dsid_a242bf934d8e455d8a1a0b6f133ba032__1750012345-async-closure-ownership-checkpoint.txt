@@ -1,0 +1,45 @@
+incidents
+
+Maria: Quick checkpoint on INC-901 postmortem actions — I updated the action list in the doc. Please confirm ownership + realistic due date (UTC) and call out blockers.
+
+Maria: Actions:
+1) Alert rule for tail latency (owner: Ajay) — due 2026-03-24
+2) Canary rollback runbook (owner: Svetlana) — due 2026-03-22
+3) GPU pool scaling policy (owner: Will) — due 2026-03-23
+4) Customer comms draft (owner: Priya) — due 2026-03-21
+
+Ajay: I own #1. OK for 3/24. Need @eng-infra review for the alert thresholds, pinging @InfraBot for required infra tags.
+
+InfraBot: Annotation request received for cluster-prod. Run: `infra annotate --cluster prod --ticket INC-901` :white_check_mark:
+
+Svetlana: Taking #2. Will finish runbook + playbook steps by EOD 3/22. Blocker: access to the canary k8s namespace — @Will can you grant me role? :wave:
+
+Will: Granting role now. FYI I have a small PR to update the autoscale policy (PR #472). I'll link in the doc after merge. ETA 3/23 for #3 is fine.
+
+Priya: I'll do #4. Draft ready, will post to the doc by 3/21. Need copy review from @Maria.
+
+Ajay: Quick note — for alert rule, set window=1m, p95 threshold=1.1x baseline. I'll add the alert text in the doc.
+
+Svetlana: Got namespace role. Thx @Will. I'll add a checklist in the runbook for canary verification commands:
+```
+kubectl --context=canary get pods -l app=redwood
+kubectl logs -f deployment/agent
+```
+
+Maria: Thanks all. Two asks: (1) If any due slips, update the doc and ping this thread. (2) I'll collate evidence and attach to postmortem before close. :thumbsup:
+
+Will: One more: for #3, we should coordinate with @eng-sre on the scaling windows. I'll add them to the doc and tag SRE.
+
+Priya: Copy review done. Maria, pushed minor edits, ready for send on 3/21.
+
+Maria: Closing loop — updating RCA and marking assignees. Will follow up tomorrow morning for any late changes. :calendar:
+
+Svetlana: Thanks — will mark completed once runbook is live and link the playbook page.
+
+Ajay: Alert created in prod, linked in doc. :white_check_mark:
+
+InfraBot: Deploy hook triggered for PR #472 (Will). Status: pending CI.
+
+Will: CI green, merged. Linking PR in doc now (https://git.internal/redwood/pulls/472).
+
+Maria: Awesome, all set. If no objections, I'll set the incident to 'postmortem-complete' in 48h. :lock:

@@ -1,0 +1,75 @@
+architecture
+
+ken_arch: Quick follow-up from yesterday's RFC thread — we still need to pick a canonical place for the 'escape-hatch' decision during A/B/pilot swaps. Do we centralize the logic in the control plane or push a lightweight local guard into each runtime shard?
+
+maria_prodeng: leaning local guard. control plane for orchestration, runtime for lowest-latency failover. avoids a single choke point.
+
+sam_runtime: +1 for runtime guard but we need a compact, verifiable contract so different runtimes behave the same. propose: control plane ships a signed policy blob, runtime enforces TTL/thresholds and reports signals back.
+
+olivia_sre: from an SLO perspective we can't rely purely on local heuristics. need mandatory telemetry hooks and two modes: conservative (SRE-curated) and local-experimental (dev teams opt-in).
+
+ken_arch: that suggests three responsibilities: 1) policy authority (control plane), 2) enforcement shim (runtime-local), 3) signal sink (telemetry/ops). tradeoffs: latency + correctness vs centralized observability.
+
+tina_pmo: what about ownership changes mid-rollout? e.g., variant owner revokes the variant — do we need a safe eject API to force immediate fallback across shards?
+
+sam_runtime: safe-eject must be emergency-only and synchronous-ish. runtime should accept a high-priority command (signed) that bypasses normal rate-limiting and speeds up drain. but must be rate-limited per node to avoid thundering.
+
+maria_prodeng: implementation idea: policy blob includes: 
+- stable_id 
+- signal_thresholds (latency/p99, err_rate) 
+- grace_window_seconds 
+- forced_eject_key_fingerprint
+include a sequence number so older blobs are ignored. sample blob:
+```
+policy: {
+  id: "pilot-2026-04-18",
+  seq: 42,
+  thresholds: { p99_ms: 450, err_pct: 1.8 },
+  grace: 120,
+  fallback: "route-to-stable",
+  forced_eject_key: "sha256:..."
+}
+```
+
+olivia_sre: + make the grace_window configurable per-customer. also require runtimes to emit a pre-eject sample (minimally 10 traces per shard) for postmortem fidelity.
+
+ken_arch: good. another decision: should the runtime-local guard perform rolling percent adjustments (e.g., n->n-10%) autonomously if signals degrade, or only do binary swap->fallback? autonomous scaling reduces ops friction but creates local nondeterminism across shards.
+
+sam_runtime: can do a deterministic algorithm: each shard uses the same pseudo-random seed derived from policy.seq so percent drops are consistent cluster-wide. that keeps behavior reproducible while allowing gradual pulls.
+
+maria_prodeng: we also need a readable audit trail. control plane retains policy blobs + cluster decisions. runtimes tag decisions with policy.seq and reason-code so we can stitch a timeline.
+
+olivia_sre: probe plan: require two independent signals before automatic percent rollback: 1) infra-level (node OOM/restarts, GPU queue growth) 2) application-level (err_rate or model regressions). both must cross thresholds for >grace_window.
+
+ken_arch: interface boundary sketch: Control plane API -> POST /deployments/{id}/policy (signed blob). Runtime API -> /local-guard/observe (push aggregates), /local-guard/action (pull latest policy + actions). Admin API -> /admin/force-eject (signed).
+
+sam_runtime: quick proto sketch for action response:
+```
+{
+  seq: 42,
+  action: "reduce_pct",
+  target_pct: 60,
+  reason: "p99>450ms && gpu-queue>80%",
+  expires_at: 1680000000
+}
+```
+
+tina_pmo: how do we test this without risk? we should have a 'simulator mode' in runtime that runs the decision logic without actually changing routing, emits what it would do. then product/eng can run sims against historical telemetry.
+
+maria_prodeng: yes, simulator mode + canary with shadow rollout for N hours. also add a 'dry-run' bit in policy blob.
+
+deploy-bot: Deploy started: policy update pilot-2026-04-18 seq=42 (dry-run=true) — observed by 12/12 runtimes. :white_check_mark:
+
+ken_arch: final open questions I want us to capture for the RFC follow-up doc: 
+- exact signed-blob schema and verification steps
+- emergency eject semantics and rate-limits
+- deterministic percent-adjust algorithm (seed derivation)
+- telemetry contract (required counters/histograms)
+- testing plan (simulator + replay)
+I'll draft a short PR with these and ping reviewers.
+
+maria_prodeng: thanks — i'll add the SLO bits and sample dashboards.
+
+olivia_sre: I'll add the incident playbook hooks and define when SRE gets auto-notified vs manual.
+
+sam_runtime: I'll prototype the enforcement shim and the simulator. expected draft by EOD. :rocket:

@@ -1,0 +1,23 @@
+incidents
+
+Rowan: Short follow-up from the Calypso postmortem. Root cause summary: peering controller allowed an on-prem appliance to re-advertise a scoped default via a malformed export-policy during a maintenance window, triggering transient cross-tenant reachability (we're calling it the 'leaky-export' path).
+
+Rowan: Action list I captured: 1) add strict-export validation to reject malformed export policies (owner: Talia, due 2026-04-04). 2) emergency cluster toggle to disable imports for affected Dedicated clusters (owner: Ben, due 2026-03-29). 3) 90-day historical isolation audit + alert rule for overlapping imports (owner: Priya, due 2026-04-06). 4) onprem lab scenario + e2e test that simulates appliance restart + malformed export (owner: Ben, due 2026-04-08). 5) customer comms draft for Calypso (owner: Rowan, due 2026-03-30).
+
+Talia: I'll own #1. Plan: validate export policy schema strictly (deny unknown attributes), verify origin ASN+community tuple, and add unit + integration tests. Will open PR by EOD.
+
+Ben: I'll do the emergency toggle and the onprem e2e. For toggle I need ops approval for a config push; estimate 20m per cluster. I'll coordinate with Dedicated ops.
+
+Priya: Audit plan: run overlap scanner for imported prefixes for last 90 days, flag any prefix that appears in >1 tenant import set; will prototype alert: overlap count >= 1 -> SEV-warning. Deliverable CSV + proposed threshold.
+
+Rowan: Short-term mitigation: Ben, can you enable the toggle for Calypso cluster and add a manual watch for 6h during their next maintenance? Also prepare rollback instructions.
+
+Ben: Yes. Will request ops window and post step-by-step in INC-23600.
+
+Talia: Extra defensive change: make controller reject imports where exported prefix lacks expected origin ASN AND community tuple. That prevents appliances that drop tags from being accepted.
+
+eng-sre-bot: Created ticket INC-23600: "Calypso: leaky-export path fix + audit" and assigned owners.
+
+Priya: I'll run a lighter live-scan first to avoid heavy query load and post results to the ticket.
+
+Rowan: Please ack when you start and update INC-23600 with PR links, test artefacts, and audit CSV. We'll do a 20m owners sync Monday to confirm rollout schedule. :calendar:

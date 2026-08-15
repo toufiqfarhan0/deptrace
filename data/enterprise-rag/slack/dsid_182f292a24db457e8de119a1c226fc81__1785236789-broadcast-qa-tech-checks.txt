@@ -1,0 +1,41 @@
+all-hands
+
+Laura Chen: Quick heads-up — tech check in 10 for today's all‑hands broadcast. I'll paste the AV checklist here. Need someone to stand by for HDMI fallback.
+Mike O'Neill: I'll be on-site, can handle HDMI swap and room mic.
+Jake (AV): I can remote into OBS if needed. testing scene switch now.
+Emma - Comms: Reminder — leadership Q&A at the end, please surface any roadmap clarifications ahead of time.
+Tara Patel: Quick Q for leaders: is the rollout window for the smart routing change still 'late Q2'?
+Nick Rivera: Also curious about Dedicated pricing for burst capacity—will that be an add-on or included?
+Laura Chen: @Tara yes late Q2 is still the plan; @Nick pricing model is being finalized — we'll cover in the product slides and follow up on the playbook.
+Sanjay Kapoor: @Laura will the canary rollout include canary telemetry in Console by default?
+Laura Chen: Yes — canary metrics will appear under Rollouts > Canary. We'll demo a sample during the product update.
+Devon: AV heads-up: if the Roomb mic drops, use the backup lav on the lectern and switch the pick in the mixer (CH4).
+Jake (AV): Noted. Quick note for remote stream: if frames drop >2% restart encoder with low-latency preset:
+```
+# restart ffmpeg encoder
+systemctl restart ffmpeg-stream.service
+ffmpeg -loglevel info -re -i /dev/video0 -c:v libx264 -preset superfast -tune zerolatency -f flv rtmp://ingest.redwood.ai/live
+```
+Mike O'Neill: copy that. I'll be near the mixer.
+OpsBot: :recording: Recording scheduled to start at 16:00 UTC — auto-upload to shared drive when done.
+Emma - Comms: Deck will be uploaded to the all-hands folder right after the meeting — I'll post link in #announcements.
+Tara Patel: For the Q&A — can we prioritize: 1) routing/cost levers, 2) Dedicated SLA details, 3) model onboarding timeline?
+Laura Chen: Yep. We'll ask leadership to go in that order. If we run out of time, we'll take written Qs and follow up.
+Nick Rivera: If someone running Dedicated wants burst examples, point them to the new cost/playbook doc? (link to be added)
+Sanjay Kapoor: One more: does Private support HSM key rotation without downtime? Need to know for enterprise customers.
+Laura Chen: Short answer: yes, supports rolling rotation. We'll have the security team add a slide.
+Jake (AV): OBS scene test passed, audio levels look good (−6 to −3dB). Doing one more full stream ingest test in 3.
+Mike O'Neill: Heads-up — room HDMI occasionally reports EDID mismatch. If presenters hit a black screen, swap to DP input.
+Devon: Added checklist item: bring 2x spare HDMI cables + DP adapter.
+Emma - Comms: If recording fails, we'll still publish the transcript and follow-up notes within 2 hours.
+Laura Chen: Thanks everyone — please ping me if you can't make the tech check. See you in 10. :thumbsup:
+Mike O'Neill: On-site in 6.
+Tara Patel: Pre-submitted a question about latency SLOs for streaming contexts — will drop full text after the meeting if not answered.
+OpsBot: :white_check_mark: Recording started at 16:02:15 UTC.
+Laura Chen: (live) If anyone watching has follow-ups during the Q&A, drop them here and we'll surface to the panel.
+Nick Rivera: (live) Can you confirm whether intelligent batching recommendations will be exposed as a Console suggestion in the next release?
+Laura Chen: (live) We'll demo the Optimize suggestions briefly — full Console integration lands in the next minor release.
+Emma - Comms: (post-meeting) Recording link: https://drive.redwood.ai/all-hands/2026-05-12/recording.mp4 — slides + transcript in same folder.
+Tara Patel: Thanks — follow-up Q about Dedicated throughput guarantees sent to product@redwood.ai.
+Sanjay Kapoor: Thanks team, that clarifies the HSM rotation question.
+Laura Chen: Closing thread — applause to AV for smooth handoff. If any action items, I'll post a follow-up with owners. :clap:

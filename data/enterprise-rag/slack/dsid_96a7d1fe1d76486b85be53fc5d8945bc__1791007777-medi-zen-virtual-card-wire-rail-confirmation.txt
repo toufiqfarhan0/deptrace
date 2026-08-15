@@ -1,0 +1,30 @@
+finance
+
+nora-finance: heads-up — autopay failed for Aurelia Health (acct AH-443). Invoice INV-2026-089 for $4,200 was declined by gateway.
+payments-bot: [automated] attempt=pay_b7c3, status=failed, code=card_rejected, reason=avs_mismatch, last4=4226, bin=422600, country=GB :x:
+oliver-payments: bin 4226xx is Visa, intl routing. AVS mismatch on virtual cards is common when billing address differs. any notes on card type?
+claire-cs: customer called; AP says they used a program card (dynamic VPAN) created by their T&E vendor. they asked whether we accept SEPA/IBAN or if they can resend with a different card.
+lina-treasury: prefer ACH/SEPA for nets; for urgent we can accept wire — but require IBAN + SWIFT and a remittance contact. if they pick card again, we should request a static corporate card to avoid token rotation.
+pete-ops: can we try a single retry with `capture_only=false`? sometimes provider permits retry if transient. i'll open a manual retry now.
+payments-bot: retry queued: attempt=pay_b7c3-r1, scheduled=2026-12-02T09:14:10Z
+nora-finance: retry failed — gateway returned `issuer_restricted` + message: "card_not_supported_for_merchant_category".
+oliver-payments: that's merchant-category restrictions. their issuer blocked merchant code (SaaS subscription). need AP to contact issuer or switch rails. do not attempt another retry.
+claire-cs: passing message to AP: "We received decline for INV-2026-089. Options: (1) wire/SEPA today (please send IBAN + SWIFT + remit contact), (2) provide a different corporate card (static), or (3) pay via payment link. If wiring, include invoice number in reference."
+claire-cs: AP replied with bank details but notes they're EU-based and prefer SEPA. they attached IBAN in secure link: https://secure-files.redwood/payments/ah443-iban.pdf
+lina-treasury: SEPA is fine. for reconciliation we need BIC/SWIFT (DEUTDEFF-style) and a remittance email. also confirm expected value date. for urgent credit we can provisionally mark as pending when bank provides a transaction reference.
+julia-cfo: ok to accept SEPA. waive the $20 urgent rail fee this time given this is first fail for this customer. add account note.
+pete-ops: creating audit ticket PAY-4904 to record attempts and routing choice.
+payments-bot: ledger note created: LE-100213, autopay_hold=true, note="bin 4226xx merchant category block"
+claire-cs: customer sent SEPA confirmation with end-to-end reference E2E-20261202-AH443 at 09:37 CET. expected value date 2026-12-03. attached secure file.
+lina-treasury: bank notified — will watch for incoming funds. once cleared post payment against INV-2026-089 and re-enable autopay only after customer re-authorizes a stable card.
+nora-finance: also add short guidance to account: "AP uses virtual VPANs — recommend static corporate card or SEPA to avoid disruptions."
+julia-cfo: please tag GL for any rail fees to "bank-fees". waived this time but note for policy.
+payments-bot: [automated] invoice INV-2026-089 status=pending, pending_reason=sepa_inbound, note=expect_value_2026-12-03
+claire-cs: customer confirmed funds posted 2026-12-03 12:05Z, transaction ref E2E-20261202-AH443. attaching bank confirmation.
+lina-treasury: funds received and cleared at 12:22Z. posting now.
+nora-finance: posted payment at 12:30Z, invoice PAID. sending receipt and re-enabling customer support to follow up on autopay reauthorization.
+payments-bot: [automated] invoice INV-2026-089 status=paid, payment_id=sepa_E2E-20261202-AH443, posted_at=2026-12-03T12:30:12Z
+pete-ops: closed PAY-4904 with resolution: accepted SEPA, autopay temporarily disabled, account note added.
+claire-cs: AP appreciated flexibility. they said they will switch to SEPA moving forward and update billing contact.
+julia-cfo: thanks team. keep an eye for repeat patterns with VPAN declines across enterprise customers.
+nora-finance: noted — will add a short internal doc for CS and Sales on VPAN guidance. :white_check_mark:

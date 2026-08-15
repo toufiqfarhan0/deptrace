@@ -1,0 +1,35 @@
+eng-platform
+
+jeff: Quick sync — building a per-customer 'health + isolation' dashboard for support/accounts. Goal: surface routing, quota, and runtime signals so SRE/product can spot noisy neighbors and make rollout decisions. What runtime/infra metrics do we actually have or need?
+anya: Love it. We need low-cost signals first. Suggested MVP list: per-tenant token throughput, p50/p95 latency, batch_wait_ms, active_requests, route_fallback_count.
+samir: Can add: kv_cache_hit_ratio (per-tenant prefix), seq_len_p50/p90, open_streams_count, recent_error_rate (4xx/5xx). Some of those are already emitted, others need labeling by tenant id.
+marco: Labeling is the blocker — our exporter currently tags by node and model, not tenant. We'll need to thread tenant_id through the sampling path in runtime. That is a small perf win to pay for, but probably fine.
+lauren: Important: no raw tenant names in telemetry that could leak customer PII in dashboards/export. We should expose hashed_tenant_id + optional display_name mapping that only console/backstage can resolve with RBAC.
+samir: Agreed — emit tenant_hash in metrics and expose a separate secure endpoint the console uses to look up names after auth.
+jeff: UX question: do we show per-tenant CPU/GPU usage or just token-level stats for the console? Support asks for both.
+anya: Token-level + batching signals are critical for noisy neighbor detection. GPU/CPU should be summarized (node-level) with per-tenant estimated share (tokens * cost_factor) — avoids heavy cardinality.
+marco: Implementation note: estimated_share = tenant_tokens_per_minute * avg_compute_per_token_by_model. We have model profile table in infra; can join during nightly job or approximate on ingest.
+lauren: Alerting: propose a 'isolation_score' computed from normalized batch_wait_ms, kv_miss_rate, and route_fallback_count. If isolation_score > 0.6 for 5m, raise noisy-neighbor alert. Thoughts?
+samir: Works. We should also add a guard: only alert if tenant's quota_burn_rate isn't high because intentional bursts shouldn't trigger noisy-neighbor mitigation unless they exceed quota/policy.
+jeff: Good call. Also for rollouts UX: product wants a per-org toggle to enable 'aggressive caching' and to route to quantized variants. That toggle should be visible on the same pane and indicate cost delta + expected latency change.
+anya: To show cost delta we need token-unit cost estimate per model variant. That exists in pricing tables — expose an internal metric/model_tag -> token_cost_estimate. I'll coordinate with finance to ensure it's okay to display.
+marco: Work items for runtime: (1) add tenant_hash label to request metrics, (2) emit kv_cache_hit_ratio and kv_cache_entries_by_tenant (sampled), (3) emit batch_wait_ms histograms. I'll open PRs.
+samir: Observability work items: (A) Prometheus recording rules for isolation_score, (B) dashboard panels + templated per-tenant view, (C) alert rules. I'll prototype queries. Example isolation_score promQL:
+```
+# pseudo-promql
+isolation_score = (normalize(histogram_quantile(0.95, batch_wait_ms_bucket)) * 0.5)
+  + (1 - kv_cache_hit_ratio) * 0.3
+  + (rate(route_fallback_count[5m]) > 0) * 0.2
+```
+We can refine weights after tuning.
+lauren: For RBAC: only support/owner roles + paid account admins can view per-tenant detailed panels. We should surface a summary view for internal SRE that shows tenant_hash without names.
+jeff: Data retention question: how long do we keep per-tenant metrics at full granularity? High-cardinality will cost us.
+anya: Proposal: full resolution for 30 days, rolled-up 5m/1h for 90 days. For heavy customers we can keep longer via retention add-on.
+infra-bot: deploy-update: metrics-exporter v2.7 deployed to canaries (node-3, node-7). New label: tenant_hash.
+marco: Noted infra-bot — I'll start integration tests against canary. If all good, I'll roll exporter to prod tomorrow.
+samir: I'll start dashboard skeleton in grafana and link panels in the console with templated tenant_hash variable.
+jeff: Action items summary: marco -> runtime PRs for tenant_hash + new metrics; samir -> prom rules + dashboard skeleton; anya -> cost estimates & console mapping endpoint; lauren -> RBAC policy for per-org views; jeff -> coordinate customer-privacy signoff. We'll sync Friday 10am.
+lauren: Minor: add a 'mute' control on the console per-tenant to temporarily suppress noisy-neighbor automated mitigations during customer incidents. Needs audit log.
+anya: Good catch — include audit log event 'mitigation_muted' with actor, reason, duration.
+ops-oncall-bot: incident-note: noisy-neighbor alert test scheduled Friday 11:30. This will generate test pages to support team.
+jeff: Thanks everyone. I'll create the project ticket and link PRs. If anyone wants early access to canary metrics, ping marco. :thumbsup:

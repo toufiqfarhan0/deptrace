@@ -1,0 +1,57 @@
+incidents
+
+maria.chen: Quick follow-up from the authz postmortem — I distilled the remediation owners/timelines and noticed a couple of recurring patterns (token validation edge cases + missing audit events). I'm kicking off this thread to lock owners and set a short timeline.
+
+alex.gupta: Ack — thanks for doing this. can you paste the list?
+
+maria.chen: Sure — TL;DR: (1) Token validation hardening (owner: @jamie.ortiz) — fix expiry edge and canonicalization by 2026-05-02; (2) Audit-logging gaps (owner: @alex.gupta) — add missing events for delegated tokens by 2026-05-07; (3) Secrets rotation drift check (owner: @lee.park) — audit rotation telemetry & alerts by 2026-05-14. I'll add links to tickets below.
+
+jamie.ortiz: I can take #1. I started a draft PR for stricter token parsing — GH #842. The main change is to reject tokens with non-canonical whitespace and to centralize expiry checks in authlib. Will aim for EoD Monday for PR.
+
+alex.gupta: For #2 I want to run a short audit job to replay auth events from last 90 days and surface missing cases. Creating INC-2026 now. ETA one week. Also plan to add a unit test coverage gate for audit events in CI.
+
+lee.park: For secrets rotation drift I propose: (a) add metric rotator.last_successful_rotation{env}, (b) add alert if >72h, (c) daily drift report to #security. Will own implementation and runbook updates.
+
+maria.chen: Concrete deliverables then:
+- jamie: PR #842 + deploy to staging + canary test (deadline 2026-05-02)
+- alex: INC-2026 audit job + CI regression (deadline 2026-05-07)
+- lee: rotation metric + alert + runbook (deadline 2026-05-14)
+Please confirm owners and add any blockers.
+
+jamie.ortiz: Confirmed. blocker: I need a test vector for the old token format — @lee.park can you share a sample if you have one?
+
+lee.park: I have a sample from the incident dump. I'll upload to secure drive and post link here: https://internal.redwood/secure/rotator/samples/incident-2026-04-11 (access granted to security+eng).
+
+alex.gupta: For the audit replay I'll need a schema map of past event shapes — @maria.chen can you point to the postmortem artifact with the event list?
+
+maria.chen: Posted the artifact in the postmortem doc under "Event mapping" section. Link: https://redwood.atlassian.net/pm/postmortem-AUTHZ-2026. See table rows 12-18.
+
+sec-bot: Reminder: recurring-sync created -> weekly on Fridays at 09:30 (channel: #incidents, thread: 1805601112).
+
+alex.gupta: Weekly sync is fine. I propose next check-in on 2026-04-25 to validate first draft of audit job output.
+
+maria.chen: Added tickets to the task board and created labels: authz-remediation, high-priority. Also added a column for "recurring-patterns" so we can track regression clusters over multiple incidents.
+
+jamie.ortiz: Quick note on implementation: token parsing changes will be behind a feature flag `authz.strict_token_parse` so we can rollback quickly if something unexpected shows up.
+
+lee.park: Will add the rotation metric as a Prometheus gauge: `rotator_last_success{env="prod"}` and an alert rule: `rotator_last_success < time() - 72*3600`. I'll open PR today.
+
+maria.chen: Two process follow-ups I'm adding: (A) weekly L4 review of audit logs for delegated auth paths to detect pattern regressions; (B) quarterly secret-rotation audit independent of rotator metrics. Owners: A=@alex.gupta, B=@lee.park.
+
+alex.gupta: Sounds good. I'll draft the L4 review checklist and link it here when done.
+
+jamie.ortiz: FYI — if the stricter parsing flags any unexpected legit tokens in canary, I'll create a temporary bypass that logs the token and returns `403` with a correlation id for triage.
+
+maria.chen: Good risk plan. One more ask: when each PR/INC is created please set the "postmortem-remediation" field and link back to the original incident (AUTHZ-2026). This helps the quarterly rollup.
+
+lee.park: Will do. PRs will include `resolves:AUTHZ-2026` and the runbook update link.
+
+sec-bot: Action item created: INC-2026 (owner: alex.gupta, due: 2026-05-07)
+
+maria.chen: Thanks everyone — I'll run the first weekly sync next Friday 09:30 and post a short status summary before the meeting. If anyone needs to reassign, ping me here. :thumbsup:
+
+alex.gupta: Ack.
+
+jamie.ortiz: Ack.
+
+lee.park: Ack.

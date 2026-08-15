@@ -1,0 +1,54 @@
+support
+
+mira: FYI customer reported a behavior change after last night's rollout — their FAQ assistant now returns answers with bullets reversed and some bullets missing. They say nothing changed on their side.
+
+anna: Which customer? can you drop convo id + example? :eyes:
+
+mira: acme-inc support ticket #5632 — pasted minimal repro below. original prompt template used to start with "Q:" then system preamble, we rolled a whitespace-normalization patch that trims leading whitespace in chat templates. They noticed list ordering and an omitted clarifying sentence.
+
+mira: repro curl (sanitized):
+```bash
+curl -s -X POST https://api.redwood.ai/v1/chat \
+  -H 'Authorization: Bearer $KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"redwood-3b-v1","messages":[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"Q: What are the steps to reset my API key?"}],"temperature":0.0}'
+```
+
+mira: Expected: 4 numbered steps. Got: only 3 steps and step 2 merged with step 3. Also bullet order reversed in some prompts.
+
+kevin: deploy-bot shows release/2026-02-16 -> r-infer-1.4.2 pushed to prod at 2026-02-16T03:12Z. That release included tokenizer whitespace normalization and chat-template trim change.
+
+deploy-bot: Deployed release/2026-02-16 (r-infer-1.4.2) to prod in us-west-2.
+
+josh: I can repro locally with the trimmed template change. If you remove the leading trim the output matches previous behaviour. Suspect token boundaries changed for the "Q:" prefix and then the model uses different attention from the start token.
+
+kevin: Can you capture tokenization from the CLI? use the debug tokenizer endpoint:``
+POST /internal/debug/tokenize
+{ "model": "redwood-3b-v1", "text": "Q: What are the steps to reset my API key?" }
+```
+
+mira: I ran it and pasted tokens:
+```
+["▁Q", ":", "▁What", "▁are", "▁the", "▁steps", "▁to", "▁reset", "▁my", "▁API", "▁key", "?"]
+```
+
+mira: After trim fix tokens become:
+```
+["Q", ":", "▁What", "▁are", "▁the", "▁steps", "▁to", "▁reset", "▁my", "▁API", "▁key", "?"]
+```
+
+kevin: Ah — the difference is the leading ▁ (underscore-like marker) presence. That shifts positional tokenization for the whole sequence and apparently changes the model's early attention pattern. That can flip list generation heuristics.
+
+josh: Quick mitigation: we can roll back the chat-template trim or add a compatibility knob that preserves leading spacer for templates created before the rollout. Also add a warning in release notes about tokenizer compatibility.
+
+anna: Customer is high-touch and expects fix or workaround. Can we offer a temporary patch they can apply client-side (prepend a space) while we push rollback?
+
+kevin: Yes — immediate workaround: prepend a single space or explicit whitespace token to user messages generated from existing templates. E.g. "content": " \nQ: ..." — that preserves old token sequence.
+
+mira: Sent workaround to customer and asked for any failing examples. They replied with 3 examples; I've added them to the ticket.
+
+josh: I'll open a rollback PR to revert the trim change and add a toggle in the config. tagging @kevin for review.
+
+kevin: Reviewing now. After PR we should run a small A/B on non-critical customers then full rollback if confirmed.
+
+mira: Thanks everyone. Keeping ticket owner updated. :thumbsup:

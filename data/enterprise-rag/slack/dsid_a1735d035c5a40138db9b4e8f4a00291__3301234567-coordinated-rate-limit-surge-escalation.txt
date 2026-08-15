@@ -1,0 +1,84 @@
+incidents
+
+incident-bot: :rotating_light: PagerDuty alert fired - INC-2026-1234 - quota-enforcer anomaly. Service: quota-mapper (us-west). 429s spiking, auto-escalate to oncall.
+
+pagerduty: PagerDuty: page sent to Ben K (oncall) at 2026-03-15T10:12:47Z — urgency: high.
+
+Ben K: acked. I'm investigating now. ping me if you see any noisy deploys or recent config rollouts.
+
+Alice C: on standby for infra actions. nothing from infra autoscaler.
+
+Ben K: quick snapshot: dashboard shows ~9.7k 429/s at peak, error payloads include "quota_mismatch" and "token_alloc_failed". All errors come from limiter-pool-3 nodes.
+
+Carla M: I can confirm a config push for quota-map service (v2) started at 10:11:02 UTC. It was a progressive rollout (10% -> 50%), looks like it hit ~40% when errors started.
+
+Ben K: grabbing limiter logs, tail below:
+
+```
+2026-03-15T10:11:06Z limiter[p3]: WARN quota_mapper lookup failed tenant=acct-123 tag=opaqueXYZ -> null
+2026-03-15T10:11:07Z limiter[p3]: ERROR token_alloc failure: semaphore exhausted
+2026-03-15T10:11:08Z limiter[p3]: ERROR respond 429 route=/v1/generate tenant=acct-123
+```
+
+Priya S: tagging SRE and product for customer comms. drafting a status page note.
+
+Ben K: mitigation plan (weapons-grade quick):
+1) Pause quota enforcement via feature flag (global kill-switch).
+2) Shift traffic away from limiter-pool-3 to fallback pools.
+3) Rollback quota-map v2 rollout to v1.
+4) Monitor 429 rate and customer impact.
+
+Alice C: I can flip the feature flag now. Doing `POST /api/flags/quota_enforcement false`.
+
+Priya S: status page: "We are investigating increased 429 responses for a subset of customers; mitigations in progress." Putting that live in 2m.
+
+Ben K: executing step 1.
+
+Ben K: `POST https://console.internal/flags/quota_enforcement -d '{"enabled":false}'` -> 200 OK. Disabling enforcement.
+
+Dan O: rerouting 45% of traffic off limiter-pool-3 to fallback pools via traffic-shift. Command: `kubectl patch svc/limiter-router -n infra -p '{"spec":{"weights":{"pool-3":0.0}}}'`
+
+Dan O: traffic shift applied. Observing 429 drop to ~600/s. Latency normalizing.
+
+Carla M: starting rollback of quota-map: `kubectl rollout undo deploy/quota-mapper -n infra --to-revision=3` (v1 = rev3).
+
+Ben K: rollback completed, rev -> 3.
+
+Ben K: 429s now down to ~50/s — looks like mitigation working. Continuing to monitor for 15m.
+
+incident-bot: PagerDuty: INC-2026-1234 acknowledged by Ben K. Escalation to SRE Lead scheduled in 15 minutes if not resolved.
+
+SRE Lead: joining. Thanks everyone. What is the customer impact window and which tenants?
+
+Ben K: impacted tenants: acct-123, acct-789, acct-456 — mostly high-throughput hosted API keys. Peak window ~10:10:00 -> 10:25:00 UTC. Rough estimate ~4% of total requests affected during the peak.
+
+Priya S: I've posted status updates to status.redwood.ai and outreach message for affected customers ready for review.
+
+Carla M: root cause hypothesis: a schema change in quota-map v2 introduced an opaque tag that returns null for legacy tenants; limiter code doesn't tolerate null tag and exhausts its token semaphore. Rollout at 40% exposed the problem.
+
+Ben K: next immediate actions (owners):
+- Dan O: create incident ticket, attach logs and config diff. owner -> Dan.
+- Carla M: add null-safe handling to quota-map and add unit tests. owner -> Carla.
+- Priya S: customer comms + postmortem timeline. owner -> Priya.
+
+Dan O: taking ownership of the ticket. I'll also add a post-incident task to add canary checks to rollout service to detect quota lookup regressions.
+
+Ben K: handing off live monitoring to Dan O for the 10:30->12:00 shift. I'm stepping out to do root-cause code fix pairing with Carla.
+
+Dan O: ack. I'll monitor alerts and escalate to SRE Lead if 429s creep back above 500/s.
+
+Priya S: recommend we add a temporary safety: reject rollouts that increase error rate >0.5% in first 5m. Filing request for rollout gating.
+
+Carla M: I'll prepare a patch to return a default tag (fallback) when lookup is null and add explicit logging. Plan to cut a canary release and test.
+
+Ben K: nice work. Summary for PD/CS teams: mitigations applied, rollback done, customer impact limited and decreasing, postmortem to follow.
+
+incident-bot: Incident resolved - INC-2026-1234 auto-resolved by system at 2026-03-15T10:30:12Z.
+
+Dan O: creating the incident ticket now: #INC-2026-1234, attaching logs, timeline, and owner assignments. Will include playbook updates for feature-flag rollbacks and rollout gating.
+
+Priya S: scheduling postmortem for tomorrow 15:00 UTC. Drafting blameless TL;DR.
+
+Carla M: follow-up action items created in the ticket: add null-safety, add rollout canary check, update QA tests.
+
+Ben K: thanks team. Closing thread and handing to Dan for post-incident tracking. :thumbsup:

@@ -1,0 +1,30 @@
+partnerships
+
+emily: Heads-up  CloudVendor asked for a private marketplace offer that bundles a 12mo committed spend + a hardware rebate token and an SI enablement pack. They want a coordinated announcement in ~7 weeks. Need pricing, renewal mechanics, and how rebate gets redeemed.
+
+raj: ops: SI (Nova Systems) needs deployment templates and a validation checklist. If SI signoff lags, we should publish the PO in "preview" mode and note SI docs pending.
+
+olga: legal: private offers ok. require renewal opt-out window (45 days) and specific data handling addendum. rebate tokens must have expiration and clawback on non-fulfillment.
+
+trevor: finance: prefer to treat rebate as a deferred subsidy and amortize over term. if sales insists on upfront invoice credit, we need a reconciliation clause. Also define how mid-term amendments affect recognition.
+
+emily: sales asks for a transparent tier grid so procurement can see immediate savings. proposed example:
+
+```
+Commit annualized: $200k
+Tier A: $200k -> 18% off list
+Tier B: $450k -> 25% off list + $30k hardware rebate token
+Tier C: $900k -> 32% off list + $70k hardware rebate token + priority SI hours
+Term: 12mo (auto-renew, 45-day opt-out)
+Preview listing allowed with "SI enablement pending" flag
+```
+
+raj: ops: if rebate is redeemed outside marketplace (partner portal), marketplace must show gross price + note for rebate redemption to avoid double-counting.
+
+olga: legal will draft rebate clause: expiry 120 days after issuance, non-transferable, recoupable pro-rata if commit not met. also will add co-branding approvals for joint announcement.
+
+trevor: fine on amortization + recoup. will prepare the revenue model and cap the early-renew bonus to $50k.
+
+emily: plan: publish draft PO in staging next week, circulate an announcement timeline, and lock the SI signoff date. tagging @raj @olga @trevor.
+
+marketplace-bot: Draft private offer created (pv-2024-1748000001). Review window opens in 72h.

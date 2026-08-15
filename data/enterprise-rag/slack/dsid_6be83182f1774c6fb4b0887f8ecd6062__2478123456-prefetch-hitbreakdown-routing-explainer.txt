@@ -1,0 +1,31 @@
+eng-runtime
+
+maya: Pushed a new panel to the prefix-hit dashboard — per-model / per-route / token-saved breakdown. Link: https://redwood.tools/dashboards/prefix-hit-v2
+sam: Looking now. can you add a per-customer 95p latency col? want to see warmup effect on tail
+jordan: added the latency col and a top-10 tenant sampling slice. initial numbers look wrong for model 'redwood-small-qat' — hit-rate ~2% vs expected ~12%
+maya: that's pretty bad. did we change key normalization last week?
+jordan: yes PR #1437 collapsed extra whitespace and trimmed differently. snippet:
+```
+key = normalize(prompt).strip().lower()
+# used to only collapse internal whitespace
+```
+eve: that change was to reduce dupes, but could break prefix matching for some routes. can we canary a rollback?
+maya: also can we tag kernel selection in telemetry? want to correlate kernel/quant profile with hit-rate diffs
+sam: done — added labels `kernel_version` and `quant_profile` to cache telemetry stream. also created an alert rule: token-saved drop >30% vs baseline over 1h
+jordan: perf profiling shows when kernel_A is selected CPU time in batching increases ~18% and KV lookup latency +12ms. might be padding or alignment effects
+maya: @jordan paste flamegraph link and quick pprof snippet
+jordan: flamegraph: https://perf.redwood/graph/7k93. pprof excerpt:
+```
+func: BatchBuilder::build
+samples: 42% -> kernel_A
+```
+sam: for dashboards we should add a "prefetch warmup curve" that plots hit-rate as fn(time since first req, route QPS)
+eve: also add owner/customer tags on panels so CS gets auto-notified if a tenant loses token-saved significantly
+maya: action items: 1) short canary rollback of key-normalizer for subset of tenants (jordan) 2) add kernel-correlation panel (sam) 3) bump prefetch warmup threshold to 30s default and test (maya) 4) update customer impact note (eve)
+jordan: i'll open the rollback under a feature flag and replay recent requests against the old normalizer for accuracy tests
+deploy-bot: deploy completed: runtime/service@v3.21.4 to canary (sha:9a7bff)
+maya: thanks — i'll re-run the saved query that computes token-saved delta and post numbers in ~30m :thumbsup:
+sam: added panels + runbook for alert: https://redwood.docs/runbooks/prefix-hit-alert
+maya: observed initial canary after rollback: tenant "acme-inc" hit-rate +9%, token-saved +12k tokens/hr. other tenants unchanged
+eve: great, i'll update the customer-facing note and loop in solutions eng
+maya: closing loop: kernel correlation panel pinned to eng-runtime dash, monitoring for 24h

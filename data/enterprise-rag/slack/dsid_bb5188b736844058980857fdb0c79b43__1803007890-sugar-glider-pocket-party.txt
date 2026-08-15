@@ -1,0 +1,31 @@
+random
+
+zoe: dropped a photo set  meet Tango, my sugar glider. he insists on riding in a pocket pouch and reviews architecture diagrams by nibbling corners. https://img.redwood.internal/zoe/tango-1.jpg https://img.redwood.internal/zoe/tango-2.jpg
+
+harper: oh my goodness. pocket coworker energy. does he actually glide between couches? :globe_with_meridians::eyes:
+
+zoe: yes, but only if there
+s a string of snacks leading the way. otherwise he prefers dramatic slow blinks and tiny head tilts.
+
+mitchell: is there a recommended onboarding doc for sugar glider office visits or do we just wing it with snacks? :baguette_bread:
+
+zoe: @mitchell there's an onboarding checklist (treats, quiet corner, no big fans). also please avoid strong citrus perfumes  they are not a fan.
+
+ravi: can we make a tiny nameplate and a dedicated laptop sticker? vote: enamel pin, sticker, or pocket-pouch replica? :ballot_box_with_ballot:
+
+harper: pocket-pouch replica so everyone can carry their own Tango. imagine sprint standups with tiny gliders. :sparkles:
+
+giphy-bot: https://giphy.com/gifs/sugar-glider-cute-l3q2K5jinAlChoCLS *gif posted*
+
+mitchell: logistics: if someone wants to bring Tango to a team offsite, do we need a waiver? ops-bot: please clarify.
+
+ops-bot: FYI: pets at offsite require pre-approval and a signed liability waiver. check #people-ops for details and dietary restrictions notes. :clipboard:
+
+zoe: thanks ops-bot! also adding: Tango believes any architecture diagram can be improved with more chew marks. caption contest: "when the canary deploy needs a snack" or "ship it when Tango says so". winners get a tiny pouch keychain.
+
+ravi: "Tango: I require more replicas, this pod is clearly underprovisioned" :rofl:
+
+harper: "when the PR has 2 approvals but Tango gives 3" :thumbsup:
+
+zoe: thanks y
+ll  will post merch poll tomorrow. Tango sends a sleepy glide and a considerate nibble to anyone who resolved a bug today.

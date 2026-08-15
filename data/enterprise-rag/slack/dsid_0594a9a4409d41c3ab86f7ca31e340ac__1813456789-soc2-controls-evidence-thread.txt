@@ -1,0 +1,51 @@
+all-hands
+
+Anya: Thanks everyone for the great questions during the security segment — I'm starting a quick follow-up thread to capture clarifications and owners.
+
+Kevin: Quick one — what's the current SOC2 scope? Is Hosted API covered or just Dedicated/Private?
+
+Anya: Short answer: Hosted (prod in us-east-1/us-west-2) and Dedicated are in scope for the current SOC2 report. Private (VPC/on-prem) is not included yet; it’s planned for the next audit cycle.
+
+Maria: Can you confirm whether 'Hosted' scope includes EU regions (eu-west-1)? Customers asked during the Q&A.
+
+Samir: From compliance: EU regions are covered for networking and access controls, but we cannot claim full SOC2 coverage for eu-west-1 until the next audit. So please avoid saying EU-hosted is SOC2-covered in customer comms.
+
+Kevin: Got it. Related — what log retention times are we committing to for SOC2 evidence? I need to tell a customer how long ALB / CloudTrail / app logs are kept.
+
+Samir: Current evidence retention policy for SOC2: infrastructure audit logs (CloudTrail / GCP audit) = 365 days, application-level structured logs = 90 days by default, and we keep host/infra syslogs for 365 days. We can provide extended retention as an enterprise add-on.
+
+Maria: Can we get a short checklist of what to provide for customer questions? e.g., "do we have immutable audit trail, who holds keys" etc.
+
+Anya: Good ask. High-level checklist for customer-facing answers: 1) SOC2 coverage statement (regions + services), 2) Audit log retention windows, 3) KMS key ownership model (Redwood-managed vs customer BYOK), 4) Evidence access process (how to request), 5) Roadmap commitment for Private/ISO scope.
+
+Kevin: About KMS — during the all-hands someone asked if customers can bring their own keys (BYOK) for Hosted. Is that available?
+
+Samir: Not for Hosted today. Hosted uses Redwood-managed keys stored in our KMS with customer data encrypted at rest. BYOK is available for Private and will be in roadmap for Dedicated in H2. We are working on ORK (operational key rotation) docs.
+
+InfraBot: deploy-bot: new doc published -> /internal/compliance/soc2/evidence-matrix (version 2026-03-10)
+
+Maria: Samir, can you paste the short audit log query snippet we usually use for evidence requests? Saves me time.
+
+Samir: Sure — here's the typical CloudTrail/GCP audit example we hand auditors (redacted):
+
+```
+# CloudTrail example: find IAM policy changes
+aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=PutRolePolicy --start-time 2025-03-01 --end-time 2026-03-09
+\n# GCP example (BigQuery):
+SELECT protopayload_auditlog.methodName, timestamp FROM `proj.dataset.cloudaudit_googleapis_com_activity` WHERE protopayload_auditlog.methodName LIKE '%SetIamPolicy%' AND timestamp BETWEEN '2025-03-01' AND '2026-03-09'
+```
+\nKevin: Perfect. Also, a quick note on evidence delivery — who owns compiling the pack when a customer requests SOC2 artifacts?
+
+Samir: Ownership: Compliance (Samir) owns the final evidence pack. Engineering (Maria) will pull raw logs/artifacts, and Infra (Kevin) will produce infrastructure proofs (configs, network diagrams). I'll own sign-off and redaction for customer delivery.
+
+Maria: Action item: I'll start a checklist doc and collect the dashboard screenshots + log extracts. @Samir — can you confirm redaction rules (PII removal) and a deadline?
+
+Samir: Redaction rules: remove full customer data and IPs where required; we keep metadata context. Deadline: please share a draft pack by 2026-04-03, target final by 2026-04-10 for early customer asks.
+
+Anya: Thanks — last bit: ISO roadmap question from the Q&A. We plan ISO27001 in next 12 months; will update the roadmap doc next week with milestones.
+
+Kevin: Thanks all. I'll update the customer-facing FAQ with the retention windows and BYOK status.
+
+Maria: I'll create the internal checklist doc and ping owners when it's ready.
+
+Anya: Appreciate the follow-ups. If anyone else has customer questions from the all-hands, drop them here and we'll assign. :thumbsup:

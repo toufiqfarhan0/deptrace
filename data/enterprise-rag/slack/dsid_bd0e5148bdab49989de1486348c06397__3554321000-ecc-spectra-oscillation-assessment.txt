@@ -1,0 +1,53 @@
+incidents
+
+incident-bot: INCIDENT ALERT: INC-2026-3201 - GPU node instability detected on cluster-prod-us-east-1. Metric triggers: node.xid_rate > 50/min across 3 hosts. Paging oncall now. :rotating_light:
+Maria L: paging @Alex K (oncall) — seeing customer errors and autoscaler churn. can you take?
+Alex K: taking it. quick summary?
+Maria L: multiple nodes showing Xid 13/31 spikes, ECC correctable counts climbing, a couple of containers OOM'd and then restarted. routing fallback triggered for high-latency routes.
+Jonas P: attaching recent dmesg from host gpu-rye-12:
+```
+[ 12345.678901] NVRM: Xid (PCI:0000:3d:00): 31, pid=23821, graphics fault
+[ 12345.678912] NVRM: GPU at 0000:3d:00: GPU has fallen off the bus.
+[ 12346.123456] kernel: Out of memory: Killed process 23821 (inference-serv) total-vm:1500000kB
+```
+Tanya S: observed `nvidia-smi -q` shows ECC: Volatile: 120 correctable, Uncorrectable: 2 (same host).
+Alex K: ok — priority: contain blast radius, preserve affected customers, gather telemetry. Plan: 1) cordon + drain affected nodes where possible (avoid killing canaries) 2) restart nvidia driver & container runtime 3) run diagnostics (memtest, nvml) 4) if repeated, evacuate fleet group and roll nodes through canary process.
+Maria L: customer-impact: 3 orgs showing 5xx for generation API, one support ticket opened (CS-4129). Routing fallback sent requests to lower-tier models — increased latency and token cost.
+ops-bot: Suggested command: `kubectl get pods -o wide --field-selector spec.nodeName=gpu-rye-12`
+Alex K: starting cordon: `kubectl cordon gpu-rye-12` and `kubectl drain gpu-rye-12 --ignore-daemonsets --delete-local-data --grace-period=30` — will mark critical inference pods with annotation to bypass if needed.
+Jonas P: running quick NVML check script:
+```
+python check_nvml.py --host gpu-rye-12
+# output:
+# ECC correctable: 122
+# ECC uncorrectable: 2
+# XID rate (1m): 84
+```
+Tanya S: FYI some nodes show kernel OOPS consistent with driver reset loop. `dmesg` shows repeated "NVRM: GPU has fallen off the bus" ~every 7s.
+Alex K: restarted containerd and nvidia-driver on gpu-rye-12: `systemctl restart containerd && modprobe -r nvidia && modprobe nvidia` — watch for reappears.
+Maria L: telemetry: after restart XID rate dropped to ~10/min for ~5m then rose again to 60/min.
+Alex K: not stable. rolling evac for nodes in same rack group (rye-10..rye-14). triggering capacity failover to dedicated-pool-2. Doing controlled rolling: drain + reboot + hardware-check.
+eng-runtime: NVML indicates PCIe reset counters incrementing — possible flaky PCIe link or power rail. Recommend hardware team run BMC checks and reseat GPUs if pattern persists.
+Jonas P: starting customer comms draft for CS: "We're investigating degraded model performance in US-EAST; mitigation in progress; teams experiencing 5xx may be routed to fallback models. We'll update within 30m."
+Tanya S: ETA for initial mitigation (cordon+drain+restart) 18 minutes, full remediation depends on hardware results.
+Alex K: escalated to hardware ops + put nodes into maintenance window. Created ticket HW-7782. Adding oncall rotation handoff notes.
+Maria L: note: autoscaler churn caused ~15 failed provisioning attempts due to driver modules not present in new instances (init script race). engineering to patch startup ordering.
+eng-runtime: hotfix queued: delay container runtime start until nvidia modules loaded (PR #5421).
+Alex K: handoff in 20m to next oncall (Tanya) — current state: affected nodes cordoned/drained, traffic routed, customer comm sent, hardware ops engaged. will post final runbook steps. :thumbsup:
+Tanya S: picking up at 18:40 UTC. will monitor XID rate and customer impact. if ECC uncorrectable increases, escalate to SEV on-call and start customer bridge.
+incident-bot: INCIDENT UPDATE: INC-2026-3201 - mitigations applied, monitoring for recurrence. next update in 30m or on significant change.
+Alex K: quick logs I saved for postmortem:
+```
+# top failing process
+inference-serv (pid 23821) killed by OOM after repeated Xid faults
+# node state summary
+gpu-rye-12: cordoned, drained, driver restarted (recurred)
+gpu-rye-13: cordoned, under diag
+gpu-rye-11: unaffected
+```
+Maria L: tagging for postmortem: eng-runtime, eng-sre, hw-ops, customer-success.
+Tanya S: if we see > 5 uncorrectable ECC per host in next hour, plan to schedule immediate repro and hardware RMA.
+Alex K: logged final: moving to monitoring-only. leaving handoff note in ops runbook and adding Kusto queries for XID burst detection.
+incident-bot: INCIDENT RESOLUTION: partial mitigation in place. monitoring continues.
+Tanya S: confirmed CS notified; bridging not required yet. will reopen if customer 5xx count rises.
+Maria L: thanks team — filing incident log and assigning follow-ups.

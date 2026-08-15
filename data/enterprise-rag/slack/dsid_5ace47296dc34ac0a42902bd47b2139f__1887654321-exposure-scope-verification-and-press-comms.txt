@@ -1,0 +1,41 @@
+incidents
+
+Jamie: Heads up — while triaging the canary run I noticed a log line that looks like it contains an auth header. unsure if it's a full token or truncated. pasting snippet below. :eyes:
+Leah: can you paste the exact line (redact anything you think is sensitive)?
+Jamie: sure — here's the raw line I grabbed from canary-logs:
+```
+2026-03-17T10:12:23Z INFO outbound_request url=https://api.example.com path=/v1/text auth=Bearer abc1234...efg
+```
+Jamie: it's truncated with ellipses in our view, but the original file may have the full string. logged from the canary worker stdout.
+Ravi: which service wrote that? is it the new router or legacy-http?
+Jamie: router-canary-3, instance id rc-3. I grepped the pod logs and found 5 instances over the last hour.
+Elise (security): tagging in. first questions: 1) is the token internal or customer-owned? 2) was any PII alongside?
+Jamie: token appears to be a short-lived internal service token (from the header key name). no user ids nearby in the same line, but adjacent lines do reference request IDs only.
+Marta (devops): if it's internal service token we still treat as secret. can you run `kubectl cp` to pull the full log file and then `grep -n "auth=Bearer"`? do it into a workstation that's already approved for logs.
+oncall-bot: Automated reminder: follow incident-playbook/log-exposure for next steps — rotate keys, restrict token scope, and reproduce on staging if needed.
+Jamie: copying full log to secure node now, will paste findings.
+(2 minutes)
+Jamie: full line shows `auth=Bearer eyJhbGciOiJI...longstring...ZQ==` — looks like a JWT.
+Elise (security): thanks. treat as confirmed secret exposure. scope questions: was the token scoped to read-only telemetry or broader? who created it?
+Ravi: token minted by router-service for third-party callouts. minting code is in `router/auth/mint.py` — default lifetime 12h and scopes include `callout:write`.
+Elise (security): ok medium risk. action items: 1) rotate the token(s) immediately; 2) audit where that token was valid; 3) if any external party could have received it, comms decision required.
+Dale (comms): pinging for comms. do we need customer-facing notification or internal only?
+Marta (devops): rotation command: run `kubectl exec -it -n infra secret-rotator -- /rotate --service router-canary` then confirm no more tokens in logs. I'll run it with Jamie.
+Jamie: started rotation now.
+(1 minute)
+Marta (devops): rotation completed. I redeployed router-canary-3 with new env. Will tail logs for 10m.
+Jamie: after rotation, grepped past logs — only canary environment had full tokens in stdout; staging/prod logs show masked headers. looks like a debug flag left on in canary build.
+Elise (security): that narrows scope — only canary instances (non-prod). still warrants key rotation and a quick postmortem on logging sanitization.
+Dale (comms): recommend internal incident post in #incidents, and no external comms. we should prepare an internal memo for customers if we find evidence an external party pulled logs.
+Ravi: will open a PR to change default debug flag off and add unit test to ensure `Authorization` headers are not emitted.
+Jamie: logging PR draft: `router: disable verbose_header_log by default; scrub Authorization header in log formatter`
+Elise (security): declare severity: LOW-MED until we confirm no external access. Marta, can you check S3 bucket and object ACLs where canary logs land?
+Marta (devops): checking S3 now — canary logs go to `redwood-canary-logs` with lifecycle `private`. object ACLs show only infra-role access. no public objects.
+Marta (devops): also verified CloudWatch subscription filters — no external subscription to that log group.
+Elise (security): good. given no external access and only canary scope, escalate to LOW. actions for record: rotate tokens (done), turn off debug (in PR), add scrubber (in PR), run audit on all canary images. I'll file a short incident report template.
+Dale (comms): draft internal post ack prepared, will wait for your sign-off before posting. quick question: can we include the sanitized log snippet?
+Elise (security): yes include sanitized snippet and steps taken. please do not paste the actual JWT.
+Jamie: +1 on sanitized snippet.
+Ravi: assigning to me: add automated check to CI to fail if `Authorization` appears in logs during unit tests.
+Elise (security): thanks all. if anything changes (we find external pull), we'll escalate to SEC and update comms.
+Dale (comms): noted. will standby. :thumbsup:

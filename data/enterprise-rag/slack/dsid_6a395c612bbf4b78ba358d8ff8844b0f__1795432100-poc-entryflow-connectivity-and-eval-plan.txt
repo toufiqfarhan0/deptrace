@@ -1,0 +1,78 @@
+sales
+
+jordan.sales: Kickoff — Acme POC. Need to lock data access pattern, redaction approach, and success criteria this week. Customer wants 2-week sandbox + 4-week evaluation. Who owns what?
+
+sam.solutions: I can own the POC runbook and eval rubric. Quick q: will they provide a sanitized sample dataset or do we need on-the-fly redaction?
+
+jordan.sales: They can share ~1000 customer messages (CSV) but legal wants minimal PHI. Prefer we do redaction on ingest.
+
+anna.product: Proposed success criteria (short):
+- Functional: extract key fields (name, acct_id, complaint_type) with >= 92% F1 on held eval set
+- Latency: 95th pct single-turn < 450ms for 512-token context on Dedicated staging
+- Cost: token cost <= $0.70 per 1k tokens at pilot run rates
+- Reliability: <1% error rate (model timeouts/500s) across test traffic
+Can we get agreement from Acme on those?
+
+ravi.engineering: For sandbox access options:
+1) S3 sandbox: customer uploads sample.csv to s3://acme-poc-sandbox and grants a read-only role (preferred)
+2) VPC peering: we run a small private deployment into their VPC, needs network WHITELIST and subnets
+3) Secure upload portal: we provide presigned URL to upload redacted/sensitive files
+Which do they prefer?
+
+lee.security: Need answers before we accept data:
+- Is data encrypted at rest in customer S3? (should be SSE-KMS)
+- Do they need tokenization/HSM for keys?
+- Audit log retention requirement?
+Also, we'll need them to complete the security questionnaire (see link) and share SOC2-bridge if available.
+
+jordan.sales: I asked Acme: they prefer S3 presign + server-side KMS. They will only provide PII-minimized payloads but want agent redaction as backup. Legal asked for sample redaction rules.
+
+sam.solutions: Draft redaction rules (we can run a transform job):
+- Remove/replace: SSN, CC numbers -> <REDACTED_NUM>
+- Replace emails -> <EMAIL_REDACTED>
+- Mask names except initials (Alice J. -> A. J.) if customer requests
+- Keep fields needed for extraction (acct_id numeric)
+We can provide a small python transform they can run before upload: 
+
+```python
+import csv, re
+mask_email = lambda s: re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "<EMAIL_REDACTED>", s)
+# simple SSN mask
+re.sub(r"\\b\\d{3}-\\d{2}-\\d{4}\\b", "<REDACTED_NUM>", text)
+```
+
+ravi.engineering: On our side for S3 presign flow we need: bucket ARN, prefix, KMS key alias, and a role ARN to assume for read. Example minimal IAM policy we need them to attach to the role: 
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket"],"Resource":["arn:aws:s3:::acme-poc-sandbox","arn:aws:s3:::acme-poc-sandbox/*"]}
+  ]
+}
+```
+
+anna.product: Eval plan (2 phases):
+- Phase A (week 1-2): ingest sanitized sample (1k rows), smoke tests, run candidate prompts (15 prompts) -> produce initial F1/precision/recall matrix
+- Phase B (week 3-6): run scaled trials with streaming + concurrency, run robustness evals (typo/phone-number formats), and finalize acceptance run on withheld 200 rows
+We will provide prompt templates and an eval harness.
+
+jordan.sales: Pricing question from Acme: can we do a usage-based pilot then convert to committed Dedicated? They want an estimate for 4-week pilot compute cost.
+
+anna.product: Estimate: small Dedicated (2xA100-equivalent) with our pilot throughput => ~ $12k for 4 weeks including baseline tokens and monitoring. If they convert to 3-month reserved, we can give 18% discount. I'll get detailed quote from finance.
+
+lee.security: Also need to confirm retention policy: we'll keep logs for 30 days by default in sandbox. If they need longer, add to contract.
+
+jordan.sales: Action items: 
+- @sam.solutions: finalize runbook + redaction script by EOD tomorrow
+- @ravi.engineering: IAM policy + presign test harness by Thu
+- @lee.security: send SQ and list of required evidence items to Acme legal
+- @anna.product: send initial success criteria doc + cost ballpark to Acme
+
+sam.solutions: acked. I'll drop the runbook link here when ready. :thumbsup:
+
+ravi.engineering: I'll kick off a presign test using demo bucket later today. deploy-bot: created test role -> status OK.
+
+deploy-bot: deploy: presign-harness v1 -> succeeded (reaction :white_check_mark:)
+
+jordan.sales: Great — I'll consolidate and send to Acme after we have the redaction sample and presign test. Meeting Friday to confirm acceptance metrics. Thanks all. :rocket:

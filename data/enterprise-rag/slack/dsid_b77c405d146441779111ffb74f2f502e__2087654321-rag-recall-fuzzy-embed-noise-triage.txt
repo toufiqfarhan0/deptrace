@@ -1,0 +1,77 @@
+eng-ml
+
+maya: quick heads up — nightly RAG eval (nightly/2026-03-19) shows recall@50 down ~8% on cohort "enterprise-helpdesk". baseline 0.74 -> current 0.68. topk missing relevant docs for ~10% of queries. this started after reranker change rolled last night.
+
+jonathan: hmm — which reranker build was rolled? any quantization in that build?
+
+maya: reranker v2.3 deployed (canary -> 100%) around 02:10 UTC. it used the new int8 quant pipeline from abel's PR. infra-bot: can you paste deploy logs?
+
+infra-bot: deploybot: rollout complete for model services/reranker:v2.3 at 02:10 UTC (canary 02:00->100%). no infra incidents recorded.
+
+sophie: are embeddings drifting too? maybe retrieval candidates changed and reranker is just amplifying.
+
+maya: embeddings look "mostly" stable in aggregate — small cosine mean shift +0.002 but tail mass grew. sample from logs: 
+
+```
+query: "how to reset password for account manager"
+baseline topk ids: [123, 456, 789]
+current topk ids: [456, 999, 123]
+scores baseline: [0.92, 0.87, 0.83]
+scores current: [0.89, 0.79, 0.81]
+```
+
+alejandro: id 999 is a new doc from index-merge yesterday; could be noisy doc pushing down the correct doc.
+
+nina: can we run a reranker ablation: v2.2 vs v2.3 on identical candidate sets to isolate scoring change?
+
+maya: good call — spinning up an ad-hoc eval now. eval-bot: schedule an ablation run?
+
+eval-bot: nightly-eval: started ad-hoc run 2087654360 comparing reranker:v2.2 vs reranker:v2.3 on sample=5000 queries. ETA ~18m.
+
+jonathan: also run v2.3 fp16 vs int8 to isolate quantization effects.
+
+maya: added. also filter queries where retrieval recall drop >0.5 so we stress the problematic cohort.
+
+sophie: another angle — eng-runtime had a patch to batch-kv prefill behavior recently. could that change ordering for prefix-heavy queries?
+
+jonathan: i'll grep runtime logs for cache-miss ratio and any prefill latency regressions.
+
+infra-bot: perf-metrics: reranker inference p50 increased 12ms -> 14ms post-rollout. not huge but noted.
+
+alejandro: if doc 999 is surfacing higher, maybe index normalization changed. who ran index-merge?
+
+nina: indexer job index-merge v1.9 ran at 01:40 UTC — there was a fix that flipped unitize=false for a subset of shards to workaround a float overflow bug. could alter embedding scale.
+
+maya: summarizing hypotheses: (1) reranker model output changed (v2.3), (2) quantization int8 artifact, (3) index normalization flag changed embedding scale, (4) new docs/noise from merge. we'll triage in parallel.
+
+jonathan: priority plan: reproduce on eval-bot; ablation isolating single variable; if index flag, reindex small shard and compare; if quant, revert quantized build.
+
+maya: i'll run targeted reindex of shard-42 and re-eval topk recall on 1k queries.
+
+sophie: assigning: maya -> eval runs + shard reindex; jonathan -> runtime/log checks + quant perf tests; alejandro -> inspect new docs and index flags; nina -> prepare reranker ablation harness.
+
+maya: pinging @eng-oncall for capacity if reindex spikes load.
+
+sophie: :thumbsup:
+
+eval-bot: nightly-eval: v2.2 vs v2.3 done 2087654450. Summary: recall delta -7.9% favoring v2.2. score distribution: v2.3 lowers rerank score by ~0.08 on avg for known-positive pairs.
+
+jonathan: run int8 vs fp16 for v2.3 please.
+
+eval-bot: quantization-run: v2.3 fp16 vs int8 done 2087654460. Result: int8 introduces mean score shift -0.06 and increases variance (std +0.04).
+
+jonathan: looks like quantization is the primary contributor. index normalization could amplify the effect for certain queries where candidate margins are small.
+
+alejandro: propose rollback of quantized reranker build until we patch quant strategy or calibrate activation ranges. recommend deploy v2.3 fp16 or revert to v2.2.
+
+maya: agree. i'll propose rollback to product owners and open a hotfix ticket.
+
+sophie: also add a regression gate to nightly CI to block quantized reranker rollouts if score-shift > 0.03.
+
+nina: opening PR for auto-block and adding metric "reranker_score_shift_vs_baseline" with threshold 0.03. PR #3124.
+
+maya: thanks team. updating stakeholders and will confirm rollback status in ~30m.
+
+jonathan: thx — keep updates under 30m please.
+
+maya: rollback scheduled 02:55 UTC — reverting quantized artifact. :white_check_mark:

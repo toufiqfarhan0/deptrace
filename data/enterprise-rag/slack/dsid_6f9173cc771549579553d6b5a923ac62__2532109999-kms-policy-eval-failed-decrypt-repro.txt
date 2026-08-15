@@ -1,0 +1,47 @@
+eng-security
+
+sara: FYI support ticket #2841 — customer reports API errors when saving embeddings after our KMS key rotation. They get 403 AccessDenied from decrypt path.
+alex: Can you paste the exact error the service returns? 403 on our proxy or from aws kms?
+sara: Our proxy log: `decrypt: failed, upstream=proxy-kms, status=403, msg=AccessDenied` CloudTrail shows KMS:Decrypt events for the ciphertext with "errorCode": "AccessDenied".
+jordan: Any recent policy/key changes? alias swap or new key material?
+sara: We rotated the CMK alias yesterday and applied the new key policy that scoped access to the new account roles. I didn't change grants.
+alex: Two quick repro checks: 1) try decrypt with same ciphertext using aws cli (in customer's role) 2) try aws kms decrypt with and without an encryption-context header.
+sara: Ran cli as their cross-account role: `aws kms decrypt --ciphertext-blob fileb://ctb.bin --region us-west-2 --output text` -> AccessDenied.
+jordan: What about supplying the encryption-context? some SDKs send it, some proxies strip it. If our proxy stripped it, KMS would reject if key policy requires matching context.
+sara: CloudTrail event has `encryptionContext: null` for their failed calls. Customer says their app sets context, so suspect our proxy or S3 presign path.
+alex: kms-bot posted a rotation event at 2532109000 for alias/rdw-prod/cmkswap -> could be related.
+kms-bot: Key rotation event: alias/rdw-prod moved to key/1234abcd at 2026-02-14T18:50:00Z. New key policy updated by infra-admin.
+support-ops: Customer also flagged a billing anomaly (sudden spike of failed decrypt attempts). They retried in a loop and double billed us on request units.
+jordan: Repro plan: 1) impersonate customer role in staging 2) call decrypt with context present in header 3) capture proxy request and raw aws request/headers 4) check KMS key policy for Condition on kms:EncryptionContext or aws:principalOrgID.
+alex: Quick commands to run in staging (replace values):
+```
+aws sts assume-role --role-arn arn:aws:iam::123456789012:role/customer-role --role-session-name test
+aws kms decrypt --ciphertext-blob fileb://ctb.bin --encryption-context Key=tenant_id --region us-west-2
+```
+If the cli succeeds only when encryption-context is present, then our proxy is stripping it.
+sara: I captured proxy request - it shows `x-amz-Encryption-Context` header missing on the outbound to KMS. The inbound from client had it. Looks like our header sanitizer dropped it on the path.
+jordan: That matches. Fix options:
+- Short term: re-add header passthrough in proxy for KMS paths (hotfix)
+- Mid term: add an explicit sign/verify step so we forward the signed kms request body rather than re-creating headers
+- Customer-facing: suggest they retry with a fallback key that doesn't require context until we patch
+alex: For hotfix, change env var PROXY_KEEP_KMS_HEADERS=true in edge-proxy and redeploy. Also add a temporary grant on the key that allows decrypt from the customer's role regardless of context: `aws kms create-grant --key-id alias/rdw-prod --grantee-principal arn:aws:iam::123456789012:role/customer-role --operations Decrypt` (short-lived)
+sara: Created grant id=grant-0a1b2c with TTL 1 hour as stopgap.
+support-ops: Customer confirmed reduced errors after grant creation, but asks for audit logs showing which requests failed and why.
+jordan: Audit note: CloudTrail will have the failure events. We should also surface our proxy request logs and the missing header to compliance. Add a follow-up to ensure audit retention for KMS logs is 365 days for this tenant.
+alex: Action items assigned:
+- sara: roll prod edge-proxy hotfix to restore KMS headers (safe flag) — ETA 2h
+- jordan: add key policy statement /or plan to rotate grant flow with least privilege — ETA EOD
+- alex: prepare audit bundle (CloudTrail events + proxy logs) and share with compliance + customer — ETA 4h
+sara: Starting hotfix now. Patch diff:
+```
+diff --git a/proxy/headers.go b/proxy/headers.go
++ if strings.HasPrefix(req.Path, "/kms/") {
++   preserveHeader(req, "x-amz-encryption-context")
++ }
+```
+deploying to prod-edge-1
+alex: Good. After hotfix, let's verify decrypt success and remove the emergency grant when key policy is fixed.
+support-ops: Customer appreciates the fast follow-up. Keeping ticket open until grant removed and we have audit package.
+jordan: Also add a regression test to our e2e: decrypt via proxy with encryption-context present and assert the KMS call receives it.
+sara: Noted. Will add test and include in the release train.
+alex: Thanks everyone, keep updates in this thread and ping me if anything blocks the hotfix.

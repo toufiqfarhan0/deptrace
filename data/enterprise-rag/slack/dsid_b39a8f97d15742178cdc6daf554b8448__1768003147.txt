@@ -1,0 +1,60 @@
+incidents
+
+incident-bot: :rotating_light: Pager: Elevated 5xx rate on streaming gateway (service: gateway-stream). Alert group: streaming-errors. Initial spike at 21:12 UTC. Error rate now ~6% (baseline 0.05%).
+maya: seeing the pager — I'm oncall. pulling logs now. can someone drop recent deploys? :mag:
+ravi: i'm looking at deploys, nothing pushed in last 30m. infra autoscaler did some node churn ~21:05. checking.
+sam: echoing, noticed client cancel traces increasing too. maybe a proxy timeout? gateway logs show chunked-encoding partial frames and downstream reset.
+maya: stacktail snippets:
+```
+2026-03-15T21:11:58Z gateway-stream ERROR stream: write failed: write: connection reset by peer
+2026-03-15T21:12:01Z gateway-stream WARN chunked: incomplete chunk trailer
+2026-03-15T21:12:15Z gateway-proxy ERROR downstream: 502 Bad Gateway from model-router
+```
+jules: metric check: 5xx rate spiking from 0.03% -> 6.2% in 7m. p95 streaming latency up from 0.9s -> 3.2s. active streaming sessions stable, fanout per-request increased x1.6.
+maya: customer impact assessment: estimated ~1.2k active streams affected over last 10m, majority are long-poll chat sessions. CS reported 2 customers with visible errors (tickets #4132, #4133). emily-cs: flagged, contacting customers now to collect logs.
+maya: immediate mitigation ideas: 1) enable gateway fallback to paged (disable chunked) for tier=free, see if chunked disconnects stop. 2) raise proxy read timeout to 90s temporarily. 3) throttle fanout per-client to 4. 4) route to older model-variant (no recent quantized rollout).
+sam: can we flip fallback quickly? which config? gateway supports runtime-toggle: `enable_chunked_streaming: false` per-route.
+maya: running toggle in staging then prod via console now.
+```
+# prod toggle (one-off):
+POST /admin/runtime-toggle
+{ "route": "/v1/stream", "enable_chunked_streaming": false }
+```
+ravi: rolling the toggle now. sending curl for audit:
+```
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://console.redwood.internal/admin/runtime-toggle \
+  -d '{"route":"/v1/stream","enable_chunked_streaming":false}'
+```
+incident-bot: Action logged: runtime-toggle by maya (runbook step 2).
+maya: turned off chunked streaming for default route at 21:18 UTC. monitoring.
+jules: after toggle: 21:19-21:24 window shows immediate drop in chunked-related errors (~-70%). overall 5xx down to 2.1% but still above baseline.
+sam: still seeing gateway 502s originating from model-router when payloads hit sequence length > 3k. suspect model runtime OOMs or kernel-level resets.
+ravi: checking model-host logs: several containers hit 'Killed' by OOM at ~21:09-21:14. but model-router supposed to retry. maybe retries are causing queue pressure.
+maya: short-term: enable model-variant fallback to smaller context model for sessions with long history, and reduce batch size for that variant.
+```
+# model-router override
+PATCH /admin/model-routing
+{ "route":"/v1/stream","fallback_variant":"gpt-small-quant-v2","max_batch_size":2 }
+```
+```
+# admin command
+redis-cli -h router1 HSET routing:overrides /v1/stream '{"fallback_variant":"gpt-small-quant-v2","max_batch_size":2}'
+```
+
+jules: applied fallback override at 21:25 UTC. metrics: affected requests failing -> succeeded for small payloads. 5xx now 1.0%.
+emily-cs: customers updated: two impacted customers saw improved behavior post-21:26. they're still seeing occasional disconnects on very long sessions, CS will keep monitoring.
+maya: assign follow-ups: - Ravi to investigate host OOM cause and whether autoscaler churn triggered it. - Sam to analyze queue/backpressure interactions between router and serving runtime. - Jules to validate rollback/disable of recent quantization patch on model pool. - Emily to continue customer comms and collect request IDs.
+ravi: taking OOM action: provisioning extra capacity in pool and bumping memory limits for model-hosts temporarily. also rolling a hotfix in autoscaler to reduce aggressive termination.
+sam: digging into router logs: saw exponential retry backoff misconfigured; retries were tight (50ms) causing bursts. increasing backoff and limiting concurrent retries per-request.
+maya: oncall handoff: i need to go offline for meeting at 21:35. handing off to ravi. ravi, you're primary oncall now. please ack and own live mitigation until 22:30.
+ravi: ack, taking over. will coordinate with sam/jules. tagging @oncall for awareness. :handshake:
+incident-bot: Handoff recorded: previous_oncall: maya, new_oncall: ravi, handoff_time: 1768003530
+maya: notes for handoff: toggled chunked off, applied fallback_variant override, increased proxy read timeout to 90s, scaled quick capacity x1.5, customers notified. see /tmp/stream-incident-1768003147 for collected logs.
+ravi: copying notes. next steps: run a controlled canary enabling chunked back for a small subset after fixes, test model-host memory thresholds under load, and keep retry-backoff changes in place.
+sam: creating a follow-up ticket: INC-1768003147-FIX: router retry backoff + serve runtime batch handling. attaching request traces.
+jules: adding runbook item: if OOMs coincide with autoscaler churn, add a 2m grace to termination and drain connections first.
+emily-cs: customers on watchlist: acct-234, acct-789. I'll update ticket thread and escalate to AMs if anything recurs.
+maya: thanks team. ravi, please escalate pager to oncall-escalation if 5xx >2% for 10m. I'm available by DM.
+ravi: will do. temp mitigation seems stable at 0.9% now. leaving channel but will monitor alerts. :eyes:
+incident-bot: Note: Incident status changed to "mitigated (partial)" at 21:34 UTC. Postmortem assigned to sam/jules/ravi. Severity: Sev2. Incident ID: INC-1768003147.

@@ -1,0 +1,87 @@
+incidents
+
+incident-bot: Pager: P1 genqueue high tail latency in US-W (~70% requests > 800ms). Triggered 3234567000
+
+alice.nguyen: I'm oncall, looking now. any recent deploys?
+
+ben.carter: no prod deploys in last 2 hours from release log. seeing elevated queue sizes in genservice.
+
+carol.chen: heads-up: pulling together statuspage draft. can someone confirm customer impact classification?
+
+alice.nguyen: impact: degraded request latency for generation endpoints in US-W. Errors are low, clients still getting responses but slower. classify as partial degradation (affects < 30% of requests but increases tail latency).
+
+carol.chen: got it. draft below, please +1 or suggest edits: 
+
+```
+Initial update (3234567000 UTC)
+We are currently investigating increased generation latency for requests routed to US-West. Some requests are experiencing higher than normal tail latency; most requests continue to complete successfully.
+- Scope: Generation / text completion endpoints serving US-West region
+- Impact: Increased latency, intermittent slower responses; no widespread errors observed
+- Mitigation: On-call is investigating routing & queue backlog; temporary throttling of long-window batch jobs in progress
+- Next update: in 15 minutes or sooner as we have more info
+```
+
+ben.carter: suggest adding guidance for customers using streaming to expect slower chunks and advise retry/backoff?
+
+carol.chen: good call. edit applied. new line: "If you rely on streaming, you may see increased chunk latency; clients should retry with exponential backoff."
+
+alice.nguyen: quick infra notes: genservice worker pool has uneven backlog due to a set of large requests pinned on long context lengths. I've kicked a targeted kill on offending workers and rebalanced KV-cache shards. backlog dropping now.
+
+dave.oncall: Rebalance confirmed, tail latency moving down in metrics (see grafana link: https://grafana.redwood/sys/genqueue?from=3234566900&to=3234567300). Recommend publishing initial update.
+
+carol.chen: legal-bot, can you quick-scrub the copy for customer-facing language?
+
+legal-bot: quick check: OK to publish. confirm no mention of internal causes/deploys. replace "killed workers" phrasing with neutral language "targeted worker restart".
+
+alice.nguyen: updated wording applied.
+
+carol.chen: final publish copy below — will post to statuspage 3234567120 UTC.
+
+```
+Initial update (3234567120 UTC)
+We are investigating increased generation latency for requests routed to our US-West region. Some requests are experiencing higher than normal tail latency; most requests continue to complete successfully.
+- Scope: Generation / text completion endpoints in US-West
+- Impact: Increased latency; intermittent slower responses for a subset of requests. No widespread errors reported.
+- Mitigation: On-call has performed targeted worker restarts and is rebalancing request queues. We are also throttling long-running batch jobs to reduce contention.
+- Guidance: If you rely on streaming, you may see increased chunk latency; please implement exponential backoff where appropriate.
+- Next update: in 15 minutes or sooner.
+```
+
+ben.carter: :thumbsup: publish when ready.
+
+carol.chen: published to statuspage and posted customer-facing note. URL: https://status.redwood.ai/incidents/USW-latency-3234567120
+
+alice.nguyen: monitoring. tail latency trending down but still slightly elevated. will re-evaluate at next update.
+
+carol.chen: plan for follow-up: 15-min update with customer-facing progress + ETA for resolution; include timeline of actions. assigning follow-up to ben for root-cause investigation notes.
+
+ben.carter: on it — prelim root cause: a small percentage of requests with long contexts were creating per-worker memory pressure causing longer GC pauses; logs and tracing in progress.
+
+carol.chen: 2nd update draft in 15: copy ready, will paste when ben confirms.
+
+alice.nguyen: confirmed GC spikes correlated with long-context requests. applied hotfix: increase worker pool soft-limits for large-context routing, and added a short-term throttle for >16k token requests. seeing improvement.
+
+carol.chen: publishing 2nd update now.
+
+carol.chen: 2nd update (3234567260 UTC)
+We have reduced the tail latency by performing targeted worker restarts and rebalancing request queues. We also implemented short-term throttles for very large-context requests to reduce memory pressure. Monitoring shows continued improvement.
+- Next update: 30 minutes or when resolved.
+
+alice.nguyen: metrics show recovery to baseline at 3234567340. marking as resolved.
+
+carol.chen: resolved notice draft: 
+
+```
+Resolved (3234567340 UTC)
+The generation latency issue affecting US-West has been resolved. The on-call team performed targeted worker restarts, rebalanced request queues, and implemented a temporary throttle for very large-context requests. Customer impact: intermittent increased latency for a subset of generation requests; no customer data loss or errors.
+- Follow-up: engineering will continue root-cause investigation and propose a permanent fix to prevent reoccurrence.
+Thank you for your patience.
+```
+
+carol.chen: published resolved notice to statuspage.
+
+ben.carter: will file RCA draft and link to status incident page.
+
+alice.nguyen: closing pager, leaving notes in oncall-runbook.
+
+carol.chen: thanks everyone — good teamwork. :heart:

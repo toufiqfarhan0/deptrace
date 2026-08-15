@@ -1,0 +1,78 @@
+eng-runtime
+
+Maggie: Heads up 11:24 UTC we saw several requests spike when host-fallback kicked in during an eviction wave. Want to discuss changing fallback semantics (hard migrate vs soft degrade) and what customer knobs we expose.
+
+Nina: Can you paste the timeline/logs?
+
+Maggie: Root at 11:24. Relevant runtime snippet:
+```
+[11:24:02] evictor: tenant=redwood-pay freed=2.1GB reason=oom
+[11:24:02] allocator: fallback_to_host=true seq=1 latency_ms=1200
+[11:24:03] request: model=v1.4.0 tokens=512 step=build_kv_cache
+```
+Latency spike aligns with KV cache rebuild while pages were host-resident.
+
+Kai: We do a blocking migrate on miss today? That would explain ~1.2s.
+
+Maggie: Correct. Current flow blocks to copy pages back to GPU before resuming token gen.
+
+Samir: What if we avoid blocking the entire request? A "soft" fallback could let the sequence proceed using host streams and degrade per-token latency instead of stalling the pipeline. Might be fine for lower-SLO routes.
+
+Nina: Proposed user-facing modes (route-level, default=hard_migrate):
+- hard_migrate: preserve per-token latency by migrating pages to GPU (higher bandwidth/cost)
+- soft_access: keep pages on host, stream reads, allow degraded token latency but reduce impact on other tenants
+
+Kai: Implementation-wise soft_access needs: residency hints per allocation, a fast non-blocking host-stream path, and a small pinned window for in-flight sequences to avoid repeated churn.
+
+Maggie: Draft of minimal route API (we should keep it small):
+```
+preferred_policy: \"low_latency\" | \"reduced_cost\"  # map internally to hard/soft
+soft_opts:
+  max_degraded_ms: 300
+  prefetch_pct: 0.2
+```
+Samir: Agree with abstracting to simple choices for customers. Too many knobs = support/P0s. Internal mapping can be more detailed.
+
+Alex: Telemetry must tag any request that touched host-resident pages: fallback_reason, residency_state, host_bytes_streamed. That will let us filter perf regressions.
+
+Maggie: Metrics proposal:
+- fallback.count{tenant,policy}
+- fallback.latency_p50_p95
+- fallback.bytes_migrated
+- fallback.host_stream_bytes
+Emit trace events for requests where fallback.latency > 500ms.
+
+Nina: Also add a sample log/event with stack+alloc state when fallback.latency > 500ms to auto-open SRE threads.
+
+Kai: Ops rollout: use a feature flag + canary (routing.fallback.soft_access = true) at 5% internal traffic before any public default changes.
+
+infra-bot: deploy scheduled: routing-v2 flag-rollout -> canary @ 2026-04-02T02:00Z :rocket:
+
+Samir: Security note: streaming from host must enforce strict tenant isolation. Shared host buffers require per-tenant encryption keys and secure scrub-on-free. Need HSM/KMS checklist.
+
+Maggie: Agreed; add to security checklist: per-tenant encryption for host staging, scrub on free, and audit logs for host stream access.
+
+Alex: Console/Tracing UI: add attributes fallback_policy, fallback_trigger (evictor|prefetch_miss|manual), host_bytes_streamed, and a quick filter for routes that hit host pages. I'll mock a view.
+
+Nina: Rough implementation plan:
+1) internal allocation API: residency_hint + fallback_policy
+2) implement non-blocking host-stream fast-path (prototype)
+3) safety: per-tenant crypto + scrub + review
+4) metrics + trace attributes + alerts
+5) feature flag + 5% canary
+6) iterate based on telemetry
+
+Maggie: Action items:
+- Kai: P0 prototype for host-stream fast-path
+- Nina: metrics + alert schema
+- Samir: security checklist & HSM scope
+- Alex: console trace mockup
+I'll open an RFC PR with perf microbenchmarks. Aim: RFC this week, prototype in two weeks, canary after testing.
+
+Samir: Timeline sounds reasonable. One caveat: we should validate memory bandwidth vs migrate cost with microbenchmarks (host stream overhead vs GPU memcpy).
+
+Kai: Starting a quick spike now. Will post micro numbers in this thread.
+
+Nina: +1. Prefer to keep customer-facing surface minimal until we have clear telemetry.
+
+Maggie: Thanks all. Tagging @eng-runtime @eng-sre for visibility :seedling:

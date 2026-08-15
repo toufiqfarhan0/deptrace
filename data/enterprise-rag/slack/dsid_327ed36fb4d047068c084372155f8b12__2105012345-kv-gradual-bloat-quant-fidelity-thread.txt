@@ -1,0 +1,50 @@
+eng-runtime
+
+Ava Chen: heads-up — canary runs on int8-quantized Llama-3 variant show a slow, steady memory increase on long-token sessions ( > 50k tokens). Not a sharp leak, more like a slope. Seen on two different GPU SKUs.
+Sam Ortiz: can you paste the profiler slice? memory slope sounds like either KV residency not dropping or fragmentation causing free-list starvation.
+Ava Chen: putting a small dump. profiler snapshot at t=75k tokens:
+```
+KV: total_slots=1_200_000 used_slots=742_312 free_slots=457_688
+slab_frag_bytes=34_432_768 free_list_len=3
+page_allocs=11245 page_evictions=52
+mem_total_gb=28.9 mem_used_gb=23.6 mem_slope_mb_per_min=3.2
+quant_mode=INT8 kernel=fast_attn_v3 batch_heuristic=adaptive_lowlat
+```
+Ava Chen: note slab_frag_bytes >> expected (~8MB baseline). mem_slope for BF16 runs is ~0.7 MB/min under same load.
+Liam Patel: suspicious: fast_attn_v3 has a different kv-page alignment/padding. INT8 path seems to allocate slightly wider KV pages (padding to 256B) which can multiply fragmentation when many small entries exist.
+Maya Rios: i ran a short AB test switching kernel to fast_attn_v2 + int8, slope dropped to ~1.1 MB/min and slab_frag_bytes ~9MB. Accuracy hit was tiny but reproducible: rouge-ish metrics show -0.6% after sustained long sessions.
+Sam Ortiz: can you share per-request KV churn? if the batching heuristic is switching to smaller batches for low-latency, that increases KV write frequency which interacts badly with fragmentation.
+Ava Chen: here's an excerpt from request-level telemetry (4min window):
+```
+reqs=420 avg_batch_size=3 median_seq_len=512 writes_per_min=1_200 kv_writes=18_900
+avg_kv_entry_size=184 bytes hot_prefix_hit=0.23
+```
+Ava Chen: writes_per_min high because adaptive_lowlat flips to per-request flush for sequences > 256, leading to more frequent partial page fills.
+Sam Ortiz: ok that would explain free_list_len drop. free list of 3 means allocs fall back to new pages instead of reusing freed fragments.
+Maya Rios: accuracy delta note: INT8 impact is correlated with which KV pages get evicted vs paged — when a hot block with mixed-precision keys gets compacted we saw a ~0.8% top1 perplexity bump for short windows after eviction. It recovers after warmup.
+Liam Patel: hypothesis: two factors compounding — (1) kernel's allocation alignment pads small entries causing fragmentation; (2) batching heuristic increasing write frequency creating many small partially-filled pages. Combined leads to gradual mem growth.
+perf-bot: alert: kv_mem_slope > 2 MB/min for 30m (canary-fleet: int8-fast_attn_v3). Pager: eng-runtime on call.
+Ava Chen: proposed experiments:
+- run int8 + fast_attn_v2 for 24h canary (we did a short run, extend it)
+- run int8 + fast_attn_v3 but force batch_heuristic=throughput (bigger batches)
+- instrument allocator to expose per-slab free-list distribution and reclamation latency
+- add a metric: kv_fragmentation_ratio = slab_frag_bytes / mem_used
+Maya Rios: I've already started the 24h int8+v2 canary. Link to heatmap and perf dashboard: https://console.redwood.ai/kvm/heatmaps/longrun/abcd-123
+Sam Ortiz: quick mitigation we can ship: conservative change to allocator to prefer coalescing small frees into a reclaimable bucket when free_list_len < 16. Also throttle per-request KV flush when avg_batch_size < 4 (to prefer coalescing).
+Liam Patel: coalescing will add CPU cost — need to measure kernel selection tradeoffs. If we coalesce aggressively, int8-v3 might lose its low-latency benefit. We should quantify: added CPU ~+6% for coalescing loop.
+Ava Chen: actionables agreed:
+1) extend Maya's 24h run (Maya)
+2) add allocator telemetry and kv_fragmentation_ratio (Sam)
+3) run int8+v3 with throughput batching for 8h to see slope change (Ava)
+4) prototype coalescing patch behind a feature flag and measure latency delta (Liam)
+5) open tracking issue with perf trace and sample dumps (Ava -> will create)
+Sam Ortiz: also flag for eval team: add a regression set that includes long-session prompts to catch post-warmup accuracy drift (Maya can coordinate)
+Maya Rios: noted, i'll add 3 prompt tracks: synthetic long chat, real customer long-draft, and iterative summarization.
+Ava Chen: FYI, here's the repro command I used for the short run:
+```
+./canary_runner --model llama3-int8 --kernel fast_attn_v3 --batch-heuristic adaptive_lowlat --session-length 100000 --emit-telemetry
+```
+Liam Patel: one more insight from local sim: if we force page_size=4k vs 16k padding, frag_bytes halves. Kernel's buffer alignment macro was rounding up to 16k for int8 path for vectorization reasons.
+Sam Ortiz: if that alignment is the culprit we can try smaller vector width kernels or add a per-arch override. But that's deeper change — try allocator mitigations first.
+perf-bot: note: created incident-xxx with logs and the initial profiler snapshot.
+Ava Chen: thanks all — i'll file the issue and paste links. keeping this thread as the single source for the canary observations and action list. :thumbsup:

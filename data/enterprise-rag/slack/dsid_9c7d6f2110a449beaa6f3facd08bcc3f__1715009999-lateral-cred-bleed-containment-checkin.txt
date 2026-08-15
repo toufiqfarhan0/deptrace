@@ -1,0 +1,75 @@
+eng-security
+
+maria: Heads-up — found potential lateral credential bleed into partner logs in staging. Some service tokens in S3/GCS logs. Starting containment now. pinging sec oncall.
+
+ops-oncall: Got it — can you paste an example line (sanitized) and the bucket path?
+
+maria: Example (sanitized): `... svc_token=ya29.[redacted] ... partner_id=acme ...` Bucket: gs://redwood-staging-logs/partner/2026-03-20/part-0003.gz. Link to search: https://logs.internal/redwood?q=svc_token
+
+jonathan: If those are KMS-wrapped we rewrap + rotate; if plaintext we need immediate key/SA rotation. Any sign of `vault:transit:` prefix in the lines?
+
+sneha: Quick check — grep showed mixed. Some entries show `vault:transit:v1:` then base64 blob, others look like raw tokens. Maria, can you dump a 10-line sample to `gs://sec-evidence/INC-2026-128/sample.txt` (sanitizing) and tag me?
+
+maria: Done — copied sanitized sample to gs://sec-evidence/INC-2026-128/sample.txt. Also copied originals to the same folder for forensic team.
+
+carla: Triage order: 1) Quarantine bucket + snapshot evidence, 2) Revoke affected SA keys, 3) Rewrap/rotate Vault transit and KMS keys, 4) Apply temporary RBAC denies and tighten audit logging, 5) Partner notification + postmortem.
+
+sec-bot: Incident created: INC-2026-128. Playbook: https://wiki.internal/incidents/secrets-leak. Owners: @jonathan (SA key revocation), @sneha (Vault/KMS rewrap), @maria (evidence & initial containment).
+
+jonathan: I'll handle SA key revoke + rotation. Affected SAs: svc-ingest@, svc-partner-relay@, svc-archive@. Starting with svc-partner-relay.
+
+maria: I can mute partner ingestion for 30m to reduce blast radius. Want me to flip the feature flag?
+
+carla: Yes, mute ingestion and add a temporary deny IAM binding for those SAs on the staging bucket. Keep a rollback plan.
+
+ops-oncall: Applying temp IAM changes now — removing storage.objectAdmin from svc-partner-relay on gs://redwood-staging-logs, adding conditional deny for non-admin principals. ETA ~5m.
+
+jonathan: Commands I'll run to revoke keys (example):
+```
+# revoke SA key
+gcloud iam service-accounts keys delete KEY_ID --iam-account=svc-partner-relay@redwood-inference.iam.gserviceaccount.com
+# create new key and distribute via secure channel
+gcloud iam service-accounts keys create new-key.json --iam-account=svc-partner-relay@...
+```
+
+sneha: For Vault/KMS rewrap: plan is create a new key version, then rewrap ciphertext blobs in place and update the transit mount to accept new version. Also enable `max_decrypt_age` and reduce TTLs on wrapped tokens. Quick pseudo-steps:
+```
+# create new KMS key version
+gcloud kms keys versions create --key=my-transit-key --location=global --keyring=redwood-kr
+# rewrap example
+vault write transit/rewrap ciphertext="..." to_key=projects/.../locations/.../keyRNG/newVersion
+```
+
+carla: Also enable verbose Vault audit logging for 24h and export Vault audit logs to secure audit project / BigQuery for queries. We need an immutable copy.
+
+sec-bot: Audit export task scheduled by @sneha.
+
+maria: Quarantine complete: bucket access restricted, suspect objects copied to gs://sec-evidence/INC-2026-128/. Forensics has read-only access.
+
+jonathan: After revoking keys, we'll coordinate partner rotation windows. Do not rotate everything at once — canary with svc-archive then full rollout.
+
+sneha: Agree. Also plan: rotate Vault transit key, then rewrap, then rotate KMS key. Notify teams to expect 15-30m window for degraded throughput during rewrap.
+
+carla: RBAC short-term changes: add deny on svc-partner-relay, restrict VM service account scopes touching staging logs, and create a temporary org policy to block service account key creation for 24h. Assign owners to revert.
+
+ops-oncall: Org policy change applied to restrict SA key creation in staging projects for 24h.
+
+maria: I'm drafting partner notification text (non-technical) and cc'ing legal. Will post for review in ~20m.
+
+jonathan: Estimated timeline: 0-30m containment (done), 30-120m key revokes + rewraps, 2-24h audits + partner notif + remediation verification.
+
+carla: Postmortem owner: @maria. Please include root cause hypotheses, timeline of exposure, scope query (how many tokens), and remediation steps to make permanent (RBAC rules, shorten TTLs, transit policy changes).
+
+maria: Will own postmortem. Slack follow-ups: please add notes to the incident ticket.
+
+sneha: One more security tweak — enable `require_wrapped_keys` on the transit mount and rotate the wrapped-token KMS key. That reduces plaintext leakage risk.
+
+jonathan: Noted. I'll coordinate with infra to schedule a maintenance window for any downstream consumers.
+
+carla: Thanks team. Quick reactions: :thumbsup: on progress. We'll reconvene in 1h in #incidents if any new findings.
+
+ops-oncall: Leaving a short log of IAM changes in the incident: `removed storage.objectAdmin from svc-partner-relay on staging-logs`, `blocked sa key creation org-policy staging`.
+
+sec-bot: Incident status set to "containment in progress".
+
+maria: Closing loop for now — if anyone finds additional exposed artifacts run this query: `resource.type="gcs_bucket" AND jsonPayload.message:svc_token` and forward to gs://sec-evidence/INC-2026-128/." 

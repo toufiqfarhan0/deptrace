@@ -1,0 +1,27 @@
+sales
+
+maria (Sales): @ajay heads-up — Polestar wants to run their LlamaX-70b-v2 (quantized int4) in a Dedicated POC. They care about 95p latency <220ms and KV cache hit rate. Legal has a security questionnaire coming. Can we surface compatibility blockers and a rough burst pricing?
+
+ajay (SE): Quick notes — LlamaX-70b-v2 uses attention pattern X; our current kernel selection supports it but we need to validate quantization path for int4 with our 4-slot KV layout. KV cache pressure might increase mem by ~12-18% with 2048 context. I can run a local perf test.
+
+lisa (Security): Please forward the customer questionnaire when it arrives. For Dedicated we'll need: KMS integration details, audit log retention, data residency region, and whether they send PII. We default to AES-256 CMK; HSM is available but adds lead time.
+
+maria (Sales): @lisa will do. @sean can you confirm whether HSM + Private deployment affects pricing buckets for this deal?
+
+sean (PM): HSM option triggers enterprise add-on; pricing jump is ~25% on top of reserved capacity. Also burst capacity for POC (2x for 24h) we can offer as trial for free once; beyond that it's per-GPU hour at the burst rate. I'll pull exact numbers.
+
+ajay (SE): For the compatibility check I need a model sample and typical prompt length distribution. If they push 8k avg tokens, we probably need different kernel path. Can we ask Polestar for a 48h trace or a few representative prompts?
+
+maria (Sales): I'll ask them for a small trace and the security questionnaire. Polestar says they can provide a 24h sample and confirm no regulated PII.
+
+tom (Dedicated-ops): Ops notes — allocating Dedicated pool with mixed vRAM sizes is fine. For quant int4 we should pin variant to avoid auto-quant fallback. Also set autoscale cooldown to 120s to avoid flapping on burst.
+
+ajay (SE): Test plan I'll run: 1) run at 512 seq then 2k seq, 2) KV hit/miss profile, 3) model compare with fq=0.9 vs fq=0.85. I'll attach perf numbers by EOD tomorrow.
+
+lisa (Security): Also ask for their data retention policy — if they want <30d or custom retention we need to confirm logging configs. Send questionnaire ASAP.
+
+maria (Sales): Thanks. Action items: maria — get trace + questionnaire; ajay — perf run; sean — pricing numbers incl. HSM + burst; tom — draft Dedicated pool config; lisa — checklist for questionnaire. Ping me here with updates. :thumbsup:
+
+ops-bot: Created ticket #POC-7452 for Polestar Dedicated pool provisioning (assignee: tom).
+
+ajay (SE): Uploaded initial perf spreadsheet: https://redwood.internal/sheets/POC-7452 — initial 512 seq results look OK, 95p ~190ms with warm KV hit. Will add 2k seq tonight.

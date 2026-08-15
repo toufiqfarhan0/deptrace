@@ -1,0 +1,51 @@
+finance
+
+Anya: Quick sync re: postmortem actions for the token-count regression and delayed usage that caused invoice corrections. Listing owners & ETAs; please ack or update if you need more time.
+
+Matt: I'll own the backfill job and verification. Dry run EOD Thu, full backfill by Tue next week. Will post run logs here. :+1:
+
+Sara: I'll own invoice credits and customer comms. Need export of affected invoice IDs + token deltas by tomorrow noon. @Matt can you produce?
+
+Matt: Yep. I'll run a ledger query and export CSV. Draft query: 
+
+`````
+-- delayed usage window -> token deltas per invoice
+SELECT invoice_id, customer_id, SUM(token_delta) as delta_tokens
+FROM token_events
+WHERE event_ts BETWEEN '2026-03-10' AND '2026-03-11'
+  AND source = 'ingest-retry-lag'
+GROUP BY invoice_id, customer_id
+HAVING SUM(token_delta) > 0;
+`````
+
+Matt: Will validate in staging first; Sara confirm CSV column order before I run in prod.
+
+Jorge: I'll take RC remediation for retry-queue visibility. Plan: add alert for retry_queue_length > 50 and dashboard by region. PR by Fri.
+
+Grace: I'll implement idempotency guards for backfill (job-level lock + processed-event marker) to avoid double-counting. Runbook update included. ETA Mon.
+
+eng-oncall: Note from oncall: if backfill causes ingestion spikes, we will route to low-priority workers and enable per-customer throttles. Oncall can toggle throttle flag from console.
+
+Sara: Draft customer message for credits: "Hi <Customer>, we identified delayed ingestion that underreported usage for invoice <ID>. We've applied a credit of <$X>. No action required. Contact billing@ if questions."
+
+Anya: Attach top-20 affected customers by credit to comms. Manual review for credits > $5k.
+
+billing-bot: Report generated: 1762223_report.csv 12 rows flagged, total credits $18,420. Link: https://internal.redwood/billing/reports/1762223_report.csv
+
+Sara: Got the CSV, running validation now. Will flag suspected false positives (<5% expected) by tomorrow noon.
+
+Matt: Staging dry run complete: https://ci.redwood/logs/backfill/1762223333/dryrun. No duplicates observed.
+
+Grace: Runbook snippet added: https://internal.redwood/runbooks/billing-backfill. Includes abort/rollback steps and safety checks.
+
+Anya: Summary of owners & ETAs: Matt (backfill + CSV) EOD Thu / full Tue; Sara (invoice credits & comms) validation by tomorrow noon; Jorge (alerts & dashboard) PR Fri; Grace (idempotency & runbook) Mon. I'll file action tracker in Notion and link here.
+
+Matt: Ack. I'll post prod metrics after the full run (token gap closed, per-customer diffs).
+
+Jorge: Ack. Will also add paging to SRE if backlog > 200 for > 30m.
+
+eng-oncall: We'll standby during the prod run window to flip throttles if needed.
+
+Sara: Finance needs final CSV with invoice_id, customer_id, credit_amount, reason_code to attach to the invoice reissue ticket.
+
+Anya: Thanks team. If anyone reassigns an item, say so here. I'll follow up in billing stand tomorrow. :wave:

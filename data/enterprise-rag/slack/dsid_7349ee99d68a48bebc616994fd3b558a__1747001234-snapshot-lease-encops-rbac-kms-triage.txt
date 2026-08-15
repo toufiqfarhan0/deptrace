@@ -1,0 +1,49 @@
+eng-security
+
+anya: Heads-up — backup-monitor alerted: prod snapshot missing CMK metadata after nightly upload. saw `unencrypted: true` in agent logs. tagging/regression suspected.
+
+mike: which snapshot id / s3 path?
+
+anya: s3://redwood-backups/prod/snap-20260321-07z9f. Agent log snippet: `2026-03-21T07:03:12Z backup-agent INFO upload complete meta: {encrypted:false, cmk_id:null}`. CloudTrail shows AccessDenied on kms:GenerateDataKey for service-account:bkup-agent@redwood.
+
+olga: that smells like an RBAC/grant change on the CMK or a recent grant TTL expiration. can someone run `aws kms list-grants --key-id arn:aws:kms:us-west-2:123456:key/abcd-...` and grep for backup-agent?
+
+devops-raj: I pushed an IAM tweak to backup-agent role yesterday (reduce perms) — iirc I removed kms:GenerateDataKey for non-prod but maybe the filter matched prod too. rolling back now if confirmed.
+
+enc-bot: backup-monitor detected: missing-cmk-tag on snap-20260321-07z9f (severity: medium). Related alerts: cloudtrail:kms:AccessDenied (3 events).
+
+mike: ok i'll check CloudTrail and KMS key policy. quick query: `aws cloudtrail lookup-events --lookup-attributes AttributeKey=ResourceName,AttributeValue=snap-20260321-07z9f` — see if calls came from backup-agent principal.
+
+anya: i ran a focused grep: `grep -n "GenerateDataKey" cloudtrail.json | grep bkup-agent` -> 3 hits, all AccessDenied. timestamps match the upload window.
+
+olga: if it's AccessDenied on GenerateDataKey, the key policy or grants are blocking. two likely causes: 1) explicit deny in key policy / SCP or 2) removed IAM permission. also consider expired grants from `RevokeGrant` action if we use grants. check `aws kms list-grants` and `aws kms list-retirable-grants` for key.
+
+devops-raj: i'm reverting the change in iam/roles/backup-agent.yaml and will redeploy the agent (patch only). if that doesn't fix, we need to create a scoped grant. rollouts in 5m.
+
+oncall-jen: we should also assess scope: how many snapshots affected and whether any backups are truly unencrypted on disk. run `aws s3api head-object --bucket redwood-backups --key prod/snap-20260321-07z9f` and check `ServerSideEncryption` header. if SSE-C/SSE-KMS not present, treat as unencrypted.
+
+mike: quick audit: `aws s3api head-object` shows ServerSideEncryption absent for that object — looks like the agent uploaded it without KMS envelope encryption. good news: payload is in the bucket but not encrypted at rest as expected. we need to consider rotation/mitigation.
+
+anya: mitigation options: 1) re-encrypt object by copying with `aws s3 cp` and `--sse aws:kms --sse-kms-key-id <CMK>`, 2) re-run backup job after RBAC fix, 3) revoke/remove the bad snapshot if policy requires. Suggest #1 for immediate remediation and #2 for root cause fix.
+
+olga: agree. before copying, snapshot integrity check — checksum etc. Also capture forensic evidence: save CloudTrail events and agent logs to an incident bucket with retention. tag incident id ENC-2026-023.
+
+devops-raj: redeploy done (iam rollback). monitoring shows subsequent upload attempts succeed (I see GenerateDataKey allowed at 07:20:14).
+
+enc-bot: backup-monitor update: new upload of prod snap-20260321-07z9f-reencrypted succeeded with SSE-KMS at 07:21:10.
+
+oncall-jen: team, go ahead and copy original object to encrypted version using platform CMK and then delete the unencrypted one. mike/anya do the copy and document commands run.
+
+mike: running: `aws s3 cp s3://redwood-backups/prod/snap-20260321-07z9f s3://redwood-backups/prod/snap-20260321-07z9f.reenc --sse aws:kms --sse-kms-key-id arn:aws:kms:...` -> returned 200 OK. verified `ServerSideEncryption: aws:kms`.
+
+anya: deleted original unencrypted object + snapshot metadata was updated to point to reenc copy. recorded audit: incident/ENC-2026-023/logs/cloudtrail.json, agent.log.
+
+olga: next steps (owner assignments): mike — verify no other uploads in last 48h without SSE-KMS. olga — review CMK key policy/grants and add guardrail to prevent removal of kms:GenerateDataKey for the backup-agent principal. raj — add a CI check to prevent iam/roles changes that remove KMS perms for prod. anya — update runbook with quick reencrypt steps and add check in backup-agent to fail-fast if GenerateDataKey returns AccessDenied.
+
+devops-raj: i'll open a PR with the IAM guard and a pre-merge check for a list of required perms.
+
+mike: FYI CloudTrail showed 7 objects uploaded without SSE in the 24h window — i'll start reencrypting them, marking those already reprocessed.
+
+oncall-jen: good containment. please post the post-incident note in #postmortems once we have timeline and RCA. Also consider automated alert: if `ServerSideEncryption` header absent -> auto-create remediation run/copy + paging.
+
+anya: noted. capturing timeline now. thanks all :heart:

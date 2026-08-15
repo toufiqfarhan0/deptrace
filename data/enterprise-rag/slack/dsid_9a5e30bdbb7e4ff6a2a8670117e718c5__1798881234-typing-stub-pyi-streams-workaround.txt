@@ -1,0 +1,66 @@
+devex
+
+anika: Anyone else seeing mypy fail on async streaming endpoints from the autogen SDK when we publish pypi packages? pyright is fine but mypy screams.
+
+anika: Minimal symptom: client.stream_events -> AsyncIterator becomes untyped in the distributed package (shows as AsyncIterator[object] or Any). Locally in source it looks correct.
+
+river: I ran into this once. IIRC the wheel build step strips typing info because of our pyi generation pipeline. We publish both .py and .pyi but the pyi for streams was missing the union.
+
+maya: can you paste the actual error?
+
+anika: mypy output: "error: Item of \"AsyncIterator[object]\" has incompatible type \"object\"; expected \"Union[EventChunk, StreamError]\"". Happens when you do `async for chunk in client.stream_events(...)` and access chunk.payload.
+
+river: repro snippet I used: 
+```py
+from redwood import AsyncEventsClient
+
+async def drain():
+    async for c in AsyncEventsClient().stream_events("abc"):
+        # mypy: Item is object
+        if isinstance(c, EventChunk):
+            print(c.payload)
+```
+
+river: pyright is fine because it can narrow with isinstance checks even when pyi is loose, but mypy needs the declared union.
+
+maya: what pydantic/version and python are you on? we saw pydantic v2.4 recently make subtle changes in how BaseModel subclasses are represented in pyi.
+
+river: python 3.11, pydantic 2.4.1. The generated models are fine, it's the client .pyi that loses the union and reverts to object.
+
+tom: quick workaround for consumers: add a typed alias locally or cast the iterator like `client_it = cast(AsyncIterator[Union[EventChunk, StreamError]], client.stream_events(...))`. ugly but works.
+
+anika: casting isn't great for onboarding. New users hitting this will open issues. We should either: 1) fix the pyi emitter to preserve stream unions, or 2) publish an additional typing-only wheel (redwood-sdk-stubs) with correct pyi files.
+
+maya: option 2 is interesting: packaging stubs separately is common (see types-requests). That gives us a fast path while we fix generator. Also avoids touching runtime packaging.
+
+river: agree. Short term we can: patch the generator to emit explicit Literal discriminators on union members (e.g., kind: Literal[\"chunk\", \"error\"]) and ensure .pyi includes the union. Long term, add a test in the build that validates the wheel's pyi for key signatures.
+
+anika: I opened an internal issue with a failing wheel attached: https://github.com/redwood-inference/sdk/issues/1147. Putting repro and wheel there.
+
+maya: I'll add a CI job in sdk repo that after build unpacks the wheel and runs a small mypy script against the extracted package to catch regressions before publish.
+
+tom: PR incoming?
+
+river: PR: https://github.com/redwood-inference/sdk/pull/901 - fixes pyi generator for stream returns + adds a tiny wheel mypy smoke test. WIP.
+
+doc-bot: notice: PR #901 added to projects: sdk-typing-fixes.
+
+anika: for docs: we should add a short blurb under "Python SDK -> typing" about the current workaround and recommend running mypy as part of CI. I'll draft a small paragraph.
+
+maya: also add an example in examples/typed_streams.py showing both the cast workaround and the expected typed use after the fix. That will help customers upgrade smoothly.
+
+river: one more gotcha: consumers that pin older pydantic versions may see different runtime behavior. We should document supported pydantic/python matrix for typing guarantees.
+
+anika: agreed. I'll update the compatibility matrix in the SDK README.
+
+maya: leaving a note for support: if a customer files a ticket about mysterious mypy errors on streams, ask for their installed wheel version and suggest `pip install --upgrade redwood-sdk==main` (or use the staging wheel) as a temp fix.
+
+tom: thanks all. tagging `bug:py-sdk-typing` and `area:packaging`. :thumbsup:
+
+anika: thanks! closing the loop here once PR merges and I update docs.
+
+river: follow-up: once merged, we should backport the pyi fix to the 0.12.x branch so patch releases solve customer issues quickly.
+
+maya: good call. I'll add the backport item to the PR checklist.
+
+anika: awesome, appreciate the quick turnaround.

@@ -1,0 +1,75 @@
+eng-runtime
+
+maria: Heads-up — repro'ing a KV cache reclaim latency spike on Dedicated when sessions go past ~18k tokens. Seen on on-prem racks and also in a handful of VPC Private installs.
+
+josh: repro steps? tried hosted or just dedicated/private?
+
+maria: Dedicated + Private (on-prem). Hosted seems less hit but still shows occasional p99 blips. Root cause feels like slow slab/page reclaim + GPU pinned frames not released fast enough.
+
+chen: sharing profiling snapshot (short):
+```
+# perf top outline (aggregated stack)
+40.3% runtime::kv::evict_loop
+18.1% kernel:page_reclaim
+12.7% runtime::gpu::pin_unlock
+6.5% memcpy
+4.2% other
+```
+
+chen: also saw high major_faults count when context length grows.
+
+sean: interesting — hosted boxes use our tuned kernel (auto-tuned pagevec sizes + 2MB hugepages) while Dedicated VMs sometimes fall back to distro kernel. That could explain the severity delta.
+
+aisha: are we sure it's not batching heuristics causing long-lived cold entries? maybe some workloads keep prefixes unique so cache reuse low -> more churn.
+
+maria: yes we ruled out batching config: same request shape & batch size across envs. When we force reuse (same prompt prefixes) reclaim rate drops. So it's eviction pressure + allocator interaction.
+
+josh: can you paste the vmstats during a spike? esp /proc/vmstat counters like numa_foreign_faults, pgpgin, pgpgout, nr_slab_objects.
+
+maria: attaching a clipped sample:
+```
+pgpgin 45012
+pgpgout 1208
+nr_slab_objects 1.2e6
+nr_page_table_pages 43000
+major_fault 982
+swapin 0
+```
+
+ryan: note Private on-prem uses older kernel (4.x) on several customer appliances. We had a known bug where pagevec batches are small and we hit page-turnover thrash under high KV insert/delete.
+
+chen: another interesting bit — our GPU runtime keeps a small LRU of pinned host pages (for faster H2D), but the reclaim path tries to free them and ends up doing synchronous DMA unpin which blocks the cpu thread. On older kernels that path is less async-friendly.
+
+sean: so two levers: 1) kernel/page reclaim improvements (hugepages+pagevec tuning) 2) runtime change to avoid sync unpin on critical path (deferred unpin, epoch-based reclamation).
+
+aisha: deferred unpin would help latency but could increase peak memory. Private customers with limited GPUs might not accept that. Tradeoff.
+
+maria: agreed. For Dedicated we have more headroom and could enable deferred unpin as an opt-in config flag. For Private/on-prem we may need a safer default.
+
+josh: any evidence of fragmentation causing large contiguous allocation failures? e.g., failure to allocate big KV frames forcing many small allocations and extra bookkeeping?
+
+maria: yes — fragmentation shows up in /proc/buddyinfo dumps. On affected hosts we see many order-0/1 free blocks and very few high-order. Runtime then falls back to multiple small frames which increases metadata and churn.
+
+chen: short-term mitigation we tried: call madvise(DONTNEED) on stale pages to help kernel reclaim faster, and use MADV_FREE where available. That reduced p99 by ~30% in Dedicated.
+
+ryan: for Private, customers with locked-down kernels can't accept madvise fiddling sometimes (policy). Also VPC appliances with custom NICs (SR-IOV) show higher page pin rates due to RDMA-zero-copy flows. That exacerbates pinned-frame reclaim cost.
+
+ops-bot: deploy scheduled: runtime/kv-evict-madvise-experiment -> canary on Dedicated tonight @ 02:00 UTC :rocket:
+
+aisha: can we also try enabling 2MB hugepages in Dedicated and run the long-context replay suite? Hugepages reduced TLB pressure in earlier tests.
+
+chen: will run replay with flags: --kv-evict-debug --deferred-unpin=off/on --use-hugepages=yes and compare.
+
+josh: add a matrix for Private: (kernel 4.x vs 5.x), (hugepages on/off), (deferred-unpin on/off). Also include MIG vs non-MIG GPU shapes — MIG tends to pin more small buffers.
+
+maria: Action items:
+- chen -> run matrix across Dedicated config and post flamegraphs (by EOD PST)
+- ryan -> list Private hosts still on 4.x kernel and check possibility of backporting pagevec patches
+- aisha -> draft opt-in runtime flag for deferred unpin with config docs + memory budget guard
+- josh -> create perf dashboard panel for kv-evict latency across envs (hosted/dedicated/private)
+
+sean: also consider a graceful fallback: when reclaim path sees synchronous unpin > X ms, switch to a mode that reduces aggressive eviction (throttle background evict). Avoid cascading latency.
+
+maria: good idea — that will reduce tail risk. Let's sync tomorrow in eng-runtime stand with short demo.
+
+josh: noted. thanks all. :thumbsup:

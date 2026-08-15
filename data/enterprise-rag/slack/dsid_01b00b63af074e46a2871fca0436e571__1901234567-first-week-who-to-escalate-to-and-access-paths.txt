@@ -1,0 +1,27 @@
+new-hires
+
+samir: hey folks, samir here — joining infra today. two quick asks: 1) canonical list of service owners + who to page? 2) who to contact for emergency keycard/door access if i’m onsite before badge arrives?
+
+jen (people-ops): welcome! :tada: service owners live in Confluence Team Directory -> Service Owners and we publish owners.json at https://redwood.internal/api/owners.json. i'll grant you Confluence and drop the owners link in a DM. emergency badge requests go to facilities@redwood.com — if it's same-day include "urgent" in subject and cc people-ops.
+
+samir: thanks. also blocked on OAuth to Vault and VPN client keeps looping redirect.
+
+harper (security): @samir for Vault/VPN send your employee email here. i'll attach the infra-read role. for OIDC loop try clearing browser cookies or use a private window; sometimes SSO cookie stale causes loops.
+
+otto (eng-sre): escalation flows: primary is to page the service PD contact (owners.json -> primary_pd). if you don't have PD access, post a "coverage request - <service> - <brief>" in #eng-oncall and include contact number. if SRE doesn't ack in 10m, page the EM oncall listed in owners.json.
+
+samir: if there’s an incident and I’m onsite but no PD, should I physically go to the ops war room or wait for coverage?
+
+otto (eng-sre): don't go solo into sensitive rooms. make the #eng-oncall post, call the EM if it's urgent, and ask facilities to grant temporary door access to a named responder. we'll assign someone to meet you if hardware intervention needed.
+
+facilities: @samir for same-day access we need: your name, emp id, and host name. email facilities@redwood.com with subject "urgent badge" and cc people-ops. if you’re onsite now, call the lobby desk and tell them you're visiting Redwood; we'll push a one-day pass.
+
+eng-platform: owners.json also includes a machine-readable "escalation_chain" field. teams should keep it updated. we run a daily sync from Confluence -> owners API; if you find mismatches DM me.
+
+samir: great. last question: where are the infra runbooks and the quick triage checklist for new responders?
+
+otto (eng-sre): runbooks at https://runbooks.redwood.internal; key triage steps: 1) identify customer impact, 2) check service health dashboard, 3) page PD/coverage, 4) set short-term mitigation. there's a condensed "first-responder" runbook linked from the owners page.
+
+access-bot: Access request queued: AR-20260601-91 (Confluence read, owners.json access, temporary badge request). ETA 4 hours for manual approvals.
+
+samir: awesome thanks all. i'll DM my email and follow up if anything stalls :thumbsup:

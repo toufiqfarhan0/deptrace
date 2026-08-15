@@ -1,0 +1,38 @@
+architecture
+
+samantha: Quick thread — noticed a class of failures when we denormalize routing/context into headers and then try to do streaming fallbacks. gist: we optimize by pushing route/meta into `x-rw-context-*` so upstreams don't need to re-lookup, but when a midstream failover happens the fallback path often lacks enough context to resume gracefully.
+javi: Can you paste an example header set? is this the `x-rw-context-v1` thing? :thinking_face:
+samantha: yep. example headers we emit from gateway ->
+```http
+x-rw-context-v1: tenant=acme;route=chat;policy=low-latency
+x-rw-resume-flag: 1
+x-rw-req-id: 01FZ9...abcd
+```
+max: ok. problem is fallback service expects a richer auth + routing blob (model, quant, cache-key). we only keep a small flattened set to save extra upstream RTTs.
+yara: how often are these fallbacks midstream vs initial request? we should measure before designing statefulness.
+samantha: initial estimate: ~0.3% of streaming sessions hit midstream fallback on heavy load (hedging, preemption). not huge but when it happens it causes partial responses or duplicate tokens.
+anita: options:
+- keep full denormalized blob in header (huge headers, perf cost)
+- persist a tiny state in edge keyed by `x-rw-req-id` (memory + eviction policy)
+- do synchronous lookup during fallback (adds RTT, defeats purpose)
+- encode resume hint + minimal token checkpoint in trailers and let client rehydrate
+
+infra-bot: metric suggestion: emit `edge.resume.attempt` and `edge.resume.context_miss`
+javi: I like edge-state keyed by req-id with TTL ~60s. avoids blowing up headers and keeps one-RPC handoff cheap.
+max: concerns: multi-tenant attacks where someone floods and exhausts edge memory. need per-tenant caps and circuit breaker.
+yara: eviction strategy: LRU with per-tenant soft cap + global hard cap. track `resume.evictions` metric.
+anita: also need to bound size of stored blob (compress? JSON -> base64) maybe store only required fields: model, quant, cache_key, cursor_kv_hash.
+samantha: concrete proposal for an RFC follow-up:
+1) add edge state store (ephemeral in-proc with sharded LRU, fallback to shared redis if over cap)
+2) store a compact resume blob <= 2KB per session, TTL 90s
+3) new headers: `x-rw-resume-ref: <edge-shard>:<key>` when present fallback can hit edge store instead of requiring full header
+4) metrics + per-tenant quotas + admin knob to disable resume for some tenants
+
+javi: nit: use `x-rw-resume-ref: shardId:key` as free text, but sign it HMAC so we avoid spoofing by clients.
+max: signing needed if blob allows privileged routing. otherwise attackers could craft refs to leak other tenants' state.
+anita: HMAC key rotation required. add `x-rw-resume-v` for versioning.
+samantha: good point. also add audit log entry when resume is used: `edge.resume.used` with req-id and outcome.
+yara: perf tradeoff: in-proc store is fastest, redis fallback gives consistency across processes but complexity. maybe start in-proc + sticky routing for now.
+infra-bot: Ops checklist: add alarms for `resume.fail_rate > 0.5%` and `resume.evictions > threshold`.
+javi: action items: samantha draft RFC with diagrams, max to prototype in-proc LRU, anita to spec HMAC header format. I'll own metric names.
+samantha: will do. putting RFC draft in docs/rfcs/ and pinging arch reviewers. thanks everyone :thumbsup:

@@ -1,0 +1,34 @@
+eng-ml
+
+Anita Rao: Quick RFC follow-up — we need a concrete telemetry + action matrix for FP8/INT8/4-bit rollouts. Can we list the signals and the rollback thresholds?
+Mike Chen: I sketched something this morning, put it in the draft doc. TL;DR: aim for lightweight runtime checks + periodic offline checks.
+Sasha V.: Core requirement: automated detection of quality regressions and an unambiguous rollback window (e.g., fail gate if metric breach lasts > 5m or on X% of golden prompts).
+Derek L: What's the minimum signal? We can't compute expensive metrics on full traffic. Need sampling strategy + stable prompt set.
+Jo (ml-qa): Proposed signals: 1) delta avg token logprob vs baseline, 2) per-route golden prompt pass rate, 3) embedding cosine drift on sampled outputs, 4) high-level task correctness (when available).
+Mike Chen: Implementation notes: logprob delta and pass-rate are cheap. Embedding-based semantic drift is heavier — do it on 0.5-2% sampled traffic or for canaries only.
+Anita Rao: Cost tradeoff accepted. Also need to define per-customer SLO overrides — some customers care about cost more than tiny quality hits.
+Sasha V.: Add an early-warning heuristic: if top-1 token prob drops by > 0.08 on > 1% of sampled tokens across N prompts within T window -> alert. It's cheap and catches weird tokenization/regression issues.
+Derek L: Runtime API change suggestion: add "precision_profile" block to ServeConfig with fields for target_precision, canary_ratio, telemetry_profile. Example:
+```
+serve_config:
+  model: ff-ferret-v2
+  precision_profile:
+    target: int8
+    canary_ratio: 0.01
+    telemetry_profile: minimal
+```
+ops-bot: deploy-bot: Canary created for model ff-ferret-v2 @ 1% traffic (job id: can-2025-4892) :rocket:
+Jo (ml-qa): For telemetry_profile we should support presets: minimal (logprob + pass-rate), standard (+embedding drift sampled), exhaustive (+KL, ngram-bleu on golden sets).
+Mike Chen: Gate logic: canary runs -> collect metrics for X minutes -> evaluate against gates (pass-rate drop < 2%, avg logprob delta > -0.03 triggers fail). If fail => auto-rollback and page oncall.
+Anita Rao: Where do we store golden outputs? Security: embeddings might include PII. Plan: keep golden outputs hashed/secure and only store aggregated stats. Do not persist raw customer prompts.
+Sasha V.: QA note: need a reproducible offline harness that replays canary traffic and computes exhaustive metrics nightly. That gives us signal for slow regressions not seen in canary.
+Derek L: Edge-case: model patch that only affects long tail prompts. Canary sampling might miss it. Suggest staged rollout: 1% -> 10% -> 50% with automatic stop if rolling average breach.
+Jo (ml-qa): Also suggest a "grace degradation" policy: when fallback to lower precision is triggered, route to half-rate fallback for latency-sensitive routes (serve smaller batches) so user impact is smoothed.
+Mike Chen: Ops integration: we will emit metrics as tags: model, precision_profile, canary_id, route. Dashboards and alerts use these tags. Also add a "quality_score" metric that's a weighted aggregate for quick gating.
+Anita Rao: Action items: @Mike to update ServeConfig proto + telemetry schema, @Jo to draft golden prompt sets + sampling plan, @Sasha to write early-warning thresholds, @Derek to prototype staged rollout automation. Sync in 48h. :thumbsup:
+Sasha V.: ack. I'll post a short doc with thresholds and rationale.
+Derek L: I'll wire the staged rollout script into the deployment pipeline.
+ops-bot: deploy-bot: Reminder — canary job can-2025-4892 will auto-expire in 2h if not promoted.
+Mike Chen: One more: add runtime flag to force fallback for a single request (for debugging): `precision=force:int4` — only for internal dev/debug.
+Jo (ml-qa): privacy & telemetry follow-up: I'll add minimal PII guidelines to the doc.
+Anita Rao: Great thread — thanks everyone. We'll take these into the RFC follow-up doc and schedule a short sync.

@@ -1,0 +1,42 @@
+eng-platform
+
+alex: Quick q — on canary sequencer + rate limiter interplay for model version swaps. Proposal: 0.1% -> 1% -> 5% -> 20% -> 50% with 15m step windows and a global QPS cap per cohort. Thoughts?
+priya: i'd drop the 50% final step; prefer 40% plateau for 30m to watch quality.
+dylan: why 15m? cold KV cache will bias early steps. suggest 30m for the first two steps.
+maria: +1 on cache concern. also we need per-route token budget quotas to avoid blowups from embeddings-heavy routes.
+alex: good call. what about the rate limiter shape? token-based leaky bucket per model-version, or per-customer?
+priya: leaky-bucket per model-version + per-customer hard cap seems fine. For canary, relax per-customer cap by 2x for the first two steps to allow ramp smoke tests.
+dylan: worry about billing spikes if we relax caps. if we do, add telemetry hook to tag canary requests (canary=true) and sample traces at a higher rate.
+alex: can we surface this in Console? need a small UI panel: current percent, cohort QPS, fail percent, key metrics (latency P95, error rate, quality regression).
+maria: yep. Console team can add a "Canary insight card". We'll need telemetry events: canary.start, canary.step, canary.abort with payloads version, step_pct, and reason.
+alex: pseudo YAML for sequencer config:
+```yaml
+canary:
+  steps:
+    - pct: 0.1
+      duration: 15m
+    - pct: 1
+      duration: 15m
+    - pct: 5
+      duration: 30m
+    - pct: 20
+      duration: 30m
+    - pct: 50
+      duration: 1h
+  guards:
+    max_error_rate: 0.02
+    p95_latency_ms: 350
+  quotas:
+    per_customer_qps: 50
+    per_model_qps: 2000
+```
+priya: maybe use fractional rungs (0.1, 0.5, 1, 2, 5, ...) instead of big jumps to reduce noise during metric evaluation.
+dylan: also need explicit fallback policy: if a guard trips, immediately shift traffic back to the previous healthy version and notify oncall.
+alex: agreed. add a circuit-breaker with cooldown 10m and automatic rollback unless manually overridden.
+maria: add telemetry tags for rollback.reason and linked_trace_id. we'll need a Console endpoint to fetch recent canary traces by version.
+eng-bot: deploy scheduled: canary-sequencer v2 -> staging at 15:22 UTC :rocket:
+alex: ok i'll update the sequencer PR with these changes. can someone review the quota interplay? @priya @maria
+priya: will do today.
+maria: reviewing now, small comment on per_model_qps.
+dylan: i'll add the Console card mockup tomorrow.
+alex: thanks team :thumbsup:

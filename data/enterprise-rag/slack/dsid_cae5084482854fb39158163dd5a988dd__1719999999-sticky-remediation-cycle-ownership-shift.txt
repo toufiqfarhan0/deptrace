@@ -1,0 +1,37 @@
+postmortems
+
+alex: quick sync — postmortem follow-up for RED-4521 (recurring latency spike). I pulled the action list; several items are 'sticky' and need clear owners + timelines.
+
+maya: saw that — some of the infra jobs were never re-scheduled after the rollout.
+
+dinesh: I can own the infra scheduling ticket, but need a jira assigned.
+
+elena: @dinesh please take RED-4589 for the cron job remediation. added note: link: https://redwood.atlassian.net/browse/RED-4589
+
+sara: flag — monitoring alerts are noisy. we should decouple visibility changes from the fix. can someone own alert tuning?
+
+josh: I can do alert tuning + runbook updates. will create RED-4590 and attach runbook draft.
+
+maya: RACI quick callout: Responsible = @dinesh (cron), Accountable = @alex (postmortem closure), Consulted = @sara/@josh (alerts/runbook), Informed = product + oncall.
+
+alex: thanks. timeline proposals: infra cron (2w), alert tuning + runbook (1w), canary release and validation (3d). objections?
+
+nora: product OK with those timelines; please include acceptance criteria: no >95th p50 regressions for two weeks post-change.
+
+dinesh: claiming RED-4589 now. I added initial estimate and assigned to myself.
+
+oncall-bot: Incident handler note: handover scheduled 171999 + 2 days. Reminder set for owners. :bell:
+
+josh: opened RED-4590 and linked to RED-4521. put PR checklist in description, will ping for review once tests pass.
+
+alex: action for PMs — please ensure the Jira stories include rollout plan + fallback. assign me as approver if you want a canary window.
+
+maya: added checklist and rollout template to RED-4589. also included rollback steps.
+
+elena: quick handoff plan: @dinesh will own infra change, @josh will own alert/runbook, @alex will coordinate canary + closure. I'll create a parent epic to track.
+
+alex: cool. follow-ups: 1) owners claimed in Jira by EOD, 2) dates on each ticket, 3) weekly check-in on Thursday until closed. I'll post updates in #postmortems.
+
+sara: noted. I'll add a verification job to smoke test after canary.
+
+alex: thanks everyone — marking this thread as action-owner sync. ping me if anything slips. :thumbsup:

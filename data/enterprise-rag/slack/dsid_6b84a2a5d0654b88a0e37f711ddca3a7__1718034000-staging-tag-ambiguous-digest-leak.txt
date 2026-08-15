@@ -1,0 +1,24 @@
+eng-releases
+
+olivia: heads-up — CI reported successful staging push for service-connector but ECR shows the tag pointing to an older digest. DeployBot also posted a success msg. anyone seeing layer/digest mismatch?
+DeployBot: [deploybot] publish completed: repo=redwood/service-connector tag=staging-latest digest=sha256:bbb111...; attestation-checker -> missing layer on mirror :warning:
+mike: checking registry: `aws ecr batch-check-layer-availability --registry-id 123456789012 --repository-name redwood/service-connector --layer-digests sha256:ccc222...` -> 1 missing layer returned
+jia: probable cause: two parallel CI jobs pushed almost concurrently — one push created an intermediate manifest, the other overwrote the tag. race on mutable tag.
+olivia: plan options: 1) pin staging to the correct digest (sha256:aaa000...) and retag staging-latest to that digest, 2) re-run a reproducible build and push, or 3) rollback deploys. thoughts?
+sanjay: hold canary & don't promote to prod. this needs to stay in staging until we verify digest+attestation.
+aaron: oncall here — locking deploys for 30m in the change window. we'll retag first, rollback if retag surfaces issues.
+jeff: retag recipe (if we need):
+```
+aws ecr put-image \
+  --repository-name redwood/service-connector \
+  --image-tag staging-latest \
+  --image-manifest "$(aws ecr batch-get-image --repository-name redwood/service-connector --image-ids imageDigest=sha256:aaa000... --query images[0].imageManifest --output text)"
+```
+eva: note: if we retag we must preserve cosign attestations and KMS annotations. retagging a manifest doesn't copy attestation objects in every mirror — double-check attestation store and re-attach if missing.
+mike: confirmed the attestation is present for sha256:aaa000... Current staging-latest lacks it. i'll run the `put-image` to pin staging-latest to sha256:aaa000... after approval.
+jen: i'll update release notes and internal changelog with the pinned digest + canary hold and reference the rollback plan.
+DeployBot: deploys locked by @aaron until 1718035800
+mike: retag completed, verified `docker manifest inspect` shows sha256:aaa000..., attestation present. canary still paused.
+olivia: nice. QA folks — please run regression suite against the pinned image. report any anomalies here.
+jen: release notes updated: "staging pinned to sha256:aaa000...; canary paused; root cause: race on mutable tag in CI; fix: single-writer tag lock + CI backoff scheduled." 
+olivia: created follow-up ticket ENG-6783 for single-writer tag lock + backoff in CI and a postmortem note. closing once QA confirms. :thumbsup: 

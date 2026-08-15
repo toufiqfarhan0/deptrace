@@ -1,0 +1,20 @@
+marketing
+
+sophia (marketing PM): Ok team — sketching an "orchestral launch": coordinated launch posts + a benchmark narrative blog + a webinar + PLG funnel experiments (free credits, prompt templates, activation nudges). Target: lift activated users by ~2% over baseline. Thoughts? :sparkles: :rocket:
+liam (growth): Love the concept. Recommend we optimize for ‘first-7-day active’ (used >1k tokens). Baseline? matt?
+matt (analytics): Baseline for new signups hitting 1k tokens in 7d = 6.8%. We can detect signal with a 2-week run and daily cohort refresh.
+anika (content): I can own prompt templates + launch copy. Need concrete user tasks (dev vs product) to tailor templates. Also can draft webinar CTAs.
+liam (growth): Routing idea: high-intent inbound (trial + >3 API requests) -> immediate 300 credits + webinar invite; low-intent -> 100 credits + 3-email drip. Add an in-app 'promptstarter' modal for first request?
+sophia (marketing PM): Experiment matrix proposal: 1) Credit size (100 vs 300) 2) Prompt pack (none vs developer-focused vs product-focused) 3) Post-launch benchmark narrative (embedding vs text-gen use cases) — track activation, retention, cost per activation. Timeline: launch + 2 weeks testing.
+anika (content): I'll produce 3 template packs: quickstart (minimal), prototype (playground-focused), productize (integration-ready). Each with 3 example prompts + suggested CTA lines for posts/webinar. Draft by Wed.
+matt (analytics): Instrumentation checklist: add cohort tags: launch_variant, credit_tier, prompt_pack. Events: signup, first_prompt, first_100_tokens, api_requests_24h, 7d_active. UTM tagging for all posts. I'll wire dashboard and alerts.
+campaign-bot: Reminder set: Webinar scheduled 2024-09-12 10:00 PDT — RSVP: https://redwood-inference.com/webinar/register
+liam (growth): Quick ask — can we pre-seed 200 VIP users with 300 credits and exclusive benchmark access? Will help qualitative feedback. Budget?
+sophia (marketing PM): Approve 200 VIP seats with 300 credits. Liam pls send the list and segmentation. Anika pls write VIP invite copy (tone = exclusive + data-preview).
+matt (analytics): Dashboard draft created: https://internal.redwood/boards/orchestral-launch — will add realtime tiles after tags land.
+campaign-bot: Deploy note: Launch posts scheduled to go live 2024-09-05 08:00 PDT (multiregion).
+sophia (marketing PM): Great. Action items recap: liam -> routing rules + VIP list; anika -> prompt packs + webinar & VIP copy; matt -> dashboard & event tags. Check-in Friday 9am PT. :thumbsup:
+liam (growth): I'll also prototype the in-app modal flow and share Figma link by Thurs.
+anika (content): Sharing kickoff doc in #marketing-assets in a few mins. Will include sample prompts and suggested test captions.
+matt (analytics): One more — recommend we run a small pilot (n=400) to sanity-check instrumentation before full launch. Saves messy tagging later.
+sophia (marketing PM): Love that. Pilot first, then scale. Thanks team — feeling good about this orchestral approach.

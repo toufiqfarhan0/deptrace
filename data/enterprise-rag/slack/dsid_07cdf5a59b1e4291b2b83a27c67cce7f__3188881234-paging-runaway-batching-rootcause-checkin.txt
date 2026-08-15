@@ -1,0 +1,89 @@
+incidents
+
+incident-bot: PAGING — Elevated 5xx + gateway timeouts observed for /v1/generate in us-west-2. error_rate=11.8% (3m), p95=3.6s, failures=503/504/timeouts. Paging SRE on-call: @anna :rotating_light:
+
+anna: Ack, I'm on. Thanks for the page. Can someone pull top-traffic routes and model variants?
+
+jess: Support seeing customer-reported timeouts from Acme Corp and NovaAnalytics, started ~17:24 UTC. They've hit repeated 500s.
+
+mike: Looking at runtime dashboards — scheduler shard scheduler-7 has queue depth jump: +1200 pending, inflight batches stalled. Batcher backlog showing long-lived large-batch windows, appears head-of-line blocking smaller batches. KV cache growth for that shard is also high.
+
+anna: Good data. Immediate mitigation plan (short list):
+1) Throttle gateway traffic to /v1/generate from 100% -> 50% for us-west-2.
+2) Disable large-batch-heuristic on scheduler-7 (force smaller batch size).
+3) Reroute a percentage of traffic to fallback region (us-east-1) and compatible model variant.
+4) Notify customers and set support banner.
+
+omar: I can do the gateway throttle now. Running toggle: 
+
+```bash
+# throttle /v1/generate to 50% in us-west-2
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://gateway-api.internal/config/route/throttle \
+  -d '{"route":"/v1/generate","region":"us-west-2","pct":50}'
+```
+
+omar: throttle applied, response: {"route":"/v1/generate","region":"us-west-2","pct":50} :white_check_mark:
+
+deploy-bot: Route throttle change deployed to edge fleet (us-west-2) — rollout 10% -> 100% complete.
+
+mike: On runtime side, I'm lowering scheduler-7 batch_size from 256 -> 128, and disabling the large-batch heuristic. Executing control-plane command: 
+
+```text
+CONTROL: set-scheduler-config --shard scheduler-7 --batch_size 128 --heuristics.large_batch false
+ACK: config applied on 7 nodes
+LOG: evicted 312 low-priority batches, queue_depth now 480 -> 180
+```
+
+mike: Seeing queue depth drop and mean latency for small requests improving. KV cache pressure reducing slowly.
+
+anna: Nice. Reroute metrics?
+
+omar: Reroute 30% traffic to us-east-1 variant (model-v1-compat). Command below and deployed: 
+
+```bash
+# soft-route 30% to us-east-1
+curl -X POST https://gateway-api.internal/route/split -d '{"route":"/v1/generate","from":"us-west-2","to":"us-east-1","pct":30}'
+```
+
+deploy-bot: Traffic split enacted.
+
+jess: Customer comms: sent holding message to Acme and NovaAnalytics, ETA update 30m. Support assigned: @jess to own customer loop.
+
+anna: Quick customer impact snapshot: ~8% of requests globally experienced 5xx/timeouts during spike window. Major impact to two enterprise customers (Acme, Nova). Internal alerting shows increased retry loops causing some downstream latency.
+
+mike: Initial root-cause hypothesis: A batch of long-token /streaming requests started hitting scheduler-7 that generated very large KV cache entries and kept big batches pinned for many seconds, preempting other smaller low-latency requests (head-of-line). That behavior produced batching scheduler starvation and eventual gateway timeouts.
+
+carlos: Will open a follow-up ticket to add fairness preemption and eviction heuristics. Short-term we should also pump autoscale up for scheduler-7 to absorb burst while we implement fairness. I can request a temporary x2 capacity bump.
+
+anna: Please do. @mike, can you validate if eviction prevented further timeouts?
+
+mike: Yes — after reducing batch size and rerouting, error rate dropped from 11.8% -> 1.1% over 6 minutes. p95 latency fell from 3.6s -> 600ms for small requests.
+
+pagerduty-bot: Incident annotated: batching-scheduler-hol-3188881234, severity=P1. Assigned to oncall anna.
+
+anna: Handoff: I'm going to keep watching for 15 minutes. If stable, I'll hand to mike for postmortem and remediation work. Jess, please continue customer comms with ETA 1hr for full root cause and next steps.
+
+jess: On it. Posting update to affected customers now.
+
+mike: I'll collect logs + KV cache snapshots and open an RFC for fairness eviction. Will also add a regression test to the eval harness to catch HOL scenarios.
+
+anna: TL;DR timeline for incident notes:
+- 17:24 UTC: spike begins, initial 5xx/timeouts reported by customers
+- 17:26 UTC: incident-bot page -> SRE oncall (anna)
+- 17:27-17:30 UTC: throttle + disable large-batch heuristic + batch_size reduction executed (omar/mike)
+- 17:33 UTC: traffic reroute to us-east-1 (30%) completed
+- 17:36 UTC: error rate down to ~1.1%, p95 improved
+
+anna: Next actions:
+- Mike to lead RCA and remediation ticket (fairness + eviction + autoscale policy)
+- Carlos to schedule capacity bump request and coordinate a canary for eviction policy
+- Jess to maintain customer comms until resolved
+- I'll keep monitoring for 30 more minutes, then close page if stable.
+
+incident-bot: Note: runbook reference: /runbooks/batching-hol-eviction and postmortem template created under incidents/3188881234.
+
+anna: final quick note — please add any timeline/nuggets into the postmortem doc. Closing message in 10m if no regress. :handshake:
+
+anna: last update — 17:42 UTC, service stabilized, leaving follow-ups assigned.
+

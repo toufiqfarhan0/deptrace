@@ -1,0 +1,104 @@
+incidents
+
+Alex Carter: heads-up — I want to iterate on our internal incident comms templates today. noticed some teams write very formal notices and others write super terse notes. can we land on a concise, consistent style and a small set of placeholders?
+
+incident-bot: Paging channel #oncall (sev: P1) — Pager duty triggered for @oncall. Incident thread created: 2048201234
+
+Suresh Patel: starting point: keep structure the same but standardize tone — neutral, factual, and action-focused. avoid blame, avoid technical jargon in the first 2 lines.
+
+Jamie Lin: +1. also we need a mandatory on-call handoff snippet in every update: who owns next steps, expected ETA for next update, any customer-visible changes. makes escalations easier.
+
+Olivia Gomez: agreed. suggest sections: 1) TL;DR (one line), 2) Impact (who/what/how many customers), 3) Root/what we think, 4) Mitigation/what we're doing, 5) Next updates & owner, 6) How to communicate externally (status page/email).
+
+Chris Reed: can we make template placeholders explicit? e.g., {service}, {start_time}, {scope}, {customer_impact}, {mitigation}, {owner}, {eta_next_update}. that reduces copy/paste errors.
+
+Emily Novak: i'll draft two variants: "internal short" (~3 lines) and "internal long" (full sections). internal short is for rapid live updates during mitigation; long is for postmortem/internal comms when we know more.
+
+Alex Carter: nice. can we also include a 'what to say to customers' mini-snippet for each update? ops often asks for exact wording. eg: "We're aware of an issue affecting {service}. Customers may experience {impact}. We're actively investigating and will provide an update by {eta_next_update}."
+
+Suresh Patel: put emphasis on measurable impact: "% of requests affected" or "# of tenants" if possible. ops can leave estimates with a `~` prefix if unsure. avoid absolutes until confirmed.
+
+Jamie Lin: also add an explicit line about which downstream services to check and an ops checklist for handoff. sample checklist: 
+```
+- Current owner: {owner}
+- Primary mitigation: {mitigation}
+- Live dashboard links: {dash_url}
+- Recent deploys? {yes/no}
+- Pager/alert links: {alert_url}
+- Customer-facing comm lead: {customer_lead}
+```
+
+Olivia Gomez: here's a candidate status page/update template (one-liner + details):
+
+```
+Status: Investigating
+Affected: {service} — partial degradation
+Impact: Some customers may experience increased latency or errors when calling {endpoint}. ~10% of requests.
+Started: {start_time} UTC
+Update: Engineers are investigating the root cause. Next update: {eta_next_update} UTC
+```
+
+Olivia Gomez: for email/notice to customers (short):
+```
+Subject: Incident affecting {service} — {short_summary}
+Body: We are investigating an issue impacting {service} that may affect {customer_impact}. Our team is working on a fix and will send updates by {eta_next_update}. We apologize for the disruption.
+```
+
+Chris Reed: can we add a 'tone guide' block? quick bullets: 
+- Prefer plain language over internal acronyms.
+- Avoid speculative root causes in customer-facing text.
+- Use empathetic language: "We know this impacts your workflow" not "you may lose data".
+- Provide clear actionables for customers (eg. retry, fallbacks).
+
+Suresh Patel: for internal updates during the incident, we need a severity-to-language map: 
+- P1: explicit "Major outage" allowed in internal comms; customer facing should say "partial/major degradation".
+- P2: "Degraded performance".
+- P3: "Minor impact".
+
+Emily Novak: here's a short live-update example we can reuse: 
+```
+Alex Carter: Update 00:14 UTC — Mitigation in progress. Traffic re-routed to fallback cluster. Errors dropping from 28% -> 8%. Owner: Suresh. Next update in 15m.
+```
+
+Jamie Lin: love that. small suggestion: prefix live updates with `Update {n}:` to make history easy to parse. also add a line at the end when we close: `Status: Resolved — root cause & follow-up will be posted in a separate note`
+
+Alex Carter: good call. can we standardize a final closing template too? needs root cause summary, impact, duration, customer message, and follow-up actions.
+
+Olivia Gomez: final-close template example: 
+```
+Status: Resolved
+Start: {start_time} UTC
+End: {end_time} UTC
+Summary: brief description of root cause (non-technical customer text + internal detail below)
+Impact: {affected_customers}/{percent_requests}
+Action taken: short bullets of mitigation and permanent fix plan
+Follow-up: owner, ETA for permanent fix, link to postmortem
+Customer comms: text to send to customers + status page update link
+```
+
+incident-bot: Note: new incident template PR suggested at https://git.company.internal/redwood/ops-docs/pulls (please add label: incident-templates)
+
+Chris Reed: i'll create the PR with the variants (short/live/close/email/status) and link to this thread. tagging docs team for review: @Emily, @Olivia.
+
+Emily Novak: i'll review wording for customer empathy and compliance. also will add glossary for placeholders so non-ops folks know what to fill.
+
+Suresh Patel: operational note: add a mandatory line for "is support embargo required? yes/no" for enterprise tenants if data sensitivity/population is high.
+
+Jamie Lin: action items: 
+- Chris: PR with templates + examples (due EOD PST)
+- Emily: review customer-facing wording (due tomorrow 10:00 UTC)
+- Alex: update on-call runbook links to include these templates (due EOD)
+
+Alex Carter: thanks all. once PR is merged i'll send a short announcement to #general and to the oncall rotation with 1-liner how to use templates. :thumbsup:
+
+Olivia Gomez: quick thought for future — add a tiny "mini-FAQ" snippet for customers if an incident is prolonged (how to get support, SLA credits).
+
+Chris Reed: noted. i'll include a placeholder section for "customer next steps" in PR.
+
+Alex Carter: closing the loop: please react with :white_check_mark: once you reviewed the PR. we'll iterate from there.
+
+Jamie Lin: :white_check_mark:
+
+Suresh Patel: :white_check_mark:
+
+Emily Novak: :white_check_mark:

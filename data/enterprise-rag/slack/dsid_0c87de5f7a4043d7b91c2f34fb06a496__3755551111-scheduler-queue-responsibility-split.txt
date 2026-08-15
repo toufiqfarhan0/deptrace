@@ -1,0 +1,43 @@
+eng-runtime
+
+Morgan: Quick follow-up to the continuous-batcher RFC — proposing a clearer split between Scheduler and QueueManager to reduce coupling and make eviction/KV-pin lifecycle explicit.
+Elaine: tl;dr?
+Morgan: Scheduler: admission, placement, fast-path preempt decisions. QueueManager: canonical per-tenant headroom, long-lived eviction hysteresis, KV-cache pin lifecycle, durable queue state.
+Raj: Who holds the canonical headroom counters? and how do we avoid races?
+Morgan: QueueManager owns headroom counters. Scheduler queries and caches a short-lived lease token for fast admission. If admission would exceed a threshold of cached headroom, Scheduler must revalidate.
+Tim: Risk: stale cache -> over-admit -> KV thrash during spikes.
+Morgan: Agreed. Proposal:
+
+```
+lease = qm.read_headroom(tenant)
+if req.tokens > lease.available * 0.6:
+  lease = qm.refresh(tenant)
+# admission proceeds only against validated lease
+```
+
+Raj: Keeps QM authoritative. What about eviction durability?
+Morgan: QM decides eviction candidates and maintains hysteresis counters. Scheduler can request expedited eviction for SLOs, but QM applies policy and records durable state.
+Elaine: If QM owns KV pins, we need an API to coordinate with runtime to actually drop entries.
+Tim: Minimal control API: QM -> runtime: `evict_intent(tenant, keyset)` runtime -> `evict_ack(keyset, ts)`.
+Morgan: Exactly. Async contract: QM issues intent, runtime attempts release, returns ack. Scheduler treats unacked intents as backpressure and avoids admitting dependent requests.
+Raj: Telemetry? We need canonical metrics to debug headroom/inflight interactions.
+Morgan: QM emits queue_depth, headroom_total, headroom_used, evictions/sec, kv_release_latency. Scheduler emits derived events: admission_from_cached_lease, rejected_on_stale_lease, expedite_eviction_requests.
+infra-bot: config: continuous-batcher.v2 -> add `soft_preempt_margin` (default 0.15) deployed to staging :white_check_mark:
+Tim: Recommend operator knobs `soft_preempt_margin` and `eviction_grace_ms` surfaced in console.
+Morgan: Action items:
+- Morgan: Update RFC with interface sketches and lease-token semantics (PR)
+- Raj: QueueManager -> runtime control API (protobuf + retry semantics) (PR)
+- Elaine: Telemetry schema + dashboard mock (PR)
+- Tim: Wire operator knobs into staging config and run perf tests
+- Morgan: Perf test sim simulating spike admissions + KV thrash (bench)
+
+Raj: I'll start the API PR. I'll include simple exponential retry and idempotency keys.
+Elaine: I'll add the telemetry schema and a Grafana mock panel.
+Tim: I'll schedule perf runs and add a small load generator that models bursty tenants.
+Morgan: One more nit: Scheduler cache TTL should be adaptive based on recent churn. High churn -> shorter TTL. Low churn -> slightly longer for throughput.
+Raj: Could be a simple EWMA of lease refresh cost / reject rate.
+Tim: Also need to ensure operator can emergency-disable cached leases (drain mode).
+Morgan: Good call. I'll add drain-mode behavior: Scheduler forcibly revalidates all leases when drain flag set.
+infra-bot: Note: staging flag `continuous_batcher.drain_mode` added (false)
+Elaine: Sounds actionable. I'll sync with observability to add alert: kv_release_latency > 500ms AND evictions/sec > 50 -> paging.
+Morgan: Thanks all. I'll update RFC and ping for reviews. :thumbsup:

@@ -1,0 +1,104 @@
+support
+
+maria.support: FYI escalated ticket from Acme — they flipped our int8 quantization profile yesterday and started seeing p95/p99 regressions across their endpoints. Reports started ~10:12 UTC.
+
+maria.support: They gave us a perf snapshot: p50 ~90ms (unchanged), p95 from 240ms -> 420ms, p99 jumps to 950ms for some routes. Error rate is low (<=0.5%) but latency tail is bad.
+
+maria.support: Repro steps they provided:
+```
+# call they used
+curl -H "Authorization: Bearer $KEY" -X POST https://api.redwood.ai/v1/generate \
+  -d '{"model":"rwd-13b-quant-v2","quant_profile":"int8_default","input":"Summarize...","max_tokens":256}'
+```
+They said toggling quant_profile -> fp16 makes p95 go back down.
+
+ajay.runtime: Thanks Maria. I pulled the trace logs from their tenant. Seeing increased kernel launch times and a lot of small kernels when int8 path is chosen. Also KV cache miss warmups spike for cold sessions.
+
+ajay.runtime: Quick triage checklist:
+- Which runtime binary? (we had a small patch for fp8 kernels last week)
+- Are they on our hosted fleet or Dedicated?
+- Are they using streaming or blocking responses?
+
+maria.support: They are on hosted, runtime v2026.01.12 (reported in headers). Streaming=true.
+
+li.eng-ml: Two likely causes: (1) quantization calibration produced bad scales for attention matrices -> noise in attention leading to more decoding steps and slower kernels; (2) int8 per-tensor path is hitting inefficient kernels on GPU leading to many micro-launches.
+
+li.eng-ml: Immediate mitigations:
+- Ask them to switch to `quant_profile: int8_per_channel` (if available) or `quant_profile: fp16` while we investigate.
+- Increase `calibration_samples` to 2048 for model conversion if they generated the profile themselves.
+- Temporarily pin to model variant `rwd-13b-quant-stable` (we keep stable float fallback builds).
+
+maria.support: I already suggested switching to fp16 and they reported improved numbers. But they want to continue int8 for cost reasons.
+
+sam.oncall: Can we reproduce internally? I can spin up a job to run the same curl workload with streaming enabled on a test tenant and compare int8_default vs int8_per_channel vs fp16. Will run now.
+
+opsbot: deploy-notify: canary deploy of runtime v2026.01.12 -> prod completed 2026-01-12T03:01:02Z :white_check_mark:
+
+ajay.runtime: Noted. If that canary overlapped with the customer's switch, maybe the combination of the new kernel and the int8 path exposed a perf cliff. Li, did we change kernel selection heuristics recently?
+
+li.eng-ml: We changed FP8 kernel fallback heuristics in v2026.01.08 but int8 path was untouched in theory. However the scheduler that picks int8 vs fp16 kernels had a logic inversion in a micro-commit (PR #1479) that can cause per-step kernel thrashing on some sequence lengths. I filed IH:ENG-642.
+
+li.eng-ml: Short-term: Add a server-side forced fallback flag for this tenant: `quant_fallback: fp16` at routing level. That avoids model changes and gives them stable latency while we patch.
+
+maria.support: Can we apply that per-tenant? Customer is okay with a short fallback if we keep them informed.
+
+ajay.runtime: Yes. I can add a routing override for tenant `acme` to force `quant_fallback: fp16` and route to the fp16 kernel set. Will do and monitor p95.
+
+jess.success: I'll notify the customer and set expectation: temporary performance fix while we investigate quality/accuracy impact and give a timeline.
+
+sam.oncall: Repro results (internal):
+- int8_default: p95 ~430ms, p99 ~980ms
+- int8_per_channel: p95 ~270ms, p99 ~480ms
+- fp16: p95 ~230ms, p99 ~320ms
+So per-channel int8 looks promising; default int8 profile is the worst.
+
+sam.oncall: Also instrumented CUDA profiling — saw many small kernels in int8_default path. Per-channel reduces micro-launches because we keep larger fused kernels.
+
+li.eng-ml: That matches expectation. The default calibration/pruning script we ship sometimes falls back to smaller-gemm tiling that causes kernel fragmentation. The calibration stage likely omitted some representative sequences.
+
+maria.support: Customer asked for repro steps so they can try per-channel. I sent them the sample config:
+```
+{
+  "model":"rwd-13b-quant-v2",
+  "quant_profile":"int8_per_channel",
+  "stream":true
+}
+```
+and instructions to re-generate if they used a local quantization pipeline:
+```
+quantize --model rwd-13b --precision int8_per_channel --calibration-samples 2048 --out rwd-13b-quant-v2-stable
+```
+
+ajay.runtime: Long-term fixes:
+- Patch scheduler inversion in PR #1479 (Li is on it).
+- Improve calibration tooling: require min calibration_samples, surface a calibration score metric.
+- Add runtime guard that detects kernel thrashing and auto-fallback to fp16 for tail latency protection.
+
+li.eng-ml: I have a draft PR to disable the micro-kernel path for default int8 when sequence length distribution is broad. Will link in IH.
+
+sam.oncall: I applied routing override `quant_fallback: fp16` for tenant acme at 1794502300. Early telemetry shows p95 back to ~240-260ms.
+
+maria.support: Customer notified, they're seeing improvement. They still want int8 if we can guarantee tail. Asked: can we provide an int8-perf runbook and best-practice config for when to choose per_channel vs default.
+
+li.eng-ml: I'll prepare a short runbook: quant profile mapping, calibration_sample guidance, model variant pinning, when to pick per_channel, how to run `quant_analyze` to get calibration score.
+
+jess.success: I'll attach the runbook to the ticket and propose a follow-up demo for Acme to show per-channel gains and calibration steps.
+
+ajay.runtime: Operational items:
+- IH ticket ENG-642 (kernel scheduler inversion) opened -> blocker priority.
+- Run a fleet-wide canary that forces `quant_fallback` off on a small % to detect regressions.
+- Add alert: p95 delta > 30% after quant_profile change for a tenant.
+
+maria.support: Thanks everyone. I'll close the customer loop and keep the ticket open until ENG-642 is resolved and we have a recommended runbook.
+
+opsbot: incident-bot: Created internal incident INC-2026-198 for quantization-tail-latency (assigned to eng-runtime).
+
+ajay.runtime: One more note: quality checks — we need to confirm int8_per_channel doesn't degrade output beyond acceptable thresholds. Li, can you schedule auto-evals on the customer's prompt set?
+
+li.eng-ml: On it. I'll run evals against their provided prompt set and report delta in ROUGE/EMB-sim. If delta is > 1% we'll recommend hybrid mode or calibrate more samples.
+
+maria.support: Great. If anyone else sees similar tenant escalations, please ping this thread or tag `#quant-regressions`.
+
+sam.oncall: Leaving logs and profiler artifacts in IH-642 workspace: s3://redwood-debug/quant/1794501234/
+
+maria.support: Closing update for now — customer happy with temporary fallback. Will re-open if we see reoccurence. :thumbsup:

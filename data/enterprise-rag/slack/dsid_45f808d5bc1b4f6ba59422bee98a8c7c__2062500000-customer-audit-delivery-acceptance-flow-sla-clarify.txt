@@ -1,0 +1,48 @@
+eng-security
+
+maria: FYI — customer legal wants explicit acceptance criteria for audit event delivery before signing the BAA/SLA. they asked for example payloads, signing proof, and an SLA for event availability. can we map this to what we actually emit today?
+dave: thanks, maria. do we have a single place that defines the event schema & transport options (streaming webhook vs. bundle export)?
+leila: we have docs scattered across infra and the audit exporter service. schema v2 is in the repo but not published to the console. quick summary: events include event_id, tenant_id, ts, actor, action, resource, outcome, metadata, schema_version. we also include optional k_v_cache_digest for inference events.
+maria: customer specifically asked for: 1) signed event bundles (verifiable) 2) key custody proof (KMS attestation) 3) retention & redaction rules in contract 4) SLA: delivery/availability + proof-of-integrity within X hours
+sam_legal: to be concrete, legal is asking we assert in contract: - event delivery within 24 hours for export requests (or streaming near-real-time) - integrity: events are signed by Redwood KMS and include a verifiable signature chain - retention/erasure: we can redact or remove PII within contracted retention windows - sampling: if we sample, we must declare sampling rate and provide reproducible mapping (seed + algorithm)
+oliver: from infra side, signing via customer-specific KMS (bring-your-own-KMS) vs Redwood-managed KMS is a big ask. BYOK implies we cannot sign with our key; instead we can wrap payloads with a customer-provided key or provide HMAC challenge. open question: do customers want us to sign with our key and provide a KMS attestation, or have them hold the signing key?
+leila: technical constraints: we currently support envelope signing on export bundles with our Redwood-managed KMS. adding per-tenant signing (BYOK) is a non-trivial change: KMS integration + RBAC to allow customer-specific wrap keys + audit of key usage.
+dave: can we provide both options and document differences? e.g. Redwood-signed bundle (we publish verification public key + signing chain) OR BYOK-wrapped bundle (customer key wraps the final bundle; Redwood provides key use logs).
+maria: customer asked for hash chain / sequence numbers so they can prove ordering and detect tampering. can we include an optional chain header that is signed?
+leila: yes. something like: chain_root = H(chain_root_prev || bundle_hash) and we include chain_index for each bundle. sample event header: ```json
+{
+  "schema_version": "2.1",
+  "bundle_id": "bndl_20260317_0001",
+  "chain_index": 153,
+  "chain_root": "sha256:abcdef...",
+  "signed_by": "redwood-kms:arn:..."
+}
+```
+sam_legal: legal will want plain-language acceptance tests. propose we give a 1-page checklist per transport: webhook streaming and bundle export. include verification steps (verify signature with published pubkey, check chain continuity, verify event_count matches manifest).
+maria: also asked about RBAC changes — customer wants audit events showing who accessed the export endpoints (not just the internal service principal). they want end-user identity + admin role mapping in the events. that implies we must enrich export events with RBAC mapping at time-of-export.
+oliver: that's doable, but we need to ensure we record both effective_actor (service) and initiating_user (email/subject). also we need to ensure PII minimization if needed for HIPAA: by default redact email but provide hashed identifier in the event for linkage.
+dave: vulnerability/triage note: if we add BYOK flows and new KMS APIs, security review and threat model update required. add a vuln triage ticket and mark as high risk for key-exposure paths.
+leila: operational mode for integrity verification: provide two modes: (A) realtime webhook + signature header per event, (B) snapshot bundle (gz + manifest + signature). manifest example: ```
+{
+  "bundle_id": "bndl_20260317_0001",
+  "event_count": 1234,
+  "events_sha256": "sha256:...",
+  "signed_at": "2026-03-17T15:02:00Z"
+}
+```
+maria: SLA questions from customer: - what uptime for export API? - if delivery fails, what retry/backfill guarantees? - for signed bundles, what's the maximum time between event occurrence and appearance in signed bundle?
+sam_legal: legal will accept SLA language like: "Redwood will make reasonable efforts to deliver audit exports within 24 hours of event occurrence. For streaming subscriptions, events will be delivered within N seconds/minutes subject to network reliability. Redwood will provide signed manifests and maintain signature verification keys for audit. Remedies for prolonged non-delivery may include service credits up to X%." (we'll negotiate numbers with sales)
+leila: practical limits: 24h for bundle export is fine. near-real-time streaming is best-effort; we can offer enterprise config with higher SLO and dedicated capacity (note: Dedicated/Private customers easier for strict SLAs).
+odave: (reacts :thumbsup:) 
+maria: action items: 1) leila — draft sample bundle & manifest payloads and add signature/chain headers (due EOD + link) 2) oliver — list RBAC fields we can add to events + privacy options (hashed id vs email) 3) dave — open infra ticket for BYOK KMS integration + threat model + QA plan 4) sam_legal — draft contract-friendly acceptance checklist and proposed SLA language.
+leila: will push a PR to the docs repo with schema examples and a local verification script: ```sh
+# verify bundle manifest signature
+openssl dgst -sha256 -verify redwood_pub.pem -signature manifest.sig manifest.json
+```
+sam_legal: also: require retention and proof-of-deletion API for customers on BAA/FedRAMP deals. ask product/infra to add an endpoint that returns deletion proof for a given event_id (or bundle_id).
+oliver: we should also be upfront about sampling — if we sample audit events for cost reasons, we must disclose that in contract and provide mapping to reproduce sample. otherwise customers will assume complete fidelity.
+maria: thanks. last: incident response tie-in — buyer asked that if there's a data integrity incident we provide signed forensic exports and timeline within 48 hours. that's going in the incident playbook. can eng-oncall and sec-ops own response steps.
+dave: noted. will add to the incident runbook: "signed forensic export" procedure + key-escrow access only for verified legal requests.
+maria: cool. if no objections I'll present this plan to the customer tomorrow. :eyes:
+oliver: no objections. :thumbsup:
+sec-bot: automated note: created issue INFRA-3456 (BYOK audit export) and SEC-2121 (audit schema v2.1 publish).

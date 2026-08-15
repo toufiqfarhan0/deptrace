@@ -1,0 +1,91 @@
+product
+
+alex: quick sync — i'm dropping a rough PRD fragment here for the function/schema work. need scope decisions before we circle back with eng estimations. :eyes:
+
+alex: high-level ask from a few customers: strict output validation + graceful fallback for tool calling. they want deterministic errors (422-like) when schema mismatch, and an opt-in lenient mode for exploratory apps.
+
+maria: can you paste the acceptance criteria you're imagining? helps us map to tests.
+
+alex: sure, rough ACs:
+- validator lib in SDK that returns structured errors (code, path, message)
+- server-side validation at routing layer with configurable policy per-route: `reject`, `warn`, `auto-fix`
+- metrics: validation_error_rate, fallback_invocations, avg_latency_95
+- rollout: canary -> 10% -> 50% -> global; auto-rollback if error_rate > 0.5% for 5m
+
+devon: important tradeoff: server-side `auto-fix` implies we need deterministic repair heuristics. that can silently change behavior. customers asked for opt-in only?
+
+alex: yes, opt-in per-route. default should be `reject` to be conservative.
+
+sarah: from eval side: we need golden prompt sets and negative cases. i'll produce a 50-case suite that includes edge types: missing fields, extra fields, wrong types, nested arrays, truncated tokens.
+
+kevin: ops note: validation at edge will add ~1-3ms per request if implemented in C++ path, ~5-10ms in Python path. need to decide placement. prefer a compiled validator in runtime for hosted. for Private we can bundle a lighter JS validator in SDK to avoid extra latency on on-prem.
+
+maria: SDK changes: add `schemas.register(name, jsonSchema)` and `client.call({route, input, schemaPolicy})`. also return `validation` metadata on responses.
+
+alex: sample error shape we proposed: `{ code: "SCHEMA_MISMATCH", path: "actions[0].args.user.id", expected: "string", got: "number", hint: "coerce to string or update schema" }`
+
+maria: proto snippet for validator API (pseudo):
+```json
+{
+  "validate(schema, output)": {
+    "returns": "{ok: boolean, errors: [{code, path, message}], fixed?: any}"
+  }
+}
+```
+
+devon: what about function signature evolution versioning? customers want stable contracts. propose schema version header: `X-Function-Schema: name@v2` and server enforces compatibility rules (no breaking rename of required fields).
+
+alex: agreed. include compatibility checker in the PRD. add migration notes: we support `compat: backwards|forwards|none`. default `backwards` for minor bumps.
+
+kevin: rollout constraint for Dedicated: we can't push compiled runtime change without maintenance window for some customers. add an opt-out flag in account settings.
+
+alex: noted — add to launch criteria: doc + migrate guide + account-level opt-out.
+
+sarah: edge cases to add to ACs: streaming responses that emit partial JSON, tool calls that return non-json (e.g., binary), and nested tool-call-in-tool-call. tests must cover abort/timeout halfway through stream.
+
+maria: validation for streaming: we should validate chunk-level parseability then final schema. return `partial_validation_errors` in metadata when stream ends with issues. otherwise treat as `schema_mismatch`.
+
+devon: implementation tasks (very high level):
+- runtime validator (C++/Rust) + FFI bindings
+- JS/py SDK validator and public API
+- per-route policy config in control plane + UI
+- e2e tests + canary job + regression evals
+- docs + migration guide + compatibility checker
+
+alex: prioritization ask: do we treat this as a Q2 flagship (high) or Q3 incremental? biz says some large customers will only sign Dedicated deals if we have strict validation and rollback behavior.
+
+maria: engineer estimate: core validator + SDK + metrics -> 4-6 sprints across 2 teams. UI + policy + canary infra + docs -> additional 2 sprints.
+
+kevin: ops must be included early. adding runtime code requires benching and a deployment plan. please add us to RFC reviews.
+
+alex: acceptance checklist for PRD (to be converted to GH issue):
+- [ ] API surfaces defined (validator + response metadata)
+- [ ] Per-route policy model + default behavior
+- [ ] Schema versioning & compatibility rules
+- [ ] Error codes & telemetry spec
+- [ ] SDK API + examples
+- [ ] Rollout plan + auto-rollback thresholds
+- [ ] E2E test suite + eval corpus
+- [ ] Docs + migration guide + customer communication template
+
+maria: i'll draft the first PR with API signatures and a tiny reference JS validator. ping me for review.
+
+devon: i can sketch the runtime validator design and perf numbers by EOD Friday.
+
+kevin: i'll add deployment constraints and a Dedicated opt-out flag. also need a downtime SLA note.
+
+alex: thanks. can we aim to lock scope by Tue so we can surface to leadership on Wed? :thumbsup:
+
+sarah: on it — will drop eval corpus by Monday noon.
+
+ci-bot: automated note: created ticket RF-4123 in product backlog (untriaged) for "function schema & validation PRD"
+
+alex: awesome. last q: do we include an `auto-fix` policy in MVP or move to follow-up?
+
+maria: MVP = validator + `reject` and `warn` + SDK metadata. `auto-fix` as milestone 2. keeps scope manageable.
+
+devon: +1. auto-fix has too many edge cases.
+
+kevin: agreed. milestone 2 only if telemetry shows >3% benign parseable errors we could auto-fix safely.
+
+alex: OK locking that. i'll update the PRD fragment and open the GH issue with checklist. thanks all. :rocket:

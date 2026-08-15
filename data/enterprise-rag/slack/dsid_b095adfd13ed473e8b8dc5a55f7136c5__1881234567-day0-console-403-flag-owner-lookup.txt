@@ -1,0 +1,15 @@
+new-hires
+
+Maya Chen: hey folks — trying to flip a feature flag in Console (staging) and getting a 403. MFA didn't pop for me either. day 1 here, who should i ping for flag ownership or a temp admin lift?
+Samir Patel: welcome! for ownership, check Flags > your-flag > Owners in the Console UI. if you can't access that, try: `curl -H \"Authorization: Bearer $TOKEN\" https://console.staging.redwood.ai/api/flags/<flag>` to see the error body. do you have SSO groups synced?
+Maya Chen: i don't see the flags nav at all. clicking the direct link returns a 403 JSON: `{"error":"forbidden","reason":"missing_role"}`
+Toni (IT): @Maya Chen — sounds like you're missing the staging-ff-operator role. please open a JIT request at https://access.redwood.ai/jit and request the role `staging:flag-admin` for 1 hour. include your manager for approval. if the form 404s, ping infra.
+Maya Chen: i clicked the JIT link and it 404s for me (probably SSO). any workaround?
+InfraBot: New access request created: AR-5621 — https://access.redwood.ai/requests/AR-5621
+Alex - Platform: if the JIT page 404s, try signing into the company SSO first (OKTA). also you can run `/who-owns-flag my-experiment-flag` in #eng-platform to surface owners — we have a small lookup bot that reports owners and owning team.
+Samir Patel: quick workaround for triage: I can run the owner lookup and temporarily grant a scoped token for 30 mins. @Toni (IT) — can you approve a short elevation if the manager signs off?
+Toni (IT): I can approve once the request shows manager signoff. @Maya Chen add your manager (Jordan Rivers) to the JIT request and repost here. :thumbsup:
+Maya Chen: added Jordan to the request and resubmitted. thanks!
+Samir Patel: standing by to escalate if infra blocks it.
+Maya Chen: update — JIT approved, flag nav is visible now. toggled the flag for staging test. all good :party:
+InfraBot: Access request AR-5621 closed (approved by Toni (IT)) — duration: 1 hour.

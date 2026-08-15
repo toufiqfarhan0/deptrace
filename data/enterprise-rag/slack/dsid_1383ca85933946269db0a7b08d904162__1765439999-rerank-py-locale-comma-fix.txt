@@ -1,0 +1,64 @@
+support
+
+jess_support: hey 👋 we started seeing incorrect rerank ordering after upgrading to python sdk 0.9.4. scores look wrong in outgoing body
+
+sara_support: can you paste the outgoing payload or logs?
+
+jess_support: pasted from our app (we log the raw body):
+```
+payload = {
+  'query': 'best movie',
+  'candidates': ['A','B','C'],
+  'scores': ['0,95','0,9','0,80']
+}
+```
+we passed floats in code (scores=[0.95,0.9,0.8]) but the payload shows commas and strings. some requests return 400, others return results but ordering is wrong.
+
+sara_support: do you run in a non-US locale on that host? LC_NUMERIC or LANG set to something like de_DE?
+
+jess_support: yes containers inherit LC_NUMERIC=de_DE.UTF-8 from host. didn't think it would affect JSON.
+
+alex_eng: dev tagging in. can you run a tiny repro with the sdk helper?
+
+jess_support: minimal repro:
+```
+from redwood import Client
+c = Client('tok')
+print(c._build_rerank_body(['A','B'], [0.95, 0.9]))
+```
+on our host the printed body is: { 'candidates': ['A','B'], 'scores': ['0,95','0,9'] }
+
+alex_eng: reproduced here. root cause: the python helper was joining scores with str(s) into a template string. on de_DE locales str(float) uses comma as decimal sep. then we end up with quoted strings in the final JSON. JSON numbers must use dot and not be quoted.
+
+mike_ml: yep, that explains both the 400 (parser unhappy) and the odd ordering when backend coerces strings to numbers inconsistently.
+
+sara_support: next steps? we need an actionable fix and a workaround for affected customers.
+alex_eng: opened GH issue and PR: https://github.com/redwood-inference/sdk-python/issues/1432 and PR https://github.com/redwood-inference/sdk-python/pull/1450
+- cause: locale-aware float->str in one path that built JSON with string templating
+- fix: use json.dumps for arrays and ensure numbers serialized as numbers; add unit tests that run with de_DE locale
+- CI: add a matrix entry to run tests with non-C locales
+
+deploy-bot: canary build created for branch fix/locale-rerank-1450 — tag sdk-python-canary-1450
+
+alex_eng: short-term workaround for customers: set LC_NUMERIC=C in the process environment or call locale.setlocale(locale.LC_NUMERIC, 'C') at startup. sample:
+```
+import os
+os.environ.setdefault('LC_NUMERIC', 'C')
+# or
+import locale
+locale.setlocale(locale.LC_NUMERIC, 'C')
+```
+
+sara_support: documenting workaround and will notify customers on the ticket. jess, please try the canary when available and confirm.
+
+jess_support: tested canary sdk-python-canary-1450 — outgoing body now contains scores as numbers [0.95, 0.9, 0.8] and rerank results match expected ordering. switching our prod containers to set LC_NUMERIC=C as immediate mitigation. thanks! :raised_hands:
+
+dev-bot: ticket #1432 status -> in_progress
+
+mike_ml: added utest for de_DE and updated CI matrix. PR merged to master and cherry-picked to release branch.
+
+deploy-bot: released sdk-python 0.9.5 with fix.
+
+sara_support: marking customer ticket actionable->resolved pending confirmation. will follow up if anything else pops up.
+
+jess_support: closing our internal side, thanks everyone :heart:

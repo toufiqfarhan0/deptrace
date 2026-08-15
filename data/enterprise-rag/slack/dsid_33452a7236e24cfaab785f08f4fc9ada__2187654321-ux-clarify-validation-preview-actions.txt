@@ -1,0 +1,26 @@
+product
+
+anya (design): quick flag from a hallway test: people get stuck when a rule shows a red dot but no message. they assume the editor is buggy. can we make validation clearer?
+mason (product): thanks. two related things: 1) inline validation needs explicit copy, 2) preview button is often disabled with no reason — users think it's broken.
+rico (frontend): agreed. technically the list collapses when empty and causes scroll jump. i can reserve a min-height and render a lightweight placeholder row instead. for validation i can surface an inline helper under the field.
+leah (a11y): accessibility checklist: associate error text via aria-describedby; announce errors when they appear (on blur or save) using role=alert for blocking errors. for non-blocking warnings use role=status polite.
+anya (design): copy idea for inline error: headline + hint. e.g.
+  "Incomplete condition"
+  "Add a matcher (equals, contains) and a value to enable this rule."
+mason (product): and for preview disabled state: show a small centered card in the preview panel: title 'Preview unavailable' + reason line like 'No snapshot selected' and action 'Select or create snapshot'. dont just dim the area.
+rico (frontend): plan: overlay card (non-modal aria-modal=false) with actions. when network is slow show spinner. overlay will be tabbable but not trap focus so users can still interact with editor. also will push a storybook story for disabled-preview + empty-list.
+leah (a11y): tiny nit: if overlay is dismissible but non-modal, ensure it has clear labeling and that escape dismisses it. announce the reason in a polite live region too so SR users understand why preview is off.
+anya (design): reorder affordance: testers missed it in compact density. suggestion: slightly larger handle (24px), low-contrast by default, full contrast on hover/focus, and SR-only hint: 'Press space to lift, arrow keys to move'. show transient tooltip first-time only.
+mason (product): reordering behavior question: should reorder be optimistic? current is optimistic and sometimes a failed API leaves no undo. proposal: optimistic + persistent inline error banner if API fails with 'Undo' and 'Retry'.
+rico (frontend): ok i'll keep optimistic local move, call API; on failure revert visually but also show an error banner attached to the list with Undo/Retry buttons. banner will receive focus (role=alert) when it appears. will include data-test ids for QA.
+leah (a11y): for move announcements, include rule name and position: 'Rule "Block abusive IPs" moved to 2 of 7'. debounce announcements to avoid spam during fast drags.
+anya (design): decision summary:
+ - show explicit inline validation text (anya)
+ - preview overlay card not dim-only (anya + rico)
+ - reserve min-height to avoid jumps (rico)
+ - optimistic reorder + persistent error banner with Undo/Retry (rico + mason)
+ - a11y patterns: aria-describedby for fields, role=status for counts/warnings, role=alert for blocking errors and error banner (leah)
+owners: anya (copy + mocks), rico (frontend + PR + storybook), leah (a11y sign-off), mason will update the ticket.
+rico (frontend): ETA: will open a small PR with stories for empty-list, preview-overlay, and reorder-fail by end of day tomorrow. includes unit + accessibility notes.
+infra-bot: staging deploy scheduled for branch feature/routing-ux-tweaks at 2026-01-12T03:00Z :rocket:
+mason (product): thanks all 1 i'll add the owners to the sprint ticket and review PR when ready.

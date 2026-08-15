@@ -1,0 +1,47 @@
+support
+
+user-jordan: forwarding a customer report — promo code 'FREE30' applies once, then second apply returns 422 invalid/expired even though dashboard shows it available. customer says they changed email and retried. ticket: INT-12981
+
+maya: can you paste the API request_id + the curl you used to repro? also customer email (masked ok)
+
+user-jordan: request_id=rx_2026_09_15_9823, customer email: jordan+alt@example.com. repro curl below — first call returns 201, second returns 422: 
+```
+curl -X POST https://api.redwood.ai/v1/promos/claim 
+ -H 'Authorization: Bearer sk_live_***' 
+ -d '{"code":"FREE30","email":"jordan+alt@example.com"}'
+```
+
+alex: can you paste the exact 422 body? any x-cache-* headers from the response?
+
+user-jordan: 422 body: `{ "error": "promo_invalid", "message": "code invalid or expired" }`
+response headers included `x-cache-status: STALE` and `x-request-id: rx_2026_09_15_9823`
+
+anika: quick note — we rolled out a small change to promo-claim cache invalidation yesterday at 02:12 UTC (v2.8.1). If a grant is processed during a short Redis failover window, the cache key might not be invalidated immediately, causing a 30s-ish window where the API reads stale availability.
+
+jgorman: yup, there was a Redis failover at 02:05 UTC with a short write-fail window. looks like some promo keys ended up with stale TTLs. I'm seeing a spike in `promo_claim_cache_misses` around that time.
+
+alex: short mitigation: we can force invalidate the promo key for that tenant now. command to run: 
+```
+redis-cli -h promo-redis01 del promo:tenant:org_9876:FREE30
+```
+I'll run it if you give the green light.
+
+billing-bot: manual credit grant completed for INT-12981 — 1x 30d free-trial credit applied to jordan+alt@example.com by sara-cs at 2026-09-15T03:02:10Z.
+
+sara-cs: issuing the manual credit as stopgap and emailing customer with apology + explanation. will follow up when eng confirms root cause and fix ETA.
+
+alex: ran the invalidate command, cache key removed. I retested the curl; first claim returns 201, second now returns 409 (already claimed) which is expected. pushing a small patch to ensure invalidate-on-write is retried when Redis returns transient errors.
+
+anika: assigning to eng-runtime to ship the patch — ETA 4 hours to rollout and monitoring alert to close once no more `x-cache-status: STALE` responses seen in the last 60m.
+
+support-bot: action logged — INT-12981 updated: workaround applied (manual credit), infra invalidated cache key, patch in progress.
+
+maya: thanks — I'll update the customer thread and close the loop. marking as high priority until patch is live. :thumbsup:
+
+user-jordan: thanks team, customer confirmed they can now see the credit and retry succeeded. they appreciated the manual workaround.
+
+jgorman: for postmortem — add a note to avoid single-step invalidate on write without retry; the Redis failover surface needs a short retry loop for key deletes.
+
+anika: noted for the postmortem doc.
+
+sara-cs: closing out customer-facing steps, leaving engineering follow-up for the postmortem. :white_check_mark:

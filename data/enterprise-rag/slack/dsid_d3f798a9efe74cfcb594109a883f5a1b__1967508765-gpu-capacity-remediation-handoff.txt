@@ -1,0 +1,52 @@
+incidents
+
+maria: Quick follow-up from the GPU capacity postmortem. Need clear handoffs for: quota backstop, scheduler knob defaults, and a concise headroom playbook. Short updates only here; detailed notes on the board.
+
+jyoti: I can take scheduler defaults (A-sched). Plan: run 24h trace replay, test preemption.deadline_ms and backfill.window_sec, then open a PR with safe defaults. Target draft: 2025-06-07.
+
+sam (oncall): please include an automated smoke test that validates preemption ordering. I can run the surge sim on the 2025-06-08 evening window.
+
+natalie: I'll own quota backstop (A-quota). Proposal: soft quotas per team for burst pools with a tunable grace period, then fallback routing to reserved pool. I'll post a mapping CSV and RB draft by 2025-05-31.
+
+diego: I'll write the short headroom playbook (A-headroom): 1-page checklist + escalation contacts + an alert at 12% headroom. Draft by 2025-05-29.
+
+maria: Good. Let's add a 6-week check cadence on Wednesdays 11:00 PT to catch regressions. ops-bot, create event and invite owners.
+
+ops-bot: Created "GPU capacity remediation" weekly Wednesdays 11:00 PT. Invites sent to maria, jyoti, natalie, diego, sam (oncall). Link: https://calendar.redwood/internal/evt/10122
+
+jyoti: Note: I'll include a safe ramp for preemption.deadline_ms to avoid noisy churn. Config snippet I'll test:
+
+```
+scheduler:
+  preemption:
+    deadline_ms: 60000
+  backfill:
+    window_sec: 30
+```
+
+sam (oncall): perfect. also add a validation that KV cache persists across preemption events. Ill check during the sim.
+
+natalie: posted quota mapping CSV to board: https://redwood.internal/boards/gpu-capacity/cards/42. @product-infra please review before EOD 2025-06-02.
+
+diego: headroom alert I'm adding to monitoring:
+
+```
+expr: gpu_free_gpu_seconds_total / gpu_total_seconds_total < 0.12
+for: 8m
+labels:
+  severity: warning
+annotations:
+  runbook: https://redwood.internal/runbooks/gpu-headroom-1pager
+```
+
+jyoti: FYI I'll run a 2-night autoscale dry-run in staging and upload logs to the card. Command: `./bin/autosim --replay traces/last_7d --output=artifacts/sim-$(date +%s).log`
+
+maria: owners + deadlines recap: A-sched: jyoti 025-06-07; A-quota: natalie 025-05-31; A-headroom: diego 025-05-29. Add short test plans to each card.
+
+(narrow follow-up 2025-05-27) jyoti: uploaded trace replay results, opening PR #1210 with suggested defaults.
+
+(narrow follow-up 2025-05-28) natalie: quota RB draft posted, asking infra/product for review.
+
+(narrow follow-up 2025-05-29) diego: headroom playbook published; alert wired to #incidents; testing in staging tonight.
+
+(ops-bot 2025-06-05): Reminder: weekly remediation sync in 48 hours.

@@ -1,0 +1,68 @@
+eng-releases
+
+jen (eng-releases): deploy-bot just failed a prod promotion for registry.aws/redwood/release:20260315 — canary promotion aborted due to provenance mismatch. see logs from deploy-bot below.
+
+deploy-bot: publish blocked: provenance.attestation.mismatch: cosign.sig.key_id=aws-kms://arn:aws:kms:eu-west-1:123456:key/abcd-rotated, manifest_digest=sha256:abcdef1234567890
+
+omar (eng-infra): looking at deploy-bot logs — KMS key rotation happened this morning in account-redwood-builds, cosign signatures now reference a key id that our mirror account doesn't trust.
+
+carla (sre-oncall): we're inside the 14:00-16:00 change window right now. two options: 1) pin back to previous digest and roll forward after validation, or 2) manual retag + republish under a hotfix tag and promote. what's the traffic impact?
+
+eli (product): canary shows 0.7% inference errors after the aborted promotion, customer-facing flows still ok but prefer minimal churn. I'd vote for retag and manual promote so we don't roll back user-visible deploys.
+
+sam (release-engineering): manual retag is safest operationally — create a retag like release-hotfix-20260315-89a7 and push an attestation we control. we'll need security sign-off for using our in-house signing key for the attestation. also update release notes.
+
+alexa (security): confirmed KMS key rotation created new key in account-builds; cross-account attestation not yet configured. Approving using our internal cosign key for a one-off republish is OK, but we need an audit entry and the deprecated key footprint recorded. I'll need the push command and the new tag before signing.
+
+jen (eng-releases): action plan: freeze automated promotions for this image (deploy-bot hold), create hotfix tag and push manifest from the same digest, have security sign the artifact, then manual promote to prod canary at 10%. If metrics stable for 30m -> roll to 50%. If not -> rollback to previous pinned digest.
+
+deploy-bot: override request created by jen: /deploybot override promote 1719994444 --reason "hotfix retag due to cosign KMS mismatch" --requester "jen"
+
+sam (release-engineering): approved the override. I'll create the retag now. commands:
+
+  # retag by digest and push
+  docker pull registry.aws/redwood/release@sha256:abcdef1234567890
+  docker tag registry.aws/redwood/release@sha256:abcdef1234567890 registry.aws/redwood/release-hotfix-20260315-89a7
+  docker push registry.aws/redwood/release-hotfix-20260315-89a7
+
+sam (release-engineering): after push I'll hand off to alexa for signing: cosign sign --key k8s-secret://cosign-key registry.aws/redwood/release-hotfix-20260315-89a7
+
+alexa (security): signing in progress. creating audit ticket for key rotation cross-check (sec-audit-2026-043).
+
+ci-bot: created ticket RR-1123: "hotfix retag & manual promotion - provenance mismatch" and attached deploy-bot logs.
+
+jen (eng-releases): updated release notes draft: "hotfix: republished release:20260315 as release-hotfix-20260315-89a7 due to attestation key mismatch during automated promotion. No code changes. Signed with internal cosign key. Rolling canary (10%)."
+
+omar (eng-infra): updating k8s image pins in canary manifests to registry.aws/redwood/release-hotfix-20260315-89a7 and triggering a 10% canary rollout.
+
+carla (sre-oncall): monitoring dash: cpu/latency/error-rate, set rollback timer 30m from promote. I'll alert if error_rate > 2x baseline.
+
+sam (release-engineering): manual promote executed. deploy-bot: please confirm canary creation and track rollout.
+
+deploy-bot: manual promotion accepted under override id 1719994444-ovr1. Canary rollout started -> 10% traffic.
+
+eli (product): noted in release notes and flagging customers on the canary cohort.
+
+carla (sre-oncall): 12m in: no regressions visible, latency stable. continuing monitoring.
+
+alexa (security): signing artifacts and audit posted to sec-audit-2026-043. cosign signed digest: sha256:abcdef1234567890, signature id cosign-internal-20260315-1.
+
+jen (eng-releases): will close the manual override if canary remains healthy at 30m and update the changelog. Thanks all. :thumbsup:
+
+sam (release-engineering): leaving a note: follow-up to automate cross-account cosign trust to avoid manual retag next time. I'll file an infra task.
+
+ci-bot: linked follow-up task INFRA-2190 to RR-1123.
+
+carla (sre-oncall): everyone ack when you see this final state.
+
+jen (eng-releases): ack.
+
+eli (product): ack.
+
+omar (eng-infra): ack.
+
+sam (release-engineering): ack.
+
+alexa (security): ack.
+
+(END)

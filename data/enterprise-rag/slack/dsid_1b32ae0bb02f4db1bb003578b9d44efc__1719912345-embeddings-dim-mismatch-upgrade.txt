@@ -1,0 +1,78 @@
+support
+
+Acme SRE (customer): Hey, overnight our similarity search dropped a lot. We swapped no code, but emb vector length went from 1536 to 1024. This broke our FAISS index (assert failure on insert). Any idea? We saw it around 2026-03-02 03:00 UTC after a scheduled maintenance.
+
+Asha (Support): Sorry for the outage — we can help. Can you paste one example request/response (redact PII/keys)? Also confirm which model name you set in the request and whether you used a pinned version/alias in the Console.
+
+Acme SRE (customer): Pasting minimal repro (keys removed):
+
+```
+curl -X POST https://api.redwood-inference.com/v1/embeddings \
+  -H "Authorization: Bearer xxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"embed-1536","input":"hello world"}'
+```
+
+Response (trimmed):
+
+```
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "embedding": [0.001, 0.003, ...],
+      "embedding_length": 1024
+    }
+  ],
+  "model": "embed-1536"
+}
+```
+
+We expect embedding_length: 1536. We pinned the model in our account to "embed-1536" (we thought that pins it).
+
+Asha (Support): Thanks — that helps. Two quick things: 1) we'll check the model-alias rollout logs on our side; 2) can you confirm your indexing pipeline expects 1536 and fails if not? (that helps prioritize a hotfix).
+
+Acme SRE (customer): Yes, indexing asserts len(vec) == 1536 and triggers a fatal. We had backfills running and those failed.
+
+DeployBot: Model alias update: at 2026-03-02T02:58:13Z alias "embed-1536" -> "embed-1024-v2" deployed by riley, change-id: f3b2a7.
+
+Tom (ML Eng): Root cause hypothesis: the customer pinned to the alias "embed-1536" (not a versioned revision). During a model family migration we changed the alias to point at a new, smaller-dimension model to improve latency and cost. The alias map changed; the API returns model: "embed-1536" for backward compatibility, but the underlying vector dim changed to 1024. We're seeing similar reports when teams rely on family aliases instead of exact versions.
+
+Marta (DevEx): Ouch — two immediate actions: (1) advise all customers to pin exact model revisions (e.g., "embed-1536@v41"); (2) add an SDK/runtime validation that checks returned embedding length against expected dimension for the requested model/alias and throws a descriptive error before the indexer runs.
+
+Riley (Platform): Confirming: the migration was intentional (cost/latency win) and the alias switch should have been behind a opt-in. Looks like an automation mistakenly promoted the alias. I'm rolling a revert now.
+
+Tom (ML Eng): For long-term: we'll add a server-side compatibility guard on the embeddings endpoint — if an alias resolves to a model with a different embedding dimension than the alias's declared dimension, the API should: 1) return a 409 with a clear error ("embedding_dimension_mismatch"), or 2) allow a query param ?force=true to opt into the change. That avoids silent breakage.
+
+Asha (Support): Short-term workaround for Acme: 1) Re-pin to a specific version once we confirm which revision you want (we can surface the previous model binary); 2) If you need immediate continuity, we can reindex using the new 1024 vectors and provide a migration window where both indexes are available; 3) Add a pre-index validation step: example script below.
+
+```
+# pre-index check (python)
+if len(embedding) != EXPECTED_DIM:
+    raise RuntimeError(f"embedding dim {len(embedding)} != expected {EXPECTED_DIM}")
+```
+
+Acme SRE (customer): Appreciate that. Can you revert alias now? The revert would let our backfills finish without reindexing.
+
+Riley (Platform): Revert done: alias "embed-1536" now points back to embed-1536-v41 (the old 1536-dim binary). Finalized at 2026-03-02T03:10:45Z. Change-id: a9d1c4.
+
+DeployBot: Note: rollback completed, health checks green.
+
+Tom (ML Eng): Also note: batching/throughput behavior unchanged by this; only the vector dimensionality changed. If you later switch models for throughput improvements, expect dim/representation changes — we should warn in Console and API.
+
+Marta (DevEx): I'll draft a short KB entry and an email/console banner: "Pin model revisions to avoid silent embedding-dimension changes." Also adding sample migration script (reindex + take dual-index approach).
+
+Asha (Support): For the ticket closure: Acme, please confirm whether your backfills completed after the revert and whether you want assistance re-running them or switching to 1024-based index.
+
+Acme SRE (customer): Confirmed — revert fixed the immediate failures. Backfills resumed and completed. We'll follow up to plan a controlled migration to 1024 later. Thanks for the fast turnaround :raised_hands:
+
+Asha (Support): Great — marking this thread resolved for now. Follow-ups: Platform to add alias-change guard, ML Eng to produce API error for dimension mismatch, DevEx to publish KB, Support to notify any customers with pinned aliases recently updated.
+
+Riley (Platform): Action items created: PLAT-421 (prevent alias promotion without opt-in), PLAT-422 (audit recent alias updates).
+
+Tom (ML Eng): I'll open ENG-embeddings-compat with the API change proposal.
+
+Marta (DevEx): Drafting KB now.
+
+DeployBot: Thread auto-closed after resolution tag applied.

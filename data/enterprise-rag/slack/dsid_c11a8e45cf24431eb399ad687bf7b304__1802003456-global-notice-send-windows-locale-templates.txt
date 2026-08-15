@@ -1,0 +1,59 @@
+incidents
+
+maya (oncall): :rotating_light: noticing higher 5xx rate hitting /v1/generate from EU region, spike started ~00:30 UTC. Investigating.
+incident-bot: Incident created: INC-2026-0432 — increased 5xx rate (EU). Severity: P2. Pager: maya.
+maya (oncall): quick note: I'm pausing non-essential canaries and routing EU traffic to fallback model pool (policy: fallback-low-cost) — will monitor.
+sam (sre): thx. Do we want a status page update straight away or wait 10m for more signal?
+jordan (cs): customer impact assessment: initial logs show ~1.2% of requests getting 5xx in EU region, a few enterprise customers reported degraded responses. Recommend a holding-message for status page and a follow-up customer email template.
+leila (ops): for notifications we need localized copies. I'll draft EN, ES, JA for starters. Send windows: EU customers get notice at 01:00 UTC (local dispatch), NA at 01:00 UTC too? that would be middle of night — I'd prefer region-specific send windows i.e. EMEA send immediate, APAC defer until business hours, NA defer until 08:00 local. Thoughts?
+emi (site-reliability): agree with region-specific timing. For severity P2, EMEA immediate, NA/APAC scheduled in their morning windows unless customer explicitly subscribed to real-time alerts.
+ryo (ml infra): root cause candidate: inference kernel OOM on certain sequence lengths + quantized model variant mismatch. Rolling back a recent kernel tweak (hotfix plan) might reduce 5xx. Preparing a canary rollback.
+maya (oncall): ok executing rollback to kernel v2.14 on 2 EU nodes now. Will keep logs streaming here.
+incident-bot: Deploy rollback started by maya. Job id: job-7731.
+sam (sre): templates: propose status page initial blurb (EN):
+```
+We are investigating increased error rates affecting text generation requests in the Europe region. Users may experience intermittent failures and higher latency. Our engineers are actively investigating and mitigation actions are in progress. We will provide updates every 30 minutes or sooner.
+```
+leila (ops): ES translation suggestion: 
+```
+Estamos investigando un aumento en las tasas de error que afectan las solicitudes de generación de texto en la región Europa. Los usuarios pueden experimentar fallos intermitentes y mayor latencia. Nuestros ingenieros están trabajando en mitigaciones. Proporcionaremos actualizaciones cada 30 minutos o antes.
+```
+jordan (cs): JA translation (informal customer-facing): 
+```
+現在、ヨーロッパリージョンでテキスト生成リクエストのエラー率が上昇していることを確認しています。断続的な失敗や遅延が発生する可能性があります。エンジニアが対応中です。30分ごとに状況を更新します。
+```
+maya (oncall): good. Add note about impacted endpoints: `/v1/generate`, `/v1/chat/stream`. Also include recommended workaround for customers: switch to `model: rwd-instruct-legacy` if they need short-term mitigation.
+sam (sre): added. Now, scheduling logic: please confirm exact send times per region in ISO and local. Proposed table (human-readable in thread):
+- EMEA: immediate dispatch (Current UTC 00:58) — send now.
+- NA: schedule at customer local 08:00 (convert to UTC for each customer).
+- APAC: schedule during 10:00–12:00 local business hours.
+leila (ops): to avoid double-notifying, we'll rely on statuspage RSS + targeted emails via customer tags (region & severity opt-in). Jordan, can CS prepare segmented email for customers with committed SLAs vs. self-serve?
+jordan (cs): yes — two templates: 1) SLA customers (escalation + support contact), 2) self-serve (info + workaround). I'll paste drafts into ops doc.
+emi (site-reliability): handoff plan: maya will run mitigation for next 30m, then hand off to ryo for follow-through and investigation. Ryo, can you take the 02:05 UTC handoff?
+ryo (ml infra): yes I can pick up at 02:05 UTC. Please include kernel logs and the exact nodes impacted.
+maya (oncall): note to handoff message (for rota-bot):
+```
+Handoff: maya -> ryo at 02:05 UTC. Current state: rollback in progress, error rate dropped from 1.2% -> 0.35% on canary nodes. Next steps: finish rollback to all EU nodes, run synthetic load, verify purple metrics.
+```
+rota-bot: Scheduled handoff reminder set for 02:05 UTC to @ryo.
+incident-bot: Status page updated (initial): INC-2026-0432 — investigating (Europe). Update cadence: every 30m.
+sam (sre): ops checklist for localized notices (to be added to incident runbook):
+1) Create status page entry (EN + translations)
+2) Send immediate EMEA email via MailerQueue with template A
+3) Queue NA/APAC emails with region-specific send windows (respect customer local time)
+4) Add note to Dedicated customer Slack channel for impacted tenants
+5) Post internal summary to #incidents with handoff markers
+leila (ops): small nit: MailerQueue supports timezone macros: use `{{customer.local_tz}}` and `{{send_at_local_08}}` variables. Example send job payload:```json
+{
+  "job": "incident_notification",
+  "send_at": "{{customer.local_08_iso}}",
+  "template_id": "inc-email-01"
+}
+```
+jordan (cs): I'll prepare the finalized email copy and attach translation blurbs. Also will include a short FAQ: "Are my embeddings affected?" — answer: no, embeddings endpoints are not affected.
+ryo (ml infra): rollback complete on all EU nodes, canary shows error rate down to 0.1%. I'll keep a watch on model quality regressions for 30m.
+maya (oncall): handing off to ryo now. Leaving notes in the incident doc and tagging @emi for postmortem.
+emi (site-reliability): acknowledged, taking notes for postmortem; please include exact kernel commit id and sequence length histogram.
+sam (sre): final for now: please avoid sending APAC emails until we confirm all fixes and opt-in customers expressly need immediate notice. We'll update status page with a 'mitigation in progress' message and translated blurbs included.
+incident-bot: Incident INC-2026-0432 updated: mitigation shows downward trend. Next update scheduled at 01:30 UTC.
+maya (oncall): thanks team — nice coordinated run. Will follow up in handoff doc. :thumbsup:

@@ -1,0 +1,67 @@
+eng-runtime
+
+neil: Heads-up — ran an end-to-end profile on Friday for the continuous batching changes. Found a weird pattern where small prompts with slow decode rates are forming tiny micro-batches and killing kernel throughput. Dumping notes.
+
+neil: TL;DR: suspect current workload classifier (length-only) is misrouting low-decode-rate short prompts into latency-first pools; we should add a decode-rate dimension + KV-hit-aware token budget to avoid tiny batches.
+
+eva: can you paste the profile snippet? curious about decode time distribution vs tokens.
+
+neil: sure. from the run (trimmed):
+```
+sample_count: 10k
+median_prompt_len: 32
+decode_rate_q25: 15 tok/s
+decode_rate_q50: 55 tok/s
+decode_rate_q75: 210 tok/s
+microbatch_rate(short,slow): 120/s
+avg_batch_size(short,slow): 2.1
+kernel_utilization(short,slow): 23%
+kernel_utilization(long,fast): 78%
+kv_hit_rate(short,slow): 12%
+```
+
+maria: that avg_batch_size=2.1 is brutal. those kernels expect >8 to amortize launch overhead.
+
+ryan: are those requests single-turn chat truncations? sometimes client libs send many small chunks.
+
+neil: mixed. about 40% are actual short prompts (search-like), 60% are toolcall-style with slow token emission due to downstream IO in the generator.
+
+sophia: proposal: expand classifier from [prompt_len] -> [prompt_len, decode_rate_bucket]. decode_rate_bucket computed from short warm-window (first 8 tokens decode latency). then admission policy uses token_budget_target = base_budget * (1 + alpha*(1 - kv_hit_rate)). so if kv_hit low, allow higher token_budget to form larger batches.
+
+eva: +1. also log first-8-token latency hist and tag requests with decode_rate_bucket. we need telemetry before changing routing.
+
+neil: agreed. I'll add a telemetry flag to store `first8_ms`, `kv_hit_est`, `route_candidate` for 1% sample.
+
+ryan: caution: changing token_budget dynamically can create oscillations — we saw thrash last year when budget chased queue depth. add hysteresis: only change bucket if sustained for 30s.
+
+sophia: good call. also let's clip token_budget_target to [4, 32] to avoid extreme values.
+
+neil: working on a sim harness to model this. rough sim command:
+```
+./sim/sbatcher --workload=prod-sample.json --classifier=dual-dim --hysteresis=30 --alpha=0.5
+```
+
+maria: please also run kernel-selection impact test. small batches force fallback kernels on Ampere due to low occupancy.
+
+neil: yes. preliminary sim output (dual-dim, alpha=0.5):
+```
+avg_batch_size: 7.9
+p99_latency: 120ms -> 95ms
+kernel_utilization: 62%
+fallback_rate: 2.3% -> 0.9%
+cost_per_token: -9%
+```
+
+ops-bot: deploy-canary: routing-config v3 -> eng-runtime-canary-2 (started 2023-11-08T09:13:21Z) :rocket: 
+
+ryan: when you push config, add a metric alert: fallback_rate > 3% OR p99 > 200ms triggers automatic rollback.
+
+sophia: I'll draft the rollout plan: 1% traffic 2h, 5% 2h, 20% 4h, then 100% if green. will attach dashboards: batch_size, kernel_util, fallback_rate, kv_hit_by_bucket.
+
+eva: one more ask: instrument KV prefetch/resolution timing to see if we can boost kv_hit for slow-decoding short prompts (maybe pre-warm from prefix cache).
+
+neil: noted. i'll add kv-prefetch-duration and kv-lookup-miss reasons to telemetry.
+
+maria: thanks — this looks actionable. flagging perf-review for Tuesday.
+
+neil: thanks everyone. I'll open a PR with sim code + telemetry flag and link the canary when ready.

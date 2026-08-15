@@ -1,0 +1,56 @@
+devex
+
+lina: Heads-up from onboarding session: Next Edge starter + LangChain example hangs on auth retries intermittently. New users hit it within minutes, so this will block the quickstart flow. :grimacing:
+
+oscar: Can you describe the symptoms? hangs as in request never finishes? status 0?
+
+lina: Exactly. Browser shows pending network request to /api/generate. Our server logs show the SDK spinning in retry loop but never surfaces the 401 to the handler. If I disable automatic retries it surfaces right away.
+
+mohit: Which SDK version? Edge runtime? Any polyfills?
+
+lina: SDK v0.9.4, Next Edge runtime (edge middleware/api). No custom fetch polyfills. Repro steps I gave to the new hire: clone repo, set RW_KEY with short-lived token, start dev, then trigger an expired token during a rotation.
+
+oscar: Can you paste the minimal handler?
+
+lina: Sure (trimmed):
+
+```js
+// app/api/generate/route.js (edge)
+import Redwood from '@redwoodai/sdk'
+
+export async function POST(req) {
+  const body = await req.json()
+  const client = Redwood({ apiKey: process.env.RW_KEY })
+  try {
+    const resp = await client.generate({ model: 'redwood-mini', prompt: body.prompt })
+    return new Response(JSON.stringify(resp), { status: 200 })
+  } catch (err) {
+    console.log('generate err', err)
+    return new Response('error', { status: 500 })
+  }
+}
+```
+
+mohit: I suspect the JS retry layer swallows the auth error at the fetch layer when running in the edge runtime. Python's client raises AuthError immediately because underlying transport behaves differently.
+
+ioscar: Any logs from the SDK retry stack?
+
+lina: Log excerpt: "generate err Error: network failure at fetch (edge-runtime) at RetryLoop.attempt (node_modules/@redwoodai/sdk/retry.js:58:22)". No 401 in handler.
+
+mohit: Workaround for now: set client to `retry: { maxRetries: 0 }` in sample app to make onboarding stable. But agree that's not ideal for docs.
+
+ioscar: We should add an explicit note in the README and the quickstart: "Edge runtime: we recommend retry.maxRetries=1 (or 0) for dev onboarding when using ephemeral keys". Also include a snippet showing how to opt out of automatic retries when using ephemeral auth.
+
+lina: I'll open a small e2e that mocks the auth service returning 401 on the first token exchange and asserts the endpoint returns 401/400 quickly. That should catch regressions.
+
+docs-bot: Created docs ticket: DOCS-1223 "Edge starter: callout for retry behaviour with ephemeral keys" assigned to @lina.
+
+qa-bot: Created CI test: CI-6687 "edge-auth-retry-repro" (flaky) and flagged for quarantine until fixed.
+
+ioscar: Long-term fix: align JS sdk retry semantics with Python for auth failures or ensure auth failures bypass retry and bubble up. Might need a patch release.
+
+mohit: I'll prototype a small patch that treats 401/403 from the auth exchange as non-retriable. If it passes the e2e, we can ship a patch and update sample.
+
+lina: Thanks. Also adding a tiny troubleshooting note in the sample README: how to repro locally and the `Redwood({ retry: { maxRetries: 0 } })` workaround for dev.
+
+ioscar: Good plan. Please ping when PR is ready and I'll include it in the next patch changelog under "devex: edge starter auth retry parity fix". :thumbsup:

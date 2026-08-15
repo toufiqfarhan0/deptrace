@@ -1,0 +1,42 @@
+devex
+
+alex-docs: FYI during a workshop a user pasted the quickstart verbatim and accidentally committed a live-looking key. The snippet in the README had two problems: it used a literal key and also calls a deprecated SDK method.
+
+alex-docs: Bad snippet from README:
+```js
+// BAD: literal key + old API
+const client = new RedwoodClient('sk-live-12345abc')
+const out = client.createCompletion({ model: 'redwood-1', prompt: 'Hello' })
+console.log(out)
+```
+
+nina-security: oh no. literal keys in examples are a huge no. We need a safety guard to detect sk-patterns in docs and examples. Also we should DM the user to rotate keys.
+
+brad-engineering: second issue: createCompletion is from our old SDK naming. Current JS SDK uses async client.generate(...) and accepts an options object for apiKey. So two fixes: swap to env var and correct method + await.
+
+maria-devex: proposed replacement snippet:
+```js
+// recommended
+const client = new RedwoodClient({ apiKey: process.env.REDWOOD_API_KEY })
+const res = await client.generate({ model: 'redwood-1', prompt: 'Hello' })
+console.log(res.output)
+```
+Add a short comment: // do NOT paste key into public repos
+
+docs-lint-bot: +1. I'll add a rule to docs-linter to fail on regex /\bsk-[A-Za-z0-9_-]{8,}\b/ inside fenced code blocks. We should also reject keys that look like test tokens.
+
+nina-security: also propose a pre-commit hook in docs repo that scans changed files for key patterns and blocks commits with a helpful error message linking to the key rotation docs.
+
+brad-engineering: for parity, update the Python and Go snippets too (they still use old_create_completion). I'll open a small compatibility PR to rename deprecated methods across examples.
+
+ci-bot: opened PR: https://github.com/redwood-inference/docs/pull/1034 — fixes snippets, adds docs-linter rule, and introduces examples-smoke job.
+
+maria-devex: CI smoke job will run snippet runners against a mock server and also run docs-lint. That should catch both literal keys and deprecated API usage.
+
+docs-lint-bot: added lint rule: docs-linter rule "no-literal-api-keys" with message: "Found string that looks like an API key. Use REDWOOD_API_KEY env var instead."
+
+nina-security: after merge let's run a quick repo-wide scan for leaked tokens and notify any owners. I'll coordinate with infra to rotate anything suspicious.
+
+maria-devex: preview available: https://deploy-preview.redwood.ai/quickstart/1034 — includes updated snippets and a short security callout.
+
+alex-docs: verified preview and tests. Thanks all. Filing follow-up to run the docs-linter in scheduled CI weekly to catch regressions. Closing once PR merges. :lock: :white_check_mark:

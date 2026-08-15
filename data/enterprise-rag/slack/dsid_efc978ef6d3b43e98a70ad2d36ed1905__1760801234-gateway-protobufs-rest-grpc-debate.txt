@@ -1,0 +1,66 @@
+eng-platform
+
+Priya: Quick question — for internal control-plane APIs should we standardize on gRPC + protobufs or stick with REST/JSON? Thinking about console, SDKs, and proxies.
+
+Sam: +1 gRPC for perf and streaming (rollouts telemetry). But browser + public SDKs are a pain.
+
+Lin: Can we do a split: service-to-service gRPC, public console via an API gateway that translates to REST/JSON?
+
+Maya: Protos give strong typing, but codegen friction and iteration speed are concerns. How often do payloads change?
+
+Priya: We change deployment/config shapes a few times per quarter. Rollouts UX needs partial updates (PATCH-like).
+
+Sam: Proto3 supports optional fields and FieldMask for partial updates. Also streaming (server->client) is native.
+
+Lin: Gateway pattern is fine. We should avoid double serialization on hot paths though — JSON <-> proto conversions add CPU.
+
+Maya: Observability note: our tracing infra is HTTP header-centric. gRPC has metadata but Envoy/sidecars can bridge.
+
+Priya: Dedicated/private deployments matter: in customers' VPC we'd prefer mTLS + gRPC inside. Gateway only at the control plane edge.
+
+Sam: Language support: strong in Go/Java. Node/browser needs grpc-web + Envoy. Could be fine if gateway exposes REST for the console.
+
+Priya: Developer DX: protos require codegen. Can we auto-generate REST stubs/clients from proto annotations?
+
+Lin: Yes — use google.api.http annotations on protos, then generate OpenAPI and client libs. Keeps single source of truth.
+
+Maya: Security & quotas: per-route quotas and auth enforcement are easier at the gateway layer. Also we can inject rate-limiting headers.
+
+Sam: Rollouts telemetry will benefit from streaming bidi for progress + logs. Doing that over REST is clunkier (websockets or SSE).
+
+Priya: Proposal: proto-first for internal S2S. Expose REST via Envoy gateway using google.api.http. Build generator for SDKs. Pilot on rollouts endpoint.
+
+Maya: I'll own the sandbox for rollout streaming. Will sketch the proto and an envoy config fragment.
+
+Lin: I'll prototype the codegen pipeline: proto -> openapi -> typescript SDK and a simple CI job to publish.
+
+Sam: I'll run microbenchmarks comparing JSON vs protobuf serialization and the gateway overhead.
+
+Priya: Action items summarized: (1) proto-first internal APIs, (2) Envoy gateway with google.api.http for REST surface, (3) SDK generator + docs, (4) POC on rollouts in next sprint.
+
+Maya: Sample proto snippet I'll start with:
+
+```proto
+syntax = \"proto3\";
+import \"google/api/annotations.proto\";
+message Rollout {
+  string id = 1;
+  string status = 2;
+  map<string,string> metadata = 3;
+}
+service Rollouts {
+  rpc StreamProgress(RolloutRequest) returns (stream RolloutProgress) {
+    option (google.api.http) = { post: "/v1/rollouts/{id}:stream" body: "*" };
+  }
+}
+```
+
+Lin: Envoy config will use the grpc-web filter and route to internal grpc cluster. We'll also add a transform to support FieldMask-based patches.
+
+Sam: I'll benchmark end-to-end with and without gateway to quantify cost.
+
+Priya: Thanks. @deploy-bot can you create the tracking ticket? :thumbsup:
+
+deploy-bot: Created ticket INFRA-4721: \"proto-first + gateway POC (rollouts)\" — assignees: Maya, Lin, Sam, Priya. Link: https://redwood.atlassian.net/browse/INFRA-4721
+
+Priya: Great, I'll follow up with a short RFC doc and a rough timeline. Closing thread.

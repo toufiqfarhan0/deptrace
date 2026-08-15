@@ -1,0 +1,47 @@
+incidents
+
+IncidentBot: ALERT: Unusual traffic spike on /v1/embeddings - 5xx rate up 4x, p95 latency increased to 2.1s, Src IP pattern: rotating cloud proxies. Thresholds tripped at 1902501200. Paging @alex (oncall) :rotating_light:
+alex (oncall): acked. I'm looking. Which customers impacted? any errors tied to a specific org id?
+aaron (eng-runtime): seeing huge fanout with identical payload shapes. 101k req/min at peak, mostly POST /v1/embeddings/batch. X-Forwarded-For shows many /16s from different providers. Scripts look like scraper farm. Sample headers:
+```
+User-Agent: okhttp/3.12.1
+Content-Type: application/json
+X-Source: proxyfarm
+```
+alex (oncall): thanks. first step: soft rate-limit at edge for route /v1/embeddings to 20rps per IP and enable burst queue. Doing a config push now.
+prodops-bot: RUN: edge-config apply --route "/v1/embeddings" --rate 20/s --burst 50 --dry-run=false
+prodops-bot: OK — rule deployed to region-us, eu in ~12s.
+alex (oncall): traffic dropped 40% immediately, error rate still elevated (2xx->429 spike). Need to be careful: some enterprise clients use high-throughput embeddings.
+maria (support): pulling impacted orgs list from access logs. Will tag top 10 with contact owners.
+liz (security): proposing a targeted WAF rule: challenge (captcha) for UA pattern + ASN list, then block if repeated. Prefer challenge first to avoid false-positives. Also recommend temporary org-level quota to protect customers.
+aaron (eng-runtime): agree. I can add a signature matching rotating Proxy-Header & UA. Suggest block window 30m then re-evaluate. Example rule:
+```
+if request.path startswith "/v1/embeddings" and (ua contains "okhttp" or x-source contains "proxy") then challenge -> if fail then block
+```
+prodops-bot: WAF: apply-rule --name "proxy-farm-challenge-okhttp" --match "ua:okhttp|x-source:proxy" --action challenge --ttl 1800
+prodops-bot: WAF: apply-rule --name "proxy-farm-block-repeat" --match "same-rule AND attempts>5" --action block --ttl 1800
+prodops-bot: OK — WAF rules active; propagation ~8s.
+alex (oncall): monitoring... p95 latency back to 180ms, 5xx down to baseline, request volume still elevated but many 429s. Good signal.
+maria (support): CUSTOMER IMPACT: 12 orgs saw elevated 429s in last 15m. 3 flagged as high-value (acct-1203, acct-9921, acct-44). Reached out to owners, they're aware. Drafting status now.
+maria (support): posting suggested message for CS review:
+"Hey — we observed an automated request pattern hitting embeddings causing transient rate-limits. We've applied targeted mitigations which may have caused intermittent 429s for high-volume usage. We're actively whitelisting impacted high-value customers; if you see issues, reply to this thread and we'll expedite. — Service Reliability Team"
+liz (security): confirm we should whitelist acct-44 and acct-9921 for embeddings route while mitigation is live. Approving.
+prodops-bot: ACCESS: org-whitelist apply --org acct-44 --route "/v1/embeddings" --ttl 3h
+prodops-bot: ACCESS: org-whitelist apply --org acct-9921 --route "/v1/embeddings" --ttl 3h
+aaron (eng-runtime): note: whitelisting should reduce support noise but increases exposure. Watch for abuse from other vectors.
+alex (oncall): handoff to jen in 15 mins for sustained mitigation/cleanup. Summary for handoff:
+- incident: proxy-farm scraper to /v1/embeddings causing high latency and 5xx
+- mitigations applied: soft rate-limit at edge, WAF challenge then block, org-level temporary whitelists for 2 customers
+- customer impact: 12 orgs saw 429s, 3 high-value contacted
+- evidence: sample headers and IP ranges captured in /var/log/ingest/spike-1902501234.log
+- next steps: rotate WAF sigs to permanent rule, update runbook, confirm no data exfiltration
+jen (eng-sre): taking over. I'll validate logs, escalate to security for ASN blocking if we see persistence, schedule a follow-up postmortem.
+alex (oncall): thanks. handing off in channel and updating pagerduty. PD: resolve incident if metrics stable for 30m.
+jen (eng-sre): initial check: error rate stable, CPU on embedding hosts back to normal, no increase in token generation errors. I'll keep this open and re-evaluate at +30m.
+prodops-bot: NOTE: automated metric alert cleared at 1902502320 (p95 latency < 300ms).
+liz (security): follow-up: found source ASNs clustering in three cloud providers; added to internal watchlist. We'll convert temporary WAF sig to managed rule but with gradual rollout to avoid collateral.
+aaron (eng-runtime): action item: add fingerprinting for repeated identical payloads to augment blocking without impacting legitimate batched requests. Filed ENG-RUNTIME-482.
+maria (support): sent customer notices to acct-44 and acct-9921. Support queue flagged for quick responses.
+jen (eng-sre): locking thread for handover: leaving monitoring on. If anything spikes, ping oncall. Postmortem leads: jen (owner), alex (ops), liz (sec).
+alex (oncall): resolved for me. thanks all. :thumbsup: 
+jen (eng-sre): incident resolved and ticketed. Postmortem scheduled 1902507200 (later today). Closing thread.

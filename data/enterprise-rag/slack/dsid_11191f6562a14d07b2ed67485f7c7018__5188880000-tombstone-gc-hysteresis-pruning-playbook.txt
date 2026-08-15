@@ -1,0 +1,27 @@
+architecture
+
+Micah: Quick follow-up to the packaging RFC: we need to be explicit about what 'retire a package' means for onprem/air-gapped installs. Hard delete vs tombstone? If hard-delete, how do we guarantee offline rollbacks for nodes that reference older manifests? :thinking:
+Anya: Strong preference for tombstone + lease model. In airgap you cant re-download easily, so soft-retire preserves rollback safety.
+Sam: Tombstone is safer but we must define deterministic GC rules so operators aren't surprised when disks fill. Propose config knobs: `max_retire_age_seconds`, `eviction_policy` (e.g., oldest_activation, lru), and an admin-forced prune endpoint.
+Kevin: Also propose an activation hysteresis to avoid rapid flip-flop with canaries: add manifest fields `activation_hysteresis_seconds` and `retire_after_seconds`. Example manifest fragment: ```
+{
+  "package": "model-v2.1.0",
+  "activation_hysteresis_seconds": 3600,
+  "retire_after_seconds": 86400,
+  "pin_id": "team-A-prod"
+}
+```
+Micah: How should pins interact? If a customer pins `model-v2.0.7` and we tombstone it, do we skip GC?
+Anya: Pins must take precedence. Any `pin_id` referenced by an active rollout or explicit admin pin prevents GC. We should expose `GET /local-store?pinned=true` in the operator API and surface pinned items in the operator UI.
+Sam: Edge-case: seed/hand-off between clusters. If a package is tombstoned on cluster A and you seed B but blobs weren't transferred, activation should fail loudly. Suggest activation validation step that returns `ERR_MISSING_BLOB` with actionable instructions instead of silently falling back.
+Kevin: For disk-pressure scenarios, allow an emergency-evict policy: auto-evict non-pinned tombstones oldest-first, but in airgap require a signed admin override file + 24h alert window to delete. Add `dry_run=true` to the GC CLI to preview effects.
+Micah: Audit trail is required. Tombstone/create/delete must be logged locally and to control plane (when connected). Fields: actor, reason, source (operator/admin/auto-gc), checksum list for blobs, and pre/post disk usage.
+ops-bot: deploy-bot: RFC patch: onprem-packaging-retire-controls v0.3 uploaded. Review requested @Anya @Kevin @Sam.
+Anya: I'll draft the GC operator API and the admin UI flows (confirm list, pin controls, dry run view).
+Sam: I'll own the failure-mode test matrix: missing blob activation, pin-protection, emergency-evict dry-run vs force.
+Kevin: I'll add manifest parsing + runtime validation for hysteresis and pin checks. Also ensure activation validates blob presence and returns explicit errors.
+Micah: Action items: (1) Anya: API + UI draft, (2) Sam: tests + runbook, (3) Kevin: runtime + manifest update, (4) Ops: audit log fields + disk pressure alerting. Follow up in this thread when drafts exist. :+1:
+Micah: CLI helper suggestion: `rw-pack gc --simulate` should print candidate tombstones with: age, pinned? backrefs, size, and reason. Makes airgap debugging easier.
+Anya: Will include CLI UX in the draft.
+Sam: ack.
+Micah: Thanks all  locking thread for notes; will reference in RFC followup doc.

@@ -1,0 +1,25 @@
+partnerships
+
+Sylvia: Quick sync — vendor slotting & fallback choices for upcoming marketplace waves. Need a consolidated calendar (marketplace + press gating + certs). Major callers: H100/H200/B200, MI300, Gaudi. I think we have a gap around H200 + Gaudi drivers. Can folks drop blockers and ETA here?
+
+Ben: matrix please. also need to know if fallback model variants are defined yet — we should decide before we pin press slots.
+
+Carla: lab capacity is tight next 3 weeks. Can run an overnight cert this weekend if we get image tags + mem configs by Friday.
+
+Raj: vendor update — heard from partners: H200 GA slipped ~2w, Gaudi driver 2.4 expected but has a breaking NVLINK change that may require a minor runtime tweak. MI300 on schedule.
+
+Emily: legal note — partners want 48h review window for embargoed announcements. Marketing cannot promise press dates until partners sign off.
+
+Mark: marketing needs stable screenshots + marketplace copy 10 business days before launch. If we miss image lock we must shift the promo wave.
+
+infra-bot: Created ticket INFRA-9812 to reserve weekend lab slot and track cert runs. Link: https://rwd/infratix/INFRA-9812
+
+Sylvia: Action items: (1) Raj confirm exact driver/firmware drop date by EOD tomorrow, (2) Carla lock weekend run contingent on INFRA-9812, (3) Ben produce fallback mapping and autoscaling rules for each vendor slot, (4) Emily draft embargo checklist template for partner review. I will assemble a single-row calendar after updates. :thumbsup:
+
+Carla: I can do the weekend but need eng-oncall OK — pinging @Ben for routing.
+
+Ben: oncall OK. I'll add fallback map to the thread in a sec. preliminary mapping: `H100 -> H200-quant`, `H200 -> B200-compat (when available)`, `MI300 -> MI300-compat`, `Gaudi -> gaudi-v2-soft-fallback`. Will write a short gist.
+
+Raj: confirming dates — Gaudi driver 2.4 target 2024-05-10, H200 pushed to 2024-05-22. Updating partner tracker now.
+
+Sylvia: perfect, thanks. If anyone sees risk to the press timeline or marketplace wave, flag here immediately so we can re-slot before copy freeze.

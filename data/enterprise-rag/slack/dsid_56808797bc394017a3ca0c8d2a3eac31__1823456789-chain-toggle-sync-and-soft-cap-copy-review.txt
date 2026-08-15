@@ -1,0 +1,47 @@
+product
+
+Kevin (Design): hey team — putting up a tiny iteration for the autoscale panel. main asks: copy clarity for min/max, affordance for burst, and the SLO slider semantics. screenshot in thread, TL;DR: I think the current labels confuse users about whether max is a hard cap or a suggestion.
+
+Maria (PM): agree. we saw support tickets where customers thought ‘max’ meant the platform would never exceed it even on bursts. wording needs to clarify burst override behavior.
+
+Lee (Frontend): impl note — keyboard stepper for min/max is already `aria-valuemin`/`aria-valuemax` on the slider we built. numeric inputs are native `type=number`, but we lose custom stepper when we wrap in the pool-picker. can we standardize to the stepper component we shipped for quotas?
+
+Kevin (Design): good to know. proposal: change label from “Max GPUs” to “Max (soft cap — can burst)” and tooltip: “Platform will prefer not to exceed this during steady state. Burst may temporarily exceed to meet SLOs.” Thoughts? concise copy preferred.
+
+Olivia (A11y): long label will be noisy for screen reader flows. prefer short visible label + an accessible description. e.g., label: `Max GPUs` and `aria-describedby="max-desc"` with the explanatory text hidden visually but read by AT. also ensure the slider has `aria-valuetext` for SLO ticks.
+
+Sam (Prod Eng): backend behavior: we treat 'max' as a soft cap only if `burst=true` on the pool; otherwise it's absolute. If we expose "can burst" toggle in UI, toggling it flips pool config which triggers reconciliation. that's fine but needs a confirmation if capacity change will reassign workloads.
+
+Ava (Research): did a 5-person guerrilla test of the previous copy. users scanned “min/max” and picked whichever number looked smaller/valid. they missed the burst note. Also they tried dragging the SLO slider and expected the numeric min/max to update—so perceived coupling is high.
+
+Kevin (Design): aha — coupling expectation. two small options: 1) implicit coupling: change SLO slider description to "recommended min/max" and auto-suggest values (editable), or 2) explicit link: a little chain icon between slider and inputs to toggle sync. lean to option 2 so users control sync.
+
+Lee (Frontend): chain icon is doable. we should surface the sync state to assistive tech: `aria-pressed` or `aria-checked` on the chain button. if synced, editing the slider updates inputs and vice versa. will need to debounce updates to avoid thrash.
+
+Olivia (A11y): +1 for explicit control. if we add a chain button, label it `Sync SLO <> capacity` and provide state text: `synced`/`unsynced` via `aria-live` region. also ensure color contrast for the chain icon meets 4.5:1 at minimum size.
+
+Maria (PM): admin flow question — if a customer switches GPU pool after setting min/max, do we keep absolute numbers or convert to same model-equivalent capacity? Sam?
+
+Sam (Prod Eng): currently we store absolute GPU counts per pool. switching pools will warn "min/max values will be overridden to match new pool default" in console. we can add conversion later but it's more backend work (need vCPU/GPU-equivalent mapping for each machine type). suggestion: show a transient confirmation modal when pool change will affect capacity.
+
+Kevin (Design): copy draft for that modal: "Switching to Pool X will change your reserved capacity because hardware differs. Review suggested min/max or keep your current absolute values." short, with CTA: Review / Keep as-is. Olivia — accessibility check on modal focus trap?
+
+Olivia (A11y): modal pattern fine if focus is trapped and initial focus is on the primary action. ensure modal text is succinct; complex sentences are hard for screen reader users. keep the two CTAs descriptive: `Review suggested capacity` and `Keep current values`.
+
+Ava (Research): quick note — users liked the microcopy that showed a tiny example: “Max (soft cap) — e.g., for steady traffic 8 GPUs, bursts up to 12.” small examples reduce hesitation.
+
+Kevin (Design): ok I’ll iterate: 1) keep visible short labels (Min GPUs / Max GPUs), 2) add visually-muted example line under Max: “soft cap — bursts up to X may occur”, 3) chain icon to sync SLO <> capacity, 4) tooltip + aria-describedby for details, 5) conversion modal when pool changes.
+
+Lee (Frontend): can you attach the new microcopy and icon assets? I’ll estimate dev effort once I see exact strings.
+
+Kevin (Design): attached a Figma frame and copy suggestions in the doc. quick ask: can everyone react with :thumbsup: if okay or drop one-line objection? want to ship this week into the staging build for ops to test.
+
+Maria (PM): :thumbsup: from me. small ask — add a short line in changelog about potential behavior changes for customers on Dedicated.
+
+Sam (Prod Eng): :thumbsup: but need a ticket to track the modal for pool conversion and confirm it's behind a feature flag.
+
+Olivia (A11y): left tiny nit in the doc about `aria-live` phrasing. otherwise :thumbsup:.
+
+Ava (Research): :eyes: will follow-up with a 6-person remote test of the chain toggle next week.
+
+Kevin (Design): thanks all — I'll update the Figma and ping the thread when PR copy is ready.

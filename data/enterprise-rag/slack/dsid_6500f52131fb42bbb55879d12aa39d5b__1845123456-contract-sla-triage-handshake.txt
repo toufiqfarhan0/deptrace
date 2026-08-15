@@ -1,0 +1,69 @@
+product
+
+sarah_sales: Heads up — BigCorp is asking for 99.99% uptime + p95 < 50ms on hosted API, plus 24/7 priority support and 1h incident response SLA. They want this in the contract next week. Potential $600k ARR. Need feasibility and routing.
+
+maya_pm: Thanks. Can you paste the exact bullets from their contract ask? Is this specifically for hosted API or do they consider Dedicated/Private?
+
+sarah_sales: Hosted first. Key bullets they gave:
+- Availability: 99.99% monthly uptime
+- Performance: p95 latency < 50ms for text-gen endpoints
+- Support: 24/7 incident response, 1h P1 response SLA
+- Credits: financial penalties for downtime
+
+toni_sre: 99.99% on hosted across regions is non-trivial. We need cross-region redundancy + faster DNS/proxy failover. Also need to clarify measurement window (monthly) and what’s excluded (maintenance). On latency: p95 50ms likely only achievable with Dedicated/reserved infra or very aggressive caching; depends on model & sequence length.
+
+oliver_eng: Agree. For short prompts on optimized instances we can get ~30-40ms p95, but that assumes small seq lengths, pre-warmed KV caches, and dedicated GPUs. For varied workloads hosted multitenant will see higher variance. Options:
+1) Recommend Dedicated reservation (SLA-able)
+2) Offer Private deployment (customer-managed)
+3) Try hosted with strict limits + fallback model with degraded SLA
+
+kevin_legal: Legal needs precise SLA definitions. We must define uptime measurement (control plane vs data plane), maintenance windows, force majeure, and credit formula. Also need to confirm whether they expect enriched monitoring/trace access.
+
+laura_cs: Customer told me they prefer hosted but are willing to pay for Dedicated if necessary. They also want a named support contact and recurring business review cadence.
+
+maya_pm: Proposed triage plan:
+1) Create intake ticket (PRODUCT-INTAKE) and tag sla/enterprise/bigcorp
+2) Feasibility spike (2w) owned by eng-sre to validate availability architecture and latency experiments
+3) Cost + pricing draft by sales + finance (1w)
+4) Legal SLA draft (1w)
+Owners: toni_sre (feasibility), sarah_sales (customer comms), kevin_legal (SLA language). Target: EOW for ticket and owners, 2w for feasibility.
+
+toni_sre: I'll set up a failover simulation lab (3 regions) and a traffic replay to measure the effective p95 under failover. Need input on representative traffic and model configs. Assigning to eng-sre squad.
+
+oliver_eng: I'll assemble a concise doc on performance tradeoffs (model size, quantization, batching, context length) and include cost delta estimates for Dedicated vs Hosted. Will also list operational requirements for 24/7 support (runbooks, on-call rota).
+
+maya_pm: Routing decision: if feasibility exceeds 2w or requires infra changes, escalate to enterprise intake board for prioritization. For now I'll create the intake ticket and attach initial notes.
+
+maya_pm: @deploy-bot create ticket PRODUCT-INTAKE with summary "BigCorp SLA feasibility" tags: sla, enterprise, sales
+
+deploy-bot: Ticket PRODUCT-INTAKE-184512 created by maya_pm. Link: https://redwood.atlassian.com/browse/PRODUCT-INTAKE-184512
+
+sarah_sales: I'll tell BigCorp we need ~2 weeks to validate and will come back with options (Hosted w/limits, Dedicated, Private) + pricing. I'll ask them whether they can accept Dedicated if Hosted can't meet the SLA.
+
+toni_sre: :thumbsup: Added to eng-sre backlog. I'll start the environment tear-up tomorrow.
+
+oliver_eng: If we consider committing to 99.99% uptime, operational requirements must include Dedicated+multi-region active standby, documented runbooks, and a 24/7 on-call rotation. Rough ops cost estimate: ~$XXk/month; will provide numbers in doc.
+
+kevin_legal: Once we have feasibility + measurement approach, legal will draft SLA terms and exclusions. We'll need to propose a credit formula (e.g., % of monthly fee per 0.1% below commitment) — suggest sales propose acceptable ranges.
+
+laura_cs: Noted. Customer prefers a 2-week turnaround on options. They said pricing is flexible if SLA is strict.
+
+maya_pm: Action items recap:
+- PRODUCT-INTAKE-184512 created (link above)
+- Feasibility spike (2w) owner: toni_sre
+- Perf/cost doc owner: oliver_eng (1w)
+- Pricing draft owner: sarah_sales + finance (1w)
+- Legal SLA draft owner: kevin_legal (1w)
+I'll ping tomorrow with initial estimates.
+
+sarah_sales: Thanks everyone — I'll update BigCorp tonight and schedule a follow-up call next week.
+
+toni_sre: ETA: initial test artifacts by +3 business days. Will add pass/fail criteria in ticket.
+
+oliver_eng: I'll include recommended operational commitments (runbooks, SLO page, monitoring hooks) so legal/sales can see what we need to sign up to.
+
+maya_pm: Great. If anything blocks the ticket assignment, reply here. Otherwise we'll move this into enterprise intake if the spike expands.
+
+laura_cs: Copy — will coordinate customer expectations on timeline.
+
+sarah_sales: Closing loop — will post updates in the sales thread and link back to PRODUCT-INTAKE-184512."

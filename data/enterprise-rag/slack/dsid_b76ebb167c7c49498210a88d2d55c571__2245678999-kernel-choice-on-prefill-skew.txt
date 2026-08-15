@@ -1,0 +1,29 @@
+eng-runtime
+
+Sam: FYI running nightly perf warmup we saw a regression in P95 on the small-seq traffic after the prefix-cache rollout :eyes:
+Sam: profiler snapshot showed a shift in kernel selection for mixed-hit batches — more calls hitting the slow 'matmul_generic' path instead of the optimized 'kv_fastpath_matmul' for short sequences. stack snippet: ```kernel_dispatch: matmul_generic 68% ; kv_fastpath_matmul 18% ; other 14%```
+Anya: hmm. is this only when requests have a cached prefix + short tail?
+Sam: yes. hypothesis: our batch formation now mixes high-KV-hit requests with cold requests, the runtime picks a safe generic kernel to avoid divergence which kills perf for the majority that are hits
+Devon: that makes sense. when batch contains > ~30% cold, we switch to matmul_generic because of shape/runtime constraints. We never taught the kernel selector to consider KV-hit ratio as a first-class signal
+Maria: can you paste the admission config that produced that mix? might be the token_budget_target we set last week.
+Sam: here's what the current admission looks like (shortened):
+```yaml
+admission:
+  token_budget_target: 512
+  max_batch: 64
+  coalesce_prefill_hits: true
+  admission_policy: default
+```
+Anya: coalesce_prefill_hits=true was meant to pack hits together but with token_budget_target=512 we end up pulling in longer cold requests to fill budget. That explains the mixed batches
+Devon: idea: add a lightweight pre-queue classifier (cheap KV-hit estimate) and use it to create two admission lanes: hit-dominant and mixed/uncached. Then kernel hinting: prefer kv_fastpath_matmul for hit-dominant lane even if vector lengths vary slightly
+Maria: agreed. smaller change first: introduce a configurable hit_ratio_threshold in admission that keeps a batch in hit-lane if estimated_hit_ratio >= 0.7. Default disabled. We can try A/B to measure p95 improvements
+Sam: I ran a quick smoke: forcing split by hit_ratio >= 0.8 gave p95 drop of ~18% on small-seq workload, median unchanged. Perf trace: ```batch_size 24, hit_ratio 0.85 -> kernel=kv_fastpath_matmul, latency=32ms vs 39ms baseline```
+perf-bot: nightly-bench: 2245679300 - regression checks: added candidate metric `batch_hit_ratio_p95` to dashboard
+Devon: ops: we also need to guard against starvation: if hits are isolated, hit-lane shouldn't indefinitely delay serving cold requests. Add a time-based fallback (max_wait_ms).
+Anya: plus update kernel selector: let it accept a metadata hint from batch_admission: `{preferred_kernel: kv_fastpath_matmul}` so we avoid runtime heuristics flipping to generic kernel early
+Maria: tests: add a synthetic workload with 70/30 hit/cold mix and run kernel dispatch profiler. Also add perf regression test that runs the new admission + kernel-hint config in staging for 24h before rollout
+Sam: I'll prototype admission change and perf-runner job. Devon can wire kernel-hint plumbing into dispatch. Anya please own dashboard metrics to validate.
+Devon: ack. prototype branch: `prefill-hit-admission/try1` will include hit ratio estimator that reads KV-cache headers and uses approximate prefix-length heuristic
+Anya: I'll create chart: `engine.batch.hit_lane_ratio`, `engine.batch.kernel_selection_pct` and alert if kernel selection shifts back to generic on >50% hit batches
+Maria: timeline: prototype + perf-run in staging by EOD Wed, data review Thu. If stable, gradual rollout Fri with canary 5% then 25%
+Sam: thanks team. TL;DR: regression due to mixed batches forcing generic kernel. Plan: add hit-aware admission lane + kernel hinting + safeguards (max_wait), test in staging, dashboards/alerts. :+1:

@@ -1,0 +1,27 @@
+partnerships
+
+alex: Quick sync — we need a repeating handoff rota for integrator leads coming from the AWS & GCP marketplace seats. Current chaos when multiple partner reps claim same account.
+maya: +1. last week we had duplicate outreach on two F500s. not great.
+sam: Proposed: weekly rotation + a 24h claim window. partner who claims gets 24h exclusive to respond, then it goes back to queue.
+alex: That seems reasonable. Lina / partnerships, can you own the rota config and update intake?
+lina: I can. want to confirm scope: does this include HW partners (NVIDIA/amd) and MSP integrations or just marketplace-originated leads?
+maya: Include HW partners too — same problem when field claims overlap with SI claims. but flag accounts > $250k ARR for manual triage.
+sam: Agreed on the >$250k carve-out. For automation, I sketched a tiny rule:```
+# claim logic pseudo
+IF lead.source IN ("marketplace","hw_partner") AND lead.value < 250000 THEN apply_queue_rotations(24h)
+ELSE assign_to_sales_ops_for_manual_claim()
+```
+alex: Love it. Can you drop that in the intake form and the claim microservice?
+sam: Will do. also adding metadata: partner_channel, partner_rep, marketplace_listing_id.
+lina: I'll update the intake form + Confluence page. link to form: https://okrdw.partners/intake (draft)
+maya: For the weekly rotation: who should be on-call? suggest rotating by territory: NA/EU/APAC. each region has 3 nominated SI reps.
+alex: That maps well to our SRE-style rotation. make it 1-week stints, start Mondays.
+lina: noted. building calendar invite and shared channel: #si-rotations. will also create a bot reminder.
+partner_bot: Reminder created: weekly rotation job scheduled every Monday 09:00 UTC.
+sam: One more: escalation path if partner rep can't engage within 24h — route to AE + partner success. Add escalation tags to slack message.
+maya: And add SLA field on claims: response_expected_by. default 24h, manual override for enterprise leads.
+alex: Ok next steps: 1) sam adds claim logic + metadata (ETA 2d). 2) lina updates intake + calendar + Confluence (ETA 3d). 3) maya to share list of enterprise accounts >250k (ETA EOD). 4) I'll sync with sales-ops to wire the webhook.
+lina: I'll post the updated Confluence page when done and ping this channel with the new intake link. :thumbsup:
+sam: deployed claim-rule branch to staging. sending link to PR: https://git.internal/r/redwood/claims/pull/412
+maya: thanks team. this should cut down duplicate outreach.
+alex: Nice work. We'll iterate after one-week pilot.

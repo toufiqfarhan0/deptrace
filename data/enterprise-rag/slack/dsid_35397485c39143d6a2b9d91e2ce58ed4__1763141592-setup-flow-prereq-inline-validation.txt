@@ -1,0 +1,19 @@
+product
+
+marina (PM): Quick design review request — small pass on the Private Setup flow's networking step. Fig link: https://figma.redwood/example (screens: prereqs, network-details, connectivity-check). Looking for: copy tone, inline validation, and accessibility flags. :eyes:
+elle (Designer): TL;DR: cleaned up helper copy, introduced inline hints for CIDR entries, and added a persistent 'Run connectivity check' CTA after you add the first host. Updated artboards show inline validation below each input.
+sam (Eng): re: "Run connectivity check" — good call. Need to confirm backend API can support per-host checks without huge orchestration. Can we debounce + batch?
+diego (SRE): Per-host checks sound okay if we gate them behind an async job + status polling. But we should limit to 5 hosts per run to avoid network scans from customer infra. Also need opt-out copy for security teams.
+anya (Accessibility): A few quick a11y nits from the figma: 1) tab order currently jumps from "CIDR" to the next section due to the accordion header focus. Recommend explicit aria-controls and tabindex management. 2) Error messaging needs role=alert and clear focus transfer so screen readers announce new validation errors.
+marina (PM): Good catches. For copy: propose switching from "Allowed CIDR(s)" -> "Allowed IP ranges (CIDR)" and a one-line helper: "Comma-separated CIDR blocks we will route requests from — e.g., 10.0.0.0/24." Thoughts?
+elle (Designer): I like the explicitness. Also added microcopy under the connectivity test button: "No traffic is sent to your model — only a TCP handshake to validate routing." That should help security teams.
+sam (Eng): Quick implementation note — the current preflight API returns a single blob of checks. I can add per-host endpoints: POST /v1/private/preflight/hosts with body {hosts: [...]}. For the UI to poll, we'll return job ids. Small infra work but doable.
+diego (SRE): Please also add rate limits and a visible disclaimer: "Limit 5 hosts per check" and surface the last-run timestamp so customers know when tests happened.
+anya (Accessibility): Also recommend visible focus styles for the 'Run connectivity check' CTA and an offscreen helper for the CIDR format that screen readers can expand. Example text: "CIDR format: a.b.c.d/n — press 'i' for examples." Use aria-describedby for the hint.
+marina (PM): Copy tweak suggestion for the preflight summary: current "Connectivity Succeeds" -> "Connectivity check passed"; "Partial" -> "Some hosts failed — see details". Aim for verbs.
+elle (Designer): Updated Figma with that wording. Also changed the fail-state to show a collapsed list by default and an action button 'Troubleshoot' that opens a step-specific KB modal.
+qa-bot: automated note: Please include steps for a manual regression test: 1) add 3 hosts (1 valid, 2 invalid), 2) run connectivity check, 3) verify UI shows per-host results and links to KB.
+sam (Eng): I'll implement the per-host endpoint and the job polling. ETA: 2 sprints. Can start with a feature flag for the UI to avoid impacting existing flows.
+diego (SRE): If we ship under a flag, let's also capture metrics: checks_per_customer, average_hosts_per_check, and failures_by_cidr. We'll want alerts if checks spike.
+anya (Accessibility): One last accessibility note: color contrast for the fail badge is currently borderline. Use a stronger red and ensure icons have text labels.
+marina (PM): Great — action items: Elle to finalize microcopy + show/hide states; Sam to prototype endpoints + flag; Diego to specify limits + metrics; Anya to provide a short a11y checklist we can include in the PR template. I'll schedule a 30-min follow-up after the first dev pass. Thanks team! :thumbsup:

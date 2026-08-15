@@ -1,0 +1,108 @@
+support
+
+support_ana: Hey team — customer Acme escalated: their tool/function call keeps failing when they attach a file via the SDKs. Error from Redwood API: "tool selection failed: argument validation error: field 'attachment' expected bytes, got string". They say this was working two weeks ago. Request id: req=abc-98765. Repro attached below (short snippets for py/ts/go).
+
+support_ana: PY repro (they claim this sends bytes):
+```py
+# client = RedwoodClient()
+with open('sample.pdf', 'rb') as f:
+    payload = {
+        'tool': 'document_processor',
+        'args': {
+            'metadata': {'title': 'report'},
+            # dataclass with default factory -> sometimes omitted in serialization?
+            'attachment': f.read(),
+        }
+    }
+    client.call_tool(**payload)
+```
+Response: 400 validation, attachment shows as "" (empty string) in the server-side payload.
+
+support_ana: TS repro: they do Buffer.from but get an empty string on the wire:
+```ts
+// client.callTool tool: 'document_processor'
+const fs = require('fs')
+const buf = fs.readFileSync('sample.pdf')
+await client.callTool({
+  tool: 'document_processor',
+  args: { metadata: { title: 'report' }, attachment: buf },
+})
+```
+Error: same validation error.
+
+support_ana: Go repro (minimal):
+```go
+att, _ := os.ReadFile("sample.pdf")
+payload := map[string]interface{}{
+  "tool": "document_processor",
+  "args": map[string]interface{}{
+    "metadata": map[string]string{"title":"report"},
+    "attachment": att,
+  },
+}
+client.CallTool(payload)
+```
+Same 400. Customer says they previously didn't have to base64 manually.
+
+devin_eng: Thanks Ana — initial hunch: this looks like a regression in how SDKs handle binary blobs when an optional discriminant is omitted. If the args schema is a union (e.g., attachment: bytes | str | null) and the code path omits an explicit type/discriminant, some SDKs are serializing bytes -> empty string instead of omitting or base64-encoding.
+
+devin_eng: Can you paste the exact server-side payload (from request id abc-98765) or a truncated sanitized payload? Need to see whether the bytes field arrived as "" or as a base64 string. Also which SDK versions the customer used.
+
+support_ana: Pasted sanitized server payload from logs:
+```
+{
+  "tool": "document_processor",
+  "args": {
+    "metadata": {"title":"report"},
+    "attachment": ""
+  }
+}
+```
+Customer SDK versions: python 2.3.1, ts 1.8.0, go 0.9.4. They confirmed the file was non-empty locally.
+
+minh_runtime: I see the selector logs for that req id show: 
+```
+tool_selector: no discriminant field found, falling back to dynamic selection -> selected generic document_processor_v2
+```
+That explains the validator expecting bytes but getting string. Need to know why SDK serialized the bytes to empty string. Could be our py/ts marshaler hitting a fast-path for dataclasses/Buffer that returns an empty sentinel when default_factory used or when value over threshold.
+
+devin_eng: Quick triage steps for customer (workaround):
+- Explicitly base64-encode attachment and send as a string: attachment: base64.b64encode(f.read()).decode('ascii') 
+- Or set attachment to None to omit the field and send a separate upload flow.
+Both should unblock. I'll look at SDK repros tomorrow.
+
+sarah_oncall: Please open an internal SDK bug and link it here. Also we should add a hotfix candidate if we can reproduce quickly. Assigning to devin.
+
+ops-bot: Created issue RW-ISSUE-4572 and added priority P1. Link: https://redwood.atlassian.local/browse/RW-4572
+
+devin_eng: I tried a quick repro with our py 2.3.1 client: when using a dataclass wrapper around bytes and the dataclass __post_init__ leaves the field as memoryview, our JSON encoder hit a path that coerces memoryview -> str via str(memoryview(...)) which yields "<memory at 0x...>" or empty in some windows builds. In TS the Buffer -> JSON path hits Buffer.prototype.toJSON which returns { type: 'Buffer', data: [...] } unless JSON.stringify is used on Buffer directly in some bundlers which produces {} or "". Go's json.Marshal([]byte) returns base64 by default, so it's surprising go shows empty string — need to confirm whether they used a custom marshaller or a proto wrapper.
+
+devin_eng: Proposed short-term SDK changes:
+- py: ensure bytes-like objects are base64-encoded by our toolcall encoder, not passed to json.dumps as-is.
+- ts: if arg is Buffer/Uint8Array, serialize as base64 string instead of relying on JSON.stringify.
+- go: verify that the client payload is not being re-encoded through an intermediate string conversion.
+I'll open a PR, add unit tests for dataclass/memoryview/Buffer -> toolcall serialization.
+
+support_ana: Customer asked if we have a temporary safe instruction they can run in- prod right now. They cannot upgrade SDKs immediately.
+
+devin_eng: Tell them: explicitly base64 their attachment before passing to SDK:
+PY: attachment = base64.b64encode(f.read()).decode('ascii')
+TS: attachment = Buffer.from(fs.readFileSync('sample.pdf')).toString('base64')
+GO: attachment = base64.StdEncoding.EncodeToString(att)
+Then the schema validator will accept the base64 string variant. Also tell them to set args.__attachment_encoding = 'b64' (we'll accept that as a sentinel for now) — we'll make that part of the short-term compatibility.
+
+minh_runtime: I'll add a relaxed acceptance rule on the selector for 72 hours so that a raw empty-string byte field doesn't cause an automatic tool mis-pick where possible. Ops, can we ship a small server-side toleration?
+
+ops-bot: Deployed temporary tolerant check to staging. Willary to prod after triage signoff.
+
+devin_eng: PR opened: https://github.com/redwood-inference/sdk-python/pull/912 (py fix) and https://github.com/redwood-inference/sdk-js/pull/1304 (ts fix). I included unit tests and notes on behavior with dataclasses, memoryview, Buffer, and Uint8Array. Planning patch releases: py 2.3.2, ts 1.8.1, go 0.9.5 if needed.
+
+sarah_oncall: Thanks. Support Ana — please relay the workaround + ticket link to the customer. Keep me posted if they can't apply workaround. We'll keep the issue open until SDK patch is published and customer confirms.
+
+support_ana: Will do — sent workaround and RW-ISSUE-4572 link. Customer will try base64 workaround and report back.
+
+devin_eng: Note for SDK team: add tests that serialize a struct with optional discriminant omitted and a bytes field present to ensure we don't stringify to empty. Also add an integration test across py/ts/go identical sample.
+
+minh_runtime: I'm leaving a log watch on req=abc-98765 for 24h. If we see more hits, we'll auto-increase priority.
+
+support_ana: Closing the loop here when customer confirms. Thanks all :thumbsup:

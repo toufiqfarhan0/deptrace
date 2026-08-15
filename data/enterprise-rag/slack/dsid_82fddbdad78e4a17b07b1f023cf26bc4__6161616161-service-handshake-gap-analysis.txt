@@ -1,0 +1,26 @@
+eng-releases
+
+Alice Wang: heads up — noticed higher 95th latency on canary traffic after router patch. runtime still on v2.3.1, router bumped to v2.4.0 earlier today.
+Ben Carter: ugh, which patch? the header-split one? :thinking_face: 
+Alice Wang: yeah header-split + conn-pool tweak. console and api are on v2.3.x pinned by the rollout. router autoshift landed in prod.
+Carol Nguyen: deploy-bot reported successful wave for router at 6161616100.
+deploy-bot: wave completed: router v2.4.0 -> 100% (no errors). logs: /deploys/6161616100
+Dan R.: how big is the 95th bump? numbers?
+Alice Wang: from ~120ms -> ~210ms for tokenization-heavy requests. p50 unaffected.
+Erin S.: could be header parsing change moving some work into runtime path due to header normalization. runtime now handles extra validation.
+Ben Carter: we planned compatibility but forgot the runtime schema bump — oops. Is there a quick mitigation? pin router back, or roll runtime forward?
+Alice Wang: runtime upgrade will take longer (model-serving infra). pinning router back is fastest.
+Carol Nguyen: release notes for router include breaking change in header format. should've added a soft flag. I'll draft a note.
+Dan R.: suggested rollback window? change window still open for another 45m.
+Alice Wang: rollback router to v2.3.5 in next 10m unless anyone objects.
+Ben Carter: +1
+Erin S.: +1, also add a temporary routing rule to send canary % to runtime v2.3.1 only.
+Carol Nguyen: I'll kick off pin and add a console banner and slack notify.
+deploy-bot: starting rollback: router v2.4.0 -> v2.3.5 (initiated by carol nguyen)
+Alice Wang: monitoring... p95 dropping back toward baseline.
+Ben Carter: good catch. action items: 1) runtime team to prioritize schema fix; 2) router team to make header change behind feature flag; 3) we need clearer release notes checklist.
+Carol Nguyen: I'll update release notes template to include 'compatibility matrix' and 'rollback runbook' checklist.
+Erin S.: will open runtime PR for schema fix, target hotfix branch.
+Dan R.: once runtime hotfix is validated we can re-roll router behind flag in next quiet window.
+Alice Wang: thanks all. I'll annotate the deploy notes and create follow-up runbook in #eng-releases.
+Carol Nguyen: posted banner and updated rollout notes. closing thread once metrics stable :thumbsup:

@@ -1,0 +1,22 @@
+sources/slack/product/1755001111-microcohort-onboard-playbook-and-terms.json
+
+zoe (PM): quick thread — we need a single-page onboarding playbook for the micro-cohort pilot. must cover credits, data consent, success gates, and who to call for infra issues.
+liam (Eng): for credits i propose tiered bands: 25k tokens/mo (trial), 100k (standard), 300k (expanded). extras billed at a fixed discounted rate. simpler for finance.
+tess (Product): +1 on tiers. Also recommend a soft quota alert flow (email + slack) before billing kicks in.
+ryan (SRE): will add alert: 80% and 95% thresholds. also want a dp-priority support token to surface incidents.
+mel (Legal): need explicit onboarding checkbox language: "I consent to processing of my data for inference & diagnostics; Redwood will not use content to train models without explicit opt-in". retention cap: 30 days unless partner requests longer.
+zoe (PM): good. define pilot success so both sides know when to graduate: ops proposal — latency p95 <700ms, daily eval stability (no >5% drift on eval suite for 7 days), and usage >= 8k tokens/mo for 3 partners.
+tess (Product): tweak: reduce p95 to 600ms target, but tolerate 700ms as a soft limit for first two weeks. quality drift metric needs concrete eval set and scoring.
+liam (Eng): i'll add metric hooks for p95, fallback_count, tokens_per_session, and cost_per_1k. timeline: can ship hooks + pilot header flag in 9 days.
+ryan (SRE): pilot header flag should be X-Redwood-Pilot: true. also add X-Redwood-Autofallback for client-side opt-in to fallback behavior.
+zoe (PM): onboarding checklist (one-liner each): NDA signed, credits allocated, consent checkbox live, eval set uploaded, eng triage owner assigned, support token enabled. add to the sheet.
+tess (Product): i'll draft the acceptance email and a short FAQ explaining rollback, expected performance regression handling, and data controls.
+mel (Legal): add incident escalation SLAs: 24h acknowledgement, 72h remediation plan. include sample revocation flow if data retention rule violated.
+liam (Eng): quick QA: if we enable autofallback=true and service degrades, requests will transparently switch to hosted model variant? need to confirm compatibility surface area.
+ryan (SRE): yes, fallback to the hosted-compatible variant will be automatic if configured. document caveats in FAQ.
+ops-bot: https://redwood-internal/drive/micro-cohort-onboard-playbook — sheet created with credit bands, checklist, and metric IDs.
+zoe (PM): deadlines: recruiting cutoff march 28, legal signoff march 22, eng hooks live april 3, onboarding week starts april 10. can we commit?
+mel (Legal): will circulate final checkbox language today; aim to sign off by march 22.
+liam (Eng): commit to hooks by april 3.
+tess (Product): i'll finish acceptance email + FAQ by march 26 and share for review.
+zoe (PM): ok action list: tess — email + FAQ; liam — header flag + metric hooks; mel — consent + SLA language; ryan — support label + alerts. i'll run recruitment and the sheet. thanks everyone :rocket:

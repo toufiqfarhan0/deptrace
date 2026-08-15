@@ -1,0 +1,60 @@
+docs
+
+liz_docs: FYI I'm opening a small 'cookbook' PR that collects short migration recipes for the Optimize toolkit: batching, prefix caching, and the new quantization profile format. Putting in examples that teams can drop into repos. Draft PR here: https://github.com/redwood-inference/docs/pull/1245 :wave:
+
+sam_eng: ack, can you include a short perf note for short-seq workloads? recent tests showed quant profile v2 can hurt 16-token latency unless batch size tuned.
+
+liz_docs: good call. adding a short table and a tiny snippet that toggles the per-route batch_size and max_queue_time.
+
+nina_research: also please include the new config key names — some teams still reference legacy keys (quant.level -> q.profile in v2). small migration example would help.
+
+liz_docs: will do. initial snippet (Python SDK) I'm planning to add: ```python
+from redwood import Client
+client = Client(api_key="$REDWOOD_KEY")
+route_config = {
+  "batching": {"batch_size": 8, "max_wait_ms": 20},
+  "caching": {"prefix_cache": True, "ttl_seconds": 300},
+  "quant_profile": "medium-latency"
+}
+client.update_route("chat/fast", route_config)
+```
+
+sam_eng: looks good. tiny nit: our SDK uses max_wait_ms as an int, but docs elsewhere show max_queue_time_ms. Unify to max_wait_ms in the cookbook to avoid confusion.
+
+liz_docs: yep going to standardize to max_wait_ms and add a short footnote about the old key name.
+
+devex: doc linter threw a broken-link error on an internal example path earlier. When you push, check the link fixer job (CI) — it suggests replacement rules.
+
+doc-bot: link-checker found 1 broken link in README examples: docs/optimize/legacy-examples.md#old-quant -> 404.
+
+liz_docs: thanks bot, I'll replace that anchor and add a redirect notice.
+
+ben_pm: timeline? we want this in the next release notes. If it's short, can we aim to merge by EOD tomorrow?
+
+liz_docs: aiming for that. PR is draft now, will move to ready for review after I add the perf table + migration code.
+
+nina_research: quick suggestion for the quant example: include a small bash perf-run snippet using wrk or a simple loop, e.g.: ```bash
+for s in 8 16 32; do python perf_client.py --seq 16 --batch $s; done
+```
+
+sam_eng: +1. that'll help teams reproduce the short-seq regression and validate tuning.
+
+liz_docs: added that and fixed the key names. pushed a new commit. PTAL: https://github.com/redwood-inference/docs/pull/1245/files
+
+sam_eng: quick review done — left two micro-comments about phrasing in the migration section. nothing blocking. :thumbsup:
+
+devex: CI is green except for docs spellcheck complaining about 'quantizeable' vs 'quantizable' (tiny).
+
+liz_docs: fixed the spelling and squashed commits. moved PR out of draft. requesting reviews from @sam_eng and @nina_research.
+
+nina_research: approved. added a short note about expected token-cost delta in the 'notes' section.
+
+sam_eng: approved as well.
+
+doc-bot: merge allowed: all required reviewers approved; CI passed.
+
+liz_docs: great — merging now. Thanks everyone for quick reviews! I'll follow up with a short entry for release notes and a link to the cookbook.
+
+ben_pm: perfect. please ping when release notes are up so we can include it in the weekly digest.
+
+liz_docs: will do. thanks all. :rocket:

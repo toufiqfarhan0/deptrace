@@ -1,0 +1,38 @@
+eng-runtime
+
+maria: Quick heads-up — CI perf alert flagged a regression on prod serving for the new FlashV2 tiled kernel when seq len distribution is heavy-tail. tokens/sec dropped ~25% on requests with long context >2k.
+aj: ugh, noticed increased costs too. $/M tokens went up ~1.8x on the affected customer traces. link to sample trace: https://internal/trace/1856abc
+kevin: can you paste the micro-bench results? is this end-to-end or just kernel-level?
+maria: E2E, but kernel microbench also shows reduced throughput for batch sizes < 8 and with KV cache churn. snippet:
+```
+flashv2_tiled --bs=4 --seqlen=2048 --kv-churn=high -> 8800 toks/s
+flashv1_fused --bs=4 --seqlen=2048 --kv-churn=high -> 11000 toks/s
+```
+taylor: interesting. does the new scheduler pick tiled for those shapes? thought it preferred fused for long seqs.
+aj: scheduler picks based on cost model that uses mean seq len. heavy-tail means decision flips incorrectly for many small batches with occasional long tokens.
+kevin: maybe KV cache eviction path adds overhead in tiled path. We saw extra memcpy and lock contention in prof.
+maria: attached flamegraph (s3://perf/flame_1856.svg) — hot spots in kv_cache_manager::evict_if_needed and flash_tile::prepare_chunks
+aj: can we repro locally with a realistic request mix? I can push a sim harness that replays real seq len distribution.
+kevin: please do. Also run with `--kernels=all` to force fallback combos; need per-kernel tokens/sec and memory alloc counts.
+taylor: quick triage plan:
+- reproduce with sim harness (aj)
+- run nvprof + perf + pyro profiling on tiled vs fused (kevin)
+- adjust cost-model weight for tail latency in scheduler (maria)
+- try temporary heuristic: prefer fused for any batch where max_seq_len > 1024 (hotfix)
+maria: hotfix patch ready, testing on staging now. patch is simple: bump cost_model.tail_penalty = 1.4 for tiled selection.
+aj: staging run looks promising — tokens/sec recovered to ~10800 for trace replay. dropping the $/M delta to 1.05x.
+kevin: good. but we should root-cause the kv-cache interaction. found this log in repro run:
+```
+[INFO] kv_cache_manager: evicting 3 entries, memcpy 1.2ms each
+[WARN] flash_tile: reallocating chunk buffer 512KB x 20
+```
+maria: realloc is the killer — tiled path seems to reallocate scratch buffers when batch shapes vary. fused keeps persistent buffers per-stream.
+taylor: longer term: update allocator to keep per-stream scratch pool and update scheduler to prefer kernels that reuse buffers when kv_churn high.
+aj: agree. also add a gauge to console for tokens/sec per-kernel and $/M tokens per-model to detect regressions early.
+kevin: I'll open a runtime PR for pool + nvprof evidence. maria, can you open a scheduling PR with conservative tail penalty by EOD?
+maria: on it. PRs: runtime#4023 (scratch-pool), scheduler#4024 (tail-penalty). linking to thread.
+deploy-bot: Deploy queued for staging: runtime:patch-4023 at 1856789500
+aj: once staging passes, let's canary to 5% for affected customer before full rollout.
+kevin: adding unit test that simulates heavy-tail seq len and asserts kernel selection stays fused when cost delta < 0.2.
+taylor: thanks all — this caught an important perf regression that would have amplified costs. follow-ups in #perf-ops.
+maria: leaving the flamegraph and nvprof logs in the ticket. will update once scheduler PR merged. :thumbsup:

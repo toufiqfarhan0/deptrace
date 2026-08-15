@@ -1,0 +1,30 @@
+sales
+
+suzy_sales: Heads up — Acme POC hit a wall exporting logs/traces to their Splunk forwarder. Our side returns a bunch of 429s and their ingest team says they're not seeing trace_id mapping. Can we swarm? trace_id=abc123xyz in sample payload.
+
+mike_h: Can you paste the exact error lines and the ingest URL they're hitting? Also which app id/token?
+
+suzy_sales: Ingest URL: https://splunk.example.com:8088/services/collector/event, token masked. Error lines attached below (copied from the POC):
+
+logship-bot: [forwarded] 2026-03-20T22:44:01Z ERROR 429 rate_limit_exceeded request_id=5f7c2a trace_id=abc123xyz x-rate-limit-reset=28s
+logship-bot: [forwarded] 2026-03-20T22:44:02Z WARN  Dropped 18 events due to 429s
+
+julie_ops: Quick checklist: 1) confirm they aren't accidentally using our hosted API key for log drain (common), 2) check Splunk HEC token rotation window, 3) confirm batching headers and Content-Type.
+
+oliver_eng: Can they try a single direct curl with the same payload and show response headers? Example:
+```
+curl -v -H 'Authorization: Splunk TOKEN' -H 'Content-Type: application/json' --data '{"event":"test","trace_id":"abc123xyz"}' https://splunk.example.com:8088/services/collector/event
+```
+
+mike_h: They ran that and got: HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+X-Request-Id: 5f7c2a
+Body: {"text":"Rate limit exceeded"}
+
+oliver_eng: Ok looks like Splunk is throttling — two mitigation paths: reduce send rate (batching + backoff) or request a temporary ingest bump from Splunk. On our side we can also ensure we forward the original trace header as X-Trace-ID so their dashboards can correlate even when events are retried.
+
+ryan_sre: I opened an internal ops ticket RW-POC-1789 to track. I'll temporarily enable client-side exponential backoff on the POC dataset and add Docker env override so they can lower concurrency. Deploy command we used: `REDWOOD_LOG_CONCURRENCY=2 make run-poc`
+
+sarah_finance: FYI on pricing/throughput: we can offer a 48h throughput bump credit for POCs up to 2x baseline — need approval from AM. See internal guide: https://redwood.internal/poc-bumps (request form in that doc).
+
+suzy_sales: Thanks — I've asked Acme to request a temporary HEC bump while we ship the backoff patch. Also sent them the curl snippet to validate trace propagation. Will update once they confirm. :thumbsup:

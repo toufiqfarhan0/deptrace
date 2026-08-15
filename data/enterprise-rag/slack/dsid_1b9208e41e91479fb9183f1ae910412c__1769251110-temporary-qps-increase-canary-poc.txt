@@ -1,0 +1,27 @@
+sales
+
+Aisha (AE): Heads up — AcmeHealth POC scheduled next Mon. They want to run a synthetic canary: ~75 QPS sustained with occasional 250 QPS bursts (15m) to validate UX. Need a temporary hosted API quota bump + a scoped API key with IP allowlist. Can we enable this for the POC? cc @Tom @Maria
+Tom (SE): Quick Qs — what's the org_id we'll tag the quota to, and approx tokens per request? Also how long do they need the elevated QPS?
+Aisha (AE): Org is org-acme-9f3. Estimated tokens per request ~180 (typical chat prompt+response). POC window: Mon 03/30 09:00–Mon 03/30 18:00 PST (one day) but there may be follow-up validating sessions next day; prefer 48–72h window if possible.
+Maria (PlatformOps): We can do a temporary increase for POCs, typically up to 72h. Need an SRE ticket with: org_id, start/end times, expected sustained QPS, burst QPS, example request shape (tokens), and any IP ranges. We'll create a scoped key with a usage cap and IP allowlist once ticket approved. Please also specify whether they need streaming enabled.
+Aisha (AE): Streaming yes. Posting example request shape and sample curl they will use:
+```
+curl https://api.redwood.ai/v1/chat \
+  -H "Authorization: Bearer sk-poc-placeholder" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"redwood-2b","messages":[{"role":"user","content":"..."}]}'
+```
+And example key name: acme-poc-2026.
+Tom (SE): I can create the scoped key in the Console (name + IP allowlist + expiration) after we get SRE approval. Raj — can you provide the client IP ranges for the canary runners? Also, recommend the client implement exponential backoff for 429s.
+Raj (Acme CTO): We'll originate from two ranges: 198.51.100.0/24 and single host 203.0.113.12/32. Backoff noted — we'll use jittered exponential. Also: if you can, set a burst allowance so short spikes don't get 429'd immediately.
+Maria (PlatformOps): Noted IPs. We'll include a short burst buffer in the quota policy (configurable). For SRE ticket please add: billing tag "sales-poc-acme" so Finance can track. Also include if you want model fallbacks (e.g., auto-fallback to redwood-2-small) when capacity constrained.
+Lena (Prod): Heads up — any elevated usage will be billed at hosted POC rates and must be approved by finance. Tag it as Maria requested and cc billing@redwood. We'll process after SRE tickets are raised.
+Tom (SE): For the scoped key I'll set expiration to 72h and a hard usage cap equal to X tokens (we'll compute from your QPS+window). Also enable streaming flag. After SRE OK, I'll paste the console-created key (masked) here.
+Aisha (AE): I'll open the SRE ticket now with all fields. Thanks team. :thumbsup:
+deploy-bot: Scoped API key request received: ticket #SRE-2026-448. Waiting for approval.
+Maria (PlatformOps): SRE approved provisional increase to 75 sustained QPS, with 250 QPS burst allowance for 15m, window 2026-03-30T09:00:00-07:00 to 2026-03-31T09:00:00-07:00. Please confirm you want the 72h expiration on the scoped key.
+Tom (SE): Confirmed — 72h expiration. Creating scoped key now and applying IP allowlist.
+deploy-bot: Scoped key created: sk-poc-acme-**** (masked) — expires 2026-04-02T09:00:00-07:00. Limits: 75 QPS sustained, 250 QPS burst (15m), token cap 10,000,000. IP allowlist: 198.51.100.0/24, 203.0.113.12/32.
+Raj (Acme CTO): Received key. We'll run the canary tomorrow. Thanks for quick turnaround.
+Maria (PlatformOps): Reminder: after the POC window the scoped key will auto-expire and quotas revert. If you need dedicated pool or Reserved capacity for production, let's schedule a follow-up.
+Aisha (AE): Perfect — closing loop with Acme. I'll log results and billing tag after the run. Thanks everyone!

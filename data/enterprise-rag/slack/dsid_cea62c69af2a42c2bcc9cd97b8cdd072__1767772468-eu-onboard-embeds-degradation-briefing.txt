@@ -1,0 +1,29 @@
+customer-success
+
+Alex (CS): quick FYI — a subset of EU onboarding customers are seeing degraded embeddings ingestion and rerank fallbacks since ~02:15 UTC. we're getting customer pings.
+Priya (CS): oh no. impact scope? any high-touch customers affected?
+Jules (Eng): investigating. looks like a partial failure in the post-indexing reranker service that triggers a 503 path, causing fallback to the cheaper rerank model.
+Samir (SRE): incident created: INC-2026-1767, alerting on high error rate for emb-ingest-eu.
+Alex (CS): priority: get a short customer-facing note out explaining status, mitigation, ETA, and what we’re doing for affected onboarders. keep it transparent.
+Priya (CS): I can draft the note. need the one-liner from eng on root cause + ETA for fix. Jules, any ETA?
+Jules (Eng): root cause = memory leak in rerank worker after a recent soft rollout (canary 02:00 UTC). rollback fixes immediate error rate. ETA for rollback: ~20 mins if we go manual.
+Samir (SRE): manual rollback queued. will execute and monitor; rolling back canary now.
+Priya (CS): draft below — plz amend if wrong.
+Priya (CS): ```Hi — we’re investigating an issue causing degraded embeddings ingestion and occasional 5xx errors for a small number of EU customers. We’ve identified the source as a deployment regresssion in our rerank service and are rolling back the canary build now. We expect recovery within ~30 minutes. We’ll follow up with an RCA and steps we took to remediate. We’re sorry for the disruption — Alex will reach out to impacted customers directly to offer credits and help.```
+Jules (Eng): change: "deployment regression" -> "memory leak introduced in a recent canary". Also add: "no data loss; documents remain queued and will be indexed once service stabilizes."
+Priya (CS): updated draft: ```Hi — we’re investigating an issue causing degraded embeddings ingestion and occasional 5xx errors for a small number of EU customers. We’ve identified a memory leak introduced in a recent canary of the rerank service and are rolling back the canary now. No data loss — documents remain queued and will be indexed once the service stabilizes. We expect recovery within ~30 minutes. We’ll follow up with an RCA and steps we took to remediate. We’re sorry for the disruption — Alex will reach out to impacted customers directly with next steps and a goodwill credit.```
+Alex (CS): good. I'll send to impacted list and create a personalized note for our top 10 onboarders. Priya — can you attach the short troubleshooting checklist for customers who report issues?
+Priya (CS): yes — attaching snippet: ```If you see errors: 1) Retry ingestion after 10m; 2) Confirm payload size < 10MB; 3) Contact support with request-id header.```
+Samir (SRE): rollback complete at 02:42 UTC. error rate dropping — monitoring dashboard shows requests back to normal in last 3m.
+StatusBot: Incident INC-2026-1767 status update: rollback executed by Samir at 02:42 UTC; severity -> degraded (partial).
+Jules (Eng): monitoring looks stable. I’ll keep the canary disabled for now and push a fix patch to QA.
+Alex (CS): sending the customer note now. will DM the top-10 templates and start outbound.
+Priya (CS): thanks — capture feedback in this thread if any customers ask for clarifications. I’ll schedule a 1pm office hours for impacted customers.
+Alex (CS): quick checklist for follow-up comms: 1) Send initial note (done). 2) Personal outreach to top 10 (Alex). 3) Offer one-time token credit and free enablement slot (template ready). 4) Follow up with RCA + timeline in 24h.
+Jules (Eng): RCA pointer for CS: root cause = memory leak in rerank worker triggered by a rare tokenization edge-case; mitigation = rollback + patch to tokenization lib; next steps = thorough canary test for tokenization heavy payloads.
+Alex (CS): perfect. Priya — please add the tokenization note to the 24h RCA email.
+Priya (CS): will do. capturing: @Samir can you post the incident timeline and logs to the incident doc so I can link it in the RCA?
+Samir (SRE): yes — pushing timeline and relevant logs to INC-2026-1767/doc now.
+Alex (CS): closing loop — customers notified, rollback successful, monitoring stable, office hours scheduled. reopen thread if anything changes. :white_check_mark:
+Priya (CS): thanks team. will draft RCA and customer-friendly timeline for the 24h follow-up.
+Jules (Eng): thx all. will follow up once patch lands in QA.

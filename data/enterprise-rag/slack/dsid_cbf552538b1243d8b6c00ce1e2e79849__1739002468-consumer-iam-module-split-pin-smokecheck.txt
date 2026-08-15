@@ -1,0 +1,60 @@
+eng-infra
+
+alex: Quick heads-up: I'm landing a split of tf/iam into two modules (iam-core + iam-consumer) to reduce coupling with payments. PR up: https://github.com/redwood/infrastructure/pull/4982
+
+mira: thanks — what's the pinning strategy here? are we keeping semver tags or absolute lockfile pins?
+
+alex: plan is to keep module version tags (v0.3.0 -> v0.4.0 for consumer) but we need to pin provider versions in the root lockfile. doing this so runtime consumers don't get surprise provider upgrades.
+
+sam: +1 on provider lockfile. Can you paste the snippet you're adding for the module?
+
+alex: sure, here's the module block I'm adding to staging dir:```hcl
+module "iam_consumer" {
+  source  = "git::ssh://git@github.com/redwood/infra-modules.git//iam-consumer?ref=v0.4.0"
+  providers = { aws = aws.shared }
+  create_svc_account = true
+}
+```
+
+irene: will this change require a state move? or just a module path rename inside same state?
+
+alex: no state move planned — same state file, just reorganizing module namespace. terraform plan looks like only resource renames within the module which are handled by the refactor shim. leaving a short migration note in the PR.
+
+mira: what about the providers.lock regen? We should run lockfile regen in CI and check for provider diffs. devops-bot can we add a check?
+
+devops-bot: CI: added job tf-lockfile-check to the repo. It runs: `terraform init -backend=false && terraform providers lock -platform=linux_amd64 -platform=darwin_arm64` and compares providers.lock.
+
+sam: sweet. also, can we smoke deploy to staging before merging? quick steps I ran last time:```bash
+git fetch origin pr/4982 && git checkout -b tmp/pr-4982 FETCH_HEAD
+cd infra/staging
+TF_WORKSPACE=staging terraform init -upgrade
+TF_LOG=INFO terraform plan -var-file=staging.tfvars
+```
+
+alex: yep I'll run that and paste plan summary here. if the lockfile diff is clean and plan is no-delete we can canary merge.
+
+irene: small note on secrets wiring — iam-consumer needs a k8s secret mapping change. in payments we used `k8s_secret_path = "/secret/iam/consumer"` but the new module expects `secret_name` + `namespace`. Alex, can you add a compatibility layer?
+
+alex: adding a wrapper variable and a tiny migration in the module to accept both. will include a note in CHANGELOG.
+
+mira: tagging reviewers @sam @irene. Also please add a one-line perf/regression test in workloads that call sts AssumeRole to make sure latency doesn't spike after refactor.
+
+sam: will run a short load test against staging after smoke deploy. report back by EOD.
+
+devops-bot: CI: tf-lockfile-check passed on branch. providers.lock unchanged (sha: b7f2c3a).
+
+alex: great — plan summary: no resources to be destroyed, small module rename mapping, providers.lock unchanged, added secret compatibility, perf smoke pending. merging in ~30 if no objections. :thumbsup:
+
+mira: LGTM from me. thanks for handling the secret mapping. :rocket:
+
+irene: LGTM — ping if load test shows anything odd.
+
+sam: prepping load test now, will post results in thread.
+
+sam: load test done — 10k sts AssumeRole calls over 5m, p50/p95 latency same as baseline. no errors. posting graphs to the PR.
+
+alex: merging now. will follow up with rollout note in #eng-oncall and a short rollback checklist.
+
+mira: nice work, thanks.
+
+devops-bot: Deploy: canary/staging apply succeeded (apply-id: apply-20260312-2983).

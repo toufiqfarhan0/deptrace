@@ -1,0 +1,57 @@
+eng-platform
+
+Maria: quick heads-up — prepping per-tenant flag provisioning for last week's enterprise onboards. Primary asks: (1) contract-gating checks (2) VIP allowlist handling (3) canary/gradual rollout policy. Planning to run scripts tomorrow 10:00 PST. :calendar:
+AJ: thanks — which flags? Is this for the new "multi_tenant_seg_v2" feature? :eyes:
+Maria: yes, feature flag = multi_tenant_seg_v2. We'll need to set per-customer scope for each contract id, and ensure customers with VIP=true skip canary. Also tie to contract_endpoints in billing. Sample payload I'm proposing:
+
+```
+{
+  "flag": "multi_tenant_seg_v2",
+  "scope": {
+    "contracts": ["C-8421", "C-8422"],
+    "tenants": ["t-acme-prod", "t-beta-inc"]
+  },
+  "canary_percent": 20,
+  "vip_override": true
+}
+```
+
+Devon: question — how do we represent "contract gating"? By contract ID on the allowlist or by SKU? We need to ensure it's tied to committed SKUs in the contract metadata.
+Kate: we agreed earlier to gate by contract ID + clause flag (contract.metadata.features.multitenant_allowed = true). If missing, deny.
+AJ: ok. who owns the provisioning run? I can run the script but need a CR for "force-enable" path.
+Maria: @AJ can you take runbook + dry-run? Script is at eng-platform/flags/tools/provision_per_customer.py — dry-run flag will print intended toggles. Example command:
+
+```
+./provision_per_customer.py --env prod --contracts C-8421,C-8422 --dry-run
+```
+
+Paul: add me as approver for VIP overrides. For any VIP customer we require an explicit ops approval and a rollback window of 60m. :lock:
+Maria: noted. I'll add that in the runbook.
+deploy-bot: scheduled dry-run for 1780123456 by AJ at 2026-03-18T18:00:00Z — results will post in this thread.
+AJ: starting dry-run now, will paste output shortly. :keyboard:
+AJ: dry-run output snippet:
+
+```
+[t-acme-prod] would ENABLE multi_tenant_seg_v2 (contract C-8421) — canary 20%
+[t-beta-inc] would ENABLE multi_tenant_seg_v2 (contract C-8422) — VIP override => enable immediately
+[t-gamma] would SKIP (contract not eligible)
+```
+
+Kate: looks good. Confirm VIP list source? Is it the allowlist in admin-console > enterprise > vip_customers? Need sync.
+Maria: source = billing.contracts[].metadata.vip_contact true OR admin vip list as fallback. We'll prioritize contract metadata. I'll open a quick PR to consolidate.
+Paul: also add alerting to SLO dashboard if token latency spikes > 2x baseline after enabling for >10% of requests.
+Devon: do we have a rollout policy for multi-tenant memory pressure? If enabled per-tenant, route heavy tenants to dedicated capacity automatically? That's risky.
+Maria: good point — for now leave routing unchanged; ops will monitor. If memory pressure shows up we'll trigger auto-fallback to model_variant=cpu_fallback and contact the account.
+AJ: going to run the dry-run now. If green, plan execute tomorrow 10:00 PST with @Paul on-call and @Kate approving VIPs.
+Maria: thanks. tagging follow-ups:
+- Maria: prepare PR to unify vip source (will do today)
+- AJ: run dry-run and post full output (in progress)
+- Paul: be on-call for execution and approve VIPs
+- Kate: sanity-check contract metadata during run
+
+Maria: any objections? :thumbsup:
+Kate: +1
+Paul: +1
+AJ: +1
+Devon: +1
+Maria: ok proceeding with the runbook updates and final schedule. I'll post the run_id here once scheduled.

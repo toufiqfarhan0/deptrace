@@ -1,0 +1,79 @@
+eng-runtime
+
+lena: Ran a focused load test this morning — replay harness of ~1M requests sampled from prod for the last 7d. Observed a regression in median and tail when JSON-mode + streaming tool calls are enabled and KV cache hits are high. p50 +8%, p95 +12%, p99 +18%.
+
+omar: can you paste the bench config + which kernels we pulled in? also which model/quantization?
+
+lena: model: redwood-7b-v2-fp16, quant: int8-v2, kernels: auto-select (new heuristic from last rollout). Harness: synthetic replay (preserves timestamps), batcher config: 
+
+```json
+{
+  "concurrency": 64,
+  "batch_window_ms": 12,
+  "max_batch_tokens": 4096,
+  "streaming": true,
+  "json_mode": true,
+  "tool_calling": "enabled",
+  "kv_cache": "enabled"
+}
+```
+
+lena: repro steps: replay-tool --trace --preserve-timing --seed=2026 --workers=8 --profile=perf.out <sample.tar.gz>
+
+bench-bot: automated summary: {"throughput_tokens_s": "42.1k", "p50_ms": "98", "p95_ms": "345", "p99_ms": "612", "kv_cache_hit_rate": "83%", "batch_size_avg": "11.4"} :chart_with_upwards_trend:
+
+omar: interesting that kv cache hit rate is 83% — could be amplification of streaming overhead with small-ish batches. do you have flamegraph or perf profile?
+
+lena: attached perf flame: (pasted below). The hot path is `stream_chunk_serialize -> json_validator -> write_to_socket` and there are spikes in `kernel_select()` where it falls back to generic matmul path for certain sequence-length segments.
+
+kai: my hunch: new kernel-selection heuristic prefers fused attention for common seq len, but when JSON/toolcall streaming interleaves partial tokens + open bracket validation, we generate more tiny write syscalls and small KV cache fills causing kernel_select churn. Try: force kernel to legacy-matmul for a test, and force batching to 25ms window to see if bigger batches mask syscall overhead.
+
+kai: quick experiment commands:
+
+```bash
+# lock kernel to legacy
+redwoodctl runtime set-kernel redwood-7b-v2-fp16 legacy-matmul --pool=staging
+# increase batch window
+redwoodctl runtime set-batcher --batch-window-ms=25 --pool=staging
+# replay (same harness)
+replay-run --sample sample.tar.gz --workers 8 --profile perf2.out
+```
+
+anya: saw a couple of JSON validation failures in the logs when streaming + function-calls are used. partial objects were hitting the validator and causing retries which inflate latency. sample from logs: 
+
+```text
+[2026-03-18T09:12:11Z] req=0x7f3 json-validate FAIL at offset 128: unexpected token '}'
+[2026-03-18T09:12:11Z] req=0x7f3 retrying request (validation error)
+[2026-03-18T09:12:11Z] req=0x7f3 kv-cache-store delayed (awaiting final chunk)
+```
+
+anya: hypothesis: streaming partial JSON objects + immediate validation leads to N retries for the same logical response when toolcall chunk boundaries cut objects in half. retries hit kernel selection and batcher state changes.
+
+omar: OK can we run a controlled apples-to-apples: 1) baseline (old kernel heuristic + json_mode off), 2) new kernel heuristic + json_mode off, 3) new kernel heuristic + json_mode on (no streaming), 4) new kernel heuristic + json_mode streaming+toolcall. All with same seed/sample and two batch-window settings (12ms, 25ms). record p50/p95/p99, avg batch size, kv hit, syscalls/sec.
+
+lena: started runs. early numbers (staging pool):
+
+```text
+baseline (old-heuristic, json off, bw=12): p50=92ms p95=320ms p99=580ms tps=45k tok/s batch_avg=12 kv_hit=84% syscalls/s=12.3k
+new-heuristic (json off, bw=12): p50=94ms p95=330ms p99=590ms tps=44.6k tok/s batch_avg=11.7 kv_hit=83% syscalls/s=12.1k
+new-heuristic (json on, non-stream, bw=12): p50=101ms p95=360ms p99=640ms tps=40.8k tok/s batch_avg=10.2 kv_hit=82% syscalls/s=13.5k
+new-heuristic (json stream+toolcall, bw=12): p50=106ms p95=374ms p99=688ms tps=38.4k tok/s batch_avg=9.1 kv_hit=83% syscalls/s=19.8k
+# when bw=25ms we see batch_avg increase ~+60% and syscalls/s drop ~-40%, tail improves ~-15% on streaming case.
+```
+
+omar: those syscall numbers are telling — streaming + small batches increases syscall rate 60% which explains CPU on kernel-select and serialize paths.
+
+kai: action items:
+- add a short-circuit in json validator to ignore partial chunk validation until object-close seen (cheap fix)
+- make kernel-selection sticky across short-lived seqlen changes for same request to avoid fallback thrash
+- try batch-window auto-tuner to avoid small batches when streaming small objects
+
+lena: I'll run the patchset tomorrow with sticky kernel selection + validator early-exit and re-run the apples-to-apples. if the improvement is >10% on p95 in streaming case we can push a hotfix to staging pool.
+
+bench-bot: ticket created: INF-2384 "streaming JSON validation + kernel select thrash causing tail regressions" -> linked to perf.out / perf2.out artifacts.
+
+omar: nice, and add a replay test that includes toolcall-heavy traces to our CI perf suite so this doesn't regress silently.
+
+anya: also adding a small unit test for streamed JSON chunks that ensures validator only fails on finalization.
+
+lena: thanks all — will post numbers + flamegraphs once runs finish. :thumbsup:

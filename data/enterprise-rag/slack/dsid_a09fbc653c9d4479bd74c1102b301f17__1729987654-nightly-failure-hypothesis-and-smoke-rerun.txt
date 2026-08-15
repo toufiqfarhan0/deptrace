@@ -1,0 +1,53 @@
+eng-runtime
+
+Alex: Heads-up: nightly CI turned red for eng-runtime. Failing test is serve_retry_alignment_test (intermittent). CI link: https://ci.redwood.internal/builds/4582 — looks like first red at 2024-12-01 05:10 UTC. Can someone grab logs and do a quick rerun/bisect? :eyes:
+
+CI-bot: nightly-build #4582 — status: FAILED. Failures: eng-runtime.tests::serve_retry_alignment_test (x1). Artifacts: /ci/artifacts/4582/eng-runtime/logs/serve_retry_alignment_test.log
+
+Alex: attaching the top of the log: ```
+ASSERTION FAILED: expected retry order to preserve session id ordering
+stack: runtime/serve/retry_manager.go:142
+...
+seed=987654321
+wall-time=1203ms
+```
+
+Maria: I can take a look. Quick question: is this a pure timing jitter or does it repro with the logged seed? If the seed is deterministic we can try `--seed` locally.
+
+Sam: I've seen something similar last week; adding for context: when we had the prefetched-kv race the failure correlated with high timer drift under qemu. Might be related to the new adaptive-batcher change in c3f5e2a.
+
+Jordan: @Maria @Sam good call. Last green commit I see was c3f5e2a, first red is d2a9b1f (from nightly range). Can we git-bisect between those? If it's nondet might need many iterations.
+
+Maria: I'll try a local stress run first. Running: ```./dev/test_runner --test serve_retry_alignment_test --seed 987654321 --repeat 200 --log-level debug```
+
+Lee: If you repro locally, capture a trace and the evict/timer timestamps. Also try disabling adaptive-batcher with env var: `REDWOOD_ADAPTIVE_BATCHER=0` — that was the suspected vector in the earlier incident.
+
+Sam: Quick tip: to reproduce timing-related flakes you can run under `stress-ng --cpu 2` or use `RUST_TEST_THREADS=1` to reduce noise. Also run with `--record-kv-events` to get better ordering info.
+
+Maria: Ran 50 repeats, failed on iteration 13 with the same assertion and same seed. Attaching minimal stack: ```
+runtime/serve/retry_manager.go:142 retry order mismatch
+runtime/timer/timer.go:88 saw timer drift +6ms
+seed=987654321
+```
+
+Alex: OK that's actionable. Maria, can you try reverting adaptive-batcher (checkout c3f5e2a) and re-run the same stress job to see if it stabilizes? If it does, we bisect.
+
+Maria: Will do. If it passes on c3f5e2a, I'll ping infra for a bisect job and request a CI rerun on each candidate.
+
+Jordan: If bisect shows adaptive-batcher commit as culprit, we should add a quick unit-level shim to make ordering deterministic under test (or add a seed path) — but let's confirm first.
+
+CI-bot: rerun-request queued: nightly-build #4582 -> rerun #4582.1 (requested by Maria).
+
+Alex: Thanks. If anyone else has bandwidth, ping Maria for help with reruns. We should aim to have a bisect result by EOD to decide revert vs fix. :+1:
+
+Lee: Noted. I'll stand by to help craft a minimal test patch if bisect points to scheduling changes.
+
+Sam: FYI, I'll also flip on a longer-running job in the staging pool to see if we can get more signal (1000 repeats).
+
+Maria: Update: c3f5e2a checkout completed, 100 repeats, 0 failures so far (running). If still green after 500 I'll start bisect.
+
+Alex: Awesome — keep us posted. If bisect gets expensive, prioritize reproducing with a smaller harness to speed iterations.
+
+Maria: Will do. I'll post bisect updates in this thread.
+
+Lee: :thumbsup:

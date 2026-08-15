@@ -1,0 +1,27 @@
+devex
+
+Sasha: FYI noticed onboarding sampleapp (js+go) burned quota when PREFETCH=true. Looks like paginator + client-side throttling/backpressure caused duplicates.
+Tyler: How much? any traces?
+Sasha: ~8x expected token usage in a short window. 429s then retries amplified it.
+Andrew: Paste paginator config/logs?
+Sasha: Config: 
+```js
+new Paginator({ prefetch: true, concurrency: 4, pageSize: 50 })
+```
+Go worker loop: 
+```go
+for t := range pageTokens {
+  go func(tok string) { fetchPage(ctx, tok) }(t)
+}
+```
+Logs: WARN token-limiter: throttle delay=200ms; INFO pager: fetching page=3 attempt=1/2/3
+Maria: Prefetch spawns parallel fetches; limiter delays so retries pile up. Need inflight dedupe + cancellation.
+Tyler: Is this Go-only? JS behaves differently?
+Sasha: JS has small mutex around in-flight prefetches; Go was optimistic and spawned goroutines per token.
+devex-bot: Incident INC-2026-145 created for quota surge from duplicate prefetches
+Lucy: Mitigation: add inflight map keyed by page token + use singleflight.Group to dedupe. Also Acquire limiter before spawning or cancel goroutine if blocked too long.
+Andrew: Test plan: local token-bucket limiter (capacity=10 refill=2/s) + CONCURRENCY=8 PREFETCH=true to reproduce.
+Sasha: Repro reliable in ~30s with those settings. Will open PR with singleflight dedupe, limiter.Acquire with timeout, unit test simulating 429, and stress harness. Assign Andrew for review, Maria for JS parity check.
+Andrew: Ack. Also add e2e that asserts "no duplicate upstream requests" metric under induced 429s.
+Lucy: :thumbsup: Add telemetry counter for dedupe hits and test it increases under contention.
+Sasha: Aiming for patch EOD and will post PR here.

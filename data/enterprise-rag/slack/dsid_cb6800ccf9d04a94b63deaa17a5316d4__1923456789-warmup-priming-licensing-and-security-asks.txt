@@ -1,0 +1,22 @@
+sales
+
+amy: kicking off warmup/priming run for AlderCare POC. goal: sustained 1200 qps for text-generation endpoint, 99.9 tail <250ms if possible. want to validate pre-warm strategy and get pricing delta. who can own? :wave:
+mitesh: I can run the priming recipe. model variant we discussed -> rw-2-13b-ql8; confirm target seq len 128 tokens avg? also confirm concurrency/backpressure behavior for client.
+jordan: seq len avg 140 tokens (includes context). also need clarity on licensing for hosted vs private deployment — AlderCare legal asked about model-weight provenance & redistributable clause.
+noah: security question: they need BYOK support + HSM audit logs for patient-data request flows. do we have sample security questionnaire answers for dedicated/private? :lock:
+amy: grabbing relevant docs. for run logistics: want an initial 30m soak + 2x 5m bursts. priming tokens: thinking 128-token prefix to warm KV cache.
+ops-bot: scheduled stress job 9821 by mitesh: https://ci.internal/runs/9821 (prep window 10:30-11:30 PT). :calendar:
+amy: sample run command for ops (priming + steady):
+```
+rundriver --job 9821 --model rw-2-13b-ql8 --target-qps 1200 --dur 30m --burst 2x5m --concurrency 10 --warmup-prefix 128
+```
+mitesh: notes on warmup: recommend prefix priming per token shape, then a light KV priming pass after model load. that reduces p99 by ~18-22ms on our infra. estimate token overhead ~+3% for warmup traffic.
+jordan: on pricing/licensing: sales/legal — reserved capacity pricing includes prewarm allowance. for private, license adds a platform fee + support; I'll loop in contracts. need exact numbers to share with AlderCare procurement.
+noah: security answers: we can provide SOC2 summary + BYOK guide + audit log export. sec-bot: shared SQC template and examples in workspace: https://secrets.local/sqc/ald-care (placeholder)
+amy: can you estimate cost delta for a 2 hour benchmark including priming? need a ballpark to share with prospect.
+mitesh: rough calc: steady tokens ~1.2k qps * 140 tokens * 3600s = ~604M tokens/hr. priming adds ~+3% => ~626M tokens. at hosted rate that maps to approx $Xk/hr (need billing tool for exact). I'll run billing simulation and post numbers after this run.
+jordan: enterprise blocker: AlderCare legal wants indemnity clause re: third-party weights and also regional data residency in EU. sales to confirm if private deployment or dedicated in EU required.
+sec-bot: noted. checklist: BYOK configured, KMS provider options, audit export retention defaults. will add to the questionnaire answers.
+amy: action items: mitesh - run priming job and drop p50/p95/p99 + token counts and cost sim; jordan - contract bullets for indemnity/residency; noah - attach SQC answers. aim to have pack by EOD.
+ops-bot: job 9821 finished. metrics: p50=48ms p95=210ms p99=358ms. warmup reduced initial p99 by ~20ms. token count total 1.9B for 30m run (incl priming). cost delta estimate +3.1%. :chart_with_upwards_trend:
+amy: sweet — thanks team. I'll synthesize into one-pager for AlderCare and share with procurement. :thumbsup:

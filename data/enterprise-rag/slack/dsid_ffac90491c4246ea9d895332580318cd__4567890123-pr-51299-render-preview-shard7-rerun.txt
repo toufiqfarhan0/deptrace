@@ -1,0 +1,32 @@
+eng
+
+Sam: Quick ping — PR #51299 is blocked by a failing preview test on CI, only on Windows runner-202 (shard 7). Can someone queue a targeted rerun? Link: https://buildkite.com/redwood/pr-51299
+
+Sam: Failing test is `RenderPreviewTest.ImageFuzz` — snapshot diff shows a 2px vertical shift; not sure if it's DPI or headless chrome.
+
+dev-ci-bot: buildkite: #51299 - windows/runner-202 shard-7 failed
+Log excerpt:
+```
+[ RUN      ] RenderPreviewTest.ImageFuzz
+Expected image == golden.png
+Actual image differs by 2px vertical offset
+Exit code: 1
+```
+
+Nora: I'll take this in the AM. I'll queue a targeted rerun for shard 7 and try a local repro with the same runner image.
+
+Jordan: FYI, we've seen 2px shifts before from headless-chrome DPI changes after the chrome bump. Try `export DISPLAY_SCALE=1` in the test env or run with `--viewport 1920x1080`.
+
+Kai: If rerun passes, can someone give quick approve so we don't block the release train? If it fails again, let's bisect commit range.
+
+Sam: queued targeted rerun for shard 7: https://buildkite.com/redwood/pr-51299/builds/7890 :hourglass_flowing_sand: 
+
+dev-ci-bot: buildkite: rerun #7890 completed — shard-7 passed ✅
+
+Nora: rerun passed. I couldn't repro locally with the runner image, but passing CI is enough for now. I noted the chrome bump in the PR comments.
+
+Olivia: LGTM — approving now. Merge after the rest go green.
+
+Kai: Thanks — will monitor the merge queue.
+
+Sam: Thanks all :thumbsup:

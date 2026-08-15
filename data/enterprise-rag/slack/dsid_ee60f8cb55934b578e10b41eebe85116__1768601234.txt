@@ -1,0 +1,124 @@
+incidents
+
+incident-bot: ALERT: Elevated 5xx rate detected in streaming-gateway (region: us-west-2). Metric spike started ~1768601200. Impact: increased chunked disconnects and client cancellations. Paging team. @jamie_oncall please triage.
+
+jamie_oncall: on it. seeing 5xx spike + TIMEOUTs to model-pool. any recent deploys?
+
+selena: nope, last deploy was a health-only config tweak 2h ago. traffic pattern looks normal. errors concentrated on /v1/stream endpoints.
+
+ajay: digging into gateway logs now. dropping frames at the chunked encoder stage. examples: 
+```
+ERROR streaming-gateway: chunked_encoder: write failed: connection reset by peer
+trace_id=tx-9f3b
+ upstream_status=502 upstream_err=timeout
+```
+
+maria: customer-facing metrics: affected requests ~1.2% overall, but some heavy customers see 7-10% failed streams. paging alert already sent to account-owners.
+
+ken_infra: checking infra. autoscaler shows gateway pods at 95% CPU, but model-pool nodes are healthy. network retries spike between gateway -> model-proxy.
+
+infra-bot: Deploy watch: recent canary 1768599000 completed. No rollbacks. No node restarts reported in last 30m.
+
+jamie_oncall: hypothesis: gateway overload -> upstream timeouts -> chunked disconnects. mitigation options: 1) ramp gateway replicas, 2) enable temporary ingress throttle for large streaming sessions, 3) route critical customers to dedicated path (legacy proxy) with lower concurrency.
+
+selena: can we abort the in-flight canary? I don't think it changed gateway code, just routing config. but safe to revert routing changes if any.
+
+ajay: running quick query on envoy metrics: 5xx cluster:streaming-upstream + retriable 5xx increase. command: 
+```
+kubectl -n prod exec -it svc/gateway-metrics -- curl localhost:9102/metrics | grep streaming_upstream
+```
+returns: 
+```
+streaming_upstream_5xx_total 4321
+streaming_upstream_timeouts_total 2890
+```
+
+ken_infra: scaling gateway from 6 -> 12 replicas now. ETA ~90s for pods to be ready. will also bump connection queue size.
+
+maria: contacting affected customers with temp notice. will ask support to enable retry guidance in SDKs.
+
+jamie_oncall: while scale completes, enable failover route for sensitive tenants to dedicated-proxy: 
+```
+/rollout set-route --tenant=critical-accounts --route=dedicated-proxy --immediate
+```
+
+selena: applied failover route for tenant T-42 and T-99. monitoring error rate for them.
+
+ajay: logs show a subset of clients send long-lived streaming requests without keepalive, causing upstream idle timeouts to trigger. could be client-side cancels too. we should add a short-term keepalive enforcement at gateway.
+
+ken_infra: increased upstream timeout from 120s -> 240s for streaming upstreams. applied via feature-flag to avoid full config roll.
+
+infra-bot: Config change applied: streaming_upstream.timeout=240s (flag: feature/streaming-timeout-relax).
+
+jamie_oncall: running quick smoke: synthetic streaming requests now hold stable beyond previous disconnect window. Monitoring shows successful streams per minute up ~15%.
+
+maria: customer impact update: global failed stream rate down from 1.2% -> 0.6% since scale + timeout relax. T-42/T-99 error rates back to baseline. continuing to observe.
+
+ajay: still seeing occasional 502 from model-proxy with trace_id=tx-a7c2, digging at proxy logs: 
+```
+ERROR model-proxy: backend read timeout after 30s
+backend=lm-v2-quantized host=10.4.12.9
+```
+
+selena: that backend had high token latency on long contexts. advice: pin long-context requests to lm-v2-long variant. can we auto-route?
+
+jamie_oncall: good idea. create temporary route rule: if request.context_tokens > 400 -> model_variant=lm-v2-long. Maria, can you add to mitigation doc for postmortem?
+
+maria: added note. also capturing customer-side stack traces from support.
+
+ken_infra: gateway replicas now 12, CPU at 68%. connection backlog improved. still seeing intermittent chunk write errors but much less frequent.
+
+ajay: rolling a hotfix to chunked encoder buffer logic to be safer on partial writes. doing a kube rollout for gateway image: 
+```
+kubectl -n prod set image deployment/gateway gateway=redwood/gateway:hotfix-stream-176860
+kubectl -n prod rollout status deployment/gateway
+```
+
+infra-bot: Hotfix rollout started for deployment/gateway. watch logs for error regression.
+
+jamie_oncall: if hotfix stabilizes, we'll keep scaled replicas and timeout relaxation for 1h then gradually revert timeouts to baseline with canary. Also schedule a postmortem runbook change to detect increasing chunked_encoder errors earlier.
+
+selena: agree. also add alert for upstream_write_errors > X over Y mins.
+
+ajay: hotfix is at 50% canary, I'm watching metrics: streaming_5xx down another 40% in canary nodes. logs show fewer "write failed" traces.
+
+maria: interim customer update: we resumed normal service levels for most impacted customers. support to follow up individually.
+
+jamie_oncall: handoff summary for next oncall:
+- Incident start: 1768601200 (automatic alert).
+- Impact: elevated streaming 5xx and client disconnects, peak failed streams ~1.2% global, up to 10% for some tenants.
+- Root causes (working hypothesis): gateway overload + upstream timeouts + chunked encoder partial-write handling on edge cases + some long-context backends causing backend read timeouts.
+- Mitigations applied:
+  * gateway scaled 6->12 replicas
+  * upstream timeout relaxed 120s->240s (flagged)
+  * failover routing applied for critical tenants
+  * temp route rule to pin long-context to lm-v2-long
+  * hotfix rollout to chunked encoder (in progress)
+- Current state: error rates reduced to ~0.3-0.6% global. hotfix canary progressing, no customer escalations open.
+- Action items:
+  * follow up postmortem to confirm root cause and permanent fixes (owner: selena)
+  * add alert for chunked_encoder_write_errors (owner: ajay)
+  * revert timeout relax after 1h stable canary and implement gradual canary for timeouts (owner: ken_infra)
+  * customer outreach follow-up (owner: maria)
+
+jamie_oncall: handing off to next oncall @selena in 15m. please review action items and keep an eye on canary.
+
+selena: taking handoff. thanks all. will sync with infra and product for long term changes.
+
+maria: posting incident stub to incidents channel and creating ticket IN-176860 for postmortem.
+
+incident-bot: Incident IN-176860 created and linked to thread. Priority: P2.
+
+ken_infra: note: we'll capture network-level pcap for the affected window if needed.
+
+selena: thanks. I'll close this thread after postmortem ticket is created and metrics stable for 2h.
+
+ajay: leaving a sample debug snippet for SRE: 
+```
+# reproduce a streaming session and monitor chunk frames
+python tools/stream_test.py --host gateway.prod.redwood.ai --tokens 800 --keepalive 5
+```
+
+ken_infra: acknowledged. monitoring continues.
+
+selena: closing real-time mitigation. keep oncall updates in IN-176860. :white_check_mark:

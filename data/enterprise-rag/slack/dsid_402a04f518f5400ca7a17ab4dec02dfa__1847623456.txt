@@ -1,0 +1,94 @@
+support
+
+anya_support: FYI, customer-reported spike in 5xx/timeouts for hosted inference - multiple tenants seeing 502/503/gateway errors since ~10:03 UTC. Customer provided request id req_0a3f9c and example curl reply:
+
+anya_support: ```bash
+curl -i -X POST "https://api.redwood.com/v1/generate" \
+  -H "Authorization: Bearer sk-prod-XXXXX" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"redwood-1","prompt":"hello"}'
+
+HTTP/1.1 503 Service Unavailable
+{"error":"gateway_error","message":"upstream timeout","request_id":"req_0a3f9c"}
+```
+
+anya_support: Escalating to SRE and runtime. Affected: 3 paying tenants + a handful of trials. @rachel_sre @devon_runtime please advise.
+
+rachel_sre: Acknowledged. Initial hunch: prefix/KV cache (redis) is slow or rejecting connections causing blocking in serving runtime -> gateway 10s timeout. @monitoring-bot show alerts for redis prefix cache.
+
+monitoring-bot: Alert: redis-prefix-cache.high-latency fired at 2026-11-02T10:04:12Z. p99 latency 760ms, connection_errors 3.8%. Scope: hosted-us-east-1 cache-proxy-3
+
+devon_runtime: Cache-proxy logs show errors around 10:02-10:05 UTC:
+
+```
+2026-11-02T10:02:47Z cache-proxy error: redis: i/o timeout
+2026-11-02T10:03:05Z cache-proxy warn: large-eviction removed 128MB keyset tenant=acme-corp
+2026-11-02T10:03:59Z cache-proxy error: redis: OOM command not allowed when used memory > 'maxmemory'
+2026-11-02T10:04:40Z cache-proxy error: redis: connection refused
+```
+
+devon_runtime: Serving runtime traces show kv.PrefixGet blocking 12s and gateway returning 503 after its 10s upstream timeout. request_id=req_0a3f9c
+
+anya_support: Customers asking for ETA. Any fast mitigation we can do without full failover?
+
+devon_runtime: Short-term options:
+- disable prefix cache per-tenant (runtime falls back to direct origin reads)
+- switch cache client to circuit-breaker / non-blocking fallback
+- evict large keys and increase redis maxmemory
+
+I can flip per-tenant cache off via admin API for the 3 impacted tenants. Proceed?
+
+rachel_sre: Proceed. Also add temporary routing to prefer dedicated model variants for those tenants to reduce cache pressure.
+
+devon_runtime: Executing admin toggle now:
+
+```bash
+curl -s -X POST "https://console.redwood.com/internal/tenants/acme-corp/cache/toggle" \
+  -H "Authorization: Bearer internal-svc" \
+  -d '{"prefix_cache_enabled":false}'
+# {"ok":true,"tenant":"acme-corp","changed":true}
+```
+
+monitoring-bot: Action: cache_toggle executed for tenants [acme-corp,beta-startup,bigenterprise] at 2026-11-02T10:08:14Z
+
+devon_runtime: Post-toggle: gateway p95 latency for those tenants dropped from 1.2s to ~280ms and errors fell sharply.
+
+anya_support: Sent mitigation note to customers: "We disabled prefix caching for your tenant to mitigate timeouts. Investigating root cause; will follow up with postmortem." Account teams CC'd.
+
+rachel_sre: Long-term remediation list:
+- add circuit-breaker in cache client (fail open quickly)
+- non-blocking async read path with in-memory TTL fallback
+- increase redis maxmemory and revisit eviction policy
+- per-tenant keysize quotas + alerts
+
+devon_runtime: Opening RFC and patch. Sketch using sony/gobreaker circuit-breaker with threshold 5 failures/30s, timeout 60s. Pseudocode:
+
+```
+cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{ Name:"prefix-cache", MaxRequests:2, Interval:30*time.Second, Timeout:60*time.Second })
+val, err := cb.Execute(func() (interface{}, error) { return redisClient.Get(ctx,key).Result() })
+if err != nil { // fallback to origin non-blocking }
+```
+
+devon_runtime: Also bumping cache-proxy redis pool timeouts to 200ms and temporarily increasing maxmemory to 24GB while we stabilize.
+
+cicd-bot: Deploy started: cache-proxy-config-bump -> staging -> canary. CI job #4491
+
+rachel_sre: devon, can you list top keys by size and evict obvious offenders?
+
+devon_runtime: Found multi-megabyte blobs from analytics tenant. Running targeted evictions and contacting @analytics-team. Evictions freed ~38% memory.
+
+monitoring-bot: Redis memory went from 95% -> 62% by 10:19 UTC after evictions and config changes.
+
+devon_runtime: With evicts + per-tenant cache disabled + config bump, gateway error rate returned to baseline. No new 5xx alerts in 20m for region. Incident mitigated.
+
+anya_support: Customers confirmed traffic stable at 10:21 UTC. They requested a postmortem and prevention plan.
+
+rachel_sre: I'll own the postmortem. Action items:
+- devon: PR for circuit-breaker + non-blocking fallback (due EOD)
+- infra: automated eviction job + per-tenant quota alerting (due +3 days)
+- analytics/product: fix behavior producing huge prefix blobs (owner notified)
+- devex: add admin toggle doc for support (due tomorrow)
+
+anya_support: Keeping support thread open until PR merges. Closing note: visible customer impact was limited to 3 tenants; spike lasted ~20m.
+
+anya_support: Marking thread mitigated at 2026-11-02T10:42:10Z. Will reopen if anomalies recur.

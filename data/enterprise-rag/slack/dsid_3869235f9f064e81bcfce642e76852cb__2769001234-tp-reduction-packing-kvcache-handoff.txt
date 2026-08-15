@@ -1,0 +1,33 @@
+eng-runtime
+
+Anna R: heads up — saw a latency regression on TP all-reduce after the kernel-selector change last night. Small reductions (<=2KB) spiking ~4-6x on 8xA100 run.
+Mike H: ugh, details? model / batch size / payloads?
+Anna R: TP=2, PP=1, micro-batch 1, seq_len 32. The attn KV reduction messages are ~512B-2KB. Before change median all-reduce was ~1.2ms, after it's ~6.8ms on same cluster.
+Kevin S: curious if NCCL switched ring->tree or vice-versa, or if our new small-message pack kernel is being skipped. Any perf traces?
+Anna R: attached quick perf snippet from nvprof and our runtime trace (p99 numbers):
+```
+RTT allreduce smallmsg: 0.8ms (old)
+RTT allreduce smallmsg: 5.6ms (new)
+nvprof shows long host->device enqueue waits, then kernel selection: fallback to generic reduce_v2
+```
+Mike H: perf-bot, can you post the timeline flamegraph for that run?
+perf-bot: flamegraph uploaded: https://internal.redwood/prof/2769001234/fg.html :robot_face:
+Anna R: flamegraph shows a 3.5ms gap in NCCL kickoff + an extra memcpy stage. Looks like our batching heuristic now defers coalescing small KV fragments into a single payload.
+Jen C: did the kernel-selector commit intentionally change coalesce threshold? I remember a PR that favored kernel locality over coalesce size.
+Kevin S: yes, PR #4521 changed kernel scoring to penalize cross-device kernel loads. That ended up preferring a non-packed reduce kernel for small msgs.
+Mike H: can we force the old behavior as a quick mitigation? e.g. bump `small_msg_coalesce_threshold` or pin kernel score?
+Anna R: tested locally by setting `small_msg_coalesce_threshold=4096`, p99 drops to 1.4ms. So that's a viable stopgap.
+Kevin S: OK, I'll open an issue and a canary config to bump threshold for TP runs. Issue: https://internal.redwood/issue/INF-9213
+Jen C: longer term we should refine the kernel selector cost model to include expected enqueue/start overhead for NCCL launches on small messages. Right now it only models kernel runtime, not kickoff.
+Mike H: also need to check KV cache interaction — if prefix-cache returns many small fragments, that increases number of reductions. Could benefit from coalescing at cache layer.
+Anna R: agree. I instrumented KV cache flush counts: new selector path increased flush count by ~2.5x for that workload.
+perf-bot: microbench suggestion: run `./tools/microbench --allreduce --msgsize=512,1024,2048 --gpus=8 --topology=tp2` and capture kernel selection logs.
+Kevin S: running now on staging, will post results. ETA 25m.
+Mike H: add a short A/B config: old-selector vs new-selector on nightly ded-sim; we can rollback if regression persists.
+Anna R: created a canary config (dedicated) and a rollout plan in the infra board. Ping me if you need access.
+Kevin S: quick update — staging microbench confirms: ring path with coalescing gives ~1.1ms median for 512B, new selector path is ~5.9ms. Tree fallback slightly better than new, ~3.8ms.
+Jen C: interesting: tree helps but not as much as coalescing. So both kernel choice and message packing matter.
+Mike H: next steps: (1) temporary bump coalesce threshold for TP workloads, (2) add enqueue/kickoff cost to kernel-selector scoring, (3) add KV-cache coalesce at cache layer, (4) add microbench gating to CI.
+Anna R: assigning todos: @Kevin S handle (1)+(4), @Jen C handle (2), @Mike H look at (3) + rollout plan.
+Kevin S: got it. I'll link PRs here when ready.
+Anna R: thanks — will monitor canary tonight and report any fallout. :thumbsup:

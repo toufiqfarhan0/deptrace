@@ -1,0 +1,27 @@
+customer-success
+
+olga-cs: Quick note 92Midori92 renewal: procurement wants net45 and to switch payment to PO with vendor code. Also new signer (procurement lead). Can we turn this in 48h?
+
+harry-am: Spoke with procurement. They will issue PO once vendor code field is on invoice + signer email confirmed. PO number expected 99012.
+
+mina-sales: Pricing unchanged; just payment/term shift. Sales OK.
+
+sean-finance: Need vendor code and exact bill-to legal name. If term changes to net45 that's fine but AP needs PO number on invoice.
+
+eva-legal: If signer is from a different legal entity we must include an entity amendment. Otherwise a short payment-method amendment is enough. Add clause: "No change to pricing or scope."
+
+olga-cs: Plan: draft short amendment to change payment clause to "Invoice via PO, net45", add vendor code placeholder, send via DocuSign to their signer and countersign.
+
+bot-docusign: Draft envelope created: renewal_payment_amend_99012 (internal link).
+
+harry-am: PO uploaded: https://files.example/midori/PO-99012.pdf. Signer: j.saito@midori.co (Jun Saito).
+
+olga-cs: Sending envelope to Jun now.
+
+bot-docusign: Envelope sent to j.saito@midori.co at 2026-03-25T11:05Z.
+
+bot-docusign: Envelope completed: signed by Jun Saito and countersigned by Redwood at 2026-03-25T11:20Z. Exec doc: https://files.example/midori/Exec-99012.pdf
+
+sean-finance: Received executed doc. Will process invoice against PO 99012 in 2 business days.
+
+olga-cs: Renewal executed and payment path updated in CRM. Closing thread. :white_check_mark:

@@ -1,0 +1,29 @@
+eng-runtime
+
+Alex W: Ran nsys + perfetto on the 8-node 4xTP job. Seeing repeated short idle gaps (~700-900us) after forward kernels on ranks 1/3/5/7 and before NCCL allreduce starts. Attaching a tiny flame.
+Alex W: perfetto snippet:
+```
+GPU0: Conv_fwd (0.92ms)
+GPU0: gap (0.82ms)
+GPU0: NVTX NCCL_ALLREDUCE_START (0.11ms)
+GPU0: NVTX NCCL_ALLREDUCE_END (0.33ms)
+```
+Alex W: ran with dynamic kernel selection enabled + adaptive batching (max_batch=64). Kernel selector picked winograd for conv but fell back to generic for some sequences.
+Maya R: what's batch-size distribution? are these short gaps aligned with small batch requests?
+Alex W: 98% of requests are 1-4 tokens (chatty); there are periodic bursts of 32-48. The scheduler groups the 1-4s, but KV loads spike during those bursts.
+Liam P: could be KV cache retire/restore on GPU side. If a rank does KV refill, it may hold the stream and delay NCCL kickoff. Can you grep for 'KV::load' in the trace?
+Alex W: yes, I see KV::load memcpy events right before the gaps on the affected ranks. Typical pattern: Kernel -> KV::device_get (~300-600us) -> gap -> NCCL start.
+Sasha G: suspect interleaved collective ordering. If one rank delays its NCCL call for >500us the others spin/wait, creating perceived allreduce stalls. Check NCCL op timestamps and seq ids.
+Alex W: nvprof stack (trimmed):
+```
+[rank1] conv_fwd 920us
+[rank1] cudaMemcpyAsync KV_get 420us
+[rank1] (idle) 760us
+[rank1] ncclAllReduceAsync start
+```
+Maya R: try disabling dynamic kernel selection on that model (force the stable kernel) and rerun nsys, also reduce max_batch to 32 to see if KV interaction disappears.
+Liam P: also add NVTX markers around KV read/write and nccl calls so we can correlate in perfetto. And collect per-rank CPU stacks during the gap.
+infra-bot: Trace uploaded: s3://redwood-perf/2026-03/kv-retire/run-1823456789.tar.gz :white_check_mark:
+Alex W: plan: repro with (1) fixed kernel profile, (2) adaptive-batching max_batch=32, (3) nvtx around KV ops, and (4) collect nsys+perfetto on all ranks. Will share new traces tomorrow.
+Sasha G: if repro, let's also try throttling KV fill to see if NCCL ordering improves. :thinking:
+Maya R: ack, thanks for the trace and steps.

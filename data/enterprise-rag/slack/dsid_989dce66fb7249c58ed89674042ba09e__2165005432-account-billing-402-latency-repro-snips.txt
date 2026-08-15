@@ -1,0 +1,129 @@
+support
+
+maria_ops: Hey team — customer (AcmeCorp) reporting sudden 402 billing errors, then occasional 503s and very high tail latency. They sent a bunch of request-ids but we need a compact repro.
+
+alex_support: Thanks, maria. Can you paste the request-ids they saw? also which SDK/language?
+
+maria_ops: They attached these ids: req_20260301_aa1, req_20260301_ab2, req_20260301_ac3. Using python-sdk v1.4.2 from one of their backend services.
+
+sam_engineer: Quick ask — do we know if these came after a billing tier change or token key rotation? 402 could be billing, 503 might be a fallback.
+
+maria_ops: Billing team confirmed their billing card failed around 2026-03-01 05:10 UTC; they updated it at 05:40 UTC. Errors span 05:08–05:55 UTC.
+
+alex_support: OK. Still want a minimal repro to validate server behavior for that key. Ask customer for: curl reproducer, short Python/JS/Go snippet that replicates their callshape, and a debug bundle (env + logs + request-id list). Provide them templates.
+
+maria_ops: I can drop templates. Keeping them minimal.
+
+jess_oncall: Add this to the repro instructions: include the response headers (x-request-id, x-region, x-error-code) and enable SDK debug logging: `export REDWOOD_SDK_DEBUG=1` (Python) / `process.env.REDWOOD_SDK_DEBUG='1'` (Node).
+
+raj_sre: Also ask them to capture `curl -i` output to include headers. If they have intermittent 503s, instruct them to run a short loop and capture timestamps.
+
+alex_support: I'll paste a tiny curl and SDK snippets — adapt for their endpoint/key.
+
+alex_support: (paste)
+```bash
+# minimal curl reproducer — include headers
+curl -i -X POST https://api.redwood.ai/v1/completions \
+  -H "Authorization: Bearer $REDWOOD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"redwood-13b-alpha","input":"hello"}'
+```
+
+alex_support: (paste)
+```python
+# minimal python repro (requests-based)
+import os, requests
+headers = {"Authorization": f"Bearer {os.environ.get('REDWOOD_API_KEY')}", "Content-Type": "application/json"}
+resp = requests.post("https://api.redwood.ai/v1/completions", json={"model":"redwood-13b-alpha","input":"hello"}, headers=headers)
+print(resp.status_code)
+print(resp.headers.get('x-request-id'))
+print(resp.text[:1000])
+```
+
+alex_support: (paste)
+```javascript
+// minimal node repro (fetch)
+const fetch = require('node-fetch');
+(async () => {
+  const res = await fetch('https://api.redwood.ai/v1/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.REDWOOD_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'redwood-13b-alpha', input: 'hello' })
+  });
+  console.log(res.status);
+  console.log(res.headers.get('x-request-id'));
+  console.log((await res.text()).slice(0,1000));
+})();
+```
+
+alex_support: (paste)
+```go
+// minimal go repro
+package main
+import (
+  "bytes"
+  "fmt"
+  "net/http"
+  "os"
+)
+func main(){
+  apiKey := os.Getenv("REDWOOD_API_KEY")
+  reqBody := bytes.NewBufferString(`{"model":"redwood-13b-alpha","input":"hello"}`)
+  req, _ := http.NewRequest("POST","https://api.redwood.ai/v1/completions", reqBody)
+  req.Header.Set("Authorization","Bearer "+apiKey)
+  req.Header.Set("Content-Type","application/json")
+  client := &http.Client{}
+  res, _ := client.Do(req)
+  fmt.Println(res.StatusCode)
+  fmt.Println(res.Header.Get("x-request-id"))
+}
+```
+
+maria_ops: Great, can we also ask them to run a 30s loop to capture intermittent 503s? e.g., run curl in a for-loop with timestamps.
+
+raj_sre: Provide this tiny shell loop and request-id parsing:
+```bash
+for i in {1..30}; do echo "--- $(date -u +%H:%M:%S) ---"; curl -i -s -w "\nHTTP:%{http_code}\n" -X POST https://api.redwood.ai/v1/completions -H "Authorization: Bearer $REDWOOD_API_KEY" -H "Content-Type: application/json" -d '{"model":"redwood-13b-alpha","input":"hello"}' | sed -n '1,20p'; sleep 1; done
+```
+
+jess_oncall: When they hit a 402, ask them to capture the full response headers/body for the first 2 occurrences. For 503s, capture 5 occurrences if available.
+
+alex_support: We'll also request a minimal debug bundle:
+- SDK debug logs (set env var and reproduce)
+- Application logs around the requests (±1 minute)
+- The curl output + SDK snippet outputs (stdout)
+- List of request-ids (one per line)
+
+maria_ops: I'm going to message the customer with these templates. I'll ask them to upload to the secure support upload link and share a short summary.
+
+oncall-bot: Reminder — attach any uploaded debug bundles to ticket #INC-2026-121 and ensure PII redaction.
+
+sam_engineer: One more thing: include SDK version and platform (python version, node version). We had one issue where an older SDK didn't include request-id in certain error paths.
+
+maria_ops: noted. I'll ask them to run `python -V`, `node -v`, `pip show redwood-sdk` and paste versions.
+
+alex_support: If they can't reproduce publicly, ask for a short recorded terminal session (asciinema/gist) or sanitized output. Even a few lines with `curl -i` is enough.
+
+maria_ops: Messaging them now. Will post back here with the uploaded bundle link and request-ids once they send. :thumbsup:
+
+jess_oncall: Thanks — if they include request-ids we can correlate with the proxy logs and trace the region/route fallback.
+
+maria_ops: Uploaded bundle link: https://uploads.redwood.ai/sup/ACME-20260301-debug.tar.gz (customer provided). includes curl-run.log, sdk_debug.log, app.log, versions.txt, request_ids.txt
+
+alex_support: Perfect — I'll start correlating req ids: req_20260301_aa1, req_20260301_ab2, req_20260301_ac3. If anyone wants the grep queries I'll paste them here.
+
+raj_sre: Paste grep to look in the proxy logs for x-request-id: `grep -F "req_20260301_" /var/log/redwood/proxy/*.log` and then look for upstream code/latency fields.
+
+sam_engineer: Initial read — the bundle shows a flurry of 402 responses between 05:08 and 05:30, then a burst of 503s when their account was being re-enabled. Sounds like expected behavior for billing lockout but need to verify fallback logic didn't delay queues (leading to tail latency).
+
+maria_ops: Customer confirms their billing update happened at 05:40 and they saw a drop in 402s after that. They still saw a few 503s until 05:55.
+
+alex_support: I'll escalate to runtime team if we find any queued requests that timed out during reactivation. tagging @sam_engineer and @raj_sre.
+
+sam_engineer: I'll take the trace correlation next. Will report back with whether there was any queued request backlog.
+
+maria_ops: Thanks all — will update ticket with repro templates + bundle and hold for follow up.
+
+oncall-bot: Incident note added to INC-2026-121 (severity: low, owner: sam_engineer)
+
+alex_support: Closing loop for now — good repro artifacts, customer happy with instructions. We can reopen if traces show unexpected behavior. :white_check_mark:

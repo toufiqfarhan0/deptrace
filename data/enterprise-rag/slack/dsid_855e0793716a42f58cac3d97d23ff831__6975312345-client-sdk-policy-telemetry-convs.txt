@@ -1,0 +1,41 @@
+devex
+
+mike.t: FYI — proposing we rename internal routing header `x-redwood-route-intent` -> `x-rw-route` and change SDK telemetry sampling default from 1% -> 0.1% to cut console noise. Need compatibility plan for Py/TS/Go and a console migration path.
+
+sara.k: shorter header name ok, but what's motivating the telemetry sampling change? worried we lose signals for low-traffic tenants. :thinking_face:
+
+mike.t: main reasons: header size on high-throughput services + reduce amount of noisy route-attribution events in Console. sampling change is to reduce billing/ingest and make top-level metrics more stable. we should provide per-tenant overrides.
+
+laura.p: Py SDK: header rename is a breaking exposure. can we emit both headers for a grace period and log a deprecation warning in debug? that's the least churn for apps.
+
+alex.g: TS/Go agree with dual-header approach. In TS we can add an opt-in flag `acceptLegacyHeader: true` defaulting to true for N releases. Also expose `RW_SDK_TELEMETRY_SAMPLING` env var so infra teams can opt back up.
+
+jen.ops: Console implications: dashboards and quota attribution rely on header value mapping. We'll need to accept both keys and map them to the same route id during migration. Also add a `header_version` label so we can compare.
+
+sara.k: Regarding sampling: can the console let tenants request higher sampling for a short window? could be useful for debugging regressions.
+
+mike.t: Proposal outline: 1) SDKs send both headers (legacy + new) for 90 days. 2) SDKs default telemetry sampling to 0.1% in new releases but allow override via env / SDK config. 3) Console update to parse both keys and tag samples with header_version. 4) After 90 days, remove legacy header.
+
+alex.g: Implementation note for TS: add shim that writes `x-rw-route` from existing route metadata, and preserves legacy header until removal. we'll add a feature-flagged release so we can rollout.
+
+laura.p: I'll prepare a Py PR: include both headers when `compat_mode=True`, add debug warning. Also docstring with `RW_SDK_TELEMETRY_SAMPLING` and example `export RW_SDK_TELEMETRY_SAMPLING=0.001`. PR draft ready — pinging for review.
+
+jen.ops: Console rollout: create a migration toggle `ParseLegacyRouteHeader` (off by default in prod). We'll canary in staging for 3 weeks, then enable in prod in migration mode (parsing both but preferring new header for attribution). Also export a small dashboard comparing legacy vs new header attribution counts.
+
+mike.t: Agree. Can we also add a temporary deprecation header in responses? e.g., `x-rw-deprecation: route-header-legacy` — might help downstream proxies identify usage.
+
+sara.k: Good idea. But avoid exposing too much in public responses. limit to internal-only services.
+
+console-bot: [deploy-bot] Canary deploy of console parser + migration toggle scheduled for staging: 2025-11-06T22:00Z.
+
+jen.ops: Proposed timeline: this week — SDK patch releases with dual-header + env docs; next Wed — console parser update and migration toggle; 3-week canary; 6 weeks after console canary flip default sampling in minor SDK release if signals look ok.
+
+mike.t: Action items: laura: open Py PR & release notes; alex: TS/Go shims + release plan; jen: create console migration toggle + dashboard; sara: draft sampling docs + tenant override doc. I'll send a short FYI to partner teams after PRs land.
+
+sara.k: I'll draft docs and tenant override playbook.
+
+alex.g: ACK, will start TS/Go changes today.
+
+laura.p: PR link: https://github.com/redwood/py-sdk/pull/432 — tests passing.
+
+mike.t: Thanks — closing for now. I'll follow up with a summary email and timeline.

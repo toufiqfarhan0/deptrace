@@ -1,0 +1,32 @@
+eng-oncall
+
+incident-bot: PagerDuty alert fired: PD#847213 - latency_p95_high - /v1/generate - Hosted - us-west - triggered at 2630004567
+pagerduty-bot: Incident assigned to maya (oncall). Escalation policy: primary -> 2nd -> runtime-team if unresolved for 5m.
+maya: ack'd. I'm looking. any customer-facing errors?
+charlie: I see a small bump on the host pool, 95p went from 120ms -> 780ms for ~30s across a handful of shards. No 500s in logs right now.
+sam: noticed a couple of KV cache misses during that window, could be warmup + burst.
+maya: pulling traces and per-route qps. url filter: /v1/generate.
+charlie: copying grafana panels: request_rate, p95_latency_by_pool, gpu_mem_pressure. looks like a short blip on pool-hosted-3 around 14:23 UTC.
+maya: running quick check: `curl -s -o /dev/null -w "%{http_code} %{time_total}\n" https://api.redwood.example/v1/health` -> 200 0.086
+alex: I can flip traffic routing to pool-hosted-2 as fallback if this persists. should we?
+maya: hold for 2m, want to see if auto-resolves. @runtime-team FYI, might be kv/eviction warmup noise. Can you look at KV hit rates?
+runtime-team: looking. KV miss rate spiked 12% -> 48% for that window, likely index flush + simultaneous new requests. no control-plane errors.
+charlie: thanks. also seeing increased batch sizes from some long-seq requests, causing longer token times for that period.
+maya: mitigations: 1) temporarily increase max-concurrency on pool-hosted-3 to reduce queueing; 2) enable prefix cache for that route; 3) watch for customer errors. I'll apply (1) now.
+sam: +1 for prefix cache if runtime-team can flip.
+maya: ran `redwoodctl pool update pool-hosted-3 --max-concurrency 256` -> accepted.
+incident-bot: Change applied by maya.
+charlie: after the concurrency bump, p95 dropped back under 200ms within ~45s.
+maya: pinging customers: no error spikes in the outgoing customer-facing dashboards.
+alex: keeping fallback ready. will shift traffic if we see another sustained >60s over 500ms.
+pagerduty-bot: PD#847213 status: acknowledged by maya at 2630004570
+sam: suggestion: add short-lived KV prewarm job for high QPS routes to avoid simultaneous misses. filing a follow-up.
+maya: thanks — please link runbook and quick PR for prewarm. tagging @charlie for runbook edits.
+charlie: opened internal ticket INF-1227 with steps + dashboard annotation.
+incident-bot: PD#847213 auto-resolved by PagerDuty at 2630004619 (duration ~52s).
+maya: marking thread resolved. doing a quick postmortem note in the incident tracker, will include timeline and mitigation.
+alex: :thumbsup: good catch. leaving brief watch for next 30m.
+charlie: noted. adding a guard in the autoscaler to avoid capacity drops at that shard during warmups.
+sam: thanks all — closing from my side when you add the postmortem link. 
+maya: will attach INF-1227 link in the follow-up.
+incident-bot: Thread closed by maya at 2630004620

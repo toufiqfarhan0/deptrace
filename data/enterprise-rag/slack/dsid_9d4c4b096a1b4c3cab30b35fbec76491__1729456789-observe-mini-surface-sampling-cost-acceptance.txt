@@ -1,0 +1,102 @@
+product
+
+maya: quick sync — I'm proposing a very small observability surface for the console MVP we can commit to for next quarter. goal: dashboards + cheap tracing hooks + a cost breakdown card + basic error analytics. keep it launchable in 6 weeks.
+
+sam: sounds good. can you list what 'cheap tracing hooks' mean? like sampling only or instrumentation changes?
+
+maya: sampling only for now. the ask is: 1) capture traces for 5 hot paths (inference, enrich, routing, cache-hit, embed) 2) adaptive sampling by latency/error 3) ingest to existing trace store (no new infra). no full-span instrumentation.
+
+olivia: for dashboards — do we need per-model token cost or just per-route cost initially?
+
+maya: per-route today + a rollup for model family. per-token is expensive to compute in realtime; we'd calculate per-token periodically and show an estimate.
+
+dmitri: agree on rollup. also want a simple cost-sanity check rule: if card shows >20% week-over-week jump, flag it.
+
+kei: error analytics — grouping by error class + top 10 traces example. is on-call okay with that or do we need full root-cause links?
+
+sam: on-call wants actionable signals. grouping + a sample trace + a link to the code path is fine. no full RCA workflow in MVP.
+
+dmitri: sampling policy proposal (very rough):
+
+```
+- baseline sampling: 0.5% for all requests
+- tail-sampling: if latency > 200ms OR status >= 500 => sample 100%
+- error-dedup: dedupe identical stack traces per minute
+```
+
+olivia: that gets us errors + tails. might still miss regressions if baseline too low for low-volume customers.
+
+maya: agreed — add a config knob per-customer (default low) and an opt-in higher sampling for a small cohort of customers for first 2 weeks.
+
+sam: dashboard scope (MVP):
+- home card: aggregate QPS, p50/p95 latency, cost/day
+- cost breakdown card: model-family, route, region
+- errors card: top error types + trend
+- traces card: sampled recent traces for hot paths
+
+kei: question on cost data latency — how fresh? near-realtime (5–10m) acceptable?
+
+dmitri: 10m is fine. we'll use summarize-on-ingest to avoid heavy joins.
+
+maya: launch criteria proposal:
+1) dashboards render end-to-end for sandbox + staging + 2 enterprise customers
+2) tracing hooks capture tail/errors for hot paths and surface sample traces in UI
+3) cost overhead < 5% of request processing cost (measured in staging) — fallback: disable sampling
+4) basic alerts for error spike and cost jump configured and tested
+5) docs + quickstart + upgrade guide for Dedicated/Private
+
+olivia: can we guarantee 1) within 6 weeks? staging + sandbox yes. enterprise customers may need onboarding — suggest default to 2 pilot customers already committed (acme, nova)
+
+maya: acme confirmed. i'll reach out to nova today. if nova can't, we'll use internal beta customer.
+
+sam: implementation risks:
+- trace volume spikes if sampling rules misapplied
+- cost compute joins if we try per-token realtime
+- UI perf for traces card with many traces
+
+dmitri: mitigations:
+- rate limit trace ingestion and fail closed
+- pre-aggregate cost by route on write
+- cap traces UI at 50 samples and lazy-load
+
+kei: acceptance tests we should run:
+- simulate 2x traffic spike and ensure sampling stays within budget
+- inject synthetic errors and verify alert triggers + sample trace visible
+- verify cost breakouts match billing within 10% (daily)
+
+maya: owners
+- sam: trace ingestion + sampling rules
+- dmitri: cost aggregation pipeline
+- olivia: dashboard/UX and onboarding flows
+- kei: alerting + error grouping
+- maya: product acceptance + pilot coordination
+
+sam: timeline suggestion: week 1 instrumentation + sampling config, week 2 pipeline + cost rollups, week 3 UI cards + traces, week 4 pilot testing + docs, week 5 polish + SLO checks, week 6 launch window
+
+olivia: any must-cut items if we fall behind?
+- remove per-model rollup (keep per-route)
+- reduce traces card to only errors (no general tail traces)
+
+maya: agree. cuts are acceptable.
+
+deploy-bot: Deployment scheduled: staging/observability-mvp @ 2024-06-05T03:00:00Z
+
+sam: small config snippet I'll use for sampling (putting here for visibility):
+
+```
+sampling:
+  baseline: 0.005
+  tail_threshold_ms: 200
+  error_sample_rate: 1.0
+  per_customer_override: true
+```
+
+dmitri: noted. i'll add the dedupe stage in the pipeline.
+
+maya: next steps: owners to comment on feasibility by EOD Fri, i'll consolidate a trimmed spec and share with eng leads. thanks :rocket:
+
+kei: +1
+
+olivia: +1
+
+sam: +1

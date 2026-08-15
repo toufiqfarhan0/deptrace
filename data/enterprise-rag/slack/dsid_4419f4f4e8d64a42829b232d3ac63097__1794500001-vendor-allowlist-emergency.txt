@@ -1,0 +1,43 @@
+support
+
+jordan_support: Customer reports corporate card declined when trying to pay a renewal invoice. They get an acquirer message 'DECLINED_MCC_BLOCK' and say the vendor needs a PO. Can we reproduce and advise?
+
+alex_finance: Which org/account? MCC and merchant id would help — we block a few MCCs by default for corp cards.
+
+jordan_support: Org 98765, charge id 2f3d9a, merchant_id 4882, MCC 5311 (department stores). Customer says vendor refuses to take PO, so they attempted to pay with corp CC.
+
+payments-bot: payment_attempt fetched -> id=2f3d9a status=failed reason=card_declined subcode=DECLINED_MCC_BLOCK mcc=5311 acquirer=acme-pay
+
+mira_prod: Quick check: our MCC policy runs in payments-service policy check. If acquirer returns decline with that code we block early. Can someone run the payment attempt log?
+
+sam_dev: Reproduced locally by replaying attempt: 
+```
+GET /v1/payments/attempts/2f3d9a
+{"status":"failed","failure_reason":"DECLINED_MCC_BLOCK","mcc":5311}
+```
+Policy matched rule: org_default_mcc_block -> MCC 5311 -> action=decline.
+
+alex_finance: Customer argues this vendor is allowed for their business unit. We can do an org-scoped allowlist. Need finance/legal approval to make exception for merchant_id 4882. Also confirmed charge amount $12,400 — under their monthly spend limit.
+
+mira_prod: Operational question: do we want a temporary override path while we process a formal request? We have to scope to org+merchant to avoid exposing cards to all merchants in that MCC.
+
+sam_dev: I opened PAY-4532 to track a one-off override flow and applied a manual flag: "mcc_allowlist_override: org=98765 merchant=4882 expires=2026-03-19T23:59:00Z". Deployed the patch to staging and then prod canary.
+
+jordan_support: Customer needs this cleared today (renewal tomorrow). Any ETA?
+
+alex_finance: I can sign off on finance side now. Legal — ping @legal in ticket. If legal ok I'll approve permanent change, otherwise temporary override is fine.
+
+sam_dev: After applying override I retried capture on the same payment id -> success. 
+```
+POST /v1/payments/attempts/2f3d9a/capture
+{"status":"paid","paid_at":"2026-03-18T14:12:03Z"}
+```
+Payment id 2f3d9a now status=paid. Noted in ticket PAY-4532.
+
+mira_prod: Can we add a small audit note and email finance+customer success about the exception? Also recommend automating allowlist request via ticket form.
+
+jordan_support: Customer notified, confirmed charge went through :tada:. They'll still submit a PO to vendor, but glad renewal is done. Closing this incident and will follow up on PAY-4532 for automation.
+
+alex_finance: Filing an internal post-action: ensure merchant 4882 is evaluated by risk and legal before any persistent allowlist.
+
+payments-bot: Note: created event `mcc_allowlist_override_applied` actor=sam_dev context=PAY-4532

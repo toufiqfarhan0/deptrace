@@ -1,0 +1,33 @@
+eng-platform
+
+ash: noticed a surge of tiny-gang pods stuck Pending in apse1 for ~40m. nodes show GPUs but scheduler keeps skipping them
+maria: paste kube-events?
+ash: snippet:
+
+```
+Warning  FailedScheduling  38m  default-scheduler  0/120 nodes are available: 42 node(s) had taints that the pod didn't tolerate, 29 node(s) had insufficient resources, 49 node(s) didn't match node selectors.
+```
+
+ash: many nodes have taint redwood/alloc-id=alloc-* effect=NoSchedule stamped ~40m ago but we can't find pods for those alloc ids
+kevin: that sounds like stale allocation taints left after preemption; alloc-gc sometimes misses when apiserver throttles
+sam: infra-bot shows alloc-gc error earlier: TooManyRequests at 1715678000
+infra-bot: alloc-gc job failed: 429 TooManyRequests -> backing off
+maria: quick check to list nodes with alloc taints: `kubectl get nodes -o jsonpath='{range .items[*]}{@.metadata.name}:{@.metadata.taints}\n{end}' | grep redwood/alloc || true`
+maria: result: 49 nodes with redwood/alloc-* taints. sample: node-apse1-07: [{\"key\":\"redwood/alloc-id\",\"value\":\"alloc-b71f\",\"effect\":\"NoSchedule\"}]
+ash: no pods reference alloc-b71f
+kevin: safe GC suggestion: remove redwood/alloc-* taints only if node annotation redwood/alloc-heartbeat < now-6m AND no pod claims that alloc-id
+sam: +1. small race if eviction just finished; 6m gives cushion. also add leader lock so only one GC per region runs
+maria: running a dry-run one-off check now (`kubectl run alloc-gc-check --image=alpine --restart=Never -- sh -c "python -c '...check nodes and print candidates'"`)
+maria: dry-run output: 49 stale taints found, 14 nodes would be untainted
+ash: freeing 14 nodes would unblock ~130 tiny-gang pending pods
+kevin: mitigation plan: 1) run GC with region lock and heartbeat check 2) temporarily shrink apse1 warmpool by 10% to free extra capacity 3) patch scheduler scoring to deweight breadcrumb and penalize stale-heartbeat nodes
+sam: I'll watch evictions; if eviction rate spikes > 6/min we roll back
+maria: infra#2410 opened with dry-run logs; fixing alloc-gc backoff and adding leader lock
+infra-bot: deployed alloc-gc v0.3.2 -> backoff jitter and leader lock enabled
+kevin: executing GC now with criteria: taint age > 7m and no matching pod -> untainting candidates
+maria: applied changes, 14 nodes untainted
+ash: pending reduced 360 -> 92 in ~4m, scheduler resumed placements
+sam: eviction rate steady at 0.9/min, nvlink and network metrics normal
+ash: follow-ups: ash -> PR to scheduler to add heartbeat-aware scoring and lower breadcrumb weight; maria -> harden alloc-gc, add regional locks and better apiserver retries; sam -> dashboard + pager for alloc-taint spikes
+maria: ETA GC hardening EOD; ash: ETA scheduler PR tomorrow morning
+kevin: thanks team, closing thread. :thumbsup:

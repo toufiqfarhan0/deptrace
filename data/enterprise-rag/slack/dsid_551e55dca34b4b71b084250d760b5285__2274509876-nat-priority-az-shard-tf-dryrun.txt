@@ -1,0 +1,40 @@
+eng-infra
+
+alex: Heads-up — I'm running a terraform plan (dry-run) for a change that adjusts NAT egress priority ordering across AZ shards so each subnet prefers local NATGW then falls back. Planning to canary in staging first. PR: https://github.com/redwood-inference/infra/pull/1234 :eyes:
+
+terraform-bot: terraform plan summary attached by alex (dry-run):
+```
+# module.egress.aws_route.nat (update in-place)
+  ~ priority            = 100 -> 50
+  ~ route_table_id      = "rtb-aaa" -> "rtb-aaa"
+  ~ nat_gateway_id      = "nat-1" -> "nat-1"
+
+# module.subnet.aws_route_table_association.main (replacement)
+  - resource will be replaced due to ordering change
+```
+
+maya: Quick question — are we changing any `depends_on` for route_table_association? if the association gets recreated during apply it might momentarily blow away the route and cause short egress failures in the AZ.
+
+alex: Good point. I added an explicit `depends_on = [aws_nat_gateway.primary]` to the association to avoid detaching before NAT is ready. Also added `create_before_destroy = false` so we don't attempt a side-by-side assoc swap.
+
+sam: Will that interfere with TGW route propagation or PrivateLink endpoints in the same subnet? I remember an earlier change where route replacement caused propagated routes to re-evaluate.
+
+priya: If propagated routes are in play, the plan shows no TGW route changes, but double-check that `aws_route_table_propagation` resources aren't implicitly tied to the association resource address. I suggest a staging canary limited to shard-b AZ only (`var.egress_canary_shards = ["shard-b"]`).
+
+alex: Yup, adding the canary var now. Also adding a small smoke test job that curls an internal service and checks NAT EIP seen by the service. Will only flip for staging shard-b.
+
+maya: Also: please ensure the NAT EIP pool has headroom; if we create/destroy natgw for the canary we need available EIPs in the account. I tagged @cloud-costs in the PR for EIP quota check.
+
+sam: One more nit — route_table_association ordering: Terraform shows replacement; can we add lifecycle ignore_changes for `association_id` so we don't replace during minor priority updates? Might avoid the recreation.
+
+alex: Tried `ignore_changes` but we still change the `route` resource priority which seems to force reattach in our module layout. Short-term fix = canary + maintenance window for production apply. Long-term: refactor module to separate route updates from associations.
+
+priya: Works for me. I left an inline comment on the PR with a link to the staging job and smoke test steps.
+
+alex: Thanks — I'll run the staged apply tomorrow 03:30 UTC, monitor for 15m, then proceed. If anyone sees issues, ping me or rollback with `tfstate` snapshot.
+
+sam: :thumbsup: please add a blameless postmortem checklist entry in the PR in case we see partial failure (who to page, rollback steps, EIP targets).
+
+terraform-bot: dry-run complete (no resources will be created in this plan).
+
+alex: Awesome — merging canary PR into staging now. Will update thread after staging smoke pass.

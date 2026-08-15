@@ -1,0 +1,28 @@
+customer-success
+
+Maria (CS): Hey team — planning a special weekend cohort-zero "onboard + quick labs" run next Sat/Sun. Trying to map facilitators + 1:1 intake slots. Who can take morning vs afternoon? :calendar:
+AJ (Enablement): I can do Sat morning (PST) and Sun afternoon. I can cover the routing+dedicated migration module.
+Lee (Solutions): Sat afternoon (EST) for me. I want to run the 'model pinning + rollout' mini-demo. Need a 20m slot.
+Sasha (Customer): Quick note from our side — a few attendees are in CET. Can we keep at least one session late morning CET / early afternoon CET?
+Maria (CS): Good flag, Sasha. Proposal: Sat 10:00 PDT / 18:00 CET (introduction + agenda), Sat 14:00 PDT deep-dive, Sun 09:00 PDT hands-on labs. Does that cover it?
+Jamie (Product): Agenda draft attached in thread below. Short bullets: 1) onboarding checklist 2) infra choices (hosted vs private) 3) migration plan + tools 4) live Q&A 5) feedback pulse. Can we have a 10-min feedback pulse at end?
+AJ (Enablement): +1 on feedback pulse. I can prepare a 5-question poll (NPS-style + 4 quick checkbox items). I can share a link during closing.
+Lee (Solutions): For hands-on labs we need a reproducible dataset and a short prompt set. I can put the prompts in this gist: https://gist.github.com/lee/redwood-cohort0-prompts
+Maria (CS): Signup sheet (please add your name + timezone + preferred slot):
+```
+https://docs.google.com/spreadsheets/d/1ExampleSignupLink/edit
+```
+Maria (CS): Also adding a short intake form for customers to capture their primary use-case and blockers — helps tailor labs. Form: https://forms.gle/example-intake
+Sasha (Customer): I've shared the intake with my team. A few will mark 'privacy/compliance' as blocker — could we add a 5m compliance blurb?
+Jamie (Product): Yes — I'll add a 5m compliance + KMS slide into the intro.
+cs-bot: Reminder scheduled: "Cohort-0 weekend onboard — facilitator check" will post 48h before event.
+AJ (Enablement): Quick capacity note: we have 24 seats per session. If we exceed, we should spin a second hands-on instance (Lee can help).
+Maria (CS): Great — next actions: 1) Everyone add yourself to signup by EOD Thu 2) AJ to share poll link and brief poll copy 3) Lee to drop gist and lab artifact link 4) Jamie to update slides w/ compliance blurb. I'll send final calendar invites Fri morning.
+Sasha (Customer): Thanks — can we also add a short optional 'office hours' 30m drop-in on Mon? Would be helpful for follow-ups.
+Maria (CS): Yes — tentatively penciled Mon 16:00 CET / 07:00 PDT. I'll include RSVP as optional.
+AJ (Enablement): Sounds good.
+Lee (Solutions): Fine by me.
+Maria (CS): Awesome — will post the final schedule here once invites are sent. :thumbsup:
+Maria (CS): Post-event plan: quick 24h feedback pulse, collate CS notes, create action items for any renewal/enablement follow-ups.
+Jamie (Product): I'll own collating the feedback and turning it into an action tracker.
+Maria (CS): Thanks all.

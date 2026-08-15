@@ -1,0 +1,43 @@
+eng-runtime
+
+Ella (Support): heads-up: Customer 'Streamly' opened a P0 for p99 spikes on hosted API since ~09:15UTC. They report baseline p99 ~420ms -> 1.6s. Most affected on model: gpt-open-7b-quant, route eu-west-1. sample req-id: r_9c3b2f1c. Logs show GPU memory trending up, occasional OOM log on worker but mostly huge stall before OOM.
+
+Olive (Customer Success): customer says it started after they enabled long-lived chat sessions (keep_kv=true) and upped max_tokens. They also sent a repro curl.
+
+Ella (Support): repro curl attached in thread: ```curl -X POST https://api.redwood.ai/v1/generate -H 'Authorization: Bearer <KEY>' -d '{"model":"gpt-open-7b-quant","messages":[{"role":"user","content":"..."}],"max_new_tokens":2048,"keep_kv":true}'```
+
+Jae (EngRuntime): looking. I see increased KV-cache entries per session and per-token GPU alloc growth. Heap/allocator fragmenting. Host logs (eu-w1-gpu-17) show GPU RSS climbing ~10GB over 45m. P95 heatmap aligns with heavy long sessions.
+
+Maya (EngSRE): tagging metrics: infra.metrics.gpu.rss, runtime.kv.entries_per_session, runtime.alloc.retained_by_arena. Quick query: p99 latency jump started at 09:12UTC aligning with a spike in kv entries.
+
+Jae (EngRuntime): hypothesis: quantized model uses large per-token KV and allocator (jemalloc) arenas keep fragmented pages -> slowdowns at alloc path and occasional soft-OOMs that trigger reorder/backpressure in runtime. Not immediate kernel OOM but stalls.
+
+Maya (EngSRE): can we reproduce locally? Steps?
+
+Jae (EngRuntime): repro steps I used on staging: 1) spin up a single worker with same build + 7b quant on T4 (similar mem). 2) run concurrent 40 sessions, each keep_kv true, feed 1k-token prefixes repeatedly. 3) observe rss and arena stats with: ```nvidia-smi dmon -s u```, runtime exposes `/metrics` with `runtime_kv_entries_total{session}` and `jemalloc_stats` endpoint.
+
+Jae (EngRuntime): on repro I saw fragmentation: jemalloc retained >> active; arenas had many small free runs -> realloc cost high. A quick mitigation that helped: periodic compact + eviction of oldest prefix when session KV > 2.5M tokens. Implemented via config toggle `kv.max_entries_per_session`.
+
+Ella (Support): did toggling that config fix customer?
+
+Olive (Customer Success): we pushed a temp config change for Streamly (kv.max_entries_per_session=2_000_000) at 09:40UTC and p99 dropped to ~480ms within one routing flush. Customer acknowledged degraded UX for long sessions but accepts as temporary.
+
+Maya (EngSRE): performed rolling restart of workers on eu-west-1 to free fragmented memory at 10:05UTC. Added temporary route rule to steer new chat sessions to nodes with >40GB free GPU.
+
+Jae (EngRuntime): longer-term fixes proposed: 1) jemalloc tuning: enable background purging and set arena decay to aggressive; 2) KV compaction routine to merge small KV blocks periodically; 3) hard cap on KV per session + graceful eviction API; 4) fallback to smaller model variant when node mem >80% used.
+
+Jae (EngRuntime): quick patch PR: ```runtime: add kv.max_entries_per_session, evict oldest chunks when exceeded; jemalloc: set MALLOC_CONF=\"lg_dirty_mult:0,background_thread:yes,decay_time:1\"``` will follow up with perf numbers.
+
+Maya (EngSRE): note: need to test background_thread on our kernel images (some older distros had libjemalloc incompatible). I'll validate on staging cluster.
+
+Ella (Support): customer requested repro steps & mitigations summary — sent them the temporary fix notes and timeline.
+
+Olive (Customer Success): customer asked for a roadmap ETA. We said short-term config + restart done, medium-term (jemalloc tuning + compaction) ~2 weeks, long-term (model fallback + dashboarding) ~4-6 weeks. They were ok.
+
+Jae (EngRuntime): next actions: 1) open RFC for KV compaction design, 2) create canary job to validate jemalloc background purge on staging images, 3) add runtime metric alert for "kv.entries_per_session > 2M for >5m" to avoid silent regressions.
+
+Maya (EngSRE): I'll add the alert and schedule a rolling restart window for eu-west-1 during off-peak.
+
+deploy-bot: deployment roll started for config change (kv.max_entries_per_session) on eu-west-1 at 09:39:58 UTC :rocket:
+
+Ella (Support): closing for now, will reopen if the p99 resurfaces after restarts. Thanks all. :thumbsup:

@@ -1,0 +1,26 @@
+eng-releases
+
+alex: Quick heads-up — PR #4321 is green and fixes the memory regression in the serving runtime we saw on long sequences. Need one more approval + a changelog line before we cut tomorrow 10:00 PT. CI: all green except a flaky e2e that passed on rerun. PR: https://github.com/redwood-inference/repo/pull/4321 :eyes:
+
+maria: On it. I can review in ~20m. Do we want to backport to v1.6 as well if we cut a patch? It touches KV cache behavior so could be relevant for older clusters.
+
+alex: Good q — prefer to decide by noon. If we're doing a patch cut we should backport; for a minor we can skip. Changelog suggestion added to PR body: "fix(runtime): reduce KV cache memory during long sequences — fixes OOM on n1 instances (#4321)"
+
+priya: skimmed the patch, makes sense. Left one tiny comment about test names (non-blocking). If that gets fixed I'm happy to approve. :thumbsup:
+
+sam: I can take the final approval after the nit is addressed. Also reminder: add `release-notes` label and milestone `v1.7.0` so release tooling picks it up.
+
+alex: done — added label + milestone and updated PR body with changelog snippet. Merge plan: if approvals done I'll merge at 09:30 PT and run the release script. Commands I run locally: ```bash
+# dry run first
+./scripts/cut_release.sh v1.7.0 --dry-run
+# then real cut
+./scripts/cut_release.sh v1.7.0
+```
+
+deploy-bot: CI pipeline finished successfully for commit abc1234. e2e rerun passed. Artifacts uploaded to gs://redwood-releases/v1.7.0/abc1234 :white_check_mark:
+
+lee: quick check — any DB migration required? I don't think so but want to be sure we won't need a manual step during cut.
+
+maria: no migrations in this PR, safe to proceed. :shipit:
+
+alex: OK planning to merge at 09:30 PT and cut at 10:00 PT if no objections. Tagging @oncall for a short post-release watch. If anyone needs a backport, speak up before noon so we can queue it. Thanks all! :rocket:

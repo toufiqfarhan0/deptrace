@@ -1,0 +1,54 @@
+sales
+
+Katie (Sales): quick heads-up — ACME wants a 2-week trial starting Mon 3/29. They need Hosted API keys initially and the option to switch to Dedicated (and VPC peering) in week 2. Can we get a short provisioning checklist + who owns each step?
+
+Mike (SE): got it. what are their perf targets? qps, avg tokens, models? also confirm if they need HA across regions.
+
+Katie (Sales): target ~= 50 qps peak, ~3k tokens avg. Model family: open-weights (LlamaX-13B) and want Redwood-managed variant. No cross-region HA for the trial.
+
+Dave (Eng): for Dedicated we'll need: region, pool size (gpus), model artifact tag, quantization profile allowed? do we want burst capacity?
+
+Katie (Sales): they asked for burst to cover demo spikes. say +20% burst. Quantization ok if quality checks pass.
+
+Priya (Partner Success): i'll own the key rotation and onboarding session. i can provision the hosted keys + analytics invite. need customer's admin email and SSO domain for invites.
+
+Carlos (Security): note from security — they'll send an SCC questionnaire and expect KMS for any private deployment. also must do IP allowlist for peering. no public buckets. send them our security brief.
+
+Mike (SE): drafting an "env provisioning checklist" — pasting lightweight runbook below for trial flow. feedback welcome.
+
+```
+Trial provisioning runbook (2-week hosted -> dedicated trial)
+
+1) Intake (sales) - collect: customer admin email, SSO domain, desired region, perf targets (qps, tokens, models), legal PO if needed.
+2) Security screen (security) - confirm questionnaire scope, KMS requirement, IP ranges for peering, any data residency constraints.
+3) Hosted API keys (infra/ps) - create short-lived hosted key for sandbox + attach usage quotas (rate limit: 60 qps initially).
+   Example: curl -X POST https://api.redwood.ai/v1/keys 
+     -H 'Authorization: Bearer <ops-token>' 
+     -d '{"name":"acme-trial-hosted","ttl_hours":336}'
+4) Dedicated request (eng) - submit capacity form: region, GPU type (#cards), burst policy, model tag. Expected lead time: 48-72h.
+5) Dedicated provisioning (infra) - provision pool, set autoscale & burst, apply network ACL.
+6) VPC peering / Private (infra/security) - exchange IP ranges, set up peering, provide route/test plan. This is optional and usually done in week 2.
+7) Monitoring & cost controls (product/ps) - enable per-route dashboards, token alerting, and temporary budget caps.
+8) Quality check (se) - run smoke prompts/evals, compare outputs to baseline. If quantized model used, run regression check.
+9) Handoff & documentation (ps/sales) - share keys, dashboard links, runbook, and contact list.
+
+Owners: Sales -> step 1, Security(Carlos) -> step 2, Priya -> step 3+9, Dave -> step 4, Infra -> step 5+6, Mike -> step 8, Emma(Product) -> step 7
+
+Quick notes: keep keys short-lived for trial, enable request-level tracing, and annotate requests with `x-customer:acme` header.
+```
+
+infra-bot: Request received: `dedicated-pool-template` -> job #4572 queued. ETA ~2h for capacity estimate. :gear:
+
+Dave (Eng): job #4572 looks good, i'll attach a model compatibility check. need to know whether ACME accepts quantized fp4.
+
+Katie (Sales): they said fp4 is acceptable for cost reasons but want a 10% quality regression guardrail.
+
+Mike (SE): noted. i'll prepare a small eval set and send to the ACME engagement PM. once approved we run quantized build in staging.
+
+Priya (Partner Success): created hosted key `acme-trial-hosted` and invited customer analytics account to the console. sent calendar invite for onboarding (30m) tomorrow. :white_check_mark:
+
+Carlos (Security): uploaded the security brief to their shared drive and requested SOC2 attestation. asked for IP ranges to start peering prep.
+
+Emma (Product): suggest enabling token-level cost alerts and a temporary soft-limit at $500/day to avoid surprises.
+
+Katie (Sales): perfect — assigning owners and tracking. i'll post an update in the ACME deal thread. thanks all! :rocket:

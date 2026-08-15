@@ -1,0 +1,40 @@
+eng-platform
+
+Alex G: Heads-up — saw a surge of preemptions in us-west1 around 02:14 UTC, looks correlated with warmpool scale-down. ~40 GPU jobs preempted in a ~6m window.
+Maria L: Got the same alert. Cost/capacity bot fired at 02:12, warmpool dropped from 120 -> 70 nodes in ~5m.
+Jamal R: Early look — one provisioning failure in us-west1b caused global warmpool autoscaler to rebalance aggressively; it treated transient drop as persistent demand drop.
+Priya S: Customers reported higher latencies too, some batch jobs restarted. Estimated wasted runtime ~3,600 GPU-minutes, rough calc.
+Alex G: Pasted a snippet from node events and pod statuses: 
+```
+$ kubectl get pods -n prod | grep Pending
+ml-train-321 Pending (Preempted)
+ml-train-322 Running
+inference-frontend-7d8 Pending (Evicted: preemption)
+```
+and node events: 
+```
+Warning  NodePreempted  6m  kube-scheduler  Preempting pods to free GPUs
+Warning  NodeDowned     6m  node-provisioner  Failed allocation: timeout
+```
+Maria L: The autoscaler config is global and currently uses 3m cooldown + scale delta thresholds. We need AZ-aware cooldown and minimum per-AZ reserves.
+Jamal R: Agreed — warmpool scaler should not be purely global for GPUs. When one AZ fails, it should limit downstream scale-down in other AZs. Otherwise you get a rippleback.
+Priya S: Short-term mitigation suggestions: bump warmpool min for affected AZs, increase cooldown to 10m, and disable aggressive shrink until we patch. Also add a filter so pods with toleration `long-training=true` aren't considered preemptable.
+Alex G: Proposed config change (canary): 
+```
+warmpool:
+  min_per_az: 12
+  cooldown_seconds: 600
+  global_max_delta_pct: 10
+  az_awareness: true
+  respect_taints: ["long-training"]
+```
+Will canary in us-west1 for 2 hours.
+Maria L: Also adding metric guard: if `provision_fail_rate > 0.05` for 10m, pause scale-down for 30m. That should stop thrash.
+Jamal R: Longer-term: autoscaler should use per-az headroom and prefer draining low-priority pods first (backfill), not mass shrink. Could also introduce a soft-reserve for training workloads.
+Priya S: Operational notes: need to notify sales/customers impacted, cost team for chargeback, and open an incident ticket. I'll draft the customer note.
+Alex G: I'll open infra ticket with root-cause (provision timeout cascade -> global shrink). Assigning to eng-platform + eng-infra for follow-up.
+Maria L: I'll run the canary config now against us-west1 and watch `gpu_preemptions` and `pending_pods` graphs. If preemptions drop, we roll to other regions.
+sre-bot: deploy succeeded — warmpool-config v2 canary applied to cluster-autoscaler-us-west1 (deploy id: da3f7). :white_check_mark:
+Jamal R: :thumbsup: watching logs. If we still see preemptions after config, next step is to temporarily pin warmpool nodes for 15m and manually rebalance.
+Priya S: Action items: 1) Alex open ticket + postmortem 2) Maria run canary and share dashboards 3) Jamal work on per-AZ headroom change proposal 4) Priya draft customer note.
+Alex G: I'll set up a brief postmortem tomorrow 09:30 PT. Thanks all.

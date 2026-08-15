@@ -1,0 +1,59 @@
+eng-ml
+
+liv: quick check — do we have the canonical S3 path for zephyr-7b v0.9 weights? e2e reported a tokenizer mismatch and I want to triage before the golden run tonight.
+
+sanjay: s3://rwd-inference/weights/zephyr/7b/v0.9/ (public-read off). I pushed a small sha-tagged manifest at the same prefix: manifest.v0.9.json.
+
+aj: thanks. what was the tokenizer mismatch? short summary pls — was it special tokens mapping or byte-level offsets?
+
+liv: runtime test logs show truncated system prompts on long prefix cases. looks like the tokenizer emitted a stray <unk> for the "<user_meta>" token in a handful of prompts. not a full break but it skews structured output alignment.
+
+maria: this can break our structured tool-calling tests. can we add a quick golden prompt that exercises the <user_meta> slot? i'll add to the regression harness if we confirm the tokenization.
+
+aj: repro snippet I ran locally:```python
+from tokenizers import Tokenizer
+t = Tokenizer.from_file('tokenizer.json')
+print(t.encode('hello <user_meta> goodbye').tokens)
+```
+On my machine it returns ['hello', '<unk>', 'goodbye'] with the shipped tokenizer.json.
+
+sanjay: aha — that explains it. the tokenizer build we packaged used the merge rules from an older tokenizer-regex branch. fix is to rebuild with merge-v2 rules. I'll trigger a rebuild, upload new tokenizer.json and link manifest.sha.
+
+liv: ideal — can you also confirm max_seq_len and kv cache flags in the model config? golden runs assume max_seq_len=4096 and kv_cache enabled.
+
+infra-bot: deploy-check: model-config.yaml parsed ok on staging, kv_cache_enabled: true, max_seq_len: 4096, tool_calling: enabled. (check-id: dc-1745-09)
+
+maria: once tokenizer is updated i'll add two golden prompts: one that includes <user_meta> and one long prefix to validate kvcache boundary. i'll run the structured-output eval and post a short diff.
+
+aj: quick config lint to run locally:```yaml
+model_name: zephyr-7b
+weights_path: s3://rwd-inference/weights/zephyr/7b/v0.9/
+tokenizer_path: s3://rwd-inference/tokenizers/zephyr/7b/v0.9/tokenizer.json
+max_seq_len: 4096
+kv_cache_enabled: true
+tool_calling: true
+structured_schema: order_v1
+```
+please confirm before running the golden suite.
+
+sanjay: rebuilding tokenizer now, ETA ~20m. will update manifest.v0.9.json with new sha and post the new s3 paths here.
+
+liv: cool — if infra-bot's staging parse stays green and maria's golden diffs are tiny we can proceed with the night regression. if anything spikes, call the canary rollback. :thumbsup:
+
+maria: noted. i'll wait for the new tokenizer then kick off the eval-run and paste the short summary here.
+
+infra-bot: artifact-upload: tokenizer.json uploaded to s3://rwd-inference/tokenizers/zephyr/7b/v0.9/tokenizer.json (sha256: b3f2a9...). scan: no secrets. (artifact-id: tknr-1745-01)
+
+sanjay: rebuilt and updated manifest.v0.9.json with new sha. pushed ACLs so staging can pull.
+
+aj: re-ran the repro snippet, tokens now: ['hello', '<user_meta>', 'goodbye'] — looks good.
+
+maria: started structured-output regression (golden set subset). first pass: 120/125 exact schema matches, 4 tolerable format diffs, 1 failure (long prefix kvcache boundary). investigating the 1 failure now.
+
+liv: nice progress. ping me if the kv boundary issue isn't fixed by config tweaks — we'll schedule a quick sync.
+
+sanjay: digging into that kv boundary case, I suspect a batching artifact. will share a small trace in this thread shortly.
+
+liv: thanks all. small ask: when you post traces, please include the eval-run id and the small repro so we can triage async.
+
+maria: will do — eval-run id: er-2024-1745-zephyr7b-1. posting repro in 10m. :rocket:

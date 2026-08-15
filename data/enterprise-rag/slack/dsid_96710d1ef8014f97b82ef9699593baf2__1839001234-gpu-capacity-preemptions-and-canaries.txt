@@ -1,0 +1,72 @@
+all-hands
+
+dena: Quick follow-up from today's all-hands infra segment — dropping questions here so we have a single thread.
+
+frank: thanks dena. first: what's the real ETA for the extra V100 -> A100 replacements? heard various dates.
+
+santiago: vendor schedule is updated: initial test rack arrives week of Jun 2, bulk through Jun/Jul. These are targeted for us-east-1 and eu-central-1 first.
+
+hana: are these going to be hot-swapped into existing pools or spun up as separate 'alpha' pools?
+
+santiago: spin-up as separate labeled pools (alpha-a100-*). We'll run hardware validation and a short perf sweep, then migrate workloads by label. No hot-swap to avoid noisy neighbor blast.
+
+frank: for Dedicated customers with contracts, can we pre-reserve specific racks?
+santiago: yes, sales can earmark racks. We need a signed LOA and inventory lead time (typically 10 business days) to freeze annotations.
+
+dena: question re: preemption and queued jobs — will new autoscaler change preemption behavior? we've seen long waits on low-priority queues.
+
+frank: +1 on this, some infra tests time out waiting for free slots.
+
+hana: current plan: introduce a soft-preempt window and a fast-path for short jobs. TL;DR: jobs under 10s can take burst tokens from burstable pools; preemption only if queued > 120s and capacity needed for reserved tiers.
+
+infra-bot: [deploy-notice] autoscaler v2 config landed to staging at 2025-05-01T14:03Z.
+
+dena: can we see the routing snippet we'll use? helps dev teams validate fallbacks.
+
+santiago: pasted a simplified router proto (internal):
+
+```
+route {
+  name: "gen-api"
+  prefer: ["prod-dedicated", "alpha-a100"]
+  fallback: ["shared-burst", "quantized-fallback"]
+  preempt_policy: {
+    threshold_sec: 120
+    allow_short_jobs: true
+    short_job_max: 10
+  }
+}
+```
+
+frank: where does region affinity fit? e.g., EU customers must not cross to us-east.
+
+hana: per-tenant region constraints are enforced at the top of routing. if a route disallows a region, it's removed from prefer/fallback lists before eval.
+
+product-ops: any planned migration freeze windows we should schedule around? we need to avoid major product pushes during canaries.
+
+santiago: canary plan: 72h staged canary starting Jun 3 in alpha-a100 in a single AZ, then 48h in other AZs before opening to low-volume routes. we'll publish exact dates Tue. I recommend a migration freeze Jun 3-7 for non-critical product deploys.
+
+dena: will monitoring include model quality signals? we don't want quantized fallbacks silently degrading LLM outputs.
+
+hana: yes, we added signal collection: response-length variance, hallucination-rate sampling from golden prompts, and token entropy delta. Alerts fire if quality delta > 3% for 1h.
+
+frank: action items:
+- hana: finalize preempt thresholds and short-job token bucket (due May 20)
+- eng-platform (santiago): publish canary schedule + AZ list (due May 23)
+- sales: collect Dedicated rack requests and LOAs (due May 27)
+
+infra-bot: [link] canary runbook: https://redwood.internal/runbooks/canary-a100-2025 (access: eng-platform, eng-sre, sales)
+
+dena: i'll collate a list of high-SLA routes that must opt-out of quantized fallbacks and post it by Tue.
+
+frank: please also include any internal perf tests we can run against alpha pools so we can compare p95 token latency.
+
+hana: will add perf test harness to the runbook.
+
+product-ops: noted the freeze window. we'll coordinate calendar invites and do-not-deploy tags.
+
+dena: thanks all. will reconvene here when we have tracking numbers or if anything slips.
+
+santiago: thanks — i'll ping the thread with vendor tracking once it's available.
+
+infra-bot: [automated] summary saved to /ops/all-hands-followups/2025-05-01.json

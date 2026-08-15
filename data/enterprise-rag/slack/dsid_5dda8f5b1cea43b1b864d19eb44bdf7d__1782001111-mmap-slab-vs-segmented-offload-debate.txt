@@ -1,0 +1,39 @@
+eng-runtime
+
+alexander: quick question — re: CPU-offload for KV cache, are we leaning toward an mmap-backed slab allocator or a segmented allocator with explicit eviction lists?
+mei-chen: hmm. my gut is slab for predictability, but mmap semantics+COW worries me for private deployments.
+jordan_w: slab makes fast allocations but can fragment if object sizes vary. segmented (variable-size heaps) reduces internal waste but costs alloc/free overhead.
+sara: also consider cold-start: slab + madvise(DONTNEED) lets us drop pages quickly when under memory pressure; segmented needs walking freelists which is slower.
+alexander: good point. for private deployments we need safe file-backed pages (KMS/HSM) and we can't have accidental persistence. MAP_PRIVATE vs MAP_SHARED debate.
+igor: propose hybrid: large fixed-size slabs for common lengths (1k/8k/64k) + a fallback segmented arena for outliers. gives quick path for hot paths, graceful for tail allocations.
+alexander: i like hybrid. implementation detail: use anonymous mmaps for slabs w/ MAP_NORESERVE and use madvise to evict. fallback arena uses mmaped anonymous + explicit free lists stored in a header page.
+mei-chen: is MAP_NORESERVE portable across our supported kernels (GCE/EC2/on-prem RHEL)? it behaves differently under OOM.
+jordan_w: true; also SEGV on overcommit can bite. We should add guard pages and a small OOM handler that marks slabs read-only and triggers eviction pipeline.
+sara: ops concern: when offloading across PCIe we copy pages into pinned host buffers. alignment matters — slab sizes should align to 2MB hugepage ideally to reduce TLB pressure and DMA scatter.
+alexander: good catch — for GPU pinned stage we should align slab base to 2MB and support a pinned-allocator view that maps the same region with hugetlb where available.
+igor: tradeoffs: hugetlb reduces fragmentation but steals from system hugepage pool and needs root or cgroup setup. Can't assume on customer-managed private installs.
+mei-chen: question: how do we version on-disk layout for Private deployments? If we change slab header we need migration. Maybe keep header minimal and store metadata in control-plane only.
+jordan_w: agree — file-backed layout should be opaque to on-disk; treat it as cache backing. If we change format, just drop and rebuild cache. no migration. document that explicitly.
+sara: operational: add metrics: slab-utilization, fragmentation-estimate (free_bytes/total_bytes), eviction-latency histogram, mmap-fail-rate. alert on fragmentation > 70% and eviction latency > 200ms.
+alexander: implementation TODOs: 1) prototype hybrid in runtime; 2) microbench slab alloc/free path (<100ns target), fallback path <500ns; 3) paging integration test with pinned DMA; 4) run on RHEL/Ubuntu kernels with overcommit toggled.
+igor: small RFC note: expose allocator boundary API: allocate(size, preferred_slab_pool=true) + try_evict(size_needed) + async_prefetch_for_gpu(ptr, len). keep ABI minimal.
+mei-chen: sample pseudocode for slab header i proposed earlier:
+```
+struct slab_header {
+  uint64_t pool_id;
+  uint64_t chunk_size;
+  uint64_t total_chunks;
+  atomic<uint64_t> free_bitmap_offset;
+  uint64_t reserved_for_pinned; // bytes currently pinned
+}
+```
+alexander: +1. keep header <= 4KB and aligned. Use 64-bit counters to avoid rollover in long-lived hosts.
+sara: can we add a conservative compaction pass: when fragmentation crosses threshold, move live objects into fresh slab and madvise(DONTNEED) old slab. This is async and throttled.
+jordan_w: sounds good. need to snapshot pointers / use read-copy-update to avoid races. complexity but doable.
+deploy-bot: deployment scheduled: allocator-hybrid-prototype -> staging at 2026-04-03T03:00:00Z
+alexander: thanks everyone. i'll sketch an ADR and code spike. followups: assign owners? mei-chen for kernel-compat, jordan_w for eviction algorithm, igor for API surface, sara for metrics/alerts.
+mei-chen: assigned. i'll start kernel matrix and list breaking behaviors.
+igor: will draft allocator-API RFC end of week.
+jordan_w: i'll add microbench harness and baseline numbers.
+sara: i'll add alert playbook and dashboards.
+alexander: perfect. I'll push a short design doc to the rfc repo today and ping channel. :thumbsup:

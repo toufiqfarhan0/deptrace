@@ -1,0 +1,11 @@
+product
+
+emma: Quick check-in: should we require region-tagged retention as part of the gating checklist? Some EU customers will need it.
+
+ravi: Yes. Add region tag + verification test where an export manifest shows region and we prove records are only from that region.
+
+claire: Also clarify SOC2 evidence expectations: what audit categories we cover with these logs (access, config changes, keystore ops).
+
+emma: Good call. I'll append SOC2 mapping to checklist.
+
+emma: I'll merge this with main checklist doc and send to sales.

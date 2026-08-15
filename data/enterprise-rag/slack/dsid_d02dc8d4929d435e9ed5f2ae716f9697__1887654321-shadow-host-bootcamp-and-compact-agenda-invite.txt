@@ -1,0 +1,36 @@
+eng-platform
+
+Maria: Quick thought — propose we tweak the ARB weekly to a compact 60m block on Tuesdays, rotating host. Proposed slots: RFC priming (10m), open blockers (5m), triage & quick PRs (15m), two design reviews (25m), wrap & action items (5m). Who can host the next 3 weeks? I'll seed the rotation.
+
+Raj: Sounds reasonable. timezone note — to keep APAC folks in the loop can we alternate meeting times every 4 weeks? Otherwise they get elbowed out.
+
+Tess: I can host week 1 and shadow week 2. +1 for alternating. Can we add a mandatory 5m "open blockers" slot so infra/product can flag urgent regressions?
+
+Oliver: I'll take week 3. Also: please require pre-reads 24h before for any RFC/design we expect to review — saves time. :thumbsup:
+
+Maria: Good call. Adding pre-read rule to agenda. Draft agenda snippet below — please nitpick:
+
+```
+00:00 - 00:05 Quick welcome + action followups
+00:05 - 00:15 RFC priming (presenter summarizes scope + ask)
+00:15 - 00:20 Open blockers (fast flags)
+00:20 - 00:35 Triage & short PRs (up to 2 quick reviews)
+00:35 - 00:55 Design review(s) (20m max each)
+00:55 - 01:00 Wrap / owners / next host
+```
+
+Tess: LGTM. Also propose a "canary pass" rule — if an RFC is >5 engineers impacted, schedule a dedicated deep-dive rather than full review in the slot. Keeps meetings actionable.
+
+Raj: I'll spin up a Doodle for the next 8 weeks to capture who can host and alternate times. Also can someone confirm where the facilitator handover doc lives? I want to make a 1-page checklist.
+
+Oliver: It's under the docs repo — /docs/arb/facilitator-handbook (link). I can add a short checklist for the shadow host flow: prep, intake triage, note-taker, recording check.
+
+devex-bot: calendar invite created: "ARB weekly (rotating host)" — Tue 10:00am PT (recurring) — attendees: eng-platform.ical (link)
+
+Raj: @infra-team FYI — need a guest reviewer for a kernel scheduling change this week, can someone slot 5 mins? I'll paste PR link here in a sec.
+
+Oliver: Tagging @infra-team — pinged in the PR too.
+
+Maria: Thanks everyone. Plan: lock rotation tomorrow if no objections; host list will be in the agenda doc and I’ll assign the first three hosts (Tess, Maria, Oliver). Recording & notes will land under #eng-platform/meetings -> Google doc. If you want to swap a slot, please claim in the Doodle or DM a host.
+
+calendar-bot: Reminder — meeting created and invite sent. Use the RSVP to claim a host slot or mark as "shadow".

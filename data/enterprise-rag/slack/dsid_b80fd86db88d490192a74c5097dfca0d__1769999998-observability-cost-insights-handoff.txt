@@ -1,0 +1,17 @@
+product
+
+Aisha: Quick thread  roadmap handoff for observability cost insights. Customer asks: per-route cost heatmaps, trace hook sampling, and CSV/S3 export. Proposing an MVP focused on visibility and low-ingest defaults.
+Cam: Agree. Key infra constraint: no more than 5% ingest overhead during canary. We should aggregate by minute+route+model and keep sampled raw spans.
+Jordan: UX: heatmap with model on Y, route on X, color = cost per 1k tokens. Drilldown -> sampled traces. Filters: time window, region, model-variant. CSV export (30d) mandatory for early customers.
+Len: Tracing hook plan: emit tiny span with tags model, route, token_count, batch_size, quant_variant. Default sample = 0.5% hosted / 1% dedicated. Add UI toggle per-org.
+Maria: CS: enterprise customers need S3 export and PII masking. Default must scrub prompt text; enterprise can opt into richer spans behind KMS. Also they'd like an "impact" column in CSV estimating monthly savings if switching model.
+Aisha: Draft launch criteria:
+- feature: heatmap UI + CSV export, trace emission with sampling toggle, error bucketing
+- reliability: p95 latency regression <2% in canary, no error spike
+- cost: ingest overhead <5% or fallback to aggregates
+- security: default PII scrubbing; enterprise opt-in for KMS-backed spans
+Cam: Rollout: canary 10% non-enterprise for 14 days, monitor p95/error/ingest, ramp to 50% then 100% if stable.
+Jordan: I'll add telemetry metrics: heatmap_views, csv_exports, spans_emitted, ingest_delta_by_org.
+Len: Infra owners will sketch schema and fallback logic by EOD tomorrow.
+Maria: I'll validate export and masking needs with AcmeHealth + one other customer.
+Aisha: Great. Follow-up in #product next Tuesday to lock timeline. /end

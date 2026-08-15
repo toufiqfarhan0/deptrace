@@ -1,0 +1,39 @@
+docs
+
+maya (Docs): Quick thread  I'm opening a small docs PR to modernize the starter quickstart: switch cURL -> fetch, clarify ephemeral auth flows, and add a minimal "first deploy" checklist. PR: https://github.com/redwood-inference/docs/pull/12999
+
+ton y (Eng): Heads-up: runtime renamed the streaming endpoints; use /v1/responses/stream for SSE. Also param rename: max_output_tokens -> max_tokens.
+
+kevin (DevEx): For the fetch examples, do we show both browser fetch and node-fetch (for the auth-proxy example)? I can add a tiny proxy plus note about not committing tokens.
+
+maya (Docs): Yes please both. Keep the proxy one-file and show env var REDWOOD_EPHEMERAL_TOKEN. Small deploy checklist: bump Node to 20, include KMS step for Private, and note WebSocket host pattern for Dedicated.
+
+ton y (Eng): Also update SDK snippets: client.responses.create -> client.responses.generate in TS. That will trip up users copying old code.
+
+ops-bot: preview available: https://deploy-preview-12999--docs.redwood.ai.netlify.app :rocket:
+
+kevin (DevEx): sample proxy snippet to include in README:
+
+```js
+// auth-proxy.js (local dev)
+const http = require('http');
+const fetch = require('node-fetch');
+http.createServer(async (req, res) => {
+  const body = await new Promise(r => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>r(d)); });
+  const up = await fetch('https://api.redwood.ai/v1/responses', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${process.env.REDWOOD_EPHEMERAL_TOKEN}` },
+    body
+  });
+  res.writeHead(up.status, { 'content-type': 'application/json' });
+  res.end(await up.text());
+}).listen(3000);
+```
+
+maya (Docs): Nice. I've replaced the cURL blocks with fetch and the node proxy, fixed the link to Dedicated setup, and added the Node 20 Docker base. Waiting on Tony for runtime sanity check.
+
+ton y (Eng): Ran snippet tests locally against staging runtime. Verified fetch + proxy + SDK generate call. All good. Merge when CI is green.
+
+ops-bot: CI passed for PR 12999.
+
+maya (Docs): Merging now. Will follow up with a brief migration note in the changelog about max_output_tokens -> max_tokens.

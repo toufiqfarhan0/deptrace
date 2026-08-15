@@ -1,0 +1,20 @@
+random
+
+alex: Midnight penalty shootout watch? Also our fantasy draft tiebreaker coinflip is unresolved — anyone up for a 12:30am watch at the office? :soccer:
+priya: I'm in if someone brings coffee. also who tied in the draft?
+mateo: It was me and Jordan. neither of us remembered setting a tiebreaker lol
+jordan: Yep — sorry. Coinflip should decide but i suggested a 'penalty kicks' challenge (free kicks in the parking lot) :grimacing:
+nikhil: No way i'm doing parking lot free kicks at 12:30. coin it. /flip?
+jamie: I can bring thermoses and empanadas. @alex bring the projector?
+alex: Projector ✅. empanadas = amazing. I'll run the coinflip if agreed. calling it now: ```bash
+curl -s https://tinyapi.redwood/coinflip | jq -r .result
+```
+opsbot: Reminder: Office building locks at 1:00am. Make sure security knows the group, or use the lobby projector. :lock:
+priya: Thanks opsbot. lobby is better.
+jordan: @mateo fine, coinflip it is. also 2 beanbags by the lobby pls
+mateo: Done. flipping... heads = Jordan, tails = Mateo. ... it's tails. congrats @mateo :tada:
+jordan: :sob: good luck mateo. i'll trade you my goalkeeper for a bag of empanadas?
+mateo: Deal, but bring extra empanadas.
+nikhil: Also side bet: who can guess PK scorer? winner gets last empanada. i'm team 7.
+jamie: :raised_hands: count me in. also can someone add this to the fantasy #sheet? i'll update standings tomorrow morning.
+alex: On it. Thanks team, see you at 12:30 in the lobby. :v:

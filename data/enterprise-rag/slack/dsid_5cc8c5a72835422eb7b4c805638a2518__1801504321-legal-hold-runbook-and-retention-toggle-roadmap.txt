@@ -1,0 +1,35 @@
+product
+
+maria-product: quick sync — we need to finalize launch criteria for the Legal Hold / temporary retention toggle feature. customers keep asking for granular holds + exportable chain-of-custody. goal: agree scope for an MVP vs stretch.
+sofia-legal: important: legal hold must prevent any deletion/expunge actions and preserve full audit trail. retention toggles are ok but must be auditable and non-repudiable. need time-windowed holds and preserve original metadata. :warning:
+amy-cs: customer ask from ClearBank: ability to toggle a temporary 90-day hold per-tenant via API + UI; they want NDJSON export for e-discovery. also request retention SLOs and SLA language for contracts.
+sam-engineering: from infra perspective we can do a toggle flag on tenant objects + tombstone suppression, but cost spike for long tails. propose phase 1: transient holds (<=180 days) stored in hot tier; phase 2: long-term archived holds with cold tier migration and replayable audit chain.
+chris-infra: clarity on encryption: holds must be compatible with BYOK. if keys rotate or customer revokes, we still must preserve accessible ciphertext for exports — which means key-escrow or re-encrypt-on-hold. legal may require decryptability for e-discovery.
+sofia-legal: we cannot accept a solution that leaves data irretrievable because of key revocation. need documented KMS/escrow approach and who has legal access.
+maria-product: ok — sounds like three orthogonal axes: 1) retention/hold semantics, 2) exportability/audit trail, 3) encryption/key lifecycle. propose we make an explicit launch gate checklist.
+chris-infra: proposed launch gates (draft):
+- API: tenant-level hold endpoint `POST /v1/tenants/{id}/holds` (create/extend/release)
+- UI: toggle + timeline history entries
+- Export: NDJSON export of held payloads + metadata with sha256 checksums
+- KMS: documented BYOK flow + key-escrow fallback
+- SLA: retention SLA defined and storage pricing model for >90 days
+- SOC2: control mapping for retention/immutable logs (ops + legal sign-off)
+
+sam-engineering: addition: telemetry for hold hits and cost estimate pre-commit. and a kill-switch to release all holds in emergencies (only ops & legal).
+amy-cs: +1 on export hashes — customers want verifiable tamper-proof exports. can we include signed manifests?
+chris-infra: we can sign manifests with an HSM key per-export. adds complexity but doable in phase 1 as opt-in.
+sofia-legal: also require chain-of-custody entries: who created the hold, who extended, who released, with IP and justification field. that justification must be searchable.
+maria-product: good. let's map MVP vs stretch:
+- MVP (must-haves): API hold endpoints, UI toggle & simple timeline, NDJSON export (without manifest signing), retention SLO language, legal sign-off on KMS policy that prevents irrevocable key revocation while hold exists.
+- Stretch: signed manifests (HSM), long-term cold storage migration UI, per-record retention windows, cross-tenant legal-hold transfers, automated e-discovery workflows.
+sofia-legal: legal accepts MVP if KMS policy meets condition: key cannot be disabled/deleted while any hold references data encrypted with it. also need audit logs retained 7 years by default (we can negotiate per-customer).
+amy-cs: a couple of high-value customers need 7 year retention and export tooling for court orders. mark as sales-priority.
+sam-engineering: engineering asks: need a data model change (hold_id on payloads + hold_index) and backfill plan. also need migration plan for existing retained messages. estimate: MVP dev + infra ~ 6 sprints for core team.
+maria-product: draft owners: product=maria-product, engineering lead=sam-engineering, infra/chris-infra for KMS + signing, legal=sofia-legal, cs=amy-cs.
+jira-bot: created ticket INF-2987: "Legal Hold MVP — API + UI + export" assigned to sam-engineering, due 2026-08-15.
+maria-product: next steps: sam to confirm sizing + infra risk, chris to propose KMS escrow wording, legal to provide required retention durations + audit schema, cs to list top 3 customers and contract asks. reconvene EOW. :calendar:
+sam-engineering: will post tech spec w/ data model + sequence diagrams by Wed. rough sizing: 5 backend sprints, 2 infra sprints, 2 frontend sprints. potential opt-in alpha for top customers in sprint 4.
+chris-infra: will draft KMS policy options: (A) escrow + re-encrypt-on-hold, (B) prevent deletion while hold exists, (C) customer key escrow to ops. recommend (B) + (A) as fallback.
+sofia-legal: legal will add retention periods matrix for typical regulators (US finance, UK FCA, EU GDPR litigation holds).
+amy-cs: I'll collect the 3 pilot customers today and share contract language they expect.
+maria-product: thanks all — I'll collate into a launch checklist and PRD stub. posting follow-ups here. :white_check_mark:

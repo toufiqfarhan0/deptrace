@@ -1,0 +1,42 @@
+1775054321
+
+incident-bot: :rotating_light: Pager — reserved-pool saturation detected: pool=resv-prod-eu-2, reserved_gpus=48, in_use=48, queue_depth=152 — threshold=120. Autoscaler attempted scale but hit configured ceiling (max_instances=12) and failed. Link: https://console.internal/redwood/incidents/1775054321
+alex_oncall: Oncall here. seeing heavy queue growth and >95% GPU util on resv-prod-eu-2. Confirming impact to three enterprise tenants (AuroraHealth, NovaLedger, Velvetech).
+emma_sre: Copy. Pulling relevant metrics now. Also seeing a high session churn pattern from a small subset of tenants — possibly noisy neighbors.
+raj_runtime: any autoscaler logs? can we confirm why scale stopped at 12? last deploy changed default max?
+ops-bot: Autoscaler event: 2026-03-14T21:12:09Z scale_attempt -> failed: limit_reached (max_instances=12). Recent policy change by liu_dedicated on 2026-03-12 set pool ceiling to 12 for cost cap.
+liu_dedicated: that was for weekday baseline. We didn't expect this multi-tenant burst. Rolling ceiling up requires approval but we can do emergency override. How bad is customer impact?
+sasha_cs: CS here — AuroraHealth reporting 502 errors and degraded throughput, NovaLedger seeing long tail latency spikes. Customers flagged business-critical jobs queued >10m. They want ETA.
+alex_oncall: Initial mitigation options: 1) Emergency ceiling bump to 20 instances for resv-prod-eu-2 (fast but increases spend). 2) Evict noisy tenant sessions (identify top session owners and throttle) — more targeted. 3) Route overflow to fallback pool in eu-west-1 (requires capacity check). Which do we want now?
+emma_sre: Recommend parallel approach: temp ceiling bump + identify noisy tenants and evict/limit. Ceiling bump buys time for targeted eviction without dropping customer jobs.
+raj_runtime: I can run a quick KV to find top token producers in the pool and produce a ranked list. Command I will run: ```./tools/pool-top-producers --pool resv-prod-eu-2 --window 10m --format json```
+raj_runtime: output (trimmed): ```[{"tenant":"aurorahealth","tokens":4.3e7},{"tenant":"badbotcorp","tokens":2.9e7},{"tenant":"novaledger","tokens":1.8e7}]```
+emma_sre: hmm `badbotcorp` looks like noisy neighbor. They have many short sessions and high concurrency, likely misconfigured loop. Can we throttle them?
+liu_dedicated: We have tenant-level QoS controls. I can push a soft throttle profile to reduce concurrency to 8 and cap tokens/s for `badbotcorp`. Doing that requires a config change via the control-plane. I will push now.
+liu_dedicated: Pushing QoS patch: ```PATCH /controlplane/pools/resv-prod-eu-2/qos
+{ "tenant": "badbotcorp", "concurrency_limit": 8, "rate_limit": 5000 }
+```
+ops-bot: Control-plane audit: QoS change applied by liu_dedicated at 2026-03-14T21:18:02Z.
+emma_sre: After throttle, utilization dropped ~6% on affected nodes. Queue shrank from 152 -> 98 in ~3m. Good signal.
+alex_oncall: Proceed with emergency ceiling bump to 18 while we watch. liu, can you request override?
+liu_dedicated: Requesting emergency override to 18 now. Will also open billing approval ticket.
+liu_dedicated: Control-plane: set pool.max_instances=18 (temporary) by liu_dedicated @ 2026-03-14T21:22:40Z.
+ops-bot: Autoscaler acknowledges new ceiling. Scaling up triggered. New instances provisioning (4) in progress.
+raj_runtime: Provision logs show new workers up and accepting connections. Routing handshake ok.
+emma_sre: After scale up: in_use GPUs=52/ (now max 72), queue_depth=42, avg_token_latency down 48% for impacted tenants. AuroraHealth reports improvements.
+sasha_cs: AuroraHealth confirms partial recovery, will keep monitoring. They want postmortem and explanation about noisy tenant impact.
+alex_oncall: Next: 1) keep QoS throttle on `badbotcorp` until they fix. 2) follow up with billing for emergency bump. 3) run short postmortem to propose control-plane guardrails (e.g., auto temporary ceiling bump with cost threshold, better noisy-neighbor detection). 4) create bridge with AuroraHealth and NovaLedger to confirm no lingering jobs.
+raj_runtime: I'll save the top-producers result and share evidence in the postmortem. Also will add an alert to detect repeated short-session high-concurrency patterns.
+liu_dedicated: I'll schedule a quota review for resv-prod-eu-2 limits — consider per-tenant reservation caps otherwise single tenant can starve others.
+sasha_cs: Opening customer bridge now and cc'ing account execs. AuroraHealth asked for remediation ETA 2h and a follow-up call.
+alex_oncall: Handing to night shift oncall (emma_sre remains follow-up). I'll update incident channel with status every 15m. If queue <20 and no further noisy spikes in 60m, we'll transit to monitoring.
+emma_sre: Agreed. I'll own the postmortem draft. Will include timeline, metrics, qos patch diff, and follow-up owner list.
+ops-bot: Incident severity updated: P2 -> P1 (customer impact to multiple enterprise tenants) at 2026-03-14T21:28:00Z.
+alex_oncall: Thanks all. Bridge: https://meet.internal/bridge/1775054321. Leaving primary oncall.
+emma_sre: Leaving a note: logs snippet for eviction attempts: ```[21:17:59] evictor: marking sessions for throttle tenant=badbotcorp session_count=422
+[21:18:01] controlplane: qos applied success tenant=badbotcorp
+[21:22:41] autoscaler: scale_up -> launching 4 instances```
+raj_runtime: Follow-up items added to backlog: detect noisy patterns, per-tenant reservation caps, and emergency billing flow.
+liu_dedicated: I'll coordinate with finance for emergency spend approval and with product on policy changes.
+sasha_cs: Closing loop with customers once postmortem draft ready. AuroraHealth appreciates quick mitigation. They requested root cause email within 24h.
+alex_oncall: Incident moved to monitoring. If anyone sees queue >80 again, ping @alex_oncall and escalate. Good job team. :heart:

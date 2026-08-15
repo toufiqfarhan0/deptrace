@@ -1,0 +1,36 @@
+lunch-plans
+
+marie: Heads-up — freezer's getting crowded. Can we agree on a label format for meals? I found a mystery tupperware from 2019. :sweat_smile:
+jordan: yes pls. propose `Name - YYYY-MM-DD - item` ?
+marie: exactly. I can make a sheet if folks want a printable label template.
+sam: can we also add 'consume by' date? otherwise I panic. :raised_hands: 
+jordan: +1 to consume date. maybe `Name | packed: YYYY-MM-DD | use-by: YYYY-MM-DD`
+devon: also, let's start a Pretzel Jar Constitution. Contribution = 1 pretzel = 1 vote. :pretzel: 
+alyssa: constitution? lmao. but ok, rules?
+devon: rules draft: 1) put $ in the envelope when you take a pretzel 2) if jar is <25% you buy a refill 3) label home-baked goods with allergy notes
+marie: love it. can we have a designated 'kitchen steward' each week to enforce? :clipboard: 
+leo: I'll take next week. can someone add me to a rota?
+kitchen-bot: Reminder set — new rota created. Link: https://tiny.redwood/kitchen-rota
+erin: also FYI — microwave on table by fridge is loose again, don't slam it. maintenance ticket #4762
+sam: I can grab labels and a stamp from Staples today. anyone want snacks too? mum's brownies incoming :cookie: 
+alyssa: I'll chip in for pretzels if you grab the big jar size.
+jordan: pls get archival-safe freezer labels (waterproof).
+marie: sample label text for printing:
+```
+Name | packed: 2026-03-18 | use-by: 2026-04-01
+contain: chicken, dairy
+```
+Drop any edits here.
+devon: tiny poll — sweet vs salted pretzels? react with :chocolate_bar: for sweet, :pretzel: for salted
+jordan: :pretzel:
+alyssa: :chocolate_bar:
+leo: :pretzel:
+erin: :pretzel:
+marie: thanks all. Sam — can you post receipt in #finance when you buy? will reimburse. :money_with_wings: 
+sam: will do. leaving in 10. back in 30. :dash: 
+kitchen-bot: Purchase logged: sam — Staples labels & #10 jar. Ops note: jar ordered 2-days shipping. ETA 2026-03-20
+marie: filing the 'Pretzel Constitution' in the shared drive: https://drive.redwood/pretzel-constitution — edits welcome.
+devon: adding clause: 'If you bake, you can nominate a replacement steward for your week.'
+alyssa: also suggestion: freezer shelf A for meals labeled `A-` and B for `B-` to avoid digging.
+marie: great. last_message: Friday bake-off signups in 2 days. who brings scones? :raising_hand: 
+leo: me. cinnamon scones. :yum:

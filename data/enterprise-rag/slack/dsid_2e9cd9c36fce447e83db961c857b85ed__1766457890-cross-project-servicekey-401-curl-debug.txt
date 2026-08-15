@@ -1,0 +1,64 @@
+support
+
+customer-alex: Hi team — getting 401 when calling embeddings endpoint. Worked earlier today. Request id: req_2b9f1a3e. Quick repro with curl below, any ideas?
+
+maria-support: sorry about that — can you paste the exact curl and the org/project IDs you're hitting? 401 usually means key scope or revoked key.
+
+customer-alex: sure — here's the exact command I ran (key redacted):
+```bash
+curl -i -X POST "https://api.redwood-inference.com/v1/embeddings" \
+  -H "Authorization: Bearer svc_key_abc123_REDACTED" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-3","input":"hello"}'
+```
+And the response: 
+```
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+{"error":{"message":"Invalid credentials","type":"authentication_error"},"request_id":"req_2b9f1a3e"}
+```
+Org: org_88, Project: proj_88.
+
+maria-support: thanks — two quick checks: 1) is that a service key scoped to proj_88 specifically (service keys can be project-scoped), 2) can you try adding the X-Org-ID / X-Project-ID headers to be sure the request is routed correctly? Example below.
+
+maria-support: try this variant so we can see if routing fixes it:
+```bash
+curl -i -X POST "https://api.redwood-inference.com/v1/embeddings" \
+  -H "Authorization: Bearer svc_key_abc123_REDACTED" \
+  -H "X-Org-ID: org_88" \
+  -H "X-Project-ID: proj_88" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-3","input":"hello"}'
+```
+
+kevin-ops: fyi we rolled a change to service key validation yesterday that enforces project scoping more strictly. If the key was created in a different project it will 401 unless routed with the project header or using a workspace-level key.
+
+customer-alex: ran the header variant and now I get 200 — embedding returned. So looks like the key I was using is scoped to a different project than I thought. Response (trimmed):
+```json
+{"embedding": [0.0012, -0.0003, ...], "model": "text-embedding-3", "request_id": "req_2b9f1a3f"}
+```
+
+maria-support: great — glad that worked. Two follow-ups: 1) can you confirm which key you are using in Console (Service keys > list), 2) if you want we can rotate the old key/deny project access so this doesn't happen again.
+
+customer-alex: I checked — key was created under proj_12 months ago by a contractor. I must have copied the wrong key into our CI. I'll rotate and update CI.
+
+maria-support: can you also upload a debug bundle for req_2b9f1a3e so we can cross-check logs on our side? You can generate one with the CLI or paste the support bundle id after running the helper: 
+```bash
+# collect and upload debug bundle (safe, excludes keys)
+redwood-support collect --request req_2b9f1a3e --include-headers --output support-bundle-req_2b9f1a3e.tar.gz
+# then share the upload link or bundle id
+```
+
+customer-alex: done — uploaded as support-bundle-2026-06-14-7652 (link sent to support DM).
+
+support-bot: Received bundle support-bundle-2026-06-14-7652, correlating with req_2b9f1a3e. Notifying ops.
+
+kevin-ops: confirmed logs show 401 with reason "key_scope_mismatch" for req_2b9f1a3e. No server-side error. Customer headers were empty in original request.
+
+maria-support: marking as resolved (user fixed CI to use correct key). Recommend we add a Console hint when creating service keys that shows the project id prominently to avoid copy/paste mistakes. filing a quick UX task. :memo:
+
+customer-alex: thanks everyone — appreciate the fast help :thumbsup:
+
+maria-support: glad it was an easy fix. If you want we can schedule a key rotation or generate a workspace-level key to avoid project scoping issues.
+
+customer-alex: we'll rotate and stick to workspace key. Closing from our side.

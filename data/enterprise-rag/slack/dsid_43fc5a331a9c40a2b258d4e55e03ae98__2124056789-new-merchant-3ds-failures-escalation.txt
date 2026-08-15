@@ -1,0 +1,48 @@
+support
+
+emma_support: Heads-up — Acme Logistics (acct acct_842) reported 8/10 autopay invoices failing in the last 24h. They see immediate declines and SCA/3DS failures for the same card across attempts. Customer wants a root cause; flagged as P1 by CS.
+
+rajesh_payments: Sending logs now. Are we seeing consistent decline codes from the gateway or different ones? Could be issuer-side throttling or auth hold.
+
+emma_support: Gateway webhook shows mixed responses. Most common: `DECLINED: insufficient_funds` and `DECLINED: authentication_required (3DS_CHALLENGE/ACS_TIMEOUT)`. There's also one `REJECTED: suspected_fraud` from our risk filter. Pasting a sample webhook payload (sanitized):
+
+```
+{
+  "merchant": "acme-logistics",
+  "transaction_id": "txn_9ax3",
+  "amount": 45000,
+  "currency": "USD",
+  "status": "declined",
+  "reason": "authentication_required",
+  "acquirer_response": "3DS_CHALLENGE_REQUIRED",
+  "risk_decision": "manual_review",
+  "attempts": 3
+}
+```
+
+olivia_ops: Noted. Do we have a repro that reliably hits the 3DS/ACS path? We should test with the same card metadata (bin, country, 3ds version).
+
+emma_support: Customer provided masked PAN and BIN: 4000xx, country US. They use autopay tokenization via our API — token creation succeeds; charge attempt fails at auth.
+
+rajesh_payments: Two quick checks: 1) confirm our 3DS redirect timeout and CSP headers for iframe flows; 2) check if we recently rolled out the fallback to 3ds2->3ds1 for certain acquirers. If ACS expects interactive challenge and we hit a timeout, issuer returns auth_failure.
+
+payments-bot: deploy #deploy-frontend-2026.03.15 completed at 2124012000. Recent change: reduced 3DS iframe timeout from 12s -> 6s (config: `3ds.iframe_timeout=6s`).
+
+olivia_ops: That timeout change could explain ACS_TIMEOUTs. Emma — can you repro by toggling iframe timeout to 12s for a single request via the console? If longer timeout succeeds, we have a config regression.
+
+emma_support: I toggled `3ds.iframe_timeout=12s` for Acme account and re-ran a test charge (token tkn_34). Result: challenge completed successfully and one charge approved.
+
+rajesh_payments: Good find — looks like the frontend change reduced tolerance. For the insufficient_funds/ fraud ones: insufficient_funds is cardholder issue; advise merchant to reach out to payer or retry. For `suspected_fraud` from our risk filter, I'll pull the risk rule that tripped (velocity? billing mismatch?).
+
+rajesh_payments: Risk rule `rv_velocity_v2` flagged 2 of the attempts due to rapid retries within 30s. I recommend implementing a client-side backoff on autopay retries (e.g., exponential with jitter) and temporary hold after 3 quick fails. I'll open ENG ticket for a guardrail.
+
+emma_support: I'll update the customer: cause = 1) too-short 3DS iframe timeout introduced in deploy -> ACS timeouts, 2) some genuine insufficient funds from cardholder, 3) internal risk velocity rule blocking rapid retries. Action items:
+- rollback or increase `3ds.iframe_timeout` for affected region (rajesh)
+- add guidance to merchant on backoff and payer contact (emma)
+- eng ticket to add server-side guardrail to prevent immediate retry storm (rajesh -> ENG-1249)
+
+olivia_ops: I'll schedule a quick canary rollback of the timeout in the next 10m window and monitor declines.
+
+emma_support: Thanks — marking thread as escalated -> payments team. I'll send Acme a summary and ETA once rollback confirmed. :thumbsup:
+
+payments-bot: ticket ENG-1249 created for server-side retry guardrails (priority: high).

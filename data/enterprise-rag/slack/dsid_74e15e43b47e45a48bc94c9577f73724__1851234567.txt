@@ -1,0 +1,93 @@
+eng-sre
+
+support-bot: ALERT: p99 latency spike (3x) observed on /v1/generate for model redwood-3q in gpu-pool-5. Several requests fell back to CPU or stalled. Related: repeated GPU OOM events on nodes gpu-5a/gpu-5b. See dashboard: https://grafana.internal/redwood/d/latency
+
+maria: on it. Is this affecting Hosted production only or Dedicated customers too?
+
+ajay: looks like both. Dedicated tenants on pool-5 showing elevated p95 as well. I can see OOMs in the ML runtime logs.
+
+sophia: share the error snippet please, ajay.
+
+ajay: here's a tail of the runtime on gpu-5a around 12:31 UTC:
+```
+[2026-03-15T12:31:02Z] ERROR runtime: alloc failed: cuda_out_of_memory: attempted allocate 134217728 bytes
+[2026-03-15T12:31:02Z] WARN runtime: falling back to CPU slow path for batch 1123
+[2026-03-15T12:31:03Z] INFO runtime: kv_cache_size=3.2GB, active_sequences=1200
+[2026-03-15T12:31:04Z] ERROR runtime: kernel stall detected, block for 1.2s
+```
+
+leo: kv_cache 3.2GB sounds high. Which model variant? redwood-3q:v2?
+
+ajay: it's v2-4096. We rolled in a quantized variant last week; maybe the allocator patterns changed. Notice fragmentation rising in recent days.
+
+maria: any recent deploys to the serving runtime? eng-runtime had a kernel/allocator tweak pushed yesterday, right @leo?
+
+leo: yes I pushed a jemalloc config change to reduce internal fragmentation (tuned bg cache). But that could reduce upfront reserved arena size. I suspected it might increase operational peak allocations under KV growth.
+
+sophia: hypothesis: jemalloc change + KV growth from long-lived chat sessions = more frequent OOMs -> runtime falling back to CPU and causing p99 spikes.
+
+maria: mitigation plan? Short-term we need to stop customer impact asap.
+
+ajay: immediate mitigations I can run: 1) disable KV prefetching for redwood-3q on pool-5 2) reduce max batch size from 32->16 for v2-4096 route 3) evict old KV entries older than 30m
+
+leo: i can quickly roll back the jemalloc config on pool-5 to previous settings (will require rolling restart). That should restore reserved arenas and reduce OOMs, but will cause brief reconnects.
+
+sophia: which is lower risk: rollback allocator or reduce batch size?
+
+maria: do both in staged order: reduce batch size + disable prefetch immediately (no restart), then monitor for 10-15m; if OOMs persist, do allocator rollback as next step.
+
+devops-bot: runbook check: incident runbook 'gpu-oom-latency' available at https://wiki.internal/runbooks/gpu-oom-latency
+
+ajay: executing mitigation steps now: 12:40 UTC - updating config for redwood-3q route to batch_size=16 and prefetch=false. Patch id: cfg-1851234567-1
+
+maria: copy. Monitoring p95/p99 on Grafana and traces in Honeycomb.
+
+[12:45 UTC] sophia: initial telemetry: p99 down from 3x -> 1.6x; number of OOM errors reduced by ~60%. KV cache usage dropped ~30% due to eviction job.
+
+leo: good. i will prepare the allocator rollback but will wait to see effects of these non-disruptive changes. If we roll back, we should coordinate canary to avoid causing cold-start memory pressure.
+
+ajay: we also captured a heap-profile from the runtime before eviction (saved to s3://redwood-debug/heap-1851234567.pb). Suggest analyzing to confirm fragmentation vs sustained growth.
+
+maria: assign tasks: ajay to follow up on heap-profiles + perf logs; leo to stage allocator rollback plan and test in canary; sophia to update support ticket and customer comms; i'll own post-incident writeup.
+
+sophia: opened support ticket INC-2026-998 and pinged top impacted customers with a short note: "we're mitigating a transient performance regression related to memory usage; expect improved latency in ~30min; contact us if you see continued errors" :thumbsup:
+
+[13:05 UTC] ajay: heap diff looks like fragmentation: many small free extents scattered; peak resident memory didn't drop after GC. Excerpt: "free_runs: 1245, largest_free_block: 48MB, candidate_coalesce_hits: 3". Suspect jemalloc per-thread arenas not releasing back to OS quickly.
+
+leo: that matches. Two options: 1) rollback jemalloc tune to increase reserved arenas (fast but restart), 2) enable aggressive arena purging via mallctl call at runtime (hot-configurable?) — our runtime exposes a flag but it has CPU overhead.
+
+maria: which has lower customer risk overall?
+
+leo: enabling periodic purging (mallctl M_PURGE) is lower risk (no restart) but might add 5-10% CPU overhead on busy nodes. Rollback reduces OOMs without ongoing CPU cost but is disruptive.
+
+ajay: as a temporary target, let's enable purge every 60s for pool-5 to defragment and reduce resident spikes. I can flip it now via runtime admin API.
+
+ajay: 13:18 UTC - hitting admin API: POST /admin/runtime/purge?interval=60&scope=pool-5 -> 200 OK.
+
+sophia: metrics now: p99 down to ~1.2x baseline, OOMs nearly gone, CPU on pool-5 up ~7%. Customers reporting lower error rates.
+
+maria: great. next: consolidate permanent fix and postmortem. Is the allocator rollback still needed?
+
+leo: we should revert the jemalloc change in next maintenance window, but the purge option seems acceptable for now. I'll create a PR to revert and add a canary rollout plan.
+
+ajay: I'll also add a safety cap on KV cache per-sequence for v2-4096 and add a LRU eviction threshold to prevent long-lived sessions from monopolizing GPU memory.
+
+sophia: Support comms updated: removed 'transient' language and added "ongoing mitigations deployed; engineers are monitoring. If you see repeat slowdowns, escalate to your account rep."
+
+maria: good. Action items (short):
+- ajay: analyze heap profile, implement KV caps, monitor for 24h (due EOD)
+- leo: open PR to revert jemalloc tuning + canary plan (due EOD)
+- sophia: finalize customer comms + close INC when stable (monitor 2h)
+- maria: postmortem draft (due next-day)
+
+devops-bot: Incident INC-2026-998 created; severity P2; link: https://incidents.internal/INC-2026-998
+
+maria: thanks all. Marking thread resolved for now. Will reopen if p99 > 1.5x again.
+
+leo: note for postmortem: include allocator metrics, jemalloc bg cache settings, KV growth per-tenant, and suggested runtime flags to expose for safer defaults.
+
+ajay: adding log snippet for repro steps in the ticket: run long-chat replay with 1.5x sequence length on v2-4096, enable kv-prefetch=true and large batch sizes to reproduce fragmentation.
+
+sophia: closing loop with customers in 30m.
+
+maria: end."

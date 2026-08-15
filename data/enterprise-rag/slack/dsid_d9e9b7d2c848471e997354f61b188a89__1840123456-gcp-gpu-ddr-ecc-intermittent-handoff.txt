@@ -1,0 +1,104 @@
+1840123456
+
+incident-bot: ALERT P0 - multiple GPU hosts in us-central1 reporting ECC/PCIe errors, automated failover triggered. Customers: 2 active sessions with degraded latency. Paging oncall.
+
+sasha (oncall): acked. I'm on it, switching to incident channel. first step: confirm scope + customer impact.
+
+jordan (infra): seeing spikes in instance kernel logs across 3 hosts (gpu-uc1-12, gpu-uc1-17, gpu-uc1-23). PCIe AER messages + ECC single-bit corrections increasing. Reprovision attempts show node reboots on gpu-uc1-17.
+
+liam (runtime): noting increased model timeouts and retries; autoscaling pushed some traffic to older gen instances which are slower. Some pods evicted.
+
+maria (sre): timeline so far? are these nodes in same rack/host pool? could be noisy neighbor or firmware regression.
+
+jordan (infra): all three are in the same zone us-central1-c, different racks though. They were all reprovisioned around 03:12 UTC earlier today (kernel 5.15.0-rt -> 5.15.0-rt+gcp-patch).
+
+sasha (oncall): handoff: I'm taking lead, liam wrangles service fallbacks, jordan leads host triage, maria coordinates paging logs + postmortem. csm-amy: can you estimate impacted customers?
+
+csm-amy: Two customers saw elevated error rates for <1h each: NotebookCo (heavy embeddings) and ChatFlow (short bursts). Both on Dedicated test pools. No major revenue impact flagged but both flagged latency SLO violations. Customer support ticket opened.
+
+incident-bot: NOTE: Automated throttle/fallback to model-small engaged for routed requests when host health degrades.
+
+liam (runtime): current mitigation status: 1) failover active, 2) cache warmers running, 3) throttling to 3 concurrent requests per connection. Latency reduced but errors persist for some sessions.
+
+jordan (infra): grabbing kernel + dmesg from gpu-uc1-17, attaching snippet:
+```
+[ 1053.412345] pcieport 0000:00:1c.0: AER: Corrected error received: ID 00e0
+[ 1053.412348] nvidia: ecc corrected error on GPU 0: 1-bit ECC at 0x000a3f4c
+[ 1053.512901] kernel: GPU watchdog reset triggered for process xyz
+[ 1054.123456] systemd-logind: Rebooting due to kernel panic
+```
+
+maria (sre): good, can we capture the exact driver/firmware versions? also whether these are older T4 hosts or newer A100?
+
+jordan (infra): A100 v5 hosts. NVIDIA driver 525.85.05, CUDA 11.6, host firmware latest per cloud provider but we have a provider patch in last week.
+
+liam (runtime): hypothesis: hardware ECC correctable errors escalating to uncorrectable or driver crash -> host reboot -> workload rescheduling -> tail latencies. Could be noisy neighbor causing memory bus perturbations.
+
+sasha (oncall): hypothesis list (tracking):
+- H1: GPU memory fabrication fault causing ECC flips -> progressive errors -> kernel panic.
+- H2: PCIe fabric issues (switch/slot) causing repeated AER events -> driver instability.
+- H3: Cloud host firmware/driver regression from recent provider update.
+- H4: Noisy neighbor VM pegging PCIe/thermal -> transient ECC spikes.
+
+maria (sre): action items (inline):
+- A1: jordan: collect full dmesg / pci device status + AER counters from all affected hosts (done partially).
+- A2: liam: gather application-level traces + exact request IDs for errors and timeouts.
+- A3: sasha: coordinate with cloud-support to check host-level telemetry (thermal, PCIe ECC history).
+- A4: csm-amy: keep customers notified, share temporary mitigations.
+
+jordan (infra): adding AER counters:
+```
+# for i in /sys/devices/pci0000:00/*/aer_counters; do cat $i; done
+corrected=42
+uncorrected=0
+root=1
+```
+
+cloud-support: we see elevated AER counts and host kernel oops on gpu-uc1-17. Opening provider ticket now referencing host IDs and timestamps (ref: GCP-TKT-89012). Asking for hardware diag and firmware rollbacks where possible.
+
+liam (runtime): sharing app side error sample (anonymized):
+```
+ERROR [2026-06-20T03:25:41Z] request_id=shwd-9a2 client=chatflow session=abc123 model=redwood-a2: connection reset by peer during token-gen
+WARN  [2026-06-20T03:25:41Z] retry 1/3 -> route fallback to redwood-a1-small
+```
+
+sasha (oncall): customer-impact summary for timeline: NotebookCo saw 18% increased 95th latency between 03:20-03:55 UTC; ChatFlow saw intermittent 500 responses 03:22-03:30 then recovered. No escalations yet.
+
+csm-amy: both customers accept mitigation notes; asking for RCA once available.
+
+jordan (infra): reprovision attempt on gpu-uc1-17 caused immediate kernel oops on boot, suggests persistent hardware error. We isolated host from autoscale pool.
+
+maria (sre): can we triangulate whether ECC counts rose after provider kernel update? jordan said reprovision at 03:12 earlier — we need host snapshot before/after.
+
+jordan (infra): I pulled cloud audit logs; provider rolled a thermal microcode patch in that region on 2026-06-19 22:00 UTC. Affected hosts were restarted during that maintenance. Correlation exists but not definitive.
+
+liam (runtime): temporary mitigation proposals:
+- M1: pin critical customers to alternative instance types (older driver + less susceptible) for next 48h.
+- M2: increase proactive eviction threshold to 10 ECC corrected errors to avoid reboots.
+- M3: force route to dedicated fallback pool in different zone.
+
+sasha (oncall): implement M3 now for affected customer pools. liam, can you run the routing change?
+
+liam (runtime): done. routing toggled at 03:40 UTC. latency improved for NotebookCo within 7 minutes.
+
+cloud-support: provider responded: initial hardware diag indicates possible PCIe slot signal integrity issues on gpu-uc1-17. They recommended evacuating host and ordering replacement hardware. They also flagged a small firmware change last week that may increase AER sensitivity.
+
+maria (sre): logging next steps for in-incident RCA: capture full kernel oops, AER traces, provider hardware diag output, host BIOS/firmware versions, and repro steps if any. We'll keep thread open for updates and include in postmortem.
+
+jordan (infra): export of /var/log/kern.log and nvml logs uploaded to incident artifact store: s3://redwood-incidents/1840123456/artifacts. (link shared privately).
+
+sasha (oncall): status update for leadership: incident declared at 03:25 UTC, mitigated routing at 03:40 UTC, provider confirmed host-level PCIe signal issues and will replace hardware. Customer impact limited to latency SLO violations for two customers; no data loss. Postmortem ETA: 72 hours.
+
+incident-bot: INCIDENT UPDATE: severity downgraded to P2 at 04:05 UTC after routing mitigation.
+
+maria (sre): follow-up items for RCA doc: vendor firmware sensitivity check, host eviction thresholds, automated detection for rising corrected-ECC rates, customer communication template. Assigning owners in PM doc.
+
+sasha (oncall): thanks team. I'll keep thread pinned until postmortem link posted. If provider confirms firmware regression we may schedule cluster-wide audit.
+
+cloud-support: provider ticket GCP-TKT-89012 updated: hardware replacement scheduled for 2026-06-21 10:00 UTC. They will also review last week's firmware patch.
+
+liam (runtime): saving request samples + golden prompts for regression tests. Will include in RCA.
+
+maria (sre): closing in-incident note. Thread will be appended to postmortem.
+
+sasha (oncall): closing oncall shift in 10m, handoff to maria for PM. good work everyone :thumbsup:

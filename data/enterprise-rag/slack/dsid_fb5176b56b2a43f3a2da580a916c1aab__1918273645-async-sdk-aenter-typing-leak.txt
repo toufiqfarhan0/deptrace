@@ -1,0 +1,58 @@
+devex
+
+alex: Heads up — running into a weird combo of typing + runtime leak with the Async SDK contextmanager when used in FastAPI background tasks. Minimal repro below, hangs sometimes and emits ResourceWarning about pending tasks.
+
+alex: repro:```python
+# repro.py
+from redwood import AsyncInferenceClient
+import asyncio
+
+async def bg():
+    async with AsyncInferenceClient() as c:
+        await c.generate("hi")
+
+async def main():
+    loop = asyncio.get_event_loop()
+    loop.create_task(bg())
+    await asyncio.sleep(0.2)
+
+asyncio.run(main())
+```
+
+alex: Observed: with uvloop or pytest-asyncio I see either the bg task never finishes or:
+"Task was destroyed but it is pending!"
+ResourceWarning: Unclosed transport
+
+priya: which SDK version? stack trace?
+
+alex: redwood-inference==0.8.2rc1, pytest-asyncio==0.21.0. stack snippet:
+```
+E   AssertionError: Task was destroyed but it is pending!
+...
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+```
+
+jake: tag me @alex, thanks for the repro. My hunch: AsyncInferenceClient (wrapping httpx.AsyncClient) is binding to the loop at __aenter__ and when it's later awaited from a different loop/context it leaves pending tasks. Also saw mypy errors about __aenter__ return type being Any which hides typing issues.
+
+priya: any quick workaround?
+
+jake: try avoiding context manager across loop boundaries. e.g. create the client and run its lifecycle on the same running loop, or explicitly close it in the same context:```python
+client = AsyncInferenceClient()
+await client.__aenter__()
+# kick it off from same loop
+await client.generate(...)
+await client.aclose()
+```
+It's ugly but helps until we patch.
+
+alex: thanks — that workaround works locally. Also getting mypy complaint: `error: __aenter__ of "AsyncInferenceClient" has no attribute '__aenter__'` or reports inconsistent return type. Could we get proper typing (AsyncContextManager[AsyncInferenceClient] or typed wrapper)?
+
+jake: yep that's on me. I'll add explicit typing to the async contextmanager methods and ensure __aenter__/__aexit__ return correct types. Also will change client internal httpx usage to avoid loop-affinity (use get_running_loop at call sites, not capture loop in constructor).
+
+dev-bot: Created issue #4321: "async client contextmanager: typing + loop affinity causes background-task leaks" and linked PR template.
+
+alex: awesome. can we get a small test with FastAPI background tasks / pytest-asyncio added to CI?
+
+jake: will add a regression test and a mypy unit to the SDK repo. assigning to eng-ml runtime team, ETA: next minor.
+
+alex: thanks everyone, saved me a full-day dive :thumbsup:

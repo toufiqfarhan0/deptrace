@@ -1,0 +1,46 @@
+eng-runtime
+
+Sam: Running a set of long-ctx repros on prod-sim with INT8 KV + host-paging. Seeing linear RSS growth after ~150k tokens even with eviction on. numbers below.
+Julia: interesting. eviction policy is LRU? what are the residency thresholds?
+Sam: default residency=0.6, eviction thin LRU per-shard. but paging to host happens whenever resident longkvs > 0.9*memcap. host swap rate spikes.
+Mike: can you paste the perf counters?
+Sam: perf-bot: KV_STATS for model:redwood-v1 node:3
+
+```
+resident_kvs: 4.8GB
+hosted_kvs: 2.3GB
+evictions: 11234
+reuses: 3121
+fragmentation_pct: 18.6
+page_faults/sec: 42
+```
+
+Linh: fragmentation is high. could be from mixing bf16 activations vs int8 storage for keys. quantization layer adds variable chunk sizes.
+Julia: are keys compressed per-layer? we changed kernel selection last week to use tiled matmul for int8 -> that also changed alignment.
+Sam: yep, kernel change (tiling=64) seems to produce 16-byte padded kv entries, so reuse rate drops because lookup alignment mismatches earlier index mapping.
+Mike: so alignment + small pages -> more fragmentation -> older entries not reused -> more paging.
+Sam: also observed a small accuracy delta: topk recall drops ~0.6% when KV stored as int8 vs bf16 for longctx runs.
+Julia: expected. int8 quant reduces fidelity of keys, can affect attention scores for far-context tokens. Did you try bf16 for keys + int8 for values hybrid?
+Sam: ran quick A/B: keys=bf16 values=int8 reduced RSS by ~2.1GB compared to all-bf16 but only 0.2% recall loss vs int8-all which had 0.6% loss. tradeoff seems good.
+Linh: blocker: live rollback would require kernel rollback too because tiled kernels assume int8 layout. Have a repro script?
+Sam: repro in gist: `scripts/longctx_kv_repro.sh --model redwood-v1 --quant int8 --residency 0.6`
+
+```
+# quick snippet
+kvctl inspect --node 3 --model redwood-v1 | jq '.shards[] | {res: .resident, host: .hosted, frag: .fragmentation}'
+```
+
+Mike: propose next steps:
+- add compact-on-eviction pass to defrag kv blocks
+- try smaller tile (32) + prefetch to reduce misalignment
+- enable hybrid key precision (bf16 keys) in runtime config
+- run load test with updated batching heuristics (disable cross-batch KV reuse for now)
+
+Julia: also add telemetry breakouts: reuse_by_layer, quant_error_by_layer, page_faults_per_shard.
+Sam: will open a changelist with compact-pass + hybrid keys. running a 12hr soak now, will post perf numbers.
+perf-bot: started job 1775001234-kv-soak-01 on cluster:perf; logs at https://ci.redwood/1775001234
+Mike: nice. If soak passes, we can A/B on dedicated pool next week.
+Linh: one more thought — maybe avoid host paging entirely for critical customers by reserving a tiny extra GPU pool to hold worst offenders instead of paging.
+Sam: noted. I'll include sim for reserved spill.
+Julia: thanks — keep notes short in PR, include small code diff for kernel tiling param.
+Sam: will do. :thumbsup:

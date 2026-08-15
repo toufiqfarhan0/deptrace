@@ -1,0 +1,76 @@
+marketing
+
+maria_marketing: Hey @tony_runtime — we need a quick stats sanity sweep for the webinar narrative.
+
+maria_marketing: Goal: validate that our claimed 95th-pctl latency (quantized) vs fp16 holds across representative payloads and under burst traffic. also want sample provenance for slides.
+
+tony_runtime: ok. can you dump the exact payloads + target qps and the claim wording?
+
+maria_marketing: payloads: a) short-chat (avg 30 tokens), b) long-context (avg 1.2k tokens), c) multi-turn assistant (prefix caching). target: steady 150 qps for short, 20 qps for long, and a spike test to 400 qps for 30s. claim wording: "~2.5x lower latency at 95th-pctl with our 4-bit quantized profile vs fp16 on same instance class"
+
+maria_marketing: also need warmup policy we used for the benchmark (we'll need to call that out in methodology).
+
+tony_runtime: got it. sara_eng / kevin_data — tagging you to confirm how we capture provenance. we'll need: input set IDs, model commit sha, quant/profile name, instance type, kernel tags, and RNG seed.
+
+sara_eng: we can export a CSV with those columns and attach the run logs. recommend adding 5 warmup requests per worker then steady traffic. for spike, do a 60s pre-warm at 50% spike qps.
+
+kevin_data: for stats, I'll compute p50/p90/p95/p99, error rate, and concurrency distribution. we'll do 3 independent runs (different seeds) and present mean +/- standard error. sounds ok?
+
+maria_marketing: perfect. can you also include a small sample of raw responses for qualitative checks (e.g., first token distributions) so we can verify there was no quality regression after quantization?
+
+tony_runtime: yes. one ask — please confirm we can rerun the long-context workload with kv-cache disabled then enabled, to show cache benefits in the narrative.
+
+maria_marketing: yes do both. patch our messaging to "cache-aware throughput" where relevant.
+
+tony_runtime: sending run command template now.
+
+tony_runtime: ```bash
+# run template (uses ./payloads/*.json and runtime harness)
+./run_load_test --model sha:abcd1234 --profile 4bit-q --instance g4dn.xlarge \
+  --payload-dir payloads/short_chat --qps 150 --workers 8 --warmup 5 \
+  --seed 42 --out run_reports/short_qps150_seed42.json
+```
+
+maria_marketing: nice. one more thing — can we get 95% confidence intervals on the p95 numbers rather than just point estimates? investors will nitpick.
+
+kevin_data: will compute bootstrap CIs (1000 resamples) and include a brief note on methodology.
+
+tony_runtime: infra note: quantized runs require the quant kernels that live on runtime-prod-quant-2026 tag. i'll pin that in the metadata. if any runs hit fallback to fp16 we'll flag them.
+
+deploy_bot: [CI] load-test job queued: load-test/2123456789 by tony_runtime
+
+maria_marketing: timeline? webinar dry-run on Friday EOD. can we get reports by Thursday morning?
+
+tony_runtime: Thursday morning is tight but doable — we'll prioritize short and long runs first, spike and cache variants second.
+
+sara_eng: I'll assemble the provenance CSV and upload to the shared drives once kevin_data sends processed tables.
+
+kevin_data: plan: runs today (short), tomorrow early (long + cache variants), Thursday morning finalize stats and bootstrap CIs.
+
+maria_marketing: amazing, thanks team. tiny ask — in the reports, please include a one-liner plain english takeaway for each table we can copy into slides.
+
+tony_runtime: will do. tagging @maria_marketing in the run PR so you can review artifacts once uploaded. :thumbsup:
+
+maria_marketing: :raised_hands: thanks — will prep slide placeholders to drop the one-liners into.
+
+deploy_bot: [CI] load-test/2123456789 started on runner-r13
+
+tony_runtime: quick note: if any of the runs show >1% error rate we should not publish the p95s until we root cause — flagging early.
+
+maria_marketing: understood. keep us posted.
+
+kevin_data: will include an errors.csv per run and a short gating checklist: error_rate<0.5%, consistent seed behavior, no kernel fallbacks.
+
+maria_marketing: perfect. thanks everyone — moving this to high priority for launch assets.
+
+deploy_bot: [CI] load-test/2123456789 completed: short_chat run_reports uploaded to /artifacts/load-test/2123456789/
+
+tony_runtime: first artifacts are in, linking now: https://redwood-artifacts.internal/load-test/2123456789/short_qps150_seed42.json
+
+maria_marketing: grabbing and will review.
+
+kevin_data: starting stats pipeline on the uploaded file now.
+
+maria_marketing: if anything surprising pops up ping in #marketing immediately.
+
+tony_runtime: will do.

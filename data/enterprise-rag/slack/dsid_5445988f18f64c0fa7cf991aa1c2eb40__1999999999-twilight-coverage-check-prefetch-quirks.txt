@@ -1,0 +1,49 @@
+eng-oncall
+
+ana: Quick handoff — I’ll be offline at 20:00 PT. Leaving watchlist below.
+
+ana: TL;DR: saw slight prefetch throughput dip on staging after the prefetch PR. Nothing blocking but worth watching. PR: https://github.com/redwood-inference/prefetch/pull/412
+
+devon: noted. any errors in logs?
+
+ana: briefly spike of `KV cache miss` logs on worker-3 for ~2m at 18:17. pasted snippet:
+```
+18:17:12 worker-3 WARN prefetch: cache_miss key=seq-23 route=dedicated-gpu
+18:17:14 worker-3 INFO prefetch: batch-time=42ms
+```
+
+santiago: could be warmup/eviction — did we push any kernel changes?
+
+ana: nope. Only config flip in rollout to enable greedy-prefetch (canary 10%); rollout controller shows 10% since 18:00. config: `greedy_prefetch.enabled=true`
+
+mika: oncall, can you check the canary allocation? I can revert if it grows.
+
+devon: current metrics (last 30m): p50 latency stable, p95 +120ms on a small subset (5% of traffic). CPU/GPU util unchanged. Suspect batching interactions with KV misses.
+
+jamie: pinged @infra to check autoscaler, but low signal so far.
+
+deploy-bot: Deploy 2026-03-17T18:02Z — prefetch-canary v1.3.4 rolled to 10% — author ana — ✅ success
+
+santiago: action items?
+
+ana: 1) If p95 > +200ms for 10m, revert canary (mika) 2) If cache_miss > 10/s for 5m, alert infra (devon) 3) If errors spike >0.5% roll back (jamie)
+
+mika: I’ll keep an eye. added watch on datadog: dashboards/#prefetch-anomalies
+
+devon: left a tiny CR comment on the PR re: backoff timing — @ana can you address in follow-up? link: https://github.com/redwood-inference/prefetch/pull/412#discussion_r1234
+
+ana: ack, will do tomorrow morning. leaving notes in PR.
+
+jamie: FYI — on Dedicated, we have reserved capacity temp increase scheduled tonight 22:00–23:30 for load testing. Watch routing fallback.
+
+santiago: thanks — maybe that load test will surface the issue. I'll stand by if it does.
+
+mika: +1 — if we see p95 regressions during test, pause the test.
+
+ana: final: handoff checklist done, handoff doc: https://docs.internal/redwood/oncall/2026-03-17-twilight-check.pdf. Ping me on slack if needed, +1 for :coffee: 
+
+devon: thanks — taking watch. will post a quick summary if anything changes.
+
+jamie: good handoff, enjoy evening :thumbsup: 
+
+ana: thx all — leaving bridge open for 30m.

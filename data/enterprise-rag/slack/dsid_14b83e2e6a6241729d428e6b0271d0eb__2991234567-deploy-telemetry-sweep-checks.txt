@@ -1,0 +1,41 @@
+eng-releases
+
+alice.dev: Heads-up — starting telemetry/alert preflight for the EU-west change window in ~30m. I'll run the SLO dashboards + error-rate sweep and post anomalies. @priya_sre @ben_oncall
+
+deploy-bot: [ci] preflight started for release v1.9.2 -> eu-west. Checks: metrics, tracing, rollout-policy. ETA 2m.
+
+priya_sre: Running the SLO dashboard query now. Focusing on user-facing p95 latency and 5xx rate for embed-service and route=chat.generate.
+
+marco_rt: Quick check: watch for KV cache miss spikes — last canary showed a short-lived p95 blip at scale. If p99>1.2s and errors >0.5% we hold.
+
+ops-bot: metrics-scan: embed-service.errors_5xx: 0.12% (1h avg), embed-service.p95: 420ms, route.chat.generate.5xx: 0.45% (15m spike: 0.9%), route.chat.generate.p95: 980ms
+
+ben_oncall: That route spike at 15m is borderline. Is that from canary traffic or synthetic tests? Need to correlate with deploy traces.
+
+priya_sre: Correlating... traces show increased queue depth on gpu-pool-3 around 14:08 — backlog coincides with a scheduled backup job on that host pool. Not deploy-related yet.
+
+alice.dev: Good catch. Can we mute the backup job for the next 45m and re-run the sweep? If errors persist after muting we'll consider pinning or rolling back.
+
+marco_rt: I can temporarily exclude gpu-pool-3 from routing for the ongoing window: patching routing policy now. `curl -X PATCH https://ops.internal/routing/exclude -d '{"pool":"gpu-pool-3","ttl":2700}'`
+
+deploy-bot: routing-update accepted. Excluded gpu-pool-3 for 2700s. Continuing preflight checks.
+
+ops-bot: re-scan: embed-service.errors_5xx: 0.07% (15m), route.chat.generate.5xx: 0.18% (15m), route.chat.generate.p95: 540ms
+
+ben_oncall: Much better. Still keep an eye on p99 and error budget. Reminder: we gate on 5xx >0.5% OR p99 delta >30% vs baseline.
+
+priya_sre: Baseline p99 for route.chat.generate = 1.1s. Current p99 = 1.38s (25% delta). Under threshold but close. Recommend proceed with canary but enable tighter alerting (15m window, notify on first breach).
+
+alice.dev: Agree. Start canary at 5% for 10m, observability watch enabled. Posting release notes in #releases after canary stable.
+
+deploy-bot: canary rollout started: v1.9.2 -> 5% traffic. Observability policy: p95/p99/5xx alerts -> immediate notify to eng-oncall.
+
+ops-bot: canary metrics @5m: route.chat.generate.p95: 560ms, p99: 1.4s, 5xx: 0.15%
+
+ben_oncall: No urgent alarms yet. If we get p99 >1.5s or 5xx >0.5% we pause. Keep me looped.
+
+priya_sre: Also enabling auto-fallback to v1.9.1 if error budget breach persists >3m. Adding a short runbook note: "if auto-fallback triggers, notify product and create follow-up for KV cache GC tuning."
+
+marco_rt: Noted. Will monitor KV cache hit-rate and GC churn.
+
+alice.dev: Thanks team. If anything weird shows up, call it out in this thread. Otherwise I'll finalize release notes and open the post-deploy checklist after 30m." 

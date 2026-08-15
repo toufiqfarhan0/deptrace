@@ -1,0 +1,45 @@
+eng-releases
+
+Alice Cheng: Hey team — quick audit: during last night's incident we applied an 'escape hatch' pin to the runtime for gptx-quant-v3 in eu-west. Need to confirm whether to carry that pin through the scheduled rollforward or mark it as an explicit exemption (so it gets skipped).
+
+DeployBot: Pinlist snapshot (6112233460):
+- runtime_pin: gptx-quant-v3 (region: eu-west)
+- reason: incident-2026-03-20 (escape_hatch)
+- author: Alice Cheng
+- expires: 2026-03-21T08:00:00Z
+
+Benji: Did we capture a clear regression signal? If telemetry is weak i'd prefer to let the rollforward proceed and let the pin lapse.
+
+Zoe (SRE): Telemetry shows elevated OOMs for longseq workloads in eu-west after the runtime change — +2.4% error rate and 95th latency spike on a small but important cohort. Canary still reporting failures.
+
+Carol P: Pragmatic approach: mark it as an "exemption" so the rollforward explicitly skips gptx-quant-v3 unless someone manually overrides. Keep the pin active short-term, but require a TTL and a rollback plan in metadata. That avoids surprising Dedicated customers.
+
+Alice Cheng: Can someone add the exemption with explicit expiry and a link to the playbook? I'll be oncall in the morning and can approve removal if telemetry clears.
+
+Marco R: @Alice Cheng i'm leaning keep-but-skip. Make rollforward skip by default and require release-lead approval to unskip. Approve? :thumbsup:
+
+Benji: sgtm. Also please add a short rollback snippet in the pin metadata (what we run if it degrades during rollforward).
+
+DeployBot: Executing exemption add...
+
+```
+deploybot pin add-exemption \
+  --model gptx-quant-v3 \
+  --scope runtime \
+  --reason "escape_hatch incident 2026-03-20" \
+  --author "Alice Cheng" \
+  --expires "2026-03-22T08:00:00Z" \
+  --meta "rollback: deploybot runtime-rollback --to-image runtime-v2.14.1"
+```
+
+DeployBot: OK — exemption created id: ex-2387. Pin still present but flagged as "skip-on-rollforward".
+
+Zoe (SRE): Added runbook: https://redwood.internal/runbooks/escape_hatch_gptx_quant_v3 and scheduled a short-term telemetry alert to #eng-sre and #eng-releases for the next 24h.
+
+Alice Cheng: Thanks. I'll check metrics at 06:30 PT and post if we can remove. If it's still red, we'll keep the exemption and coordinate a targeted rollback.
+
+Marco R: Added a note for release notes: "Rollforward skipped runtime pin for gptx-quant-v3 in eu-west (escape_hatch) — monitored post-rollforward." Tagging @release-cali for awareness.
+
+Benji: cool. If anyone needs to unskip during the deploy window, ping me and @Marco R.
+
+Carol P: +1. Documented the decision and TTL, good compromise. :white_check_mark:

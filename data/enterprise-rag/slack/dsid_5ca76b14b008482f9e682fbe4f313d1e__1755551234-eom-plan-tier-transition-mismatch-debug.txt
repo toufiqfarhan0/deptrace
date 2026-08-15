@@ -1,0 +1,55 @@
+support
+
+sam_support: FYI ACME (acct acme-42) reports their EOM invoice shows ~1.2M tokens but our dashboard total for Feb is ~850k. They're on the Growth plan and had a plan tier change late on 2024-02-28 (around 23:58 UTC). Can ops/billing look?
+
+maria_cs: I have the customer's screenshots and the invoice PDF. Theyre anxious. Screenshot shows two separate line items for the same day. @taylor_billing can you pull the raw line items? : worried: 
+
+taylor_billing: Pulling invoice lines now. Quick read: invoice has two entries on 2024-02-28: 
+- Growth (base) 500,000 tokens
+- Growth (overage) 700,000 tokens
+Dashboard export shows: base=500k, overage=350k -> total 850k. So invoice has an extra 350k somewhere.
+
+raj_engineering: Ill check ingestion logs for acme-42 around the cutover window. Hypothesis: re-ingest/replay duplicated some events during the plan transition.
+
+raj_engineering: Quick query I ran against raw_events (UTC):
+```sql
+SELECT ingest_time, event_id, tokens FROM raw_events
+WHERE acct_id='acme-42' AND ingest_time BETWEEN '2024-02-28T22:50:00Z' AND '2024-03-01T00:10:00Z'
+ORDER BY ingest_time
+LIMIT 50;
+```
+
+raj_engineering: Results show a batch replay at 2024-02-29T00:02:14Z with same event_ids as earlier at 2024-02-28T23:57:03Z (job retry). 350,112 tokens repeated across that replay. Seems like idempotency keys weren't present for that job.
+
+julia_finance: Note: invoices are generated using account-local timezone assignment (ACME is PST), while dashboard aggregates are in UTC. If a plan change happens near local midnight, line items can span two invoice rows. That usually shouldn't create duplicates, though — this looks like repeat ingestion.
+
+sam_support: So likely root cause = ingestion retry duplicated events during tier change window + timezone-split on invoice rendering making it look like separate line items. Can we confirm duplicate event_id counts?
+
+raj_engineering: Confirmed. I ran a dedupe check:
+```sql
+SELECT event_id, count(*) as occurrences, sum(tokens) as total_tokens
+FROM raw_events
+WHERE acct_id='acme-42' AND event_id IN (/* ids from replay batch */)
+GROUP BY event_id
+HAVING count(*) > 1;
+```
+Sample output: event_id=ev_9A3, occurrences=2, total_tokens=2048
+event_id=ev_9B7, occurrences=2, total_tokens=1536
+Aggregate duplicated tokens: 350112
+```
+
+taylor_billing: Thanks. From billing side our options: 1) issue a credit for the duplicated 350,112 tokens and send a corrected invoice, or 2) manually adjust the invoice line to collapse duplicates and leave totals. Finance preference? @julia_finance
+
+julia_finance: We should credit and reissue corrected invoice so accounting trails are clean. Also add a short explanation note referencing INC number.
+
+ops_bot: Incident created: INC-2024-2412 - duplicate metering during plan-transition. Assigned: raj_engineering, taylor_billing. Priority: P2.
+
+sam_support: Ill notify the customer that were investigating and will correct any billing errors. Draft message: "Thanks — we found duplicate meter entries during a backend retry around your plan change. We will credit the duplicated tokens and issue a corrected invoice by EOD." OK to send?
+
+maria_cs: Send it. Also ask customer if they performed any heavy replays or bulk uploads around that timestamp (just in case).
+
+raj_engineering: Root cause summary: ingestion job retried without idempotency key during the plan cutover window, which caused a replay of ~350k tokens for acme-42. Engineering will add a fix to require idempotency keys for that job and add a detection alert for duplicate event_ids.
+
+taylor_billing: Ive queued a credit for 350,112 tokens and will generate an adjusted invoice PDF. ETA: today EOD PST. Ill update INC-2024-2412 when done.
+
+sam_support: Great — keeping customer on watch and will close after invoice reissue. Thanks all :thumbsup:

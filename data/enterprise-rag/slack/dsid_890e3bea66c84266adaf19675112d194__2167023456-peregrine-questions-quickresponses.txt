@@ -1,0 +1,17 @@
+customer-success
+
+Ivy (CSM): Peregrine sent a vendor security questionnaire and wants answers + evidence by Friday COB. Major asks: SOC2 boundary, KMS options, payment card handling, subprocessors snapshot.
+Ravi (Security): short answers OK for procurement copy/paste?
+Ivy (CSM): yes, 2-3 lines each.
+Ravi (Security): Drafts: 
+1) SOC2: 'Redwood maintains a SOC 2 Type II report covering our hosted control plane and hosted inference service. Dedicated/Private deployments have contract-specific boundaries; contact your account team for deployment artifacts.'
+2) KMS: 'Hosted uses Redwood-managed KMS. Customer-managed keys/HSMs supported for Dedicated and Private under contract.'
+3) Cards: 'Customers must tokenize/de-identify cardholder data before sending. Redwood does not process or retain PANs in plaintext. If tokenization is infeasible, engage Redwood Security to evaluate an isolated Dedicated/Private deployment. (Subject to contract.)'
+4) Subprocessors: 'Attached: subprocessors snapshot (2026-03-18). Public list: https://redwood.example.com/subprocessors. Customers may request change notifications per contract.'
+Tara (Legal): Add our standard no-reliance/subject-to-contract sentence and approve.
+Jules (Infra): I'll attach a redacted KMS diagram and confirm no hostnames. Ping me before send.
+Ivy (CSM): Can Security + Legal sign off by 2pm PT so I can send to procurement? Also proposal: offer a 30-day SOW signing extension and a limited pilot (reduced retention) to unblock.
+Ravi (Security): OK for pilot in principle; Ops approval needed. Approve snippets with minor edits.
+Tara (Legal): Approved with edits.
+procurement-bot: Reminder: attach DPA v3.2 if referencing DPA sections.
+Ivy (CSM): I'll attach DPA v3.2 + subprocessors snapshot and post final form here for last check before sending.

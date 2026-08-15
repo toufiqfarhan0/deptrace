@@ -1,0 +1,69 @@
+support
+
+taylor_support: Heads up — Acme support ticket #3245. They started getting 500s after upgrading to redwood-py 0.12.0. Main failure is a RuntimeError: "This event loop is already running" coming from our sync convenience wrapper when used inside FastAPI background tasks. Posting the minimal traceback they sent.
+
+sam_acme: stacktrace pasted by customer:
+```
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/redwood/sync.py", line 42, in request
+    return asyncio.run(self._async_request(...))
+  File "/usr/lib/python3.11/asyncio/runners.py", line 44, in run
+    raise RuntimeError('This event loop is already running')
+RuntimeError: This event loop is already running
+During handling of the above exception, another exception occurred:
+HTTPError: 500 Internal Server Error
+```
+
+Also provided deps: redwood==0.12.0, httpx==0.24.0, fastapi==0.95.2, uvicorn==0.19.0, python 3.11.5
+
+eli_devex: thanks — can you confirm how they're calling the client? are they using the sync wrapper inside a FastAPI background task or startup event? we need a tiny repro snippet.
+
+sam_acme: they call it from a background task:
+```py
+@app.on_event('startup')
+def start_job():
+    # runs inside uvicorn event loop
+    client = redwood.sync.Client(api_key=... )
+    client.generate(prompt="hello")  # fails here
+```
+
+jess_eng: yep that's the issue. uvicorn/fasapi runs an event loop. our sync wrapper uses asyncio.run() which raises if loop already running. We added the wrapper in 0.12.0 to make sync usage easier but missed the running-loop case. quick workaround for customer: use the async client inside a task and await, or run sync code in a thread. Example workaround:
+```py
+# workaround: run blocking sync call in threadpool
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
+
+executor = ThreadPoolExecutor(max_workers=1)
+
+@app.on_event('startup')
+async def start_job():
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(executor, lambda: redwood.sync.Client(api_key=...).generate('hi'))
+```
+
+kyler_eng: adding to that — customers can also call the async API directly instead of using the sync veneer:
+```py
+async def start_job():
+    async with redwood.AsyncClient(api_key=...) as c:
+        await c.generate('hi')
+```
+
+jess_eng: for the long term we should change sync.Client to detect a running loop and avoid asyncio.run; fallback to submitting to loop if possible, or raise a clearer error pointing to the async client. Proposed patch in PR: if asyncio.get_running_loop() exists -> raise RuntimeError with guidance and link to docs. Alternatively detect if loop is running in a different thread and use asyncio.run_coroutine_threadsafe.
+
+eli_devex: can we hotfix with a clear error + doc link in 0.12.1 and ship a compatibility shim? Customer prefers a quick patch rather than rewriting their app.
+
+kyler_eng: agreed. I'll open a patch: 0.12.1 will detect running loop and raise RuntimeError('Detected running event loop. Use redwood.AsyncClient or run sync call in a thread. See https://redwood.company/docs/py-eventloop') — plus logging. If we want to be more helpful we can try run_coroutine_threadsafe when applicable but it's risky.
+
+release-bot: created release branch fix/sync-eventloop-17999 and draft changelog entry: "fix: sync client raises clearer error when used inside running event loop (fastapi/uvicorn)" :package:
+
+sam_acme: customer temporarily downgraded to redwood==0.11.3 and that fixed it. They asked for ETA on patch.
+
+jess_eng: ETA 24h for a docs-only patch (0.12.1). If we attempt run_coroutine_threadsafe shim might need more testing — estimate 3 days. For now push docs + clearer error message.
+
+eli_devex: filing an internal incident to track customer impact and attach repro. assigning to @kyler_eng and @jess_eng. severity: P2 (production feature degraded for single customer).
+
+kyler_eng: copied repro into the eng-runtime board, PR up in draft. I'll coordinate QA.
+
+release-bot: release 0.12.1 draft created for CI run :rocket:
+
+taylor_support: noted, updating ticket #3245 and telling customer to pin to 0.11.3 or use async client + providing the workaround snippet. will follow up after patch. :thumbsup:

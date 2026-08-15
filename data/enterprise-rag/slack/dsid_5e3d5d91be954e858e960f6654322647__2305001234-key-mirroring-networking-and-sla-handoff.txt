@@ -1,0 +1,34 @@
+sales
+
+Jessica Chen: Hi team — enterprise prospect asking for BYO-HSM active-active key mirroring between eu-west-1 and us-east-1. They want: network ports/ips, expected inference latency hit, rotation cadence options, and pricing delta for multi-region key proxy. Need a quick reply before EOD.
+
+Sam Green: Thanks Jess. Short answers: we support BYO-HSM via our key proxy. Mirroring adds round-trip for key unwraps if you route to remote HSM. Usually add 5-25ms per call depending on region pair. For cross-region active-active you'd want local routing + async replication to avoid per-request cross-region calls.
+
+Matt O'Leary: Exactly — recommend local primary + async mirror. If they insist on synchronous mirroring, they pay the latency. For POC we can show both modes.
+
+Alex Rivera: Network: outbound TLS to customer HSM endpoints. Ports: TCP 443 for HTTPS, TCP 1050-1060 if they use PKCS#11 over TCP (some vendors). We need static IPs for allow-listing; we'll provide the egress IPs from the Dedicated pool. Also need MTU/keepalive tuned for long-lived tunnels.
+
+Lisa Park: Compliance note: mutual-TLS + client certs required for HSM connections. Customer-managed keys (BYOK) must have rotation policy documented; for some regulated customers we require rotation window >= 30 days and audit logs forwarded. Key escrow: we do not escrow customer CMKs unless explicitly contracted.
+
+Jessica Chen: Helpful — can you paste an excerpt of the network snippet I can send?
+
+Matt O'Leary: Sure. Use this snippet (send as code):
+```
+# Firewall egress
+ALLOW tcp 443 to <customer-hsm-host>
+ALLOW tcp 1050-1060 to <customer-hsm-host>  # vendor-specific
+# TLS
+Client cert (mTLS) required. TLS1.2+.
+# IPs
+Redwood egress CIDRs: 34.200.100.0/24, 34.200.101.0/24  # example
+```
+
+Sam Green: Pricing delta: for sync cross-region HSM requests we bill extra per-key-ops due to egress + reserved proxy capacity. Ballpark: +20–40% on top of reserved capacity depending on expected QPS. For POC we can offer a timeboxed trial with waived cross-region surcharge.
+
+Amy Solis: I can put together a POC checklist and a short SOW addendum. Also suggest we offer two test scenarios: (A) local routing with async mirror, (B) sync cross-region for latency demo. I'll draft the SOW.
+
+deploy-bot: Created POC ticket #POC-9123 and linked runbook <https://redwood.infra/runbooks/kms-mirroring>
+
+Alex Rivera: One more ops note — rotation: if they want automated daily rotations we need HSM-side support for zero-downtime key promotion. If not supported, do weekly rotations with a short maintenance window.
+
+Jessica Chen: Perfect. I'll reply with the network snippet + offer for POC A/B. Thanks all :pray:

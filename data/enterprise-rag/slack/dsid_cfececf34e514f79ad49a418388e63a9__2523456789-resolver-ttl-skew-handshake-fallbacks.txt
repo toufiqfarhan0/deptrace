@@ -1,0 +1,55 @@
+support
+
+sara_support: FYI customer ACME reporting intermittent 502s on /v1/generate since our cert rotation at ~2523456600. They see TLS handshake timeouts on our hosted inference endpoint. Repro steps they sent below. Can infra take a look?
+
+ops-bot: Alert: hosted-api-prod TLS handshake timeout spike (5xx rate +140%) - triggered at 2523456755 :rotating_light:
+
+mike_infra: On it. Can you paste the customer's curl + dig output and any edge logs? Need to know if it's our cert chain or DNS / routing.
+
+sara_support: From customer:
+```
+$ dig +noall +answer model-api.redwood.example A @1.2.3.4
+model-api.redwood.example. 3600 IN A 203.0.113.10
+model-api.redwood.example. 3600 IN A 203.0.113.11
+```
+They also ran from their private resolver (forwarder) which returned 203.0.113.12 (stale).
+
+Curl from their host:
+```
+$ curl -v https://model-api.redwood.example/v1/generate
+* TLS handshake timeout
+* Connection failed -> HTTP/1.1 502 from gateway
+```
+
+And our edge log snippet (edge-prod-03):
+```
+[2523456760] conn=0x7f8e2a... tcp read failed: TLS handshake timeout (client hello recieved, no server response)
+[2523456761] upstream_connect failed: connection reset by peer (203.0.113.12)
+```
+
+luca_ops: Interesting — customer forwarder returned a different A record (203.0.113.12) than our authoritative set. If our cert rotation happened and we retired the instance behind .12, a TCP connect to that IP could hit a host without the new cert or an OS-level firewall, causing handshake stalls. Can you confirm the rotation window?
+
+karen_sec: Rotation started at 2523456600 and completed at 2523456700. OCSP stapling looks healthy for the new cert. No revoked status. I see hosts in the retired pool had their certs replaced and their listeners restarted. If DNS caches still point at retired IP, that explains the failure.
+
+mike_infra: Root cause hypothesis: TTL skew + caching on customer resolver caused a stale A (203.0.113.12) to be used post-rotation. Connections hit an instance that either didn't have the new cert or had ephemeral state causing handshake timeouts. The gateway returns 502/504 back to the client.
+
+mike_infra: Short-term mitigations:
+- Add compatible cert to retired instance for 1hr OR run iptables redirect to healthy pool on that IP (low risk)
+- Push DNS TTL reduction and force authoritative SOA serial bump so resolvers refresh quickly
+- Add edge-side fallback: if TLS handshake times out, retry against next IP in A set before surfacing 502
+
+luca_ops: I ran a quick probe: `nc -vz 203.0.113.12 443` -> connects but `openssl s_client -connect 203.0.113.12:443 -servername model-api.redwood.example` shows an old cert (CN mismatch). That matches the stale cache theory. I'll schedule the temporary compatible cert and add a fallback retry in our proxy for the next 60 minutes.
+
+sara_support: I'll tell ACME the likely cause (their forwarder cached a stale A record), provide the repro steps to flush and verify, and offer a one-hour credit for their disruption. Proposed message: "Please flush your resolver cache / restart your forwarder and re-run `dig` until the A set matches `203.0.113.10/11`. We rotated certs and a stale IP was still served by a cached resolver." :eyes:
+
+acme_contact: Thanks — we're restarting our forwarder now. Quick question: any suggested command to force purge? We're on Ubuntu 22.04 using systemd-resolved.
+
+mike_infra: For Ubuntu: `sudo systemd-resolve --flush-caches` or restart: `sudo systemctl restart systemd-resolved`. On some appliances you'll need to clear the DNS cache on the appliance or wait for TTL. Also check `dig +trace model-api.redwood.example` to ensure you hit authoritative.
+
+karen_sec: I'll also add a postmortem note: reduce rotation blast radius by ensuring retired IPs serve the new cert for a short overlap window in future rotations; and add a runbook entry to trigger edge-side retry-on-handshake-timeout fallback.
+
+luca_ops: Done — deploying retry patch to canary now (edge-prod-canary). Will monitor for 10m.
+
+ops-bot: Ticket created: #INC-9247 (resolver-cache -> handshake-timeout -> 502) assigned to infra and support.
+
+sara_support: Thanks team — I'll keep ACME updated and confirm once canary is green. :white_check_mark:

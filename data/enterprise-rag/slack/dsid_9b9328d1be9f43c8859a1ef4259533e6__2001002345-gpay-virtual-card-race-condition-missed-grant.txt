@@ -1,0 +1,35 @@
+support
+
+Alice: FYI — support case U-8421. Customer signed up via Google SSO (maya+trial@example.com). They verified email and added a Google Pay virtual card, 3DS returned success, but free-trial credits were never applied. Account: acct_0A1B2C. Payment method id pm_gtk2 (masked ****4242, BIN 400555, country=FR). Can payments/fraud confirm gating reason? /cc @Ben @Celia
+
+Ben: Thanks — can you paste the gateway txn id and the exact PM id from the UI so I can pull gateway logs?
+
+Alice: PM id pm_gtk2, gateway txn gt_98321. 3DS status shows "authenticated". From support UI metadata: "payment.bin_country": "FR", signup.region: "US". Customer insists they're physically in the US and used GPay virtual card.
+
+Celia: Quick check on fraud dashboard — overall score low. I do see a country_mismatch flag on the onboarding rule: we block automatic grants when BIN country != signup region AND virtual_card=true. That normally triggers manual review, but I don't see any manual review event for this account. Looks like the grants hook didn't re-evaluate after verification.
+
+David: Do we have grants service logs for acct_0A1B2C? My hunch: grants.process ran before email.verify completed and skipped granting. If the recheck never fired, that would explain it. Can you paste the event ordering from audit?
+
+Alice: Audit sequence pasted below:
+```
+2026-03-17T15:23:10Z user.create acct_0A1B2C
+2026-03-17T15:23:12Z payment.attach pm_gtk2
+2026-03-17T15:23:14Z 3ds.verification gt_98321 authenticated
+2026-03-17T15:23:18Z email.verify maya+trial@example.com
+2026-03-17T15:23:22Z grants.process trigger for acct_0A1B2C -> SKIPPED (no eligible pm at check)
+2026-03-17T15:23:24Z grants.process trigger for acct_0A1B2C -> NOT_RECHECKED
+```
+
+Ben: Yup — race. grants.process ran at :22 before we considered the email.verify at :18 as part of eligibility (our worker checked eligible_pm cache which hadn't been populated). The later :24 run didn't re-evaluate eligibility due to a bug in the recheck gating (cache TTL + missing requeue). I'll run a manual grant now and follow up with a fix.
+
+Ben: Manual grant executed — applied $15 free-trial credits to acct_0A1B2C. Grant txn id: grant_5566. Notifying customer now. :white_check_mark:
+
+Alice: Thanks — I'll update the ticket with grant_5566 and let the customer know credits are visible. For records: should we whitelist low-risk GPay virtual cards or fix recheck behavior?
+
+Celia: I prefer fixing the recheck deterministically (on email.verify/payment.attach/3ds events). For low-risk virtual cards, we can consider a scoped whitelist for 72h with extra logging, but let's not blanket-whitelist yet.
+
+David: I'll open a bug with full repro (race between events -> grants worker skipping) and implement a guaranteed recheck on email.verify plus cache TTL tweak. Will add unit/integration tests and target a patch this week. PR will reference this thread and the audit snippet.
+
+GrantBot: Noted. Created incident tracker entry INF-2026-78 linking to bug and ticket U-8421.
+
+Alice: Great — customer confirmed credits are showing. Closing internal escalations for now. Thanks all. :pray:

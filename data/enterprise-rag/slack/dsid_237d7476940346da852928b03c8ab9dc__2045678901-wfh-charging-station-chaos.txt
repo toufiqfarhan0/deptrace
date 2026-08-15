@@ -1,0 +1,19 @@
+random
+
+jo: Heads-up  morning chaos. Plugged my phone, laptop, and lamp into a new multi-charger strip and somehow tripped the breaker. router rebooted mid-demo. photos attached of the charging station graveyard. :zap: :sweat_smile:
+paul: oh no. did the breaker trip or just a sag? sometimes cheap strips overload when charging laptops + heaters.
+jo: breaker tripped totally. had to run down to the breaker box and flip it back. came back with jitter for a few minutes. ran a quick ping to capture the spike:
+```
+PING 8.8.8.8 (8.8.8.8): 56 data bytes
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=118 time=30.2 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=118 time=29.8 ms
+Request timeout for icmp_seq 3
+64 bytes from 8.8.8.8: icmp_seq=4 ttl=118 time=105.9 ms
+--- 8.8.8.8 ping statistics ---
+4 packets transmitted, 3 packets received, 25.0% packet loss
+```
+maya: yikes. short-term: move router to a different outlet on another circuit if you can. long-term: get a higher-rated surge protector and avoid daisy-chaining. UPS for modem+router helps with sags.
+jo: ordered a UPS and a proper surge strip. also labeled the charging corner "do not overload". learned the hard way that chargers and routers don't always play nice.
+help-bot: note: IT reminder  if home power events disrupt meetings, we can ship a loaner hotspot or travel router. open a ticket in #help with subject "loaner hotspot" and include urgency.
+paul: pro tip: run a 10-15 minute ping or mtr while you test the outlet after replacing gear so you have a record if ISP or electrician needs logs. timestamps are very helpful.
+jo: thanks for the tips  all set now and no more multi-charger stacking for me. :raised_hands:

@@ -1,0 +1,15 @@
+eng-releases
+
+Maya Patel: Heads-up — release/x pipeline turned red after merge 342, failing 3/85 tests. Failing job: https://ci.redwood/reports/4578 TestStreamLarge times out. Is this a flaky rerun situation or should I do a rebuild-only? /cc @Alex Chen
+Alex Chen: Can you paste the job log snippet? Usually try a focused retry first. Our usual commands: `ci retry --only-failed` or `ci retry --jobs=4578` to rerun just the failed job. Use `ci rebuild --rebuild-only` only if artifacts (docker images, compiled libs) are suspect.
+Maya Patel: log excerpt: "Timeout waiting for frame flush" — seems timing-related. Link above has full log.
+Samir Gupta: That TestStreamLarge has been noisy lately after the storage tweak. I'd do `ci retry --jobs=4578` once. If it fails twice in a row, escalate to bisect. For bisect: `ci-bisect --start=release/x~10 --end=release/x --test=TestStreamLarge` — that'll narrow the commit that introduced instability.
+Jordan Lee: Also FYI retries are rate-limited on release branches and too many retries can block the release queue. If you see >2 retries, prefer `ci rebuild --rebuild-only` to refresh images, or open an infra ticket.
+Maya Patel: running `ci retry --jobs=4578` now — will report back.
+CI-bot: @Maya Patel: Retry queued for job 4578 (build 202). Monitoring...
+Rachel Nguyen: If the retry flakes again, ping me and I can allocate a dedicated node to repro locally. I have a small script to run the test loop that matches CI timing.
+Maya Patel: Retry finished SUCCESS :tada: — looks like a transient timeout. I'll add a short flakiness note to the PR and skip bisect for now. Thanks all. :thumbsup:
+Alex Chen: Nice. When you update the PR, add `flaky: TestStreamLarge` and a short note referencing infra ticket #1145 in case it resurfaces.
+Maya Patel: Will do.
+Samir Gupta: Saved the bisect command in the infra runbook: https://internal.redwood/infra/ci-bisect for next time.
+Maya Patel: Closing this thread after I add the PR comment. Thanks everyone.

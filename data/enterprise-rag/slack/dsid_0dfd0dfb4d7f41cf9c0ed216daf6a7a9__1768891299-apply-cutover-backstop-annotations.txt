@@ -1,0 +1,49 @@
+eng-infra
+
+maria: Heads-up: scheduling infra cutover tonight 21:00 UTC. Need provider pin + release state key in the PR. deploy-bot will run a preflight at 20:45. Canary scope: NAT route change only. @ops-oncall please standby.
+
+deploy-bot: preflight started for job infra/cutover at 1768891300
+deploy-bot: plan id plan-6c9a
+```
+Terraform will perform the following actions:
+  + module.network.aws_route.nat_route
+  ~ module.network.aws_subnet.app_subnet (2 changes)
+  0 to destroy
+```
+deploy-bot: to approve use `/deploy approve plan-6c9a`
+
+ashok: pushed provider pin on branch: provider "hashicorp/aws" = "~> 4.20.1" and added explicit s3 backend key: s3://redwood-terraform/state/releases/1768891299.tfstate
+
+olivia: recommend label `release/canary-66` and restrict canary to eu-west-1 to limit blast radius :eyes:
+
+samir: agree on eu-west-1. Add abort rules: if 5xx > 1% for 5m OR error-rate > 2x baseline, deploy-bot must abort and we restore prior state. I'll paste exact CloudWatch alarm ARNs into the PR.
+
+deploy-bot: plan completed: 3 changes (1 add, 2 update)
+```
+Plan: 1 to add, 2 to change, 0 to destroy.
+Changes by resource type:
+  + aws_route: 1
+  ~ aws_subnet: 2
+```
+
+maria: approvals needed for provider pin + canary region. @ashok @olivia please `/deploy approve plan-6c9a` once you confirm.
+
+ashok: confirmed and approved. /deploy approve plan-6c9a
+olivia: approved. /deploy approve plan-6c9a
+
+ops-oncall: I'll monitor 20:50-22:00 UTC and will keep the incident channel open. If deploy-bot emits `ABORT` I'll coordinate rollback.
+
+deploy-bot: /deploy apply started by maria at 1768891400
+deploy-bot: applying module.network (eu-west-1, canary)
+```
+Applying: module.network.aws_route.nat_route
+Apply complete! Resources: 1 added, 2 changed, 0 destroyed.
+Outputs:
+  nat_route_id = "rtb-0abc1234"
+```
+
+olivia: Canary metrics look clean 44d latency and errors within expected thresholds.
+
+samir: Updated release notes and PR description: - provider pinned: hashicorp/aws ~> 4.20.1; - state key: releases/1768891299.tfstate; - rollback plan: restore state from s3://redwood-terraform/state/releases/backup-1768891230.tfstate then `terraform apply -target=module.network -var='restore=true'`; - abort conditions: CW alarm ARNs and thresholds (see PR).
+
+maria: I'll paste the apply log into the release PR and tag the release. Closing thread 44b thanks all.

@@ -1,0 +1,29 @@
+docs
+
+Anika: FYI I'm opening a tiny 'trace -> dashboard' quickstart PR — super minimal, single-file examples for JS + Python, and a short cost/latency callout. Trying to keep it one page. PR: https://github.com/redwood-inference/docs/pull/12345 :memo:
+Samir: can you paste the JS snippet here? i'll sanity-check the trace key parts.
+Anika: sure — added in PR but large files blocked CI. snippet:```js
+// attach trace id to request
+fetch('/api/generate', {
+  headers: { 'x-rw-trace-id': traceId }
+});
+```
+Priya: love the small footprint. can we also show how to attach the cost/latency header into the dashboard so customers can map tokens -> $ quickly? a 2-line example would help.
+Anika: added a one-liner suggestion in the PR: `dashboard.widget.addMetric('cost_per_token', 'trace.headers.cost_usd')` — obviously pseudocode but shows the mapping.
+Lia: quick heads up — the CI linkchecker flagged an internal confluence link in the 'migration notes' section. it 404s. looks like the old KB slug changed.
+docs-bot: :warning: link-check failed for files/docs/observability/trace-quickstart.md line 88 -> https://confluence.company/internal/old-slug (status 404). See CI details: https://ci.redwood-inference/pipeline/6789
+Marcus: i can swap that out — what's the replacement? Lia: use https://kb.redwood.ai/trace-dashboard-mapping (public KB), i updated a comment in the PR.
+Samir: regarding SDK parity: we currently have the snippet only in JS. can someone add a compact Python example — just requests + header — that mirrors the JS one. i can do a quick pass.
+Anika: thanks. if Samir adds Python, can Marcus do a quick lint + snippet formatting pass? i want the docs linter to be happy before we merge.
+Marcus: yep will run `make docs-lint` and fix markdown fences. also i'll squash the extra image commits — the screenshot file was 3MB, i replaced with a compressed png.
+Priya: small content ask — add a short sentence under "cost/latency" that warns about batching changing per-token latency numbers. otherwise users misinterpret dashboards.
+Anika: done in PR comment. i kept it under two lines.
+Lia: after the confluence -> kb fix, the linkcheck should pass. once docs-bot green, i can approve.
+docs-bot: :white_check_mark: link-check passed for files/docs/observability/trace-quickstart.md (job 9021).
+Marcus: merged Samir's Python snippet + small formatting fixes in a follow-up commit. pushed.
+deploy-bot: Deployment job started for branch docs/trace-quickstart (build 223).
+deploy-bot: Deployment succeeded — site updated at https://docs.redwood.inference/observability/trace-quickstart.html
+Anika: THANKS everyone :tada: — will close the PR and open a tiny follow-on for the dashboard preset example (very small).
+Priya: nice work! this will help support when customers ask about token cost mapping.
+Samir: quick follow-up: can we add a note to the SDK changelog about the header name `x-rw-trace-id` so it surfaces in release notes? i'll add it.
+Anika: perfect. closing thread.

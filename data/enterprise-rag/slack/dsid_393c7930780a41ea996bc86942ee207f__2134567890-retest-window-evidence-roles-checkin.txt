@@ -1,0 +1,47 @@
+eng-security
+
+morgan: Hey team — incoming external pentest vendor (RedFlagSec) next Tue-Wed. Need quick sync on access model, evidence handoff, and retest window.
+
+alex_sre: Do we want ephemeral IAM roles + KMS decrypt-only on evidence bucket? Prefer time-limited creds.
+
+priya_sec: +1 ephemeral roles. We'll need CloudTrail logs + KMS Decrypt events retained. Also require that vendor can only read objects with prefix `pentest/RedFlagSec/`.
+
+samar: Also confirm no deploys during test window? We should schedule a deploy freeze for Tue 00:00 - Wed 23:59 UTC unless emergency.
+
+nicole: Product OK with freeze. Please create JIRA and tag release team.
+
+morgan: Created INFSEC-4021 for scope + INFSEC-4022 for evidence pipeline. Link: https://jira.company/INFSEC-4021
+
+priya_sec: For KMS, we'll create a key policy allowing: 
+```
+{
+ "Effect": "Allow",
+ "Principal": {"AWS": "arn:aws:iam::123456789012:role/RedFlagSec-ReadOnly"},
+ "Action": ["kms:Decrypt","kms:DescribeKey"],
+ "Resource": "*"
+}
+```
+Vendor must use STS AssumeRole via our IDP MFA.
+
+alex_sre: Ops task list:
+- create role RedFlagSec-ReadOnly (1h session duration)
+- S3 prefix `pentest/RedFlagSec/` put-only to evidence uploader
+- enable CloudTrail insights + log retention 90 days
+
+morgan: Remediation tracking: we'll use the JIRA epic INFSEC-4050 and label all fixes with `pentest-2026`. Retest window target: 2 weeks after initial report.
+
+priya_sec: Agreed. Add required checklist for retest:
+- confirm fix deployed to staging + prod as needed
+- provide exploit steps + PoC to vendor
+- upload test artifacts to evidence bucket
+- schedule retest slot (30m)
+
+ops-bot: Reminder posted: `@eng @eng-sre @product` Pen test deploy freeze scheduled Tue 00:00 UTC; see INFSEC-4021.
+
+samar: One open question: where do we store screenshots that contain sensitive PII? We should redaction tool before upload.
+
+nicole: We'll redact on staging using a scrubber script. I'll link repo in INFSEC-4021.
+
+morgan: Thanks all. Next sync tomorrow 10:00am PT. @priya_sec can you confirm KMS policy and expiration window before then?
+
+priya_sec: Will do, will post final key policy and role ARN here by EOD.

@@ -1,0 +1,64 @@
+incidents
+
+maria: Heads-up — Foodly (prod us-west) reporting repeated 504s and very long tail timeouts starting ~09:15 UTC. Customer says some requests succeed but a lot hang until gateway 504.
+
+support-bot: Ticket CS-8842 opened (priority: high). Customer session logs attached.
+
+kevin: Any tenant id or request examples?
+
+maria: tenant=foodly-prod, sample req id=req_0a9b3c. Payload is a long chat (avg 1.2k tokens) with streaming enabled.
+
+alex: Pulling metrics now. Initial glance: ingress_queue_depth spiked from ~120 to 780 around 09:12. p95 latency shot from 420ms -> 4.8s then timeouts.
+
+ops-bot: Alert: continuous_batcher_backlog > 500 for pool hosted-us-west-1 at 09:13:42.
+
+kevin: That's > queue_depth_limit for that pool. What are the configured limits?
+
+alex: Config: max_queue_depth=512, per-tenant soft_limit=256, continuous_batcher_max_items=1024. But we see many concurrent longseq requests, KV cache warmups, and a bunch of cold-starts for a canary model variant.
+
+maria: Customer says they sent a replay test that looks like a rapid burst of long transcripts. Could be a client bug but we need mitigation.
+
+eng-oncall: Can we repro with a synthetic burst? If it's queue saturation + long sequences, continuous batching backlog will amplify tail latency.
+
+kevin: Repro steps I ran (us-west):
+```
+for i in {1..300}; do 
+  curl -sS -X POST https://api.redwood.run/v1/generate \
+    -H "Authorization: Bearer $TOKEN" \
+    -d '{"model":"gpt-lite-3","input":"<~1200 token blob>","stream":false}' &
+done
+```
+Result: ingress_queue_depth -> ~700, dequeue rate steady, but p99 token latency grows until gateway timeout.
+
+alex: Logs:
+```
+[09:14:05] pool=us-west batcher=continuous id=req_0a9b3c queued_at=09:14:01 dequeue_delay_ms=1870 kvcache_miss=true
+[09:14:08] pool=us-west host=g-12 serving start token_gen_ms=2300
+[09:14:40] gateway: upstream_timeout 504 req=req_0a9b3c
+```
+
+kevin: Looks like KV cache spinups + long generation and continuous-batcher accumulation. The queue is hitting depth limit and gateway is returning 504 when requests exceed deadline.
+
+maria: Immediate mitigation options?
+
+sara: We can quickly enable tenant throttling for foodly-prod (cap concurrency to 40) and enable fallback to a smaller model for that tenant to reduce per-request tokens. Also can increase pool max_queue_depth as short-term patch.
+
+eng-oncall: Increasing queue limit is risky — could just move the pain to memory and cause OOM. Prefer shedding or fallback first.
+
+kevin: I pushed a route change: set fallback_model=gpt-small-2 for tenant foodly-prod and concurrency_limit=40 (applied at 09:25 UTC).
+
+ops-bot: Route update deployed to hosted-us-west-1 at 09:26:12.
+
+maria: After route change, ingress_queue_depth reduced to ~180 and p95 dropped back to ~340ms. Customer confirmed fewer 504s.
+
+alex: Notes: root cause appears to be an unanticipated replay burst of many long sequences combined with a recent canary rollout of model-g variant that has cold KV cache behavior. Continuous batching accumulated many long items causing dequeue delays.
+
+sara: Follow-ups: (1) ask infra to add better automatic tenant shedding when queue_depth > soft_limit for > 30s, (2) add a canary throttle on cold-start KV warmups, (3) improve docs for customers on replaying large sessions, (4) add alert that correlates kvcache_miss rate + backlog.
+
+kevin: I'll file infra ticket INF-2134 for the shedding logic and link CS-8842. Also add a short-run play to temporarily increase queue_depth with memory guard if needed.
+
+maria: Customer updated: they saw improved success rate after fallback. They're happy for now but want a postmortem.
+
+eng-oncall: Assigning postmortem owner: alex. Deadline EOD tomorrow.
+
+maria: Thanks team — keeping this thread open until postmortem published. :thumbsup:

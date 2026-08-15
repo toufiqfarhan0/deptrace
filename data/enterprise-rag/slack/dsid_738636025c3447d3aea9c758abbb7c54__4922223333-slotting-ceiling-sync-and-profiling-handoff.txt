@@ -1,0 +1,32 @@
+eng-runtime
+
+alex: Quick sync — did a profiling sweep across A10/T4/L4/A100/H100 with the continuous-batching rollout. Noticed an odd regression: when KV-cache hit rate drops below ~0.6, H100 99th tail latency jumps ~35-40% and we fall back to a slower kernel path. Traces attached.
+sana: ugh, do you have numbers or a perf diff?
+alex: short summary: baseline (kv_hit>=0.8) 99p=42ms, when kv_hit ~0.5 99p=58ms on H100 for long sequences (>1024). A100 shows smaller bump (~+12%). A10/T4 unaffected. Flame trace shows kernel-selector choosing f32 matmul fallback for certain shapes.
+igor: can you paste the selector config you used for the run?
+alex: sure — this is the local sim config I used:
+```
+{
+  "selector": {
+    "kv_frag_threshold": 0.2,
+    "fallback_policy": "prefer_stable_kernels",
+    "seq_length_split": 1024
+  },
+  "batching": {
+    "max_tokens_per_batch": {"A10": 131072, "T4": 65536, "L4": 65536, "A100": 393216, "H100": 786432},
+    "slot_ceiling_policy": "kv-aware-softcap",
+    "queue_policy": "slo_priority"
+  }
+}
+```
+liam: that H100 max_tokens looks high when kv fragmentation is nontrivial. If the kernel selector switches to the safe f32 path for certain matmul tiling, it will create huge perf cliffs.
+marie: what about lowering H100 ceiling only for sequences >1024? keep aggressive ceilings for short seqs.
+alex: yes — proposal: reduce H100 max_tokens_per_batch to 512000 for seq>1024, and tighten kernel-selector threshold so it picks the quantized kernel only when kv_frag <0.15. Also adjust queue_policy to prefer packing smaller seqs with long ones to reduce fragmentation.
+igor: please run a quick sim with those params. also capture per-kernel invocation counts.
+perf-bot: sim run complete — 4922223333-1
+Result: H100 99p reduced from 58ms -> 49ms (kv_hit ~0.5), kernel fallback events down 67%, throughput stable (±3%). A100 99p unchanged.
+alex: nice — can you push a canary to staging with these selector thresholds and the new H100 ceiling? I'll monitor console traces and tail latency.
+marie: i'll schedule canary tonight 23:00 PT. will add a prom alert for kernel-fallback-rate >5% and kv_hit <0.6.
+sana: awesome. if the canary looks good we can roll to prod next week and update the optimize-recommendations.
+liam: small follow-up: we should run a separate job to validate behavior for mixed-card allocations (H100+A100) — kernel interactions can be weird.
+alex: agree. thanks all :zap: 

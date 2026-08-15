@@ -1,0 +1,19 @@
+product
+
+Anya: quick mock drop 1: compact chat with live stream, tiny token pill, and single stop FAB. thoughts?
+Matt: love the compactness. q: update token pill live or only on stop?
+Anya: live increment, very low-attention (no pulse). avoids surprise when users glance.
+Sophia: a11y note: live updates can spam AT. expose only final totals via aria-live; provide keyboard-open breakdown.
+DesignBot: recommend role=status for final token text, aria-atomic=true on final update, and keyboard-focusable breakdown button.
+Jess: can we show "~+N tokens" next to Regenerate as an optional hint?
+Matt: yes but default off; toggle in prompt library settings.
+Ryan: control layout: primary Stop (icon-only) + overflow menu for Regenerate and Retry on compact. mobile uses long-press to reveal.
+Anya: copy drafts: Stop tooltip: "Stop generation — keeps partial reply." Regenerate tooltip: "Regenerate reply (re-run with same prompt)." Token label: "tokens: 128/2048"
+Jess: for regen cost >500 show confirm modal, <=500 show toast. capture telemetry.
+Matt: engineering: batch token updates every ~250ms; don't update at 60hz. send event regen_requested with estimate_before, estimate_after, pinned_prompt_id.
+Ryan: pinned prompts: badge above composer shows live token estimate and opens editor on click.
+Sophia: color contrast must pass 4.5:1 and pill mustn't rely on color alone; include an icon or label.
+Anya: next: produce two visual variants (pill-top vs pill-corner), final copy options, and a compact toolbar with overflow.
+Jess: I'll post microcopy options by EOD.
+Matt: I'll prototype debounce + a11y hooks in the playground branch.
+Anya: thanks 44b

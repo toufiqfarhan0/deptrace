@@ -1,0 +1,23 @@
+eng-oncall
+
+Maya: morning handoff — quiet overnight but a couple of small notes to watch.
+Maya: deploy of prefetcher v2 rolled at 23:40 UTC, health looked OK but one pod showed repeated restarts during the tail of the rollout. I left it on stable tag pending root cause.
+Chris: noted. Which pod?
+Maya: prefetcher-2-7c9f, restarted ~3 times in 10m, logs show OOMKilled around large batch case.
+Priya: thx. I'm adding prefetcher-2 to the watchlist, keep an eye on memory and queue latency.
+Chris: watching metrics now — tail latency spiked to ~280ms for a couple of mins, overall p50 fine.
+Maya: risk: if latency stays >250ms for more than 5m we should consider rollback or scale-up. Action: if spike repeats, ping me and Jamie.
+Jamie: can do. If it happens again I'll bump prefetcher replicas by +1 and rerun the rollout.
+Priya: opened a quick ticket: PERF-1428 to track memory regression and attach flame graphs from the failing pod.
+Chris: copying logs to the ticket. snippet: ```kubectl logs prefetcher-2-7c9f -n prod --since=30m```
+Maya: also FYI — embeddings cache hit rate dropped ~4% between 02:10-02:30 UTC. Might be unrelated but worth watching.
+Priya: I’ll check cache eviction rates and the memcached metrics.
+DeployBot: deployment prefetcher/v2 finished: service/prefetcher rollout successful :white_check_mark: (but 1 pod restart detected)
+Maya: thanks deploybot.
+Jamie: quick CR ping: I left comments on #348 (prefetcher backpressure) — @Chris @Maya can you take a look when free? Nothing blocking oncall but good to tidy.
+Chris: will review after I confirm there's no new spike.
+Maya: handoff summary: watch prefetcher pod restarts, tail latency (>250ms), embeddings cache hit drops. Action items: Priya to dig into memcache evictions, Jamie to stand by for scaling/rollback, Chris to review logs and CR. Ping me for any flapping. :thumbsup:
+Priya: ack.
+Chris: ack.
+Jamie: ack, I'll stay on call for 30m.
+Maya: end of handoff.

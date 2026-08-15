@@ -1,0 +1,66 @@
+eng-platform
+
+alex: Quick sync — we need runtime + infra inputs for the per-model/route SLO panels (P50/P95/P99, TTFT, tokens/sec). I’m drafting the console PRD tomorrow. Who can confirm metric names, labels, and expected cardinality?
+
+maria: I can take the runtime side. Current metrics we emit: `inference_latency_ms` (histogram) and `ttft_ms` (gauge) but labels are a bit messy right now.
+
+kevin: From infra we get `tokens_processed_total` and `tokens_per_second` (rate computed in Prom). But we also tag by `pool_id` which bloats cardinality. Recommend `region`, `model`, `route` only.
+
+alex: Good call on labels. Product wants single-panel per-route with a model dropdown. We should limit to `model`, `route`, `region`, `instance_type`. No per-pool ids in panels.
+
+maria: Agreed. Runtime can emit a sanitized label `route` and `model`. We’ll stop sending `pool_id` to the telemetry stream but keep it in internal logs. Will need a deploy window.
+
+jen: UX ask — panels should default to P95 and TTFT, with quick toggle to P50/P99 and tokens/sec. Also show baseline target line (SLO). Can the metrics include `target_ms` as a label or do we store SLOs elsewhere?
+
+kevin: We keep SLO definitions in the SLO service (JSON). Better to join in the dashboard via a small fetch in the console backend rather than embedding targets in metrics. Avoids metric churn.
+
+alex: Ok console backend will call SLO service for target overlays. For panels we need the exact Prom queries. Maria/kevin — can you propose Prom snippets we can copy into the dashboard?
+
+maria: Draft Prom queries below — these assume we emit `inference_latency_ms_bucket{model,route,region,le}` and `ttft_ms{model,route,region}`.
+
+```
+# P95 latency (ms) per model+route
+histogram_quantile(0.95, sum(rate(inference_latency_ms_bucket[5m])) by (le, model, route, region))
+
+# TTFT median per model+route
+avg_over_time(ttft_ms[5m])
+
+# tokens/sec (derived)
+sum(rate(tokens_processed_total[1m])) by (model, route, region)
+```
+
+kevin: Two notes: 1) use `sum(...) by (model, route)` in UI queries to keep region optional, 2) sampling on high-traffic routes should be controlled at emitter — we’ll add `emit_sample_rate` to telemetry metadata so dashboards can show sampling.
+
+alex: How do we expose sampling to users? Show a little badge on panels?
+
+jen: Yeah small helper — "data sampled @ 10%" next to the panel time range if sampling <100%.
+
+maria: We’ll add `emit_sample_rate` as a metric label on a separate gauge `telemetry_emit_sample_rate{model,route}` with value 0..1. That avoids touching the main time-series high-cardinality.
+
+kevin: Also recommend a derived SLI for tokens/sec per GPU: `tokens_per_gpu = tokens_processed_total / gpu_count` (gpu_count comes from infra exporter). Might be useful for capacity planning panel.
+
+alex: Love it. Product: default panel set = P50/P95/P99 latency, TTFT, tokens/sec, tokens_per_gpu, request_rate. Anything else?
+
+sarah: Add error rate (5xx) per route and a small table of recent regressions (linked to evals) if possible. Also a canary flag column from rollout API.
+
+maria: Canary flag is cheap — we can emit `route_rollout_phase{route} = "canary|stable"` as a label in a small gauge metric.
+
+kevin: For dashboards we need sampling guidance: emit full histograms on low traffic (<1k rps) and sampled histograms on high traffic routes. Infra will publish a recommended `histogram_sample_threshold` doc.
+
+alex: Action items: 1) Maria: propose final metric names & label set and a short deploy plan (ETA Wed EOD). 2) Kevin: add sampling metadata metric + infra guidance doc (ETA Thu). 3) Jen/Sarah: finalize panel wireframes + SLO overlay UX (ETA Wed morning). 4) Alex: wire console backend to SLO service + draft dashboard templates.
+
+maria: Will do. Draft names I’ll send in follow-up — lean names: `inference_latency_ms_bucket`, `ttft_ms`, `tokens_processed_total`, `telemetry_emit_sample_rate`.
+
+kevin: I’ll create PR for sampling metadata and the infra doc.
+
+deploy-bot: emitter-service v2.13.0 deployed to staging (tags: telemetry-sampling, sanitized-labels).
+
+alex: Perfect — tagging this thread for the PRs. If anyone needs me to host the sync, I can do a quick 15m after the PRs land. :thumbsup:
+
+jen: thanks all — will update the wireframes and post them in #product-observability once done.
+
+sarah: small follow-up: can we standardize label enums for `route`? Product will publish canonical route ids to avoid mismatch.
+
+maria: yes — runtime will validate against the canonical route map during emission and fallback to `route=\"unknown\"` if absent.
+
+alex: Great. Closing this thread — will reopen if spec changes.

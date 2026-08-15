@@ -1,0 +1,23 @@
+eng-platform
+
+maya (platform): quick heads-up — invoice-preview shows negative credits for some EU tenants after last night's backfill.
+eli (eng-platform): ugh. repro steps?
+maya (platform): 1) run preview for tenant T-993 2) see line item "reserved_capacity_adjustment" -120.00 3) total credits -12.00
+sam (billing): is that actually negative invoice or just preview UI aggregation bug?
+maya (platform): preview calculates credits by diffing anchored ledger watermark vs last_ledger_apply; seems watermark jumped backwards for some partitions during backfill.
+priya (obs): telemetry shows ingest watermark regression for partition p=eu-west-1 at 2026-03-19T02:11Z — spike in out-of-order seqs.
+ingest-bot: noticed reorg: event_stream_replay triggered on node-gamma, replayed older events with lower seq, updated watermark to 1623456 (lower than previous 1623500)
+eli (eng-platform): that's the problem — our "anchor" in dashboard/preview uses min(watermark, last_applied) rather than monotonic last_applied. It allowed backward move.
+sam (billing): what's the quick mitigation? Stop customers seeing negative credits.
+maya (platform): can disable preview flag that uses watermark and fallback to anchored ledger snapshot. But will hide some late-arrival adjustments.
+eli (eng-platform): propose two-step: 1) hotfix preview -> use max(ledger_snapshot_watermark, last_applied) 2) longer fix: change ingest pipeline to never reduce partition watermark on replay and keep tombstone marker for backfills.
+priya (obs): dashboards need annotation — add "watermark reset" alert and show replay origin node to help audits.
+sam (billing): also need to run reconcile job to clamp negative credits and emit correction entries so invoices don't go negative when moving to billing.
+maya (platform): agreed. can we run a one-off patch job that emits compensating events? prefer deterministic correction.
+eli (eng-platform): I can push preview hotfix now. PR in flight: https://git.redwood/eng-platform/pulls/4873
+ingest-bot: rollup status: canary 2/5 nodes updated, no errors so far.
+sam (billing): after hotfix, i'll queue a correction run for tenants with negative preview and generate audit CSV for finance.
+priya (obs): adding logs to stackdriver: "ingest.watermark.reset" with fields {partition, old, new, reason} — will search.
+maya (platform): thanks. follow-ups: 1) add unit test for watermark monotonicity 2) improve runbook for replay-triggered metrics 3) postmortem if corrections > $1000.
+eli (eng-platform): will open issues after deploy. ping if anything shows up in canary.
+maya (platform): :thumbsup: deploying to prod after canary completes. filing infra ticket to add stronger invariants.

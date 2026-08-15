@@ -1,0 +1,48 @@
+customer-success
+
+marta_cs: FYI Helix (large ecommerce customer) reporting a regression in embedding + rerank quality after last week's runtime tweaks. Relevancy for multiple queries down ~18% vs their baseline, and p95 rerank latency jumped from ~2.6s -> ~6.8s. They flagged impact on conversion. TICKET-4521 opened with customer logs.
+
+anya_product: Thanks Marta. Can you paste a minimal replica (query + sample ids) and the model/version they're pinned to? also need request_ids for some failed runs. Is this across all regions or only us-west?
+
+marta_cs: Pinned to `redwood/gemini-embed-v1` (customer copy). Reported in us-west only. Adding excerpts from the ticket below.
+
+marta_cs: "Search for \"waterproof hiking boots\" returned irrelevant top-3 items, CTR dropped 22% on those queries. We see many 500s and a large variance in batch sizes."
+
+ravi_eng: looking. Quick thought: last deploy toggled KV cache eviction threshold + switched to fp16->int8 quant path for that model family. Could be quantization/regression combo. Any `kv_cache_miss` spikes in logs?
+
+marta_cs: yes, customer logs show repeated `kv_cache_miss` and `batch_size=1` bursts. I pasted sample line: 
+``` 
+[2026-03-17T14:23:01Z] req=0x7fa3 status=200 model=gemini-embed-v1 seq=256 kv_cache_miss=true latency=6800ms batch_size=1
+``` 
+
+kevin_ml: thanks. Relevancy drop suggests embedding vector quality shifted, not just latency. We should run the standard Helix eval set through the post-deploy model and compare L2/cosine/recall@10 against baseline. I can run the eval but need dataset + model artifact.
+
+anya_product: For prioritization — product asks for impact severity and customer commitment. John, sales any notes on churn risk?
+
+john_sales: Helix is on reserved capacity with business-critical SLAs; they flagged potential downgrades if unresolved in 2 weeks. High commercial risk. :grimacing: We should treat as P1 for them.
+
+ravi_eng: proposals for immediate mitigation: 1) roll back runtime change for that pool (fast), 2) pin Helix to previous model artifact (if embedding change is model-local), 3) temporary client-side tweak: decrease rerank calls and use cached embeddings more aggressively. Which do we want to push first?
+
+anya_product: Short term -> rollback runtime change for the affected dedicated pool and ask Helix to test. Medium -> run full eval and decide whether to revert quant path or adjust quant config. Long -> add automated eval gating for embedding degradation on deploy.
+
+kevin_ml: acceptance criteria for a fix I propose: 1) on Helix eval set, recall@10 within 5% of pre-deploy baseline; 2) p95 latency for their QPS under 3s on avg; 3) automated regression test added to deploy pipeline blocking the quant-path change.
+
+ravi_eng: I can do a rollback PR for the runtime flag now and schedule a canary in us-west. If that reduces latencies and restores recall, we keep the rollback and schedule a controlled re-roll with extra monitoring. Assigning spike to me + kevin.
+
+marta_cs: noted. I'll update Helix CSM with estimated timeline: immediate mitigation in 24h, evaluation results in 3 business days, full resolution target 2 weeks.
+
+ops-bot: Deploy rollback queued: rollback-flag-2026-03-17 by ravi_eng — canary scheduled for us-west in 30m. (ops-bot reaction :rocket:)
+
+anya_product: Next steps: 1) ravi + kevin run spike, attach eval results to TICKET-4521, 2) PM (sophia_pm) decide priority and RFC scope by EOD tomorrow, 3) CS (marta_cs) keep customer updated with our mitigation plan.
+
+sophia_pm: I'll draft RFC: scope will include root-cause analysis, proposed runtime fallback, and deploy gating. Tentative priority: P1 for Helix, P2 platform-wide if we replicate on other customers. EOD tomorrow for RFC draft.
+
+john_sales: pls cc me on customer comms. I'll push to extend deadline if needed but need firm 2-week plan communicated.
+
+marta_cs: I'll attach customer logs + sample queries to TICKET-4521 and confirm the customer will test the canary tomorrow.
+
+kevin_ml: I'll start eval runs now. If anyone needs the eval script: `scripts/eval/helm_eval.sh --dataset helix_sample --model artifact://gemini-embed-v1`
+
+ravi_eng: assigning: TICKET-4521 -> spike: `embed-regression-helix-spike` owners = [ravi_eng, kevin_ml], due = 2026-03-25. Will post interim results in this thread.
+
+marta_cs: thanks team. Keeping thread open for updates. :thumbsup:

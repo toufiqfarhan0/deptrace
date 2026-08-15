@@ -1,0 +1,42 @@
+product
+
+ivy: Idea: run a tiered design-partner program so partners pick a participation bucket: sandbox (feedback-only), integrator (pilot with traffic), or enterprise (SLA + dedicated capacity). helps set expectations up-front.
+drew: ooh. different onboarding docs per bucket makes sense.
+kai: how do we gate progression between tiers? what are launch criteria?
+ivy: propose progression rules: sandbox -> integrator if partner runs an integration test with >=2 days of sustained API calls; integrator -> enterprise if they need reserved throughput and sign a short-term capacity commitment.
+anita: success metrics by tier: sandbox: 80% weekly pulse completion + 4 actionable items; integrator: 2 pilots with >5k tokens/day for 3 days + at least one joint use-case doc; enterprise: SLA sign-off + perf within 15% of baseline for latency/cost + security review passed.
+ivy: also propose a compulsory scope-negotiation step during onboarding: partner picks 1 primary success goal and 1 stretch goal. Product signs off on feasibility. keeps scope bounded.
+drew: Nice. That will limit feature creep. Add rollback policy: if a release causes >10% latency regression for integrator traffic, auto-fallback to last stable model and triage within 48h.
+kai: Ops note: need a routing policy that pins enterprise partners to reserved pool; integrators get soft reservations with prioritized queueing; sandbox uses shared hosted.
+ops-bot: FYI: reserved pool provisioning requires 7 days lead time.
+anita: Legal: on data sharing, use phrasing: "share redacted request/response traces for debug; fully anonymized or customer-provided redaction required". Offer DPA/Amendment for enterprise.
+ivy: good. can you post exact blurb we can paste in screener?
+anita: will post wording by EOD.
+drew: Recruitment screener (compact):
+1) preferred bucket (sandbox/integrator/enterprise)
+2) primary product surface + brief use-case
+3) rough daily token volume (ranges)
+4) compliance needs (SOC2/PCI/Hipaa?)
+5) contact for runbook / SRE on our side?
+6) willingness to sign DPA? (Y/N)
+kai: love the bucket field. helps us route invites.
+ivy: Feedback loop: sandbox = weekly async pulse; integrator = weekly 60m sync + pulse; enterprise = twice-weekly sync + dedicated slack & SLO dashboard. capture prompts + golden outputs in GH.
+drew: Who owns prompt corpora? Product (drew/ivy) own sets; runtime owns harness + auto-smoke.
+ivy: pairing: drew + kai to wire auto-harness and gating checks.
+kai: schedule pair Monday 11am PT.
+anita: compensation/perks by tier: sandbox = credit + early roadmap brief; integrator = credits + priority triage + custom onboarding session; enterprise = credits + 1:1 reliability support + SLA and co-marketing if they opt-in.
+drew: We should require a small integration test from integrators to prevent ghost signups.
+ivy: agreed. integration test = 30m setup + run script we provide; must complete before cohort start.
+kai: telemetry: we will emit partner-tagged metrics (tokens/day, p50/p95 latency, error-rate) to a DP-only dashboard. need owner for dashboard.
+drew: I'll own dashboard initially and add viewers.
+ivy: gating for public beta expansion: >=85% of integrator actionables triaged, no P0 regressions vs baseline across partner traffic, at least 3 validated integrator pilots, and a legal/compliance checklist for enterprise.
+anita: clarify P0: security incidents or data exfiltration. Any of those = immediate halt.
+ivy: communication plan: one landing page per cohort, screener form, email drip, and a single #dp-program channel. we'll rotate cohort tags.
+drew: can we include an explicit "scope negotiation" template for the first call? keeps everything in one doc.
+ivy: yes, I'll draft that template.
+ops-bot: Reminder: reserve-pool request created template available at /internal/ops/reserve-requests.
+ivy: next steps: anita to post legal blurb; drew to draft screener + landing copy; kai to schedule harness pairing; ivy to build scope template and initial roadmap card. target pilot start in 3 weeks.
+anita: posting legal text now.
+drew: I'll share a first landing draft tomorrow AM.
+kai: pairing calendar invite sent for Monday 11am.
+ivy: thanks team. we'll keep this compact and iterate after first cohort. :rocket:

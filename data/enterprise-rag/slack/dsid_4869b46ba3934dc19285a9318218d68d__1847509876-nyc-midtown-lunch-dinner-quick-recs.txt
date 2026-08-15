@@ -1,0 +1,22 @@
+lunch-plans
+
+meera: Heads-up: I'll be in NYC for two days next week (midtown). Need quick lunch spots near 6th/45th that can take a group of 4 on short notice.
+dan: Shake Shack on 6th/44th is easy but touristy. Fast.
+sam: Pret a Manger is nearby and quick for veg options. Not exciting but reliable.
+leo: If you want sit-downtry Westville on 44th, decent salads + sandwiches. Usually has space.
+olivia: For something better: Num Pang on 45th (Cambodian)  quick bowls, good takeout.
+meera: Any place with good gluten-free options?
+leo: Westville can do GF bread on request. Num Pang has rice bowls which are GF-friendly.
+dan: Pro tip: Bryant Park kiosks have quick street food options if weather's good.
+meera: Thanks. Also: dinner recs? I'm meeting a client around 8pm near Times Square. Need something not too loud.
+sam: Keen's is a bit far but has private-ish booths and quieter vibe. Steakhouse though.
+nathan (booking-bot): Reservation reminder: add booking details here.
+leo: Try Carmine's for Italian family-style but it can be loud. For quieter, try Langan's or Blue Fin at 8pm.
+olivia: If you want neighborhood gems, try Ippudo (ramen)  loud but good. Maybe better for casual.
+meera: Client is vegetarian-leaning. Any vegetarian-friendly but not a veg-only place?
+dan: ABC Kitchen is pricier but classy and veg-forward. Book ahead.
+nathan (booking-bot): FYI: many Midtown spots have early dinner seatings around 6pm; after 8pm gets noisy.
+meera: Cool. Final shortlist for lunch: Shake Shack, Westville, Num Pang, Bryant Park kiosks. For dinner: ABC Kitchen, Langan's, Ippudo (if client ok with casual).
+leo: If you need me to call and check reservations for dinner, I can.
+meera: Thanks! Will DM if I want reservation help.
+booking-bot: Calendar invite suggested: "Meera NYC visit - lunch/dinner recs".

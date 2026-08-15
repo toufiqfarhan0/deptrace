@@ -1,0 +1,40 @@
+sales
+
+maria_s: Hey team — Bellwether signed off on a 6-week POC. Main asks: they want to run a custom fine-tuned Llama-13B variant (qlora) behind a VPC with KMS, and target p95 latency <= 200ms for requests up to ~2k tokens. Need catalog fit + onboarding checklist. Can we map this to Dedicated or Private?
+ben_c: Nice — budget band is mid-enterprise. They want a quick pricing ballpark and any blockers for SOC2/VPC.
+tara_ops: Quick notes: qlora 13B will likely be quantized to int8/4 depending on perf. KV-cache will be required for streaming use-cases. Dedicated should hit 200ms p95 for 2k tokens if we use larger batch-optimized instances and prefix caching; Private also OK but we'll need on-prem sizing.
+maria_s: @tara_ops do you need the customer's tuned model artifact or can we run from their config + adapter? They mentioned they have an adapter tar.gz.
+tara_ops: Adapter tar.gz works. We'll need: model_base_name, adapter_id, tokenizer files, and a sample prompt set for eval. Also want a small perf harness (curl scripts + ~100 sample traces).
+kevin_r: For Dedicated perf: recommend n=4 x A100-80GB or equivalent A800 pool with continuous batching enabled and min-inflight set. Memory footprint estimate ~42GB with int8; ~22GB if 4-bit. Latency estimate table: 
+```
+profile: small-batch (1-2)
+model: bellwether-13b-qlora
+quant: int8
+p95: ~180ms (2k tokens) on 4xA100-80GB
+```
+We should run an end-to-end microbenchmark on our staging infra to confirm.
+jason_legal: Security checklist: Bellwether requires KMS with BYOK, IP allowlist for VPC peering, and an export control questionnaire answered. Who owns the security questionnaire? Also they flagged data residency EU-only.
+ben_c: @jason_legal can you own the questionnaire? I'll loop in the customer's security lead. Maria/ Tara — EU region preference noted.
+maria_s: I'll collect the adapter + sample prompts today and drop them into the shared drive.
+tara_ops: Onboarding config draft (for ops):
+```
+model_variant: bellwether/13b-qlora-v1
+catalog_entry: custom/bellwether-13b-qlora-v1
+deployment: dedicated-eu-west-1
+kms: customer-byok
+network: vpc-peer + ip-allowlist
+autoscale: min=2 max=8 policy=latency
+batching: continuous=true min_batch=1 max_batch=16
+metrics: p95_latency, tokens_per_sec, kv_hit_rate
+```
+Use this to create the catalog entry and a canary route.
+kevin_r: Note: if they want sub-150ms p95 we need more aggressive quant (4-bit + kernel tuning) or lower max tokens. For initial POC aim for <200ms.
+ben_c: Pricing ask from customer — they want an estimate for a 6-week POC with ~50K tokens/day and occasional burst testing. Any quick numbers?
+tara_ops: Back-of-envelope: hosted token unit cost ~= $0.0008/token for generation on that variant if served on dedicated reserved capacity (this includes infra amortization + ops). For POC I'd propose a flat POC fee + usage true-up. I'll draft a simple estimate and send to @ben_c.
+jason_legal: I've started the security doc. Items outstanding: SOC2 attestations (we have), BYOK flow doc, EU data residency SLA clause, and a contact for KMS rotation schedule.
+maria_s: Action items: 1) tara_ops to create catalog entry + perf harness by Thu. 2) kevin_r to run staging benchmark by Fri. 3) jason_legal to finish sec questionnaire draft and share with ben_c. 4) maria_s to upload adapter + prompts (today).
+tara_ops: Ack — I'll create the catalog PR and put the onboarding checklist in the rollout board. Will post the perf script link here when ready.
+kevin_r: I'll kick off a perf run once PR is merged. Expect logs and a short table result.
+ben_c: I'll schedule a touchpoint with the customer's infra/security on Wednesday to walk them through VPC/KMS steps.
+deploy-bot: New ticket created: #POC-1839 Bellwether onboarding (assigned: tara_ops, kevin_r)
+maria_s: Thanks all — let's aim for a demo at the end of week 2 if benchmarks look good. :thumbsup:

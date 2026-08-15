@@ -1,0 +1,68 @@
+incidents
+
+sophie: Quick follow-up from last night's outage — capturing postmortem actions for GPU capacity + autoscale. Root causes: quota exhaustion on sandbox tenants + aggressive scheduler preemption settings causing cascading evictions. Recurring pattern: high-burst experiments on Tues/Thu causing headroom collapse.
+
+kevin: +1 we also saw sticky pods holding GPUs due to cache warming, which delayed recycling.
+
+maria: can we list owners + dates? I want to add to sprint board.
+
+sophie: Yep — draft below. Please ack or adjust owners. ACTIONS:
+- ACTION-1: raj - raise default GPU quota for sandbox tenants from 2->4 for Q2 experiments (TKT-882) - due 2026-04-05.
+- ACTION-2: kevin - tune scheduler preemption thresholds and lower aggressive preemption window; test on canary pool (gpu-canary) (INFRA-312) - due 2026-03-30.
+- ACTION-3: maria - implement headroom policy: maintain 20% free GPU capacity per region; add prometheus alert GPU_HEADROOM < 20% for 10m (ALERT-73) - due 2026-03-28.
+- ACTION-4: ops-bot / automation - add quota backfill job to reclaim idle GPUs after 15m of non-progressing jobs (SCRIPTS-19) - due 2026-04-07.
+- ACTION-5: all - run two-week controlled chaos on schedule windows (Tue/Thu peak) to validate fixes (POST-VAL) - coordinate by 2026-04-12.
+
+raj: ack. I'll open INFRA-882 and attach the quota change PR. Quick note: raising sandbox quota increases cost, recommend limit to specific projects only.
+
+kevin: ack. I'll push scheduler change to gpu-canary and run synthetic load. Proposed patch snippet:
+
+```
+# kube-scheduler tunables (gpu profile)
+preemption:
+  enabled: true
+  victim-selection-cost: 0.6
+  preempt-threshold: 0.45
+  backoff-window: 30s
+```
+
+kevin: I'll also add a safety that prevents preemption if node free_memory < 2Gi — reduces churn.
+
+maria: for monitoring I'll add these alerts:
+- `GPU_UTIL > 85% for 5m` -> paging to oncall
+- `GPU_HEADROOM < 20% for 10m` -> ticket to infra team, non-paging
+- `GPU_STICKY_PODS > 3 in pool for 10m` -> run reclaim job
+
+sophie: good. For ownership: please put PRs and tickets into the postmortem checklist. I want weekly status updates in this thread until all resolved.
+
+raj: PR opened: https://git.internal/rq/infra/PR-1357 (quota change). ETA for rollout to prod: 2026-04-02.
+
+kevin: canary changes applied to gpu-canary at 2026-03-24 03:12 UTC. Running synthetic load now. Will paste perf numbers soon.
+
+maria: monitoring dashboards updated -> https://grafana.internal/d/gpu/headroom (added new panels). I set a dashboard comment with action items.
+
+ops-bot: Reminder: recurring check-in created. /remind #incidents "GPU headroom weekly check" every Tue at 10:00am starting 2026-03-31.
+
+kevin: initial canary result: average headroom improved from 12% -> 24% under 2x synthetic load. Latency for small inference decreased 8%. I'll post full logs to TKT-889.
+
+sophie: great. Two extra asks before we close: 1) run cost impact estimate for sandbox quota bump (finops) 2) add runbook snippet about emergency throttle (how to temporarily route traffic to fallback smaller models).
+
+maria: noted. I'll coordinate with finops and add runbook PR (DOCS-44).
+
+sophie: ok team — let's keep this thread as the single place for status. We should not open new threads for the same follow-ups. If you update your action, reply here with status and new ETA. :white_check_mark:
+
+kevin: updating status: ACTION-2 -> in-progress (testing). Will update by 2026-03-25.
+
+raj: ACTION-1 -> in-review. ETA still 2026-04-02.
+
+maria: ACTION-3 -> done (dashboards + alert rules deployed).
+
+ops-bot: Closing note scheduled: /remind #incidents "Close GPU autoscale postmortem actions if resolved" on 2026-04-15.
+
+sophie: thanks all. If anything regresses, escalate here immediately and we'll roll back changes.
+
+kevin: thanks — ping me if you want the synthetic load script.
+
+maria: I'll put these actions into the sprint board now.
+
+sophie: thread locked for weekly check-ins only.

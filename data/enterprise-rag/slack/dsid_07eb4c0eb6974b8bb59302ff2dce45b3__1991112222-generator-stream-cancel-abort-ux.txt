@@ -1,0 +1,36 @@
+devex
+
+max: quick note — hit a surprising hang in the go sample when we rotate auth mid-stream and then cancel. posting a short repro and some proposed DX fixes.
+
+max: repro (short): start stream, have a goroutine call iter.UpdateAuth(tok) on refresh, cancel ctx after first chunk. main returns but background goroutine sometimes stays around for tens of seconds.
+
+max: tiny sketch:```go
+ctx, cancel := context.WithCancel(parent)
+iter := client.Generator.Stream(ctx, req)
+go func(){
+  for t := range authCh { iter.UpdateAuth(t) }
+}()
+_ = iter.Recv() // first chunk
+cancel()
+// sometimes goroutine stuck in UpdateAuth
+```
+
+anya: sounds like UpdateAuth is doing blocking IO or waiting on a handshake; since it doesn't accept ctx, cancel won't help.
+
+drew: ergonomics thoughts: user expectation = cancel is a hard stop. options: 1) make UpdateAuth atomic/nonblocking (swap token + notify send loop), 2) accept a ctx in UpdateAuth so caller can abort, 3) expose an Abort/CloseNow that tears down transport immediately.
+
+viv: +1 to nonblocking swap as default. Also surface a Done() channel on the stream handle so callers can select on resource cleanup: e.g., iter.Done() <-chan struct{}.
+
+max: my plan: implement StreamV2 that returns a StreamHandle with these methods: Done(), CloseNow(), and UpdateAuthNonblocking(token). provide a compat Stream shim that maps old API to new behavior.
+
+anya: test plan: add examples/stream-abort that rotates auth, cancels ctx, and asserts Done() closes within a short timeout. also include a server fixture that delays handshake to ensure CloseNow actually aborts blocked UpdateAuth.
+
+pm-bot: note: prefix PR with devex/stream-abort to auto-request reviewers from devex + eng-runtime. include CHANGELOG + onboarding blurb.
+
+drew: tiny naming nit: prefer UpdateAuthAtomic or SetAuthFast to make it obvious it won't block. and keep Reauth(ctx) for the blocking variant that surfaces errors.
+
+viv: doc snippet suggestion for onboarding: "When interrupting a long-lived generator, cancel the ctx and wait for iter.Done() before exiting; if you need immediate teardown, call iter.CloseNow() (use sparingly)."
+
+max: thanks — i'll open a draft PR with StreamV2, example, and tests. will ping runtime if CloseNow still leaves kernel-level race.
+
+anya: this should also fix a handful of support tickets about the generator "hanging after ctrl-c".

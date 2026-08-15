@@ -1,0 +1,66 @@
+eng-runtime
+
+alex: quick probe results from overnight sweep — some FlashAttention configs OOM for batch=16 seq=4096 on A100-80GB, attaching summary.
+
+maria: link? :eyes:
+
+alex: https://redwood-internal/perf/1830456789 (profiles + raw logs). TL;DR: static workspace heuristic failed for a few mid-range seqs, probe-based selection saved memory and reduced p95.
+
+tao: numbers?
+
+alex: before (static workspace heuristic): p50=21.4ms p95=39.1ms mem=28.5GB for model=rw-13b fp16 batch=16 seq=4096.
+after (adaptive probe + aggressive buffer reuse): p50=15.1ms p95=25.2ms mem=24.1GB. ~=4.4GB mem saved, p95 down ~13.9ms.
+
+olivia: nice. how does the probe pick sizes?
+
+alex: short version: run tiny microbenchmarks across candidate workspace sizes and kernel variants (FlashAttention, Triton-attn, cuBLASLt fallback). We score candidates by latency + alpha*mem and pick smallest that meets success criteria (no OOM) under a short warm+meas loop. Pseudocode: 
+```
+for cfg in candidates:
+  try:
+    run_kernel(cfg, warm_iters=3, meas_iters=10)
+  except OOM:
+    mark_bad(cfg)
+score = latency + alpha * mem
+choose argmin(score)
+```
+We also add a penalty for any cfg that triggers allocator fragmentation events.
+
+jen: is this per-model or global?
+
+alex: per model+dtype+device_family. We cache chosen workspace in mempool metadata with TTL=6h. Also re-probe if observed seq distribution shifts: if >20% of recent requests fall outside the probed seq range we re-run a lightweight probe.
+
+tao: KV cache changes footprint a lot for long chat sessions — how do you account for that?
+
+alex: probe includes KV footprint estimate: avg_kv_bytes(seq_len, batch). We simulate KV occupancy by reserving a kv_bytes estimate when running microbench so the kernel allocator sees realistic free memory. Also we reuse pinned KV buffers in the pool rather than freeing them between calls; this reduced transient OOMs in the sweep. We adjusted the mempool slab allocator to allow small kv-only reservations so they don't evict workspace slabs.
+
+perf-bot: artifact uploaded: s3://perf-artifacts/1830456789/profiles.tar.gz
+
+maria: any regressions or flakes surfaced by probe?
+
+alex: one notable regression: cuBLASLt GEMM kernel choice for small seq (<128) ended up slower due to tiling mismatch when we switched priority to memory-efficient kernels. For those small seqs we now force cuBLAS (not cuBLASLt) until we can tune the tiling heuristics in the kernel chooser.
+
+olivia: what about batching heuristics interacting with probe? e.g., continuous batching that increases seq variance at runtime
+
+alex: good point — probe assumes a target batching policy. We added a lightweight runtime hook: if observed batch*seq variance exceeds threshold, we stop accepting probed choices for new tasks and fall back to conservative static workspace that tolerates high variance. Also added metrics: probe_success_rate, probe_latency_ms, chosen_workspace_bytes to dashboards.
+
+jen: rollout plan?
+
+alex: propose canary: opt-in flag `runtime.enable_adaptive_probe` for two-week canary on dedicated clusters, then expand to hosted gradually. I’ll add telemetry and a fail-open policy: if probe fails or OOM rate increases >0.5% absolute we auto-disable for that model.
+
+tao: I can run stress for kv-heavy chat workloads and long-turn dialogues.
+
+maria: please add a short runbook for rollback in case canary causes OOM spam.
+
+alex: will add runbook to PR — rollback steps: 1) toggle `runtime.enable_adaptive_probe=false`, 2) increase mempool slack by +10% on affected pools, 3) force static workspace heuristic for the model.
+
+olivia: :thumbsup:
+
+alex: thanks all. next actions: PR with probe code + unit tests, dashboards, canary manifest. tagging @tao @jen for reviews.
+
+jen: will add CI job to validate probe doesn't flake under small-matrix microbench (seqs 8..128).
+
+alex: adding a note — we observed allocator fragmentation events correlated with repeated probe runs on same GPU; mitigated by rate-limiting probes per-device to 1/hr.
+
+maria: cool. when you post the PR, include the perf summary table in the description (before/after p50/p95/mem). saves time.
+
+alex: done — PR link will be in the artifact page. thanks everyone.

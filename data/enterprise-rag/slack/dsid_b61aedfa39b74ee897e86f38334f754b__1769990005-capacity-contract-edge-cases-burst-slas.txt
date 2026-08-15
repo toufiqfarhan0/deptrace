@@ -1,0 +1,65 @@
+product
+
+maya: Kicking off a short sync — we need to finalize how "reserved pools" handle rare edge bursts for contract language and the autoscale policy implications. TL;DR: customers want predictable latency guarantees on their reserved capacity even when they burst beyond booked slots.
+
+aj: Is this about handoff between dedicated pool and fallback hosted models? Or purely within dedicated pool headroom rules?
+
+maya: Purely within dedicated for this thread. Two recurring asks: 1) predictable P95 tail for burst windows; 2) contractual clarity on how much burst capacity is allowed and when preemption happens.
+
+lin: For P95 we should define what counts as the SLO window (per-request vs per-minute). Also need to call out token-length sensitivity — longer sequences blow up latency.
+
+sean: Ops note: current autoscale has a 120s ramp and 60s cool-down. That makes short spikes hit preemption-heavy paths. Customers pushing for sub-60s burst guarantees will need pre-warmed lanes.
+
+priya: A few customers asked for a burst SLA: "up to X QPS or Y tokens for Z minutes with P95 < threshold". We need to decide if that becomes a paid add-on or part of reserved pool.
+
+aj: Proposal: add a formal "burst envelope" in contract: a time-boxed allowance (e.g., 5 minutes) with defined limits (max concurrent sessions, max token/sec). If customer exceeds, we fall back to best-effort with documented preemption order.
+
+maya: That aligns with legal's ask for objective terms. We should also add an observability clause: we expose token-level telemetry and a "burst burn" metric.
+
+lin: Implementation constraints: envelope enforcement must be light-touch. Suggest admission control rules that are stateless (leaky-bucket per-tenant) + tagging for telemetry. Stateful per-session tracking gets expensive.
+
+sean: Agreed. Also need backfill rules: when a tenant uses burst envelope, do we charge a premium, deduct credits, or reduce next window allowance? Options: immediate billing at overage rate, or credit accounting (carryover negative).
+
+priya: Customers prefer predictable spend. I recommend credit accounting: buy burst credits, consumed on use. That way they can budget and we avoid surprise bills.
+
+aj: We need to design preemption tiers. Rough sketch: 1) Reserved-first lanes (no preempt unless critical), 2) Burst lanes (soft-guarantee, preemptable), 3) Spot/overflow (best-effort, cheapest). Preemption order must be documented.
+
+maya: From product POV, we must define launch criteria: QA load tests that simulate a 5x normal peak for 10 minutes with <2% request failures and tail latency within SLO for reserved-first lanes. Also include billing simulation.
+
+lin: Test harness: we should run three scenarios: short sharp spikes (30–90s), sustained medium spikes (10–30min), and noisy long tails (hours). Measure P50/P95/P99, preemption rate, and token cost delta.
+
+sean: On autoscale policy: consider shorter ramp for burst detection (30s) but limit growth step size to avoid huge allocation churn. Also a predictive hint API where customers can declare imminent burst to pre-warm.
+
+priya: The "burst hint" add-on could be a low-friction feature: customers POST a prewarm intent with expected window + multiplier, and we reserve ephemeral capacity. That sells well to enterprise.
+
+aj: Need to define SLA exceptions: e.g., upstream infra incidents, cross-region outages, or customers misconfiguring session timeouts. Those are force-majeure / not covered. Keep it tight.
+
+maya: Action items: 
+- priya: draft contract language for "burst envelope" + credits model (due EOW).
+- lin: spec admission-control implementation (leaky-bucket example + metrics) and cost estimate.
+- sean: produce autoscale param set to test (ramp, cooldown, step) and the deploy plan for prewarm lanes.
+- aj: draft preemption order and tenant priority doc for legal & sales.
+
+priya: On it. I'll include pricing tiers: small (2x for 5m), medium (5x for 10m), enterprise (custom).
+
+lin: Quick config snippet I propose we validate in tests: 
+```
+burst_envelope: 
+  max_concurrent_sessions: 100 
+  max_tokens_per_sec: 20000 
+  window_seconds: 300 
+  enforcement: leaky_bucket_per_tenant 
+  billing: credits_consumed
+```
+
+sean: Nice. I'll wire that into the load generator. Also adding an alerting rule: if credits_consumed > 80% during window, page oncall so we can coordinate capacity increases.
+
+maya: Final UX ask: surface "burst usage" and projected cost in Console with a one-click prewarm purchase. That will reduce support tickets.
+
+aj: One more edge-case: multi-tenant pools where two tenants burst simultaneously. We should define max per-tenant share of the escalation pool to prevent noisy neighbor domination. Recommend cap at 40% of ephemeral pool by default.
+
+priya: Noted. I'll put that cap into the contract appendix and make it negotiable.
+
+ops-bot: Deploy-bot: scheduled canary test for burst-envelope v1 on test-dedicated cluster on 1769990500 UTC.
+
+maya: Thanks everyone — we'll sync async on docs. If no objections, we'll run the canary next week and reconvene after test results. :thumbsup:

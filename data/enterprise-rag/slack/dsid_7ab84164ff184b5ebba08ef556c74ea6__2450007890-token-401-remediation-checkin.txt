@@ -1,0 +1,42 @@
+incidents
+
+maria: Quick follow-up thread after the midnight 401 burst on token-validate. Short windows where valid tokens were rejected and audit logs dropped. Need owners, short fixes, and an automated detector.
+
+omar: I'll take short-term mitigation: bump client-side retry to 2 attempts with 200-800ms jitter and enable a temporary circuit-breaker to avoid thundering. Will create INF-24999. ETA tomorrow morning.
+
+nina: I'll own audit reliability. Evidence points to write failures when our local buffer reached size limit. Plan: increase buffer and add local fs spillover + metric for dropped_audit_events_total. Opening SRE-10345.
+
+jenna: I'll do the key/perm review. Checking if any permission changes or recent deploys touched the validation service role. If perms changed we need rollback plan. Creating SEC-6299 if we find anything.
+
+pete: On infra side I'll add an immediate alert rule to catch gaps: suggested PromQL:
+```
+(sum(rate(token_audit_written_total[5m])) by (job) < 1) and on() absent(token_validate_requests_total)
+```
+I'll translate to our alert DSL and set for 15m for now. PR incoming.
+
+maria: Summarized actions:
+- omar: INF-24999 - client retry + CB, due 2026-03-28
+- nina: SRE-10345 - buffer spillover & metric, due 2026-04-04
+- jenna: SEC-6299 - perms & key review, due 2026-03-26
+- pete: infra alert PR, due 2026-03-25
+Tag dependencies and ETA hours please.
+
+omar: dep: SDK canary window 48h. Estimate 3 dev + 2 QA hours.
+
+nina: estimate 6 dev hours to add spillover + tests, 2 ops hours to run canary.
+
+jenna: checking IAM audit now. If perms changed, rollback will be a 30m window to restore old role.
+
+pete: repro note: ran `ab -n 20000 -c 200` against staging token-validate, saw buffer_fill spikes. Logs attached to infra PR.
+
+maria: Let's set a twice-weekly 20m sync for 2 weeks to get to closure. Who can make Tue/Thu?
+
+omar: Tue works.
+
+nina: Thu better for me but I can do Tue this week.
+
+jenna: +1 for Tue.
+
+tech-bot: Created recurring follow-up "token-validate-hotfixes" Tue/Thu 09:00 UTC for 2 weeks. Invites sent to maria, omar, nina, jenna, pete.
+
+maria: Great. Please post PR/JIRA links here as you create them and short status lines. We'll consider incident closed when all PRs merged, alerts quiet for 72h, and SEC sign-off if any key/perm work was required. :white_check_mark:

@@ -1,0 +1,19 @@
+general
+
+Maya: Quick poll — coffee or tea? Vote with :coffee: or :tea: (settling a very serious debate)
+PollBot: Poll created: Coffee vs Tea — react with :coffee: or :tea: (expires in 2 hours)
+Oscar: :coffee: forever. morning life support.
+Priya: :tea: here — green tea stan.
+Luis: both? I do matcha in the arvo and pretend it counts as wellness :sunglasses: 
+Jenna: voted :coffee: but low-key coveting Priya's green tea. :eyes:
+Maya: note: if you pick tea you owe me a biscuit tomorrow :cookie: (friendly bribe)
+Priya: deal. but you bring the biscotti :chef:
+Oscar: @Maya is this binding? :laughing:
+Jenna: quick tally so far: Coffee 2, Tea 2 — very chaotic. :shruggie:
+Maya: will use results to justify the next office beverage order :money_with_wings:
+Luis: if coffee wins, I'll bring my AeroPress and do free samples one morning next week ☕️
+PollBot: Poll closed. Final tally: Coffee 3, Tea 3 — tie! (auto-resolve: coin flip incoming)
+Maya: coin flip it is. Heads I bring cookies, tails Oscar brings pastries. @Oscar you're on.
+Oscar: I accept my pastry destiny. :grimacing: (declare me victorious)
+Jenna: best tie-breaker ever. :tada:
+Priya: fine. still team tea, but I will accept pastry bribes.

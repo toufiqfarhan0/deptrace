@@ -1,0 +1,72 @@
+eng-oncall
+
+incident-bot: PAGER: continuous-batching PERF CLIFF (kv-cache spike) for shard-prod-east-3. High tail latency and increased 5xxs. Alert: p50->p99 token latency jump, queue depth growing.
+
+sara: Oncall here, looking now. Paging mike + raj. Any customer tickets?
+
+mike: I'm on. I see request queues trending up on rn-serving nodes 12-16. KV cache memory going from ~30% -> 95% over 7m then OOM evictions.
+
+raj: saw a burst of concurrent short chats from a single tenant causing extreme prefix cache churn. Continuous batching aggregation appears to be producing huge microbatch sizes under this traffic pattern.
+
+anya: Confirmed — autoscaler didn't react because CPU fine; latency due to queueing inside runtime (waiting for batch). Traces pointing to batching component waiting to reach max_batch_size.
+
+sara: TL;DR: continuous-batching is waiting to fill batches -> queue depth -> increased p99. KV cache thrash + memory pressure exacerbates because microbatches are reading many prefixes. Need a quick mitigation path.
+
+mike: Mitigation options: 1) reduce `max_batch_tokens` and `max_batch_size` for the affected shard; 2) enable jitter (randomized microbatch cut) to avoid synchronized batching; 3) temporarily disable KV cache for shard-prod-east-3; 4) route risky tenant to dedicated pool.
+
+raj: Routing takes longer. I can push batch config hotfix in <5m. Recommend reduce `max_batch_size` from 128 -> 16 and enable `per-request-jitter: true`, and `max_wait_ms` 25 -> 10. That should force smaller microbatches and cut queueing.
+
+sara: Agreed. Anybody see downside? Might increase per-token CPU overhead but reduces p99. Customers affected: > 8 live prod tenants, small latency increase on single-token requests expected. Approve hotfix.
+
+mike: Applying patch to runtime config (shard-prod-east-3). Command:
+
+```
+# apply batch overrides to shard
+curl -X POST https://controlplane.internal/v1/shards/shard-prod-east-3/config \
+  -H "Authorization: Bearer $SRE_API_TOKEN" \
+  -d '{"continuous_batching": {"max_batch_size": 16, "max_batch_tokens": 256, "per_request_jitter": true, "max_wait_ms": 10}}'
+```
+
+ops-bot: config-change: succeeded - rollout started to nodes [12,13,14,15,16] (change-id: cfg-20260315-983).
+
+mike: Pushing to nodes. I'll monitor metrics.
+
+(2m later)
+
+mike: Initial metrics: queue depth halved, p99 tokens latency dropped ~63%. KV cache eviction rate still elevated but stable.
+
+sara: Nice. Any remaining errors?
+
+raj: 5xx rate down to baseline for most tenants, one tenant still showing bursts related to oversized prompt patterns. We should throttle or apply per-tenant concurrency caps next.
+
+anya: Recommend follow-up: add per-tenant `max_inflight_requests` and add a circuit-breaker if cache thrash detected. Also add a synthetic test that simulates many short chats to catch this pattern.
+
+sara: Agreed. For now we keep hotfix for 1h then gradually roll back to previous defaults after we validate. Documenting customer impact: Impact window 12:40–13:05 UTC, increased p99 and 5xx for ~25% of requests on prod-east-3. No data loss. Two customers filed support tickets; SEs notified.
+
+mike: I also added a temporary alert rule to detect microbatch growth and kv-cache eviction spikes:
+
+```
+expr: increase(kv_cache_evictions_total[5m]) > 50 or avg_over_time(batch_size[2m]) > 32
+for: 2m
+```
+
+ops-bot: alert-rule: created (id: ar-20260315-441).
+
+raj: Handing off to next oncall (anya) in 20m. I'll leave runbook notes: how to revert config and how to route tenant to dedicated pool if needed.
+
+anya: Taking handoff. I'll watch for regressions during the next 30m. If p99 rises again, we'll try disabling KV cache as last resort and open a jira for per-tenant rate limits.
+
+sara: Thanks everyone. Post-incident tasks:
+- create postmortem draft with timeline and config diffs (owner: sara)
+- add synthetic test for short-chat burst (owner: raj)
+- evaluate per-tenant inflight caps (owner: product/infra)
+
+mike: One more note — the root cause appears to be an interaction: continuous batching heuristics + high conc/short sequences -> oversized microbatches. Runtime should prefer time-based flush vs size-based under low-token sequences. I'll put a patch in the queue.
+
+sara: Okay. Handoff complete to anya. I'll mark incident as mitigated but not closed. If anyone sees anomalies ping in this thread. :thumbsup:
+
+anya: Confirming stable at +25m. Closing paging loop. I'll include config diff and monitoring links in postmortem.
+
+incident-bot: INCIDENT: mitigated (id: inc-20260315-77).
+
+sara: Filing postmortem now, thanks team.

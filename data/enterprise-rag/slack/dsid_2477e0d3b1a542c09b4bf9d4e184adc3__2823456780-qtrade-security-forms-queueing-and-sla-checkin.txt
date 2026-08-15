@@ -1,0 +1,25 @@
+sales
+
+Ben Harper: Heads-up — QTrade just uploaded a SIG/CAIQ and a short questionnaire. Procurement needs answers by EOW. POC starts Monday, so we need an owner and ETA. Doc: https://files.redwood/qtrade/CAIQ-2026.pdf cc @Aisha :eyes:
+Aisha Patel: Thanks Ben. Contact is laura@qtrade.com. They noted "will require KMS + SOC2 evidence" in their intake form. I put the ticket in our intake queue: https://tickets.redwood/RV-3401
+Claire Nguyen: I can pick this up. Quick Qs: will the POC touch customer PHI/PII? any E2E encryption requirements beyond at-rest?
+Ben Harper: No PHI/PII expected for the POC, just sample financial feeds. They asked if we can use their external KMS for key custody. Pricing/contract might change if we need dedicated/private.
+Samir Rao: FYI: hosted API does NOT support external KMS. We can offer Redwood Private or Dedicated with a KMS integration. That typically adds ~2–3 weeks for onboarding and a contractual addendum.
+Claire Nguyen: Noted. For the questionnaire: we'll mark the external KMS Q as "requires architecture decision" and escalate. Action items: 1) Claire to complete SIG sections for encryption & access controls. 2) Ask infra for a short note on KMS options. 3) Sales to confirm if POC can proceed without external KMS. Target: 72h triage.
+Aisha Patel: OK Claire — can you add required evidence list in the ticket (SOC2 cert, egress controls, network diagram)? I'll nudge procurement.
+sec-bot: Ticket RV-3401 created and assigned to security-review queue. SLA: triage within 72h. Link: https://tickets.redwood/RV-3401 :white_check_mark:
+Claire Nguyen: Added checklist to the ticket. I filled in preliminary answers for 12 sections and flagged 3 for engineering input. Pasting the snippet I used for encryption":
+```
+- At-rest encryption: AES-256 via provider-managed keys
+- In-transit: TLS1.2+ with cert pinning where available
+- External KMS: Not supported on Redwood Hosted. Available with Dedicated/Private.
+```
+Aisha Patel: That snippet is perfect. I'll tell QTrade procurement they can start the POC without external KMS, with caveat that production will require dedicated/private if they insist on BYOK.
+Ben Harper: Are there pricing implications we should preview? Need a quick number to scope the deal.
+Samir Rao: Ballpark: Dedicated capacity + KMS integration likely $Xk/mo plus a one-time onboarding fee. I'll put an estimate in the ticket by EOD.
+Claire Nguyen: I'll finish the SIG answers tomorrow morning and mark RV-3401 as "in-progress". If anything blocks the legal addendum we will surface to sales immediately.
+Aisha Patel: Thanks everyone. I'll follow up with Laura and confirm whether they accept the POC caveat. If they want BYOK now, we'll pause automation and re-route to Dedicated sales motion.
+Ben Harper: Great — assign owner to the ticket and tag me when SOC2 and network diagram are attached. :thumbsup:
+sec-bot: RV-3401 updated: owner=Claire Nguyen; priority=High; due=2823520000
+Claire Nguyen: On it. I'll post final answers and required evidence links when complete.
+Ben Harper: Awesome, appreciate the quick turnaround.

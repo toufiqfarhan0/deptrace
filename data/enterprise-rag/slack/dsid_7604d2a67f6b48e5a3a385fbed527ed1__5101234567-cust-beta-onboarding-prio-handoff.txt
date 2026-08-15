@@ -1,0 +1,38 @@
+product
+
+Priya Raman: Quick sync — Cust: NovaHealth wants to join Optimize beta next sprint. They listed: batching heuristics for mobile, cross-session prefix caching, model quantization recommendations (T4 vs A100), and eval-triggered regression alerts. Need a scoping + prioritization call here. What are the must-haves vs can-waits?
+Ben Clarke: For onboarding timeline, must-haves = mobile batching + eval alerts. Those unblock cost+quality monitoring. Caching and quant recs are important but can be phased.
+Asha Li: Agree. Mobile batching reduces p99 and cost quickly. Eval alerts need integration into their existing eval sets — will require a small schema mapping.
+Carlos Mendez: Quantization recs are heavier — we should offer a short prescriptive doc (recommended quant levels, perf delta ranges, sample perf numbers) rather than a custom benchmarking run for the pilot. That keeps onboarding light.
+Marta Novak: NovaHealth also asked about SLA expectations if they route traffic to Dedicated. We should set expectations: beta = no SLA, best-effort latency targets, Dedicated quoting separate.
+Priya Raman: Good note Marta. For prioritization, propose: Phase 1 (onboarding week 1-2): mobile batching, eval-alert integration (basic webhook + UI alert). Phase 2 (weeks 3-4): prefix caching config + docs. Phase 3: quantization recommendation doc + example scripts. Thoughts?
+Ben Clarke: That sequencing looks right. One nuance: caching needs a minimal API change (cache-key options) — estimate ~3 dev days. If we can't ship that in week 3, we should deliver a config workaround with a proxy.
+Asha Li: On eval-alerts: we can reuse the alerting infra from EvalSentry. Implementation: webhook -> eval-sentry -> alerts channel + email. Small checklist: 1) mapping prompt IDs, 2) threshold config, 3) mute window. I can draft the config snippet: 
+```
+alert: eval_regression
+threshold: 0.05
+window: 72h
+notify: [slack, email]
+```
+Carlos Mendez: For quant doc we should include two example profiles: fast/low-cost (int8 quant on T4) and high-quality (bf16 on A100). Include sample token/sec and p95 numbers. Keep it to 1-2 pages.
+Marta Novak: Customer asks for a short runbook for their SREs — include fallback policy (route to hosted model if dedicated latency spikes). Can we include a sample routing policy JSON?
+Ben Clarke: yes, small example: 
+```
+route_policy: {
+  primary: dedicated-a100-v1,
+  fallback: hosted-gptx-clean,
+  latency_slo_ms: 250
+}
+```
+Priya Raman: Action items: Ben + Asha to scope mobile batching + eval-alert UI (assign owners + rough estimates). Carlos to draft 1-page quant recommendations. Marta to produce runbook blurb and SLA note. I'll coordinate with Solutions Eng for customer kickoff.
+optimize-bot: Pilot checklist updated: added NovaHealth onboarding items (batching, eval-alerts, caching doc, quant doc). JIRA: OPT-1143 created.
+Asha Li: I'll also put together a short prompt-set mapping template for their evals — reduces back-and-forth during onboarding.
+Carlos Mendez: ETA for my quant doc: EOD Friday (2 business days). Will include expected perf deltas and recommended configs.
+Ben Clarke: I'll estimate dev effort: mobile batching: 5 days (incl tests), eval alerts backend + UI: 4 days. Will post PRs on feature branch.
+Marta Novak: I'll draft the SRE runbook + fallback policy and share in #customer-success tomorrow.
+Priya Raman: Great — next sync Friday 10am to confirm readiness for kickoff. If any blocker appears, ping me directly. :thumbsup:
+Ben Clarke: +1
+Asha Li: +1
+Carlos Mendez: +1
+Marta Novak: +1
+optimize-bot: Reminder scheduled: 2025-03-07T10:00:00Z — NovaHealth kickoff sync.

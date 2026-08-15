@@ -1,0 +1,16 @@
+sales
+
+Priya G: Morning — quick daily sales check-in. Pipeline highlights: MacroHealth demo went well; they're asking about HSM/KMS integration and a SOC2 addendum. Yesterday: sent baseline SAML guide to Nova Grid. Blockers: need final language on KMS/HSM for MacroHealth's legal RFP. @Elena R can you confirm our Private offering re: customer-managed HSM / key rotation?
+Elena R: Quick answer — Private supports customer-managed KMS (AWS KMS / GCP KMS) today; we don't ship a FIPS HSM appliance OOTB yet. We can support BYOK/import and provide audit log attestations. I can draft RFP wording.
+Priya G: Awesome, please include explicit language about audit log retention and key rotation. Also pinging @Jordan S for rotation SLA details. :pray:
+Jordan S: Rotation process: platform service keys rotate monthly. Customers manage their own KMS keys and rotation via their cloud provider. For RFP language: "customer-managed KMS with standard rotation; platform credentials rotated monthly; audit logs available on request."
+Diego M: Product note — Dedicated pools with HSM-backed key storage are on the Private roadmap for H2. If a customer needs immediate HSM guarantees we can offer a professional-services deployment in their VPC.
+Priya G: Copy. Drafting RFP excerpt now — please review: ```MacroHealth RFP Q12: Does Redwood support HSM-backed key management?
+Answer: Redwood supports customer-managed KMS (AWS KMS, GCP KMS) with BYOK/import. Audit logs are retained for 365 days by default; enterprise plans can extend retention. Redwood is developing FIPS/HSM appliance options for Private deployments (ETA H2).```
+Elena R: Small edit: change "retained for 365 days" to "default 365 days, configurable per contract."
+Priya G: Updated and sending to MacroHealth. Blocker cleared unless legal follows up. Any other pipeline flags? @Diego M — Nova Grid asked about EU-only data residency.
+Diego M: Nova Grid wants EU-only. We have EU regions for Dedicated; need to confirm EU dedicated pool availability next quarter. Sales Ops should add a clause for region-specific deployment.
+Jordan S: I'll ping infra for EU pool availability and report back by EOD.
+Priya G: Thanks. Quick ops ask — @security-bot, can you post SOC2 cert link for MacroHealth?
+security-bot: SOC2 report (internal link) https://internal.redwood/security/soc2-2025.pdf — access requires SSO and NDA for external sharing. :white_check_mark:
+Priya G: Perfect, thanks everyone — sending the RFP reply now. :thumbsup:

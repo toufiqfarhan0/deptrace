@@ -1,0 +1,35 @@
+eng
+
+samuel: PR #8922 is blocked — intermittent smoke test failing in Buildkite and it's holding the 2pm release window. failing job: https://buildkite.com/redwood/prs/builds/3210
+
+ci-bot: Build failed on job 3210 (smoke-suite): "smoke/integration/auth_flow" — failed 2/3 runs
+
+alice: On it, sending quick bisect now. pinging @mike and @natalie since they touched auth_flow recently :eyes:
+
+mike: I can take a look in ~10m, on a call atm.
+
+natalie: I saw this pop up earlier too. logs show a flakey assertion around session expiry. snippet:
+```
+E   AssertionError: Expected session_token after redirect, got None
+  File "tests/smoke/test_auth_flow.py", line 142, in test_login_redirect
+```
+
+samuel: thanks, if you can confirm it's flaky we can rerun only the smoke pipeline and merge the fix after.
+
+oliver: rerunning job 3210 now (retry + SKIP_CACHE) — Buildkite link: https://buildkite.com/redwood/prs/builds/3211 :gear:
+
+mike: looking through test history, failure rate ~12% last 48h. adding a small wait in test to stabilize timing, will push patch to the PR for quick review.
+
+alice: quick PR patch pushed: https://github.com/redwood-inference/redwood/pull/8922/files — it's a 50ms wait guard. Requesting fast reviews from @mike @samuel
+
+mike: reviewing now. if green I'll approve and merge into release branch (hold the deploy for 10m)
+
+ci-bot: Re-run started: build 3211 (smoke-suite)
+
+natalie: LGTM on test change, non-invasive. :thumbsup:
+
+mike: Approved. Merge on green.
+
+ci-bot: Build 3211 passed smoke-suite ✅
+
+samuel: Merged into release branch, unblocking 2pm window. Thanks everyone :tada:

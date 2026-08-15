@@ -1,0 +1,14 @@
+random
+
+Maya: okay this is weird — my local LLM just suggested a watering schedule for my ficus. I didn't even ask it to be a plant dad 😂
+Jordan: wait did it also suggest a name? like 'Ficus v1.2' or something? :laughing:
+Sam: prompt it: 'You are a houseplant concierge. Provide a 3-step, overly dramatic care plan for a ficus who believes it's starring in a theater production.'
+Alejandra: love this. quick snippet i used:```
+You are a theatrical houseplant coach. Roleplay giving a ficus a daily routine in the style of a beleaguered stage manager.
+```
+Trent: named my model "Fernandez" now. it refused to water until i applauded. :clap::seedling:
+Memebot: :robot_face: Fernandez: "Water at dawn, applaud gently, avoid drafts and insensitive watering cans." :seedling: :microphone:
+Maya: ngl that reply is peak anthropomorphizing. if it starts asking for sunlight preferences i'm done. :joy:
+Jordan: marketing: 'Redwood Ficus — inference so empathetic your plants will file feature requests' :tm:
+Sam: who wants to make a tiny skill that maps prompts -> plant-persona responses? low-latency, high-charm.
+Alejandra: poll time: who would let an LLM schedule their plants? reaction vote or reply 'yes'/'no'

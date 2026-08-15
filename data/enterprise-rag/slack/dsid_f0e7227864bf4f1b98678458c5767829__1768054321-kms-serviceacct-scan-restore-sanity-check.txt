@@ -1,0 +1,48 @@
+eng-security
+
+sara (sec): quick heads-up, encops scanner flagged a spike in s3 PUTs from service account backup-uploader@redwood-prod and KMS errors in logs. might be RBAC/grant drift after the IAM cleanup last week. anyone touch uploader SA policies? @mike :eyes:
+
+mike (eng-infra): not me. i did notice a scheduled CMK rotation ran ~03:12 UTC last night. could be grants not re-created properly.
+
+jenna (oncall): @sara can you paste the exact error lines and object ids? i'm going to try a canary restore to validate decrypt path.
+
+sara (sec): pasted logs:
+```
+2026-02-14T03:14:07Z backup-uploader svc=archiver s3.PutObject obj=archives/db/snap-20260214.tar.gz error=AccessDenied: MissingGrant: kms:Decrypt grantId=gr-89ab
+2026-02-14T03:14:09Z backup-uploader svc=archiver s3.PutObject obj=archives/db/snap-20260214_part2.tar.gz error=AccessDenied: MissingGrant: kms:Decrypt grantId=gr-89ac
+```
+
+paul (encops): that looks like ephemeral grants got pruned or not reissued during rotation. common root causes: grant TTL set too short, grant created for old role arn after role rename, or grant creation job failed.
+
+jenna (oncall): running quick canary restore now: `./restore.sh --snap=20260214 --target=staging` (will report back).
+
+backup-bot: Restore job 5521 queued on runner-3. estimated 5m.
+
+jenna (oncall): restore failed with decrypt error. traced to principal arn:aws:iam::123456:role/backup-uploader missing kms:Decrypt on key arn:aws:kms:us-west-2:123456:key/abcd-1234.
+
+mike (eng-infra): i can create a temporary grant, but want to preserve audit trail. recommend: create grant with Constraints: { 'GrantIsFor': 'backup-uploader' } (we have internal helper). also we should add a short-term mitigation in the incident ticket and avoid permanent inline permissions until we root cause.
+
+sara (sec): for immediate mitigation i'm going to request manual grant creation. suggested command (internal tooling):
+```
+redwood-kms grant create --key abcd-1234 --grantee-role arn:aws:iam::123456:role/backup-uploader --operations Decrypt --name temp-restore-1768054321
+```
+
+paul (encops): after restore, run a grant-prune simulation and add unit test in canary that performs kms decrypt through the restore path. we should also search for other service accounts that rely on grants rather than key policy.
+
+jenna (oncall): restore succeeded after manual grant. leaving job open until we apply durable fix. :thumbsup:
+
+sara (sec): restore job 5521 completed. i'll open a ticket to backfill missing grants and run a sweep for other SAs. attaching runbook link: https://redwood/internal/runbooks/encops-restore (internal).
+
+mike (eng-infra): i'll draft a PR to add a nightly check that compares CMK grants against expected principals and raises an alert if any grant is missing or ttl < 24h. PR draft: #6789.
+
+paul (encops): also propose an alert rule in the incidents channel for spikes of 'KMS MissingGrant' errors and a playbook step to verify grants after any CMK rotation. tagging sec oncall: @luis
+
+luis (sec-oncall): got it, i'll follow up and own the postmortem action items with you all.
+
+sara (sec): immediate action items:
+- manual grant created and restore validated (jenna)
+- open ticket to backfill grants + run sweep (sara)
+- PR for nightly grant check (mike)
+- add KMS MissingGrant alert and playbook step (paul/luis)
+
+sara (sec): closing thread for now but leaving ticket open for follow-ups and postmortem. thanks everyone.

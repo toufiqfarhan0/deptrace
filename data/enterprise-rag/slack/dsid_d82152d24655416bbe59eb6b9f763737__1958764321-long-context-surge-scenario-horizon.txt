@@ -1,0 +1,42 @@
+eng-infra
+
+Alex Chen: Heads-up — Q4 scenario modeling showed a possible 2.6x increase in long-context streaming traffic for paid customers. need a quick sanity-check on GPU hours and node mix.
+Priya Rao: Yikes. Is that peak concurrent tokens or total token-hours?
+Alex Chen: It’s peak concurrent streaming sessions weighted by avg context length. numbers come from billing+prod traces: more documents moved to streaming by a few customers.
+Ben Patel: Can you paste the query or the table? quick look would help.
+Alex Chen: Sure, pasted below: 
+```
+Query window: last 90d
+Baseline daily avg streaming sessions: 12k
+Projected holiday peak: 31k (2.6x)
+Avg context length baseline: 6k tokens -> projected 14k tokens
+Estimated token-hours increase: ~3.1x
+```
+Mariana Soto: That avg context jump is the wild card. are these truly streaming (chunked) or just long non-streaming requests?
+Alex Chen: Mix says ~72% streaming chunked, 28% single-call long prompts. streaming increases KV cache pressure but keeps p99 latency manageable if we prewarm correctly.
+Priya Rao: OK. main infra levers: dedicated GPU pool sizing, prewarm warm-ups, KV cache memory per-node, and batching config. also routing to cheaper regions might be limited — some customers are EU-only.
+Ben Patel: Quick back-of-envelope: current fleet supports ~40k concurrent short-context sessions on N1 pool. With long-context, per-session memory and kernel time go up ~3x. so we need ~3x N1-equivalent capacity for the same concurrency.
+Mariana Soto: Cost hit if we naively scale 3x. any compaction or quantization we can flip temporarily? for streaming we can use int8 kernels on Llama-2-variants; that reduces GPU memory but may increase token latency slightly.
+oncall-bot: Reminder: Scheduled maintenance in eu-west on 2026-12-03 02:00-04:00 UTC.
+Priya Rao: Good note. That maintenance reduces EU routing headroom — we should avoid shifting EU traffic during holiday peak. prefer reserving extra dedicated in eu-west before maintenance.
+Ben Patel: I ran quick sim: if 31k peak streaming sessions hold for 6 hours/day across 10 peak days, estimated GPU-hour addition: ~ (extra capacity of 2.1x) * baseline gpu-hours (let’s say baseline 4,200 gpu-hours/day) -> ~8,820 gpu-hours/day additional at peak. total added for 10 days ~88k gpu-hours. rough.
+Alex Chen: That matches my model-ish. we need to firm numbers for finance and procurement. can we propose tiered mitigation instead of full 3x provision?
+Mariana Soto: Proposed mitigation steps: 
+1) Short-term (immediate): enable streaming prefix caching for top 20% of callers, bump KV cache mem from 32GB->48GB on N1 nodes in eu-west, spin up 10 extra N1s in eu-west dedicated pool behind a canary.
+2) Medium (2-3 weeks): add reserved capacity in us-west and eu-west for holiday window, enable int8 quant kernels for streaming models on burst nodes, set autoscale cooldowns to be more aggressive to avoid oscillation.
+3) Long-term: test sharded KV cache + inter-node prefetching, tune batch size per sequence length distribution, consider adding an L2 cold-prefetch cache on CPU for very long histories.
+Priya Rao: Ops note — the canary must include loadgen with realistic streaming chunk sizes. I'll ask SRE to run two 4-hour prewarmed tests simulating 80/20 streaming/non-streaming mix.
+Ben Patel: Also callout: network egress spikes for streaming are higher due to more frequent smaller frames. double-check peering costs, esp for cross-region fallback.
+Alex Chen: Good catch. add a line item for peering egress in the cost estimate.
+Mariana Soto: I'll draft a runbook with rollout gates: p50 latency < target + KV hitrate > 85% + error rate < 0.2%. if any gate fails, auto-fallback to shorter context variant and throttle.
+oncall-bot: Incident alert: one N1 node in us-west was replaced at 1958761200 due to memory ECC. No active incidents now.
+Priya Rao: Action items: 
+- Mariana: runbook + gate thresholds (due EOD tomorrow)
+- Ben: concrete gpu-hour delta table by region + peering cost estimate (48h)
+- SRE (tagging @SRE): run two 4h load tests next Tue/Wed in staging
+- Alex: pre-approve up to 12 N1 burst nodes in eu-west for canary (finance notified)
+Alex Chen: Thanks. I'll sync with finance and PMs and circle back. if anyone sees additional customers pushing long-context (we've had two support threads), flag here. :eyes:
+Ben Patel: noted — posting a short collector to #support to flag long-context opt-ins.
+Mariana Soto: Also, small ops trick: for streaming sessions with stable prefix, we can serve prefix from CPU cache S3-mapped snapshot to reduce KV misses during cold starts. low-effort improvement.
+Priya Rao: Nice. ok team, timeline looks tight but manageable if we move quickly. I'll update the capacity ticket with this thread.
+Alex Chen: Great work — let's keep updates concise here. :thumbsup:

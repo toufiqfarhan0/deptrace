@@ -1,0 +1,59 @@
+eng-platform
+
+Alex: Heads-up — I want to change the inference-gateway Service from ClusterIP -> LoadBalancer (NLB) to enable TCP TLS passthrough and preserve client IPs for our audit logs. Planning to:
+- set `service.beta.kubernetes.io/aws-load-balancer-type: "nlb"`
+- annotate for proxy protocol v2
+- `externalTrafficPolicy: Local`
+- target-type: `ip`
+
+Terraform diff in the PR adds the service LB and the annotation. Any immediate red flags? Particularly around healthchecks, nodePort reuse, or scale-down effects.
+
+Maya: quick question — what port will the NLB healthcheck use? If we switch to passthrough we can't have the LB terminate TLS and probe HTTPS on 443 anymore.
+
+Alex: Good call. Healthcheck planned on `:8080/healthz` (HTTP). The pods still serve plaintext health on that port. TLS passthrough only for inference traffic on 8443. So LB healthcheck will be HTTP to node IP:8080.
+
+Samir: beware `externalTrafficPolicy: Local` — it preserves src IP but means nodes without pods for that svc won't receive traffic. If we scale to zero on some AZs or cordon nodes, healthchecks may fail and AWS will mark targets unhealthy. Also nodeport allocation could change on update.
+
+Emily: Also confirm we set `service.beta.kubernetes.io/aws-load-balancer-target-type: "ip"` — that means targets are pod IPs, not nodes. If target-type=ip + externalTrafficPolicy: Local that's fine, but cluster CNI must allow pod IPs to be registered with the TG. We ran into TLS cert secret mapping issues last time when switching ALB->NLB passthrough (certs were in ingress controller secret). We need to ensure certs are on the client side or use TG with TLS listener and target TLS.
+
+Alex: Noted. For certs, plan is to keep certs on the clients (no termination on LB). Gateway API config will be updated in the same PR to remove the TLS secret reference from the ALB Ingress object. Can someone double-check that change? Here's the k8s Service snippet:
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-gateway
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  - name: tls
+    port: 8443
+    targetPort: 8443
+  selector:
+    app: inference
+```
+
+Maya: quick nit — targetPort 8443 needs to be on the pod spec. Are we sure our sidecar doesn't intercept TLS port (istio/ambassador)? If there's a proxy, passthrough won't work.
+
+Samir: Also remember to add a `readinessProbe` on 8080 that returns 200 quickly. NLB healthcheck interval/timeout defaults might mark things flakey during deploys. Consider setting healthcheck healthy threshold to 2 and interval to 10s in Terraform.
+
+Emily: I'll update the Gateway API change to remove the TLS secret and add a comment in the PR explaining passthrough. I'll also run a small canary in us-west-2 first. @deploy-bot can we run the terraform plan and apply in the canary account after lgtm?
+
+deploy-bot: terraform plan completed for env=canary-usw2 — 1 to add, 2 to change. Apply pending manual approval. Link: https://ci.internal/plan/12345 :white_check_mark:
+
+Alex: Thanks — if everyone agrees, I'll post the PR for review. Please look at the Gateway secret removal and the externalTrafficPolicy change. If no objections by EOD I'll apply to canary, watch healthchecks for 15m, then schedule main rollout.
+
+Maya: LGTM on the plan, just double-check sidecar TLS interception.
+
+Samir: +1 from infra side, watch for node draining behaviour.
+
+Emily: +1, I will coordinate logs/alerts for 8443 traffic to ensure passthrough is working.
+
+Alex: awesome, I'll add the notes and request reviews. :thumbsup:

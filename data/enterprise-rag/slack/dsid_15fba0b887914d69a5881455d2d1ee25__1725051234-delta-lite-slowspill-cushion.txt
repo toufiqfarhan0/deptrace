@@ -1,0 +1,47 @@
+eng-ml
+
+iris: Heads-up — bringing up delta-lite-11b (int4) in canary and seeing intermittent OOMs under spiky multi-session traffic. dmesg shows gpu alloc failures and runtime slab churn.
+
+sam: can you paste the alloc trace / request profile?
+
+iris: short paste: 
+```
+2026-03-09T09:05:10Z kernel: gpu1: out_of_memory allocating 1.1GiB
+runtime: slab#12 free=8MB used=3.6GB frag_index=0.43
+request meta: model=delta-lite-11b int4 seq=1024 max_new_tokens=512 batch_window_ms=5
+callstack: kv_cache::alloc -> slot_compactor -> kernel_alloc
+```
+
+leo: that frag_index is high. default max_new_tokens=512 is risky for this quant profile. we saw similar in other int4 models. propose conservative defaults and memory cushions.
+
+anya: idea — implement "slowspill" (partial spill to host RAM) so we don't fully evict and thrash host IO. partial_threshold=0.75 with spill_rate=0.5 tends to smooth spikes.
+
+sam: also add slot_reserve=12MB for delta-lite profile so compactor has reserved space and avoids stall loop. and bump batch_window_ms to 30ms on canary to avoid transient mega-batches.
+
+iris: here's a candidate canary config: 
+- default max_new_tokens: 96 for delta-lite-11b:int4
+- batch_window_ms: 30
+- slowspill.enabled: true, partial_threshold: 0.75, spill_rate: 0.5
+- slot_reserve: 12MB
+- concurrency_soft_cap: 0.65 when slab_frag_index > 0.35
+I'll run a 3h smoke with rps bursts and gather alloc_hist, slab_free, evict_count, host_swap_io.
+
+leo: perf plan: microbench 15k short chats (prompt 48 tokens) + 400 long sessions (prompt 1024) to measure p50/p95/p99 and tokens/cost. watch host CPU/io impact from slowspill.
+
+anya: add quick QA eval — compare completion length and tokenization differences against baseline for 250 prompts. block if average Cohens_d > 0.06 or if generation truncation increases > 2%.
+
+sam: operational safety: add soft-throttle rule in config: if slab_frag_index > 0.4 then cap concurrent requests at 65% instead of hard rejects. and add alert: host_swap_io > 120MB/s for 5m -> rollback.
+
+ops-bot: deploy scheduled: canary/delta-lite-int4 -> 1725052200. Alert rule: host_swap_io > 120MB/s for 5m -> rollback.
+
+iris: patch uploaded, kicking off canary shortly. I'll post metric dumps (alloc_hist, frag_index timeline, evict_count) when done. :rocket:
+
+sam: if you see compactor stalls ping me; I can add heap-tag traces and extra logs around slot_compactor.
+
+leo: queuing perf jobs now. please log p99 and cost-per-token. also note coldstart memory profile.
+
+iris: load starts in ~8m. will update with a short results summary and any follow-ups.
+
+anya: thanks — also record per-route fallback counts so we can measure how often slowspill/soft-throttle engaged.
+
+iris: will do. finishing pre-canary checks.

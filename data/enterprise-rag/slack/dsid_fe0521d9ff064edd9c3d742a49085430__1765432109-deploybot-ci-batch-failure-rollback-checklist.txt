@@ -1,0 +1,70 @@
+eng-releases
+
+deploybot: [1765432109] Pipeline STARTED — env: staging | commit a1b2c3d4 | tag release/2026-03-20-rc | steps: build → lint → unit → integration → smoke
+
+maria: watching integration stage — ping me if anything flakes
+
+ci-bot: build: OK · lint: OK · unit: OK · integration: RUNNING
+
+deploybot: [1765432120] Pipeline FAILED — job integration/batch-processor exited with code 1
+
+chen: failing test looks like `tests/integration/test_batch.py::test_handles_empty_queue` — started after tokenizer-lib bump to 2.7.0
+
+maria: can we rerun? @aj can you kick a rerun to confirm flake
+
+aj: rerun triggered (job 12345) — rerun by @aj
+
+deploybot: rerun result: FAILED — same test (integration/batch-processor)
+
+chen: failing output snippet:
+```
+FAIL tests/integration/test_batch.py::test_handles_empty_queue
+E AssertionError: Expected 0 but got 1
+  at tests/integration/test_batch.py:42
+  Traceback (most recent call last)...
+```
+
+santiago: this is a regression and blocks the RC. Options: 1) pin tokenizer-lib to 2.6.3 on the release branch 2) rollback the merge that bumped it 3) hotfix behavior and cherry-pick
+
+maria: my preference is to pin on the release branch to unblock quickly; rollback is heavier during change window
+
+chen: there is a patch in PR #987 that fixes the behavior but requires a test tweak — should be ~30m to land and verify
+
+aj: timelines: pin dependency PR -> CI ~15m. rollback + cherry-pick -> code + smoke ~20-30m. which path do we take?
+
+maria: decision: pin tokenizer-lib to 2.6.3 on release branch. I'll open the PR and request urgent review from @chen and @aj
+
+maria: Checklist before unblocking:
+- open pin PR and link here
+- get CI green (integration + smoke)
+- update release notes (+changelog entry)
+- notify release leads and hold canary
+- document rollback steps if the pin fails
+
+devops: tagging notes — if we pin and CI passes we'll tag rc as `release/2026-03-20-rc+pin`; if we rollback we'll re-tag previous commit
+
+aj: I'll prep a rollback branch in parallel: `rollback/2026-03-20-tokenizer` (PR draft) in case the pin doesn't pass
+
+chen: PR #1001 opened: pin `tokenizer-lib==2.6.3` -> https://git/repo/pull/1001
+
+deploybot: PR hook — build triggered for PR #1001
+
+ci-bot: PR #1001 CI: build OK · lint OK · unit OK · integration: queued
+
+maria: holding canary window, @santiago please hold infra capacity for canary so we can resume quickly once green
+
+santiago: acknowledged — holding capacity and placing canary on hold
+
+deploybot: PR #1001 CI: integration PASSED · smoke PASSED · status: GREEN
+
+maria: merging PR #1001 now
+
+deploybot: Merge complete. New pipeline STARTED on release branch -> commit b4e5f6g7
+
+deploybot: Pipeline SUCCESS — all checks passed. Unblocking RC
+
+maria: tagging final: `release/2026-03-20-rc` (no further changes) — updating release notes to mention dependency pin and rationale
+
+aj: closing action items: I left the rollback PR draft for audit and rollback traceability
+
+maria: thanks all — moving this to the release channel once notes updated. :white_check_mark:

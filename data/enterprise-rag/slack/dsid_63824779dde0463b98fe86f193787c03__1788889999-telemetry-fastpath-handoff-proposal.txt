@@ -1,0 +1,25 @@
+architecture
+
+eva: Quick note from today's canary sync: proposing a small telemetry-broker + local fastpath cache to speed fallback decisions.
+
+sam: New service or extend aggregator?
+
+eva: New thin process co-located with region routers. Normalize probe streams, cohort-weight, emit summaries, and keep a tiny fastpath cache for immediate fallbacks.
+
+liam: Latency is key. How quick is "immediate"?
+
+eva: summary interval 100-300ms; fastpath cache checked inline in router path, optimistic apply avoids central RTT when threshold met.
+
+priya: Trigger rules?
+
+eva: weighted score [0..1] from error spike, p95 delta, model-quality; default fastpath_threshold=0.9 and min_distinct_probes=3. exponential smoothing + per-cohort cooldown to prevent flapping.
+
+sam: Operator override? audit? slack alert?
+
+eva: broker emits FASTPATH_TRIGGER with causal_id; console shows one-click ack/hold. optimistic vs gate per-route config. audit every state transition.
+
+liam: Add fallback-cost gate: if revert cost > X then require gate. Also variant_affinity_ttl to avoid churn.
+
+priya: testing plan: synthetic spikes, slow decision-plane, and e2e console flow.
+
+eva: action items: sam POC broker, priya console hooks, liam state-machine doc. runbot: deploy-broker job queued. :rocket:

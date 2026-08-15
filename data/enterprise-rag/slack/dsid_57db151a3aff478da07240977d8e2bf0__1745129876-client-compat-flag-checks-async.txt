@@ -1,0 +1,70 @@
+eng
+
+oliver: Quick heads-up — starting a staggered / soft launch for the structured-output compatibility flag (fncall compat) in prod canary A at 11:30 PT. Audience: 5% global, QA header override for test lanes. Enabling server-side shim + client compat mode. Will monitor latency + error spikes.
+
+priyanka: Which SDK versions are expected to behave correctly? I see #4567 open with a client patch.
+
+matt: SDK 0.12.3 includes the compat shim (PR #4567). CI green yesterday. We'll publish to canary channel before the prod flip. :thumbsup:
+
+sara: Can someone paste the exact flag config we'll push? Want to run local smoke tests.
+
+oliver: Config snippet below — this is the minimal rollout we apply: 
+```json
+{
+  "flag": "structured_output_compat",
+  "scope": "global",
+  "audience_pct": 5,
+  "overrides": { "header": "X-RW-SO-Test" },
+  "modes": ["server_shim","client_compat"]
+}
+```
+
+ji-hoon: I'll run the smoke checklist once canary is live. Can you add the log keys I should watch?
+
+matt: Look for these in the runtime logs: `so.compat.enabled`, `so.fallback_invoked`, `kv_cache.hits`. If `fallback_invoked` spikes >0.2% for 5m we consider rollback.
+
+oliver: Rollback plan: revert flag to 0% and enable auto-fallback to model-variant legacy. ops will coordinate if we hit the guardrail.
+
+ops: Confirmed — escalation path: ops -> matt -> oncall SRE. We'll trigger automated alert if error-rate > 0.5% or p50 latency increases by 40ms for 10 minutes.
+
+priyanka: FYI I'm going to comment on PR #4567 requesting an extra integration test for the header override behavior — should land before canary publish.
+
+matt: Good call. I'll add a smoke test job that fires a few requests with `X-RW-SO-Test` header and asserts structured-output keys are present.
+
+deploy-bot: deploy started: structured-output-compat flag update -> prod-canary-A (id: dpl_2024_11_03_1030)
+
+ji-hoon: Can we also track a sample of outputs (anonymized) to run a quick quality comparison vs baseline? I can script that.
+
+oliver: Yes — sample rate 0.1% with sanitized payloads. ji-hoon, please share script in this thread when ready.
+
+priyanka: Quick QA question — do older clients (<=0.11.x) see any behavioral regressions or will server shim hide it?
+
+matt: Server shim should keep behavior stable for older clients; the shim translates new `structured` schema into legacy tokens when needed. But we still need to watch regression alerts (Evals + production diffs).
+
+oliver: Final ask before flip: everyone with a listed task, please ack here when your piece is green (canary publish done, SDK canary uploaded, smoke checks passing, alerts configured). I'll wait 10m then flip.
+
+priyanka: ack — will post integration test results asap.
+
+matt: ack — SDK canary pushed to internal bucket.
+
+ji-hoon: ack when smoke run completes (running now).
+
+sara: ack — local smoke passed against canary endpoint.
+
+oliver: flipping in T-2m. Monitoring dashboard shared: https://redwood.pulse/so-canary-A (internal). :eyes: Keep pings here for anything abnormal.
+
+deploy-bot: deploy succeeded: structured-output-compat flag -> prod-canary-A (dpl_2024_11_03_1030) :rocket:
+
+ji-hoon: smoke results: 200 requests, 0.5% fallback_invoked, p50 +12ms, no errors. Posting sample diff in a sec.
+
+priyanka: integration test passed, header override behaved as expected.
+
+oliver: great. keeping thread open for 30m post-deploy for pulse checks. thanks all.
+
+ops: noted — alerts set, watch window started.
+
+matt: ping me if any SDK regressions show up.
+
+priyanka: leaving a final note in PR and will follow up with post-canary checklist (metrics & eval snapshots).
+
+oliver: thanks team. :clap:

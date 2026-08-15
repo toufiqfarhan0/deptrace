@@ -1,0 +1,48 @@
+customer-success
+
+sam_csm: Morning all — setting up an alignment thread for Sienna Health onboarding. Goal: get production pilot live within 4-6 weeks. @maria_sienna can you confirm the internal stakeholders and the main success metric?
+
+maria_sienna: Hi — stakeholders are: Lina (Head of Product), Omar (Platform Eng), and Dr. Patel (Clinical lead). Success metric = 20% reduction in triage time on support flows within pilot cohort.
+
+elaine_pm: thanks. timeline idea: week 0 discovery, week 1 API integration + auth, week 2 eval + perf tuning, week 3 pilot launch, week 4 monitor + iterate. can we agree?
+
+james_se: that timeline looks fine. for auth do we need VPC/private deployment or hosted with VPC-peering?
+
+maria_sienna: Preference for Hosted with VPC-peering initially. Compliance team will review logs retention.
+
+alex_se: noted. action items from eng side: create API key, set up routing policy, sample payloads, and a small schema for expected outputs. I'll drop a sample payload in a sec.
+
+alex_se: ```json
+{
+  "patient_stmt": "I have chest pain and can't breathe",
+  "context_window": 512
+}
+```
+
+sam_csm: Success criteria (proposal): 1) Integration passes functional smoke tests; 2) 95th percentile latency < 200ms for chat endpoints under pilot load; 3) Rerank/quality score meets baseline eval (we'll define eval set with Dr. Patel).
+
+katie_ops: I'll coordinate the playbook + runbook. Need to know who owns alerts + escalation. @omar? (cc: @maria_sienna)
+
+maria_sienna: Omar will own alerts. He prefers PagerDuty; send integration notes.
+
+james_se: Risk callout: if KV cache warming is slow we might hit latency spikes on first-week traffic. Mitigation: pre-warm with synthetic prefixes and enable prefix caching in config.
+
+alex_se: I'll prepare a quantization suggestion for cost control — target < 30% extra latency vs fp16 but reduce GPU memory by ~60%.
+
+sam_csm: Renewal/health signals: track weekly active users in pilot, % of prompts classified as triage vs info, and customer sentiment in weekly check-ins. If adoption < 50% by week 4 we mark as yellow and schedule escalation.
+
+maria_sienna: Agreed. Also want an enablement session for Product + Clinical team — 60min workshop after integration.
+
+elaine_pm: I'll book the workshop for Wed in week 2. @onboarding-bot can you create a calendar event and include the playbook doc link?
+
+onboarding-bot: Event created: "Sienna Health — Redwood enablement workshop" Wed 10:00-11:00 (invite sent). Playbook: https://redwood.app/playbooks/sienna (placeholder). :calendar:
+
+katie_ops: I'll draft the runbook and a one-page admin guide. Will share by EOD Monday.
+
+sam_csm: Action list (quick): 1) Alex: sample payload + quantization notes (due in 48h). 2) James: auth + peering checklist (48h). 3) Katie: runbook draft (Mon). 4) Elaine: workshop invite (done). 5) Maria/Omar: confirm eval set & PagerDuty routing (EOW).
+
+maria_sienna: We'll have eval snippets from Dr. Patel by Friday.
+
+james_se: FYI I'll add a canary route for the pilot so we can fallback to smaller model variant if throughput hits a limit.
+
+sam_csm: Perfect — let's reconvene next Fri for a quick status. If anyone hits blockers ping me or add to this thread. :thumbsup:

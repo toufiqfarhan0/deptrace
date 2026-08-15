@@ -1,0 +1,47 @@
+devex
+
+jasmin: FYI ran into SDK error chaos while wiring up the quickstart. Python raises ValueError('401'), TS gives Error with status prop, Go returns map[string]interface{} error. makes centralized retry/metrics ugly.
+
+ori: ugh. example?
+
+jasmin: minimal repro: auth failure -> sometimes 401 text-only, sometimes JSON `{\"error\":\"unauthorized\"}`. rate limits sometimes missing Retry-After. snippets: 
+
+python:
+```python
+try:
+    client.chat_send(body)
+except Exception as e:
+    # ValueError('401 Unauthorized')
+    handle(e)
+```
+
+ts:
+```ts
+client.chat.send(body).catch(err => {
+  // err.status === 401 or err.message === 'Request failed'
+})
+```
+
+rachel: this is a big DX pain. teams can't write generic middlewares. we need typed errors + machine codes.
+
+kevin: agree. proposal: canonical buckets (Auth, Permission, BadRequest, RateLimit, Transient, ServerError), short error.code tokens like auth.invalid_token, rate.limit_exceeded, and RFC7807-compatible payload so SDKs can map reliably. also include retry_after header + SDK-level should_retry flag and recommended_backoff_ms.
+
+ori: +1. add a compatibility shim that inspects status and string patterns to map to new typed errors during transition.
+
+jasmin: would love an opt-in flag first (enable_typed_errors) and a migration plan in docs + sample showing catch by class and backoff loop.
+
+rachel: small UX detail: SDKs should expose both `status` and `code` and `meta` flat map (no deep nested objects) for telemetry tagging.
+
+kevin: we should also consider validation errors: map 422 to BadRequest with is_validation_error=true and field hints array.
+
+devx-bot: created ticket DEVEX-1180: "sdk-typed-errors-and-retry-metadata" (assignee: rachel)
+
+jasmin: timeline request: customers hitting onboarding in next 2 weeks. rachel, can you own RFC + umbrella issues for python/ts/go?
+
+rachel: can do. I'll draft RFC today and link sample apps. aiming to land shims + tests in 2 weeks, opt-in beta in next minor.
+
+ori: great. I'll add a small sample to quickstart showing `if (err instanceof RedwoodRateLimitError) { await sleep(err.recommended_backoff_ms) }`.
+
+kevin: after beta, we should flip default but keep deprecation warnings for 2 minors.
+
+jasmin: thanks everyone — I'll attach the repro gist to DEVEX-1180.

@@ -1,0 +1,43 @@
+eng-ml
+
+mira: quick note from the load tests: incremental prefetch + safetensors thin-index reduces mmap churn but we still see cold-page spikes for huge embedding tables.
+dan: are these spikes from small random reads across many tensors? or big tensors streamed late in request?
+mira: mostly many small reads around embeddings + layernorm params. hotness hints help but read fanout still too high.
+zhou: two ideas: 1) compacting many tiny tensors into a single slab within the shard at upload time 2) a read-coalescer that merges adjacent range requests at runtime.
+eli: slab packing sounds nice but backwards compatibility is tricky. ops would need to repackage bundles or we need an on-the-fly compaction step in storage which is heavy.
+mira: true. the uploader can do optional packing when manifest indicates 'pack_small_tensors: true'. We can leave existing bundles untouched.
+dan: packing policy: threshold_size, alignment, and an atom table mapping tensor_name -> (offset, length, slab_id). That atom table needs to be small.
+zhou: we can compress the atom table with prefix trees and name hashes to keep metadata low. Also include a version tag so loader knows to interpret slabs.
+ops-bot: FYI: storage team flagged that repack jobs will increase CPU egress during bundle creation. Please coordinate quotas.
+eli: runtime coalescer is faster to roll out. we already have a coalescer prototype in weight-reader; need SAFETENSOR framing awareness to merge neighboring tensors that happen to be contiguous on disk.
+mira: coalescer + thin-index hints might be enough as short term. long-term packing for major customers.
+dan: admission control: if coalescer window causes latency increase due to wait-for-merge, fall back to direct reads after 3ms wait. keep waits tiny.
+zhou: also consider prioritizing small-tensor reads for prefix requests. embeddings requested by prefix often dominate; warmup should pull embedding slabs ahead of other tensors.
+eli: agree. make warmup prioritization pluggable: manifest-level 'warmup_priority' list or regexes.
+mira: propose manifest flag example:
+
+manifest_version: 2
+pack_small_tensors: optional
+warmup_priority:
+  - "embeddings.*"
+  - "token_embedding|position_embeddings"
+
+dan: implementation notes: loader parses warmup_priority into compiled regexes; warmup planner orders reads by hint.hotness and manifest priority.
+zhou: metrics to add: coalesce_wait_ms_p99, slab_fallbacks, packed_bundle_ratio, per-shard_small_read_rate.
+eli: ops concern: packed bundles invalidating rolling upgrades when re-uploading. need migration strategy: uploader can write new bundle id and maintain a redirect map for a while.
+mira: yes, versioned bundle ids + aliasing. storage will keep both for 30 days.
+dan: security: ensure slab packing doesn't change tensor binary layout w.r.t. checksums. include per-slab checksum and preserve per-tensor checksums in atom table.
+zhou: test plan: create a stress model with 120k tiny tensors, run canary with coalescer enabled 1% traffic, monitor p95/p99 + OOMs.
+eli: i'll add a feature flag and canary gate in warmup-service. Ops-bot, please pre-approve resource spike margin.
+ops-bot: noted. reserving +20% CPU capacity for repack/uploader jobs during canary window 2026-04-12T02:00 UTC.
+mira: timeline: PR for coalescer tuning today, manifest docs update tomorrow, uploader packing opt-in next week.
+dan: if we go for packing, include a CLI tool to inspect slab atom tables so support can debug.
+zhou: agreed. let's centralize atom table schema in the manifest spec doc.
+eli: thanks all. opening PRs and will post links here.
+mira: follow-up: if coalescer alone fixes cold-page spikes we can postpone packing. keep packing as opt-in for now.
+dan: ack.
+zhou: ack.
+eli: pr: weight-reader#446 opened (coalescer safetensor framing).
+ops-bot: deploy-bot: canary rollout scheduled to gpu-pool-07 at 1% traffic for 30m.
+mira: closing loop: please add the slab_fallbacks metric to the warmup dashboard before canary.
+eli: will do.

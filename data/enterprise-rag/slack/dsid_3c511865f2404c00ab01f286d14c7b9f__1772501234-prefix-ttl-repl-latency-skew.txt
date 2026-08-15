@@ -1,0 +1,62 @@
+eng-runtime
+
+sam: Seeing a spike in prefix cache miss rate for APAC after last night's kernel/batching rollout. quick summary:
+
+sam: perf snapshots -> us-west hit_rate=72%, ap-southeast hit_rate=19% (same traffic pattern)
+
+maria: Hmm. Did we change key normalization in the runtime? recent PR touched prompt canonicalization
+
+sam: PR 1123 updated `normalize_prompt()` to strip trailing whitespace and collapse unicode NFKC. suspected mismatch in cache keys.
+
+leo: deploy-bot: rollout cluster=prod-gp2 version=2026.03.15-ker-v2 :white_check_mark:
+
+tia: perf-bot: profiling shows KV lookup latency +12% and cold misses up 3x in APAC node group since 03:10 UTC
+
+sam: here's current cache key logic (simplified):
+```
+key = model+"|"+normalize_prompt(prefix)+"|"+seq_len_bucket(ctx)
+```
+we changed normalize_prompt to remove zero-width chars -> key churn for some clients (mobile locale data)
+
+maria: that would explain region gap if traffic composition differs by locale. APAC has more CJK + emoji.
+
+leo: also changed batching heuristics to favor smaller batches in low-latency zones; increased prefix eviction frequency due to memory pressure on smaller batch kernels
+
+tia: suggestion: two-pronged mitigation:
+- backfill cache by replaying recent prefixes to APAC replicas (preseed)
+- revert normalization for canary region while we verify
+
+sam: I ran a quick experiment: preseed 200k prefixes to ap-southeast -> hit rate went from 19% -> 61% and p50 latency dropped 18ms
+
+maria: nice. can we automate preseed during deploy? maybe via controller job `cache-warmup --since=24h --regions=ap-southeast`
+
+leo: config snippet idea:
+```
+cache:
+  replica_write: true
+  ttl: 48h
+  preseed_on_rollout: true
+  key_mode: stable
+```
+
+tia: We should also add telemetry: include key_fingerprint in logs (hashed) and a `key_version` field so kernel/keying changes are visible in metrics
+
+sam: agreed. also adding routing tweak: route small percentage (1%) of apac traffic to us-west for warm cache reads until local warms up
+
+maria: edge case: consistency. If we replicate writes, need to ensure eventual coherency; don't expect strong sync across regions. make replicas accept stale writes but mark as replicated=true
+
+leo: perf regression root cause summary: key churn due to normalize_prompt change + smaller batch kernel causing higher eviction, both amplified by regional traffic composition
+
+tia: next steps:
+- revert normalization in ap-southeast canary (sam)
+- run automated preseed for last 48h prefixes (leo)
+- add key_version and key_fingerprint telemetry (maria)
+- monitor hit_rate and p50 lat for 24h (perf-bot)
+
+sam: I'll open an incident ticket and a rollback PR now. assigning self.
+
+maria: thanks. also add a note for SRE to consider increasing cache memory in apac pools temporarily
+
+perf-bot: monitored_metrics: ap-southeast hit_rate=63% p50=82ms (after preseed) :thumbsup:
+
+sam: nice. will follow up with a postmortem once stable. thanks everyone :raised_hands:

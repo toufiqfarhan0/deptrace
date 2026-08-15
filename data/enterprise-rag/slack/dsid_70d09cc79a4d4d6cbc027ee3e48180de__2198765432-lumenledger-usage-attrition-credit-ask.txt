@@ -1,0 +1,33 @@
+vendors
+
+Sarah Kim (Finance): Heads up — invoice LL-2026-03 looks off. We were on the 100k commit pilot but there's an `overage` charge of $12,400. Our dashboard shows ~78k units used. @Anil Shah can you pull the raw usage that fed this invoice?
+Jordan Patel (Billing Ops): Invoice ID and PDF? I can start a preliminary reconcile but need the per-sku line items.
+Sarah Kim (Finance): Invoice PDF attached in thread (LL-2026-03.pdf). invoice number is LL-2026-03. Also pasting the summary lines we see: 
+```
+SKU,Committed,Used,Billed
+embed-units,100000,78012,78012
+gen-units,0,3200,3200
+overage,0,12400,12400
+Total,100000,81512,12400
+```
+Jordan Patel (Billing Ops): Hmm looks like overage equals 12,400 units at vendor rate. Need the timestamped usage export to match. @Mike Ortega any jobs that might have spiked usage?
+Mike Ortega (Eng): Not aware of anything scheduled that would burn >12k extra units. We did run a one-off full-corpus embedding on Mar 2 in sandbox project "sandbox-lumen" which should be excluded from the pilot billing. I'll double-check job IDs.
+ProcureBot: Reminder: Contract LUM-RED-2025 auto-renew window opens in 27 days. Flagged for review if credit requested.
+Anil Shah (LumenLedger): Sorry about the trouble — thanks for the note. I'll pull the raw usage export for LL-2026-03 and the associated mapping to customer project tags. Quick Q: can you confirm the account id and which project(s) were in-scope for the pilot so I filter correctly?
+Sarah Kim (Finance): Account: redwood-prod (acct id rwd_4321). Pilot projects: `redwood-ll-pilot` only. Sandbox projects should be tagged `sandbox-*` and excluded.
+Anil Shah (LumenLedger): Got it. I'll run the export and share the CSV. Also pasting our rate card excerpt so we're on same page: 
+```
+Rate card (pilot):
+- embeddings: $0.0005/unit
+- generation: $0.0012/unit
+- overage penalty: billed at embedded rate once commit exhausted
+```
+Anil Shah (LumenLedger): Quick note — sometimes internal project tagging misaligns and sandbox jobs get attributed to the production account. I'll scope by project tag and by API key. Will validate within 6 hours and propose corrections/credit if we mis-attributed.
+Jordan Patel (Billing Ops): Please include the API key hashes for any suspicious calls and timestamps. We'll reconcile against internal logs. If LumenLedger confirms mis-attribution, we'll request a billing credit for the March invoice.
+Mike Ortega (Eng): Found job id: job_20260302_fullcorpus (ran Mar 2 03:12 UTC). That job used API key `sk-rl-********` which is our sandbox key. It should not be in `redwood-ll-pilot` but I can share the job manifest.
+Anil Shah (LumenLedger): Thanks — can you DM the manifest to me or paste the first 10 lines? also i'll attach the preliminary export here when done.
+Sarah Kim (Finance): If this is a tagging issue on vendor side and you can confirm we were overbilled, can we get a provisional credit before renewal conversations? ProcureBot flagged the renewal window so we'd like to get financials cleaned up first. :grimacing:
+Anil Shah (LumenLedger): Understood. Our standard practice is to issue a post-audit credit for confirmed mis-bills. If it's clearly vendor attribution, I'll escalate to billing ops and propose a credit note for the March invoice. I should have the export + mapping by EOD PST.
+Jordan Patel (Billing Ops): Great — once we have the CSV and API key mapping I'll reconcile and reply with a formal credit request if needed.
+Sarah Kim (Finance): Thanks all. Action items: 1) @Anil share raw usage CSV + API key mapping by EOD. 2) @Mike share job manifest and confirm sandbox key (done). 3) @Jordan to open an internal billing reconcile ticket and ping procurement if credit requested.
+Anil Shah (LumenLedger): On it — will post the export here shortly. Apologies again for the noise. :bow:

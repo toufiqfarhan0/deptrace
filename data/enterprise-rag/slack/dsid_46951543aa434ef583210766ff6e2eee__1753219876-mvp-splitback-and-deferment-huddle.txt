@@ -1,0 +1,23 @@
+product
+
+Elaine: Quick sync — we need to lock the MVP slice for Search-Assist. Pilot customer (Acme) requires SSO + tenant routing to test. We can either a) push SSO into MVP and delay embeddings cache to v1, or b) keep SSO in v1 and ship a limited tenant flag for pilot.
+Marco: What's the customer failure mode if we delay SSO?
+Elaine: They can't onboard pilot tenants, they need SAML, legal deadline end of month. :grimacing:
+Priya: If SSO goes to MVP we lose a week of dev time and extra QA. Cache work also helps latency; dropping it will increase 95p by ~30-50ms.
+Ben: Do we have telemetry to prove cache is necessary for pilot? Maybe we can toggle cache later.
+Chloe: Pilot traffic will be small; we can opt for feature-flagged SSO (basic SAML) + no cache. Acceptable to Acme? @Elaine
+Elaine: I already asked — they prefer full SSO but could accept feature-flagged if we commit to v1 in 4 weeks.
+Marco: Can dedicated infra accomodate the perf hit for pilot? Eng-infra said yes for low qps.
+Priya: Risk: shipping SSO rushed could introduce regressions in routing & token billing. We need an explicit rollback plan.
+Ben: Rollback plan: 1) toggle-off SSO flag, 2) route pilot to hosted model (fallback), 3) notify CS + legal. That's doable.
+Chloe: What about rollout policy? Canary on 5 tenants then ramp.
+Elaine: propose: MVP = SSO feature-flag + tenant routing; Embeddings cache deferred to v1. Canary 5 tenants, rollback steps in place. Need signoff from growth & CS.
+Marco: +1 but add automated smoke test for auth flows before canary.
+Priya: Also add perf baseline test for 95th token latency, post-deploy alert threshold + regression evals.
+product-bot: Reminder: milestone freeze is in 6 business days. File a deviation if we extend.
+Elaine: OK I'll draft the deviation doc and ping @Growth and @CS for signoff. Everyone ok with plan?
+Ben: OK from infra.
+Chloe: OK from solutions.
+Marco: OK from product dev.
+Priya: OK from QA, will add test tasks.
+Elaine: Thanks — I'll post the dev doc + checklist in #product and create the canary ticket.

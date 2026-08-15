@@ -1,0 +1,58 @@
+devex
+
+ana: Heads up, hitting intermittent 401s from Workers when using the JS SDK ESM build. Only happens on retries. First call usually OK. Anyone familiar with Worker-specific header gotchas?
+
+ana: Minimal sandbox: import sdk from 'redwood-inference'; const c = new sdk({ apiKey: RW_KEY }); addEventListener('fetch', e => e.respondWith(c.text.generate({ prompt: 'hi' })))
+
+rachel: That pattern is common. Two likely problems: 1) headers are reused or mutated between attempts, 2) our retry serializer loses header prototypes. Workers expect Headers or arrays, not plain objects.
+
+theo: I saw this too. Our Node runtime uses an internal Headers-like plain object to optimize, which works in Node but fails in edge runtimes where the fetch implementation is strict. When we stringify options for retry we drop the Headers prototype.
+
+ana: Example of issue in SDK runtime:
+```js
+const opts = { method: 'POST', headers: runtimeHeaders };
+return fetch(url, opts);
+```
+where runtimeHeaders was reused.
+
+pat: Fix ideas:
+- always use new Headers(base) before mutating
+- when serializing for retry, store header entries: Array.from(headers)
+- provide an explicit edge ESM entrypoint that avoids node: polyfills (no buffer/process)
+
+rachel: +1. Also add an exports map in package.json: 
+{"./runtime": {"import":"./dist/node/runtime.js","default":"./dist/node/runtime.cjs"},"./runtime.edge":"./dist/edge/runtime.js"}
+so bundlers can pick runtime.edge for worker targets. Document in README.
+
+theo: TS typing note: Users importing the ESM edge entry in workers get ambient node types pulled in by devDependencies sometimes. Publishing a lightweight dist/edge/index.d.ts with HeadersInit typed from web lib avoids that leak.
+
+ana: Short-term workaround I dropped into our worker:
+```js
+const headers = new Headers();
+for (const [k,v] of requestHeaders) headers.append(k, v);
+headers.set('Authorization', `Bearer ${RW_KEY}`);
+await fetch(url, { method: 'POST', headers });
+```
+That fixed retries for me.
+
+pat: We should also add a Miniflare test in CI to assert that retries preserve auth header when running in Workers. Catch regressions early.
+
+rachel: Implementation plan:
+1) change retry serializer to store header entries and body buffer base64
+2) defensive clone headers on each request path with new Headers(base)
+3) build and publish dist/edge with no Node shims
+4) add edge d.ts and update README + migration note
+
+theo: I'll own CI and build matrix to produce both dist/node and dist/edge artifacts. Pat can take the retry serializer change. Rachel can add docs and the d.ts.
+
+ana: Thanks. Quick question: do we need to warn users who import top-level package in worker? I suspect many do and hit this silently.
+
+rachel: Yes, add a bold note in README and a console.warn when SDK detects a worker-like environment and node: polyfills are present. But be careful with false positives. Maybe only warn if headers constructor missing or process/browser is present.
+
+infra-bot: created ticket RW-ops#412: "edge: fix header cloning & retry serialization for CF Workers" and started pipeline for branch fix/edge-retries (build 679).
+
+pat: I'll open a draft PR with tests and link the ticket.
+
+theo: LGTM, once tests pass we can cut a patch release.
+
+ana: Thanks all — will try the local workaround and report back.

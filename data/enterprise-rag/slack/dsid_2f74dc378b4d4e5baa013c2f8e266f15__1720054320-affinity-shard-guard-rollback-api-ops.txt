@@ -1,0 +1,62 @@
+eng-platform
+
+post-mortem from staging test: tighten defaults caused eviction for bursty org. decision: implement adaptive guard, add per-org opt-out and global kill switch, add affinity-evicted header (429), improve telemetry and canary tests. owners assigned: noah (admin api + guard), priya (SDK + headers), rachel (console), tess (rollout docs).
+noah b: Heads-up — we saw a spike in 429s after enabling shard_guard.max_share_percent=30 in staging. looks like a single org's traffic spiked and hit the per-credential soft throttle, caused evictions and high p95.
+
+tess l: ugh. which metric first alerted?
+
+rachel m: affinity_evictions and per_cred_throttle_events. also affinity_cache_hit_ratio down ~18%.
+
+noah b: exact. the org had bursty batch jobs we didn't account for. they were pinned to a single shard.
+
+priya s: is this a config bug or expected behavior?
+
+noah b: expected behavior but our shard_guard defaults are too tight for shared customers. we need either better default or auto-detect heavy hitters and spread them.
+
+ops-runbook-bot: runbook hit: affinity-throttle/eviction - suggested action: toggle affinity off for org id org-3498 or increase shard_guard.max_share_percent to 60.
+
+tess l: roll back in prod yet?
+
+noah b: we haven't rolled to prod. this was a staging repro, but it's a good stress test. want to update rollout checklist before next canary.
+
+rachel m: action items: 1) add emergency admin API to flip affinity per-org, 2) implement heuristic to classify "heavy-hitter" keys and place them in multi-shard mode, 3) surface per-org heatmap in console.
+
+priya s: + add an adaptive guard: if a single key's share > X for Y seconds, temporarily relax shard_guard for that key and mark as "burst-mode". emit event so ops can review.
+
+noah b: agreed. also we should rate-limit batch ingestion endpoints separately; batch jobs shouldn't share same affinity as interactive sessions.
+
+tess l: UX: console toggle should show current state (affinity: on/opted-out/burst-mode) and last action with a way to force-disable. SEs need that during support escalations.
+
+rachel m: telemetry: add per_org_affinity_state, per_org_eviction_count, heavy_hitter_detected tag, and sample traces for evicted requests. want those in logs for 72h during canary.
+
+ops-runbook-bot: suggested alert thresholds updated: per_org_eviction_count > 5 in 5m, affinity_cache_hit_ratio drop > 10% vs baseline, sustained p95 increase > 20% for org.
+
+priya s: one more: SDKs should handle new error response when eviction occurs. currently 429 is ambiguous; add x-affinity-evicted header and a clear message. example: 
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+X-Redwood-Affinity-Evicted: true
+{
+  "error": "affinity_evicted",
+  "message": "Request routed away from affinity pool due to capacity. Retry after backoff or contact support."
+}
+```
+
+noah b: good. ops: we need an emergency kill-switch in the control plane to globally disable affinity. add to runbook and give infra team RBAC to execute.
+
+tess l: also update rollout doc: canary steps must include synthetic traffic that mimics heavy batch workloads to catch this. add a pre-canary test with worst-case affinity per-org scenario.
+
+rachel m: who owns console changes? I'll take the UI for per-org heatmap and toggle; Noah can wire the backend.
+
+noah b: I'll own the admin API + kill-switch + adaptive-guard change. Priya will own error headers and SDK guidance. Tess will update canary docs. infra-bot: please create a canary checklist item.
+
+infra-bot: created checklist item ci-20260322-09: affinity-heavy-hitter-stress-test -> assigned.
+
+priya s: timeline: make the header + SDK note tomorrow, adaptive guard prototype in 3 days, console mock in 48h, then re-run staging stress and if green schedule small prod canary.
+
+noah b: perfect. documenting decision: relax default shard_guard, add adaptive relaxation for heavy hitters, build per-org opt-out and global kill-switch, add affinity-evicted header and telemetry, require heavy-batch synthetic test in canary.
+
+ops-runbook-bot: runbook updated: affinity-throttle/eviction -> include kill-switch steps and org-level rollback.
+
+noah b: thanks team. will post PRs and link them here.

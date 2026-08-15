@@ -1,0 +1,86 @@
+eng-platform
+
+anya: Heads-up — proposing a smaller, safer migration for console analytics: move per-route SLA label out of freeform route_metadata JSONB into a first-class column route_sla on route_profiles. Reason: queries for SLA dashboards are super slow and can't use indexes.
+
+matt: strong +1 on indexability. what's the plan for backfill? giant jobs or incremental?
+
+lucio: prefer incremental dual-write then backfill windowed in batches. avoid long locks.
+
+anya: yep — dual-write at ingest path. steps I sketched:
+1) add nullable route_sla column to route_profiles
+2) update write path to populate route_sla from metadata when present (dual-write)
+3) run backfill job over historical data in date windows
+4) make a read-adapter that prefers route_sla but falls back to metadata
+5) cutover and remove metadata usage after monitoring
+
+olivia: can we reuse the existing route_profile id for lookups? adding joins may regress latency in dashboards.
+
+lucio: idea: keep route_sla denormalized in analytics_events too, fill during backfill so dashboards don't have to join at query time. That means dual-write both to route_profiles and analytics_events.
+
+matt: that increases storage but buys query perf. how expensive is backfill CPU-wise? we have a lot of events.
+
+anya: backfill estimate: ~120M rows, 2TB scan. We'll do windowed backfill parallelized by day and shard. rough ETA: 48–72h with current cluster if we throttle.
+
+lucio: add a checksum/safepoint per window so we can resume if job fails.
+
+olivia: UX question — rollouts console needs consistent SLA view during migration. Can we add a feature-flag to show "SLA source: metadata|route_sla|mixed" so customers see what's happening?
+
+anya: yes, we can add telemetry and a small banner. Also post-migration we should add an eval that compares SLA derived from metadata vs route_sla on a sample to catch drift.
+
+deploy-bot: deploy started: feature/route-sla-dualwrite @anya
+
+matt: DB migration details? nullable col default null first; then populate; then add partial index?
+
+lucio: propose a partial index for non-null route_sla:  CREATE INDEX idx_route_profiles_sla ON route_profiles(route_sla) WHERE route_sla IS NOT NULL;
+
+anya: agreed. for analytics_events denorm column: route_sla_smallint to save space. compress with ZSTD.
+
+olivia: how do we handle conflicting values? metadata might have legacy labels like "golden" vs new enum {bronze,silver,gold}.
+
+lucio: add a normalization layer on write: map legacy strings to enum; log unmatched to telemetry for manual review.
+
+matt: quota impact: queries that previously scanned metadata JSONB will switch to index scan — should lower cost. But dual-write may add cpu on ingest. need to simulate.
+
+anya: I'll run a small perf test on staging: 1M events with dual-write vs current. Will post numbers.
+
+olivia: monitoring: add counts of events with route_sla IS NULL, and mismatch rate between metadata vs route_sla. Also p99 dashboard latency for SLA dashboards pre/post.
+
+lucio: rollback plan: if ingest CPU > threshold, revert dual-write quickly via feature flag and resume backfill later.
+
+matt: for backfill safety: use rate-limited workers and do window checksums. Also ensure we tag backfill jobs so console telemetry doesn't treat them as normal traffic.
+
+anya: note on read-adapter: implement a short-circuit in query layer:  if route_sla IS NOT NULL use it; else parse metadata JSONB. This keeps reads safe during migration.
+
+olivia: one more: API contract for external customers using "route_metadata.sla" — we should keep writing metadata until we fully deprecate and announce.
+
+anya: agreed. keep metadata intact during entire migration. Deprecation timeline T+90 days after cutover.
+
+lucio: OK action items:
+- anya: open DB migration PR and perf test
+- matt: add partial index PR and backfill job scaffolding
+- olivia: UX banner + telemetry charts
+- lucio: backfill orchestration + checksums
+
+anya: I'll create the initial PR and schedule a migration runbook. tagging @olivia for the banner content.
+
+olivia: thanks — will draft banner copy and dashboards. :thumbsup: 
+
+matt: small nit: in backfill, pad for daylight savings if we shard by local date. use epoch day.
+
+lucio: noted.
+
+anya: cool. if no objections I'll start PR tomorrow and target canary dual-write in staging in 3 days.
+
+matt: go for it.
+
+olivia: lgtm.
+
+deploy-bot: deploy succeeded: feature/route-sla-dualwrite (staging)
+
+anya: posted perf gist: https://gist.github.com/anon/abcd1234 — dual-write adds ~6% CPU at peak on staging ingest, query p99 for SLA dashboard dropped from 620ms -> 120ms
+
+matt: that's promising. schedule for canary in one week and small customer demo after.
+
+lucio: will prepare backfill runbook and run a dry run on a 7-day window.
+
+olivia: thanks team. closing thread for now, will reopen if rollout shows issues.

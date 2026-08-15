@@ -1,0 +1,38 @@
+announcements
+
+sophia: Heads-up: Maintainers Playbooks v1.0.0 is live. This is a curated collection of playbooks (release, oncall, incident, handoff), updated PR/issue templates, and a small CLI to scaffold team-specific copies. Release: https://github.com/redwood-inference/maintainers-playbooks/releases/tag/v1.0.0 :sparkles:
+
+release-bot: Release published: maintainers-playbooks v1.0.0 — https://github.com/redwood-inference/maintainers-playbooks/releases/tag/v1.0.0 (full changelog in repo)
+
+jae: awesome — any breaking changes for repos that consume the templates?
+
+sophia: No breaking runtime changes. One schema tweak: issue templates now include an optional 'impact' frontmatter field. Consumers can ignore it. If you want to opt-in for stricter validation, run the validator:
+
+```bash
+# from repo root
+./tools/validate-templates --dir ./playbooks/templates
+```
+
+lin: is there a quick way to create a team copy?
+
+sophia: yes, we added a cli that scaffolds into your repo: `npx redwood-playbooks init --target ./playbooks`. It also adds a GitHub Actions workflow to run basic checks.
+
+devtools: Note: the new workflow uses actions/checkout@v4 and requires a repo-level secret PLAYBOOKS_HASH for integrity checks. Add if you enable the workflow.
+
+anya: we'll be doing a maintainer roundtable next Wednesday 9am PT to walk through migration and governance. RSVP: https://cal.com/redwood/maintainer-roundtable. Recording will be shared.
+
+jae: will the playbooks include an approved vendor contact list for oncall escalation?
+
+sophia: yes there's a vendor-contacts.md under docs/, plus a short escalation checklist you can paste into your repo's README.
+
+lin: tiny nit — can contributors add themselves to the AUTHORS file automatically?
+
+sophia: open a PR or run `npx redwood-playbooks add-author --name "Your Name" --handle @gh` — it updates AUTHORS and CONTRIBUTORS.md.
+
+release-bot: changelog summary: 9 commits, new CLI scaffold, 4 playbook templates, updated CI workflow, docs refresh. https://github.com/redwood-inference/maintainers-playbooks/commits/v1.0.0
+
+anya: thanks team — maintainers, please skim CODE_OF_CONDUCT and CONTRIBUTING in the repo before adopting playbooks. We'll cover that in the roundtable.
+
+jae: RSVP'd. happy to demo our repo migration experience on the call.
+
+lin: thanks for shipping this — will test the scaffold today.

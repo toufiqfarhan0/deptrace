@@ -1,0 +1,73 @@
+eng-infra
+
+alex: kicking off SAO-edge bolt-up for TelcoX (private VPC, air-gapped). target region: sa-sao1. scope: 4 A100 nodes, 1 control plane (3 masters), private registry seeding. maintenance window Thu 02:00-05:00 UTC. I'll post the checklist below.
+
+maya: ack. tagging @jordan and @sre-ops. i've added the customer contact + firewall owners to the invite.
+
+jordan: quick heads up — cloud quota currently shows 2 GPUs in sa-sao1. i requested an increase to 16 yesterday, support ticket #CLOUD-8342. run to verify: `cloudcli quota get --region sa-sao1`
+
+sre-ops: customer network notes: they have stateful firewall in front of the VPC. requirement checklist i sent earlier but TL;DR: allow inbound on 22 (jumpbox), 443 (registry sync), 6443 (k8s API), 10250 (kubelet), and TCP 2379-2380 (etcd) between control-plane nodes. Also allow control-plane -> GPU nodes for gRPC ports 50051 and ephemeral high ports.
+
+sre-ops: firewall snippet for customer ops to paste:
+```
+# Customer firewall ACLs (apply to edge perimeter)
+ALLOW TCP 22 FROM cust-admin-net
+ALLOW TCP 443 FROM seed-router
+ALLOW TCP 6443 FROM our-bastion
+ALLOW TCP 10250 FROM control-plane
+ALLOW TCP 2379-2380 BETWEEN control-plane
+ALLOW ICMP FROM our-monitoring-ips
+```
+
+eng-infra: air-gap delivery steps (summary):
+1) build image bundle in staging: `make image-bundle TAG=telcox-sao1`
+2) export tarball: `skopeo copy --dest-tls-verify=false docker://registry.company/repo:telcox-sao1 dir:/tmp/telcox-images`
+3) archive and checksum: `tar -C /tmp -czf /mnt/seed/telcox-sao1-images.tar.gz telcox-images && sha256sum /mnt/seed/telcox-sao1-images.tar.gz > /mnt/seed/telcox-sao1-images.sha256`
+4) transfer to customer via encrypted drive or secure S3 endpoint depending on their SOP. confirm receipt and checksum before import.
+
+alex: seed registry import commands for site operator once tarball is onsite:
+```
+# on the jumpbox
+mkdir -p /var/lib/registry-seed
+tar -xzf /mnt/seed/telcox-sao1-images.tar.gz -C /var/lib/registry-seed
+./registry-import --dir /var/lib/registry-seed --registry http://localhost:5000
+```
+
+deploy-bot: image-sync job started for telcox-sao1 at 2026-11-10T02:10:05Z (job id: is-65932).
+
+maya: validation checklist (post-provision):
+- cluster ready: `kubectl get nodes`
+- runtime health: `redwood-ctl health --all`
+- nvml/drivers: `nvidia-smi`
+- network checks: `curl -v https://registry.local:5000/v2/` from jumpbox
+
+alex: sample `kubectl get nodes` snippet we expect after success:
+```
+NAME        STATUS   ROLES    AGE   VERSION
+sao-worker-1 Ready   worker   2m    v1.26.3
+sao-worker-2 Ready   worker   2m    v1.26.3
+sao-worker-3 Ready   worker   2m    v1.26.3
+sao-master-1 Ready   master   5m    v1.26.3
+```
+
+jordan: GPU driver/version compatibility note — ensure NVIDIA driver >= 525.60 and CUDA 11.8 for our optimized runtime. quick check: `nvidia-smi --query-gpu=driver_version,gpu_name --format=csv` should return driver_version like `525.85.12`. If mismatch, hold provisioning and escalate to hw-support.
+
+sre-ops: post-provision security/handoff requirements: create jumpbox account for customer ops, rotate keys after handoff, upload final runbook to shared vault (1Password entry: TelcoX SAO edge), and mark the private registry cert as customer-owned. DON'T email plaintext creds.
+
+eng-infra: cost & capacity note: baseline committed cost estimate for 4x A100 reserved nodes ~ $12,800/month. If customer chooses burstable spot for non-critical jobs we can reduce marginal token cost by ~35-40% but cannot guarantee latency SLAs. include this in commercial handoff.
+
+alex: testing plan during window (short):
+- import images into local registry (15m)
+- bootstrap control-plane + etcd (20m)
+- apply GPU node pools (20m)
+- run smoke workloads: `redwood-ctl run smoke --profile small-gpu` (15m)
+
+maya: i've scheduled the handoff call Thu 03:00 UTC with TelcoX infra lead. invitees: alex, jordan, sre-ops, solutions-eng. agenda: review checklist, certs, post-go SLA and cost options.
+
+jordan: FYI — opened ticket to pre-pull kernel module for our runtime to avoid cold-compile delays: HW-Prep #754. if they want, we can ship precompiled kernel module in seed.
+
+sre-ops: final: please confirm we have customer signed AUP and SOC2 addendum before we flip production routing.
+
+alex: thanks all — i'll update this thread with final support ticket numbers and handoff doc link (will post after the test window). :thumbsup:
+
+maya: :thumbsup: received, standing by for ticket numbers.

@@ -1,0 +1,19 @@
+product
+
+Izzy K: Quick UX flag — when a large eval rerun hits throttling the error modal shows raw 429 text. Users don't know what to do.
+Ravi N: Can you paste a screenshot of the modal? Is it API raw or our wrapper?
+Izzy K: It's the API payload surfaced. Screenshot: single line `Rate limit exceeded` with Retry/Close.
+Priya V: UX: Retry implies immediate action. If backend delays, we should either show ETA + auto-retry or change CTA to 'Queue retry' and explain possible delay.
+Jonas T: Backend note: we sometimes return `retry_after` header; sometimes not. We could expose `scheduled_retry_at` and `retry_count` on run status.
+Priya V: Copy options (short):
+- Option A (auto): "We're temporarily busy. We'll retry this batch in ~30s — no action needed."
+- Option B (queued): "Queue retry (may be delayed). Requests are paced to avoid overload."
+Izzy K: Also: modal hides successes. Need a summary line: "24 done, 3 queued, 1 failed." Keeps context.
+access-bot: Accessibility reminder: use aria-live to announce state changes and ensure focus moves predictably to primary action.
+Ravi N: Action items:
+- Jonas: API: add scheduled_retry_at + retry_count on chunk metadata.
+- Priya: produce two small modal mocks (auto + queued) and caption copy.
+- Izzy: confirm product stance on showing retry cap (backend caps at 3). Suggest helper: "We'll try up to 3 times."
+Jonas T: I'll file the infra ticket today and include `retry_after` if present.
+Priya V: I'll drop mocks in #design and include keyboard/contrast notes.
+Izzy K: Thanks. Assigning copy to @Priya V and accessibility checklist to @access-bot. Follow-up in UX sync. :white_check_mark:

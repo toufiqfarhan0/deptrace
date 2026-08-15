@@ -1,0 +1,42 @@
+sales
+
+linda_salesops: Heads up — Stratus just dropped an RFI focused on POC mechanics and compliance. They want: 1) an integration options matrix (VPC peering, Transit Gateway, Site-to-Site VPN), 2) a sample POC cost and timeline, 3) latency expectations for a sustained 2k-token chat workload, and 4) a filled compliance checklist. They asked for a capability comparison across Hosted/Dedicated/Private. Can we split tasks?
+anna_sales: I'll own the capability matrix + commercial options. Can someone confirm minimum committed terms for Private?
+michael_se: I'll take the technical writeup and latency numbers. Quick note — confirm whether they need token-level audit logs or full request payload logs; answers differ.
+tina_security: I'll handle the checklist responses. For audit logs: we provide detailed request metadata and per-request token counts. We do not capture plaintext prompts by default unless customer opts in; we'll document retention and masking options.
+oliver_engineer: Latency snapshot: on Dedicated (2x A100-equivalent pool) under steady 80 qps with continuous batching and warmed KV cache, median per-token ~90ms, 95th ~260ms; hosted shared instances median ~220ms, 95th ~420ms. Cold-start first token adds ~600ms. Network overlay via peering adds ~15ms typical. I'll export the benchmark CSV and include command lines for reproducing.
+raj_sre: Ops caveat: our peering setup requires a customer VPC route table change and an update to their firewall to allow TLS egress. Also note TCP keepalive and idle timeout defaults that have bitten POCs before — will add runbook steps for keepalives and healthcheck config.
+anna_sales: For the matrix, let's include rows: isolation, CMK/HSM support, SLA level, typical latency range, onboarding lead time, IaC examples, data residency, and add-on services (24/7 onboarding).
+linda_salesops: Stratus asked for a sample SLA clause for 99.5% uptime and credits schedule. Legal needs to sign off but do we have precedent language I can paste?
+michael_se: Pulling clause from previous Dedicated contract. Also will include our automated fallback policy text (how we switch to a smaller model on latency SLO breach).
+tina_security: On key management: Dedicated and Private support customer-managed keys via KMS; HSM-backed BYOK available for Dedicated through our partner and Private in on-prem. I'll note required legal language around key custody and rotation.
+oliver_engineer: For their IaC ask, suggest a Terraform example for peering and a docker-compose snippet for on-prem connector. Sample peering snippet (Terraform):
+```
+resource "redwood_vpc_peering" "stratus_peer" {
+  provider = "redwood"
+  account_id = "<redwood-account>"
+  vpc_id = "vpc-stratus"
+  region = "us-east-1"
+}
+```
+And a quick note: Transit Gateway path requires subnet mappings and route priorities config.
+deploy-bot: Attachment uploaded: stratus_rfi_submission/stratus_compliance_checklist.pdf
+anna_sales: I'll prepare commercial options: hosted (pay-as-you-go), Dedicated short-term reserved (monthly), Dedicated annual commit (discount tiers), Private (fixed engagement + license). Propose POC options: 2-week Dedicated small pool + engineering support for $15k flat + usage. Recommend optional 24/7 on-call for $4k.
+linda_salesops: Timeline: they want a response Friday COB. That's 3 business days. Can each owner add their artifacts by Thursday 12:00 PT?
+michael_se: I'll have the technical appendix, benchmark CSV, and SLA draft by Wednesday EOD.
+oliver_engineer: Benchmark CSV and runbook export uploaded tomorrow 10:30 PT.
+raj_sre: I'll add the peering runbook and operational limits (max concurrent sessions, recommended keepalive) by Thursday morning.
+tina_security: Security answers and a sanitized screenshot of the audit UI coming Thursday noon.
+anna_sales: Draft capability matrix uploaded (link in DM). Pricing doc and POC SOW draft uploaded too. Please comment in the sheet.
+oliver_engineer: Left an inline comment clarifying quantization tradeoffs for latency vs. quality in the matrix.
+michael_se: Noted. Also calling out model pinning: Dedicated & Private support strict model pinning for POCs; Hosted can pin at variant level with controlled rollouts. Add rollback/fast-fail policy.
+anna_sales: Added a note about fallback policies and canary deploy settings in the operations cell.
+linda_salesops: Great. I'll merge and do a final pass Thursday afternoon. Plan to send Friday 09:00 PT unless blockers.
+anna_sales: No blockers from me.
+nina_salesops: (typo) meant Linda.
+linda_salesops: Haha, all good. Thanks everyone — aiming to keep the RFI concise and include attachments: capability matrix, pricing_options.md, technical_appendix.zip, security_answers.pdf.
+michael_se: One more: Stratus asked whether we can support audit log exports into their SIEM. Yes — we can ship logs to S3 or directly to an HTTP endpoint; include sample config.
+raj_sre: Also include guidance on log volume (est. XGB/day per 1k qps) so they can size retention and ingestion.
+anna_sales: All right — I'm finalizing the matrix now, will ping when the package is ready for review.
+deploy-bot: Reminder: RFI deadline set for 2026-03-27 17:00 PT in calendar.
+linda_salesops: Thank you team — please keep updates minimal in this thread so I can assemble. Will send the finalized package Friday morning. :rocket:

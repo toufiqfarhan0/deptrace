@@ -1,0 +1,36 @@
+support
+
+maya: heads-up: AcmeAI reporting ~20% 503s since 2026-03-10 09:12 UTC. They are pinned to eu-ded-42 but a chunk of traffic is landing on hosted pools and getting errors. example req id: rq_0a1b2c3d, route header shows: x-tenant-pin=eu-ded-42 routed_to=hosted-eu-1. billing shows hosted charges. Can infra/SRE triage?
+
+alex: on it. did anything change in routing/autoscaler around 09:00-09:15? any deploys or maintenance?
+
+raj: checking affinity tables + router logs now. my first guess is affinity cache eviction or a fallback mapping bug during pool drain. grabbing logs.
+
+maya: pasted a short log snippet we collected from the customer path:
+```
+2026-03-10T09:12:34Z INFO route_decision tenant=acme req=rq_0a1b2c3d pin=eu-ded-42 chosen_pool=hosted-eu-1 reason=pool_not_ready
+2026-03-10T09:12:35Z ERROR request_fail req=rq_0a1b2c3d status=503 upstream=hosted-eu-1
+```
+
+sre-oncall: we had an autoscaler rollout at 09:08 that drained two nodes in eu-ded-42 for a security patch. it should have flagged a "dedicated-backfill" route that keeps pinning to other dedicated instances or queue requests, not fall back to public-hosted. investigating why fallback picked hosted-eu-1.
+
+alex: @sre-oncall can you confirm whether the fallback mapping table was updated during the drain? if TTLs were reset it could look like no-pin.
+
+maya: repro steps I used from staging to mimic the issue: hit the generate endpoint with tenant pin header and observe served-by. repro curl below (redact token):
+```
+curl -v -H 'Authorization: Bearer REDACT' -H 'X-Redwood-Pin: eu-ded-42' \
+  https://api.redwood.example/v1/generate -d '{"prompt":"hi"}'
+# look for response header: x-served-by: hosted-eu-1 or x-served-by: eu-ded-42
+```
+
+raj: found the root cause: during node drain the decommission job zeroed affinity TTLs for affected tenants. router logic treats TTL==0 as "no active pin" and falls back to the generic hosted fallback. PR to keep TTLs unchanged during graceful drains is up: https://git.internal/redwood/p/r/4242. patch will ensure fallback chooses dedicated-backfill pool and not hosted.
+
+billing-bot: ALERT: customer acme (org: acme) incurred ~2.4k hosted-token charges between 2026-03-10 09:10-09:20 UTC. Ticket #INC-2026-ACME-77 auto-created for potential credit.
+
+maya: customer is on the line and escalation level is high. immediate asks: 1) stop further hosted routing for pinned tenants while fix lands, 2) issue temporary credits for impacted window, 3) postmortem and ETA.
+
+sre-oncall: quick mitigation: rolled back the fallback mapping change that allowed hosted-as-final-fallback (rollback commit abc123) at 09:25 UTC. Confirmed new requests respect existing pins. Also toggled a safety gate to block hosted fallback for tenants with active dedicated reservation.
+
+alex: thanks. follow-ups: infra to merge TTL-preserve patch (raj) + deploy hotfix; billing to review INC-2026-ACME-77 and propose credits (billing-bot); support to notify Acme with incident summary and mitigation steps (maya).
+
+maya: will send customer update now with repro steps and mitigation. thanks all. :thumbsup:

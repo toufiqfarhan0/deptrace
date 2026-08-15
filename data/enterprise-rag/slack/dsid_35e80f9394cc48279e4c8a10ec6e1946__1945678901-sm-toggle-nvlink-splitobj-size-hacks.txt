@@ -1,0 +1,29 @@
+eng-runtime
+
+Ana: quick RFC follow-up — after landing the grouped-attn kernels I noticed CI artifacts are ~38% bigger on master. cc @Mike @Sophie
+Mike: saw the CI bump. digging into the fatbin: looks like every TU pulled in PTX for multiple sm targets instead of linking a single cubin per arch.
+Sophie: that would happen if we compile each kernel TU with the full -gencode list. LTO + -fuse-linker-plugin seems to stop dead-code removal in some cases too.
+Jamal: I grabbed the build log, keybits: nvcc invoked with three gencode entries (sm_80, sm_86, sm_90) and we also run -flto at link. attaching snippet.
+dl-bot: build #4721: link step: /usr/local/cuda/bin/nvcc -O3 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_86,code=sm_86 -gencode arch=compute_90,code=sm_90 -Xlinker -plugin -flto ...
+Ana: exact. That multiplies device code across TUs. Two quick proposals: 1) split kernel TUs so arch-specific compilation happens only once and ship per-arch static libs; 2) try relocatable device code + device link (-dc / -dlink) to let link-time dedupe. tradeoffs?
+Mike: split-TU approach is simplest for CI matrix — we already build per-arch packages for Dedicated. downside: duplication of build logic and more artifacts to publish.
+Sophie: -dc/-dlink can reduce duplication but it increases linking time and sometimes increases memory use in the linker. also earlier LTO + nvlink interactions caused intermittent failures in our infra.
+Jamal: we also hit a case where PTX was embedded as both ptx and cubin because some files used code=compute_xx,code=sm_xx style flags. maybe trim to only produce cubin for supported prod arches and PTX for one compatibility fallback.
+Ana: here's the minimal nvcc pattern I tested locally that reduced size a lot (only generating cubins for prod arches + one ptx fallback):
+```
+nvcc -O3 \
+  -gencode arch=compute_86,code=sm_86 \
+  -gencode arch=compute_90,code=sm_90 \
+  -gencode arch=compute_90,code=compute_90 \# PTX fallback for newer cards
+  -Xptxas "-v"
+  -Xcompiler -fPIC
+```
+Mike: nice. two implementation notes: (a) CI should build a matrix per-target and avoid compiling all gencodes in one go unless producing a fat runtime package, (b) add a validation job that inspects the ELF sections for duplicate PTX blobs.
+Sophie: +1 for a small CI checker. We can run `readelf -S` and `strings` to catch repeated `.nv_fatbin` entries. sample grep rule: `readelf -p .nv_fatbin <file> | grep -c "PTX"` and fail if > expected count.
+Jamal: curious: what about nvlink flags like --allow-unsupported-compiler that we added? Could be masking codegen differences across CUDA toolkits.
+Ana: good call — let's pin CUDA_TOOLKIT_VERSION in the matrix and run a compatibility job across the two supported toolkits (12.1, 12.2). If nvlink behaviour differs, we catch it earlier.
+ci-bot: created ticket #INF-842: "ci: detect fatbin duplication and limit gencode sets" with checklist: split arch builds, add readelf check, matrix pin for CUDA.
+Mike: action items: I can prototype split-TU static libs this week and add a small readelf check. Sophie, can you try the -dc/-dlink experiment on the largest target to measure link time and memory?
+Sophie: yep will run -dc/-dlink on linux-gcc12 with CUDA12.2 and report numbers tomorrow.
+Ana: thanks — once we have numbers we'll pick the approach. prefer split-TU for reliability unless -dc wins convincingly. also will update the RFC notes about toolchain impacts. :memo:
+Mike: cool. also adding a short blurb to the release notes about "reduced fatbin generation" so platform teams know the change. :shipit:

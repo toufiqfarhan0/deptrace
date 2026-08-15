@@ -1,0 +1,51 @@
+eng-security
+
+kevin: Heads-up — security wants to tighten RBAC on the BYOK/HSM import flow to require dual-operator approval and explicit oncall exemption. opening this thread for ops/product tradeoffs.
+
+sasha: +1 on dual-operator. question: do we mean two different engineers or operator + approver role?
+
+olivia: Two distinct principals is what compliance teams want (separation of duties). also: audit logs must record operator_id, approver_id, HSM slot id, wrapped_key_fingerprint, and request_id. retention: 7 years for some customers — flag for legal. :eyes:
+
+raj: How do we handle existing keys that were imported under the old flow? migration path?
+
+kevin: Plan proposal: feature-flag the new flow, default off. 1) enable for internal tenants + canary 5% customers, 2) verify audit event completeness, 3) flip gradually. fallback: old path stays available for 48h window for rollback.
+
+olivia: For the audit event format, prefer compact JSON on one line, newline-delimited ingest. sample log:
+```json
+{
+  "ts": "${request_id}",
+  "tenant_id": "t-12345",
+  "event": "byok_import",
+  "operator_id": "kevin",
+  "approver_id": "olivia",
+  "hsm_slot": "hsm-5",
+  "wrapped_key_fp": "sha256:abcd...",
+  "trace_id": "r-987654"
+}
+```
+
+kevin: good. also add an integrity hash for the import payload so we can detect tampering before it hits the proxy.
+
+sasha: Found a vuln during triage of the KMS-proxy PoC: multipart parser can accept an extra filename field that ends up in the temp path and could lead to path traversal when combined with certain HSM-side helpers. severity: HIGH.
+
+raj: Can we mitigate by normalizing file names and refusing any containing `..` and by chrooting the temp dir? also add strict ACLs on the temp mount.
+
+kevin: Agree. immediate mitigation: 1) reject unsafe filenames, 2) add server-side filename sanitizer, 3) add a Canary rule to drop proxy-level writes unless signed by operator token.
+
+olivia: For incident response: if we detect exploit attempt (e.g., failed sanitizer + unexpected write), escalate to sec-oncall + rotate any operator credentials used in the window, and snapshot HSM-attached logs. keep a preserved evidence bucket (immutable) and record chain-of-custody.
+
+deploy-bot: deploy started: kms-proxy/patch-1746 -> staging at 2024-11-03T18:34:50Z
+
+deploy-bot: deploy succeeded: kms-proxy/patch-1746 -> staging at 2024-11-03T18:36:12Z
+
+raj: After patch, run fuzzing on multipart handler and run import e2e with a test HSM (no customer keys). report back with traces and the full audit sample.
+
+kevin: Action items: (1) olivia — finalize audit schema + retention flag, (2) sasha — PR for filename sanitizer & unit tests, (3) raj — fuzz + e2e checklist, (4) kevin — feature-flag rollout plan and canary gating. roll call: please ack in-thread when you have ownership.
+
+sasha: ack, picking up sanitizer PR.
+
+olivia: ack, will draft audit schema and compliance note.
+
+raj: ack, starting fuzz runs now.
+
+kevin: thanks all. will coordinate canary gating with product next week.

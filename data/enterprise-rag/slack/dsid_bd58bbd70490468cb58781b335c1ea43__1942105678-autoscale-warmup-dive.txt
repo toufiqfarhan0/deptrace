@@ -1,0 +1,105 @@
+eng-oncall
+
+Incident Bot: paging -> @SRE Oncall (P1)
+Incident Bot: Severity: P1 — high tail latency for hosted inference. Alerts: HPA unable to scale fast enough, GPU pool CPU saturation, high queue depth. Links: <https://internal.redwood/alerts/1942105678|alert-1942105678>
+
+SRE Oncall: i'm on it. seeing a spike in queue depth in the autoscale queue. routing failures spiking ~ap-southeast-1.
+
+Priya K: can you paste the hpa and queue metrics?
+
+SRE Oncall: quick dumps:
+```
+# kubectl -n inference get hpa
+NAME               REFERENCE             TARGETS   MINPODS   MAXPODS   REPLICAS
+inference-hpa      Deployment/inference  80%/100%  2         50        2
+```
+queue depth prometheus query: `sum(inference_queue_depth{pool="gpu-pool-1"}) by (pod)` = 1820
+
+Matt C: 1820 queued — that explains latency. any warmup failures?
+
+SRE Oncall: logs show cold-start failures for new nodes due to nvidia-driver timeout and container-warmup EVICT. sample error: `timeout waiting for device init: nvml init failed`
+
+Aisha G: that's the warmup delay hypothesis — nodes spin up but GPU init stalls, HPA thinks pods are Ready? or not?
+
+eng-runtime: HPA metrics use custom metric `inference_concurrency` + CPU. if new pods don't become Ready the HPA doesn't see capacity; autoscaler keeps adding nodes but kubelet is slow.
+
+Priya K: timeline so far: 1942105678 alert fired -> 1942105740 queue > 1000 -> 1942105805 first fail to warmup -> 1942105920 HPA attempted scale -> 1942106020 queue peaked 2200 -> now 1942106123 ongoing.
+
+Tom H: is GPU pool itself saturated? `gputop` shows all GPUs at 98% memory usage — but a lot of that is KV cache from previous workloads.
+
+SRE Oncall: here's a helpful log snippet from the provisioner: 
+```
+[2026-03-15T15:22:12Z] provisioner: requesting 10 nodes
+[2026-03-15T15:22:28Z] provisioner: 8 nodes pending, 2 failed to attach GPU driver
+[2026-03-15T15:23:05Z] node-init: nv driver install timeout
+[2026-03-15T15:23:40Z] autoscaler: hpa didn't observe pods as ready; queue backlog increased
+```
+
+Priya K: customer impact — hosted API 5xxs for some requests and streaming cutouts. early customer reports: "responses stuck at 50% tokens". need to notify support.
+
+SRE Oncall: mitigation steps in flight: 1) temporarily bump min pods to 10 for the deployment, 2) enable fallback routing to lower-memory model variant in us-west region, 3) manually evict stale KV caches on a subset of GPUs to free memory.
+
+Matt C: how do we bump min pods? can we do it without rolling?
+
+SRE Oncall: patch HPA -> set minReplicas=10, patch applied. watching pod create events.
+
+Ops Bot: action taken: patched hpa/inference-hpa minReplicas -> 10 by SRE Oncall (:white_check_mark:)
+
+Aisha G: starting cache-evict job on 3 nodes: `kubectl exec -n infra gpu-cache-manager -- ./evict --targets=3`
+
+eng-runtime: enabling fallback routing: updating traffic policy to prefer model-v1-small for non-SLA tenants.
+
+Priya K: notify customers: support_msg drafted: "We've identified increased latency due to node GPU init delays; immediate mitigations applied (HPA min increased, fallback routing); working on root cause." I'll post in #support and escalate to accounts. :exclamation:
+
+Tom H: heads up — when we evict caches we'll see higher CPU while models repopulate, might increase token cost short-term.
+
+SRE Oncall: current metrics after patches: queue depth down to 800, new pods coming up but 3 nodes still in nvml failure state.
+
+Matt C: hypothesis list (for RCA):
+- H1: GPU driver init timeout due to recent kernel update on node image (warmup delay)
+- H2: KV cache saturation prevented new model instances from allocating memory -> OOM stalls
+- H3: HPA threshold config relies on CPU only, doesn't react fast to queue surge (scale-up lag)
+
+Priya K: capture logs for each hypothesis:
+- for H1 collect node-init logs from cloud provider and driver installer logs
+- for H2 collect GPU memory utilization and pod OOM events, evict history
+- for H3 get HPA controller events and prometheus HPA metrics around 1942105740-1942106020
+
+SRE Oncall: i'm grabbing logs now: `gcloud compute instances tail-serial-port-logs` and `kubectl describe hpa inference-hpa` output. pasting excerpts: 
+```
+Events:
+  Type    Reason            Age   From                       Message
+  ----    ------            ----  ----                       -------
+  Normal  SuccessfulRescale  3m    horizontal-pod-autoscaler  New size: 10; reason: cpu utilization (percentage of request)
+  Warning FailedCreatePod   2m    kubelet                    failed to create pod: failed to allocate gpu device
+```
+
+Aisha G: i also pulled nvml logs from node-8: `nvml: failed init: driver mismatch: expected 535.xx got 530.xx` -> suggests image drift.
+
+eng-runtime: that matches H1. our image build rolled a new kernel last week; some pools didn't get the matching driver.
+
+SRE Oncall: short-term: exclude the broken image pool from new provisioning, fall back to older AMI. kicking a remediation job to reimage problem nodes.
+
+Ops Bot: action: updated provisioner pool tags to exclude image-tag=2026-03-10-patch for new allocations.
+
+Matt C: long-term action items: add driver init health check into node readiness probe, add GPU-driver version pin in AMI bake pipeline, and change HPA to use combined queue-based metric that triggers faster.
+
+Priya K: i'll open the RCA doc and add timeline + hypotheses. tagging eng-runtime for follow-ups on HPA metric change.
+
+eng-runtime: acknowledged — will prepare a proposal for `inference_queue_concurrency` metric and lower cool-down window for scale-up.
+
+Tom H: handoff: i need to sign off at 16:30 UTC. @SRE Oncall if incident still active, please escalate to next oncall (Matt) at 16:25.
+
+SRE Oncall: noted. current status: mitigations reduced impact, but reimage job still running, `last_check: 1942106123`. i'll hand off if unresolved.
+
+Priya K: support notified, customers getting updates. i'll keep monitoring the customer queue for escalations.
+
+Matt C: thanks everyone. postmortem owners: Priya (customer comms & timeline), eng-runtime (HPA/metrics), SRE Oncall (infra repro and reimage), Tom (warmup/driver bake).
+
+SRE Oncall: handing off to Matt C @1942106123 — I'll leave details in the RCA doc: <https://internal.redwood/rca/1942105678|RCA draft> :white_check_mark:
+
+Incident Bot: incident status -> mitigated (impact reduced). next steps: schedule postmortem meeting, assign action owners.
+
+Matt C: taking over. if anyone sees a regression ping me. :robot_face:
+
+(Reaction summary: :thumbsup: x5, :rocket: x2)

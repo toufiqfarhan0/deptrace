@@ -1,0 +1,38 @@
+product
+
+Tara: proposing a 'preflight cohort' of 8-12 customers to test Private + Dedicated workflows before we scale. goal: validate onboarding, SLA knobs, and feedback loops in a controlled environment. thoughts?
+Alec: sounds good. question: how strict are we on candidate criteria? would prefer mix of 4 infra-heavy, 4 product-heavy to cover perf + UX.
+Marta: agree on mix. want weekly 30-min touchpoint + a short structured form (5 mins) after each touchpoint. will draft a template.
+Sridhar: technical gating: need an eval harness + canonical prompt set and a replayable workload for perf/regression checks. i can ship a starter harness and a small script to collect KV cache stats. snippet: ```python
+# run replay
+run_replay(cohort_id='preflight-1', duration_minutes=30)
+```
+Olga: from CS: incentive plan: 3 months free dedicated credit + concierge onboarding for the first 2 weeks. success metrics we care about: time-to-first-success (goal < 48h), 7-day retention of the feature, and NPS at week 4. also require clear data handling consent for customers using private deployments.
+Tara: for recruitment channels i suggest: existing early-users list, solutions-eng referrals, and 2 trusted partners. will assemble outreach templates and an opt-in consent doc. legal: need minimal DPA addendum for private infra — can ops/legal review? @Olga can you loop them in?
+Olga: yep, i'll ping legal today. also let's include a simple SLA checklist for participants so expectations are explicit (latency SLO, support RTT, data retention).
+Alec: ops question: can Dedicated provide a temporary 'burst' policy (2x capacity for first 10 days) to smooth onboarding spikes? infra-wise it's doable but need to state limits. i'll add to the cohort config. example config snippet: ```yaml
+cohort: preflight-1
+burst_policy:
+  enabled: true
+  multiplier: 2
+  window_days: 10
+```
+Marta: ok UX item: want to capture open-text feedback + 3 micro-questions (ease, clarity, confidence) after onboarding. will wire those into the weekly form.
+Sridhar: also asking for telemetry hooks: token-level latency histograms + model-variant fallback counts. we'll emit events to the cohort stream.
+Tara: rollout gates proposal:
+- Gate 0: recruitment + legal signoffs
+- Gate 1: successful onboarding for 8/10 participants (time-to-first-success < 48h)
+- Gate 2: no major quality regressions in eval harness for 2 consecutive days
+- Gate 3: positive CS signals (NPS >= 6 for 60% of cohort)
+If we hit gates, we open to 30-customer pilot.
+Olga: agree. add a contingency: if more than 2 customers hit blocking reliability issues, we pause recruitment and escalate.
+Alec: timeline ask: can we run preflight in 4 weeks? week 0 recruitment, week 1 onboarding, weeks 2-3 active testing, week 4 retrospective + decision. seems tight but doable if legal moves fast.
+Marta: i'll prepare templates and the weekly micro-form by EOD Friday.
+Sridhar: i'll drop the eval harness + replay script by Wednesday and wire telemetry.
+Olga: i'll draft outreach + incentive language and ping legal.
+Tara: sweet. scheduling a kickoff MTG tomorrow 10am. deploy-bot: reminder scheduled -> preflight-cohort kickoff 10:00 AM tomorrow. :calendar:
+deploy-bot: meeting created: https://meet.link/abc123 (automated)
+Alec: ack. digging into infra capacity numbers after the meeting. :thumbsup:
+Marta: ack, will bring the UX templates.
+Olga: ack, looping legal and CS playbook.
+Tara: thanks all — will post recruitment spreadsheet after the kickoff. :rocket:

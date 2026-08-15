@@ -1,0 +1,54 @@
+sales
+
+beth_sales: Hey team — customer raised a CAIQ question in the SOW: who is responsible for rotating tenant keys in a Private deployment (customer-managed KMS)? They expect rotation every 90 days and want audit evidence for the POC. Need a concise answer for the security questionnaire and a POC runbook entry.
+
+sam_security: Short answer: customer controls key material if they BYOE/KMS, but Redwood can rotate service-level keys and integrate with their KMS rotation via IAM roles. We should map CAIQ controls to this: control CC-01 (crypto mgmt) and LOG-05 (audit logs).
+
+eli_eng: To add — for Redwood Private (VPC) we support two patterns:
+1) Customer-managed KMS (recommended for regulated apps): customer owns key rotation, we call customer KMS for encryption; Redwood stores only ciphertext and has IAM role to read for inference.
+2) Redwood-managed keys (for faster onboarding): we rotate per our schedule and can provide rotation logs.
+
+ana_sales: @beth_sales — customer asked if we can provide a rotation report for the POC (not full prod). Do we have a template report or an export?
+
+sam_security: We can provide a minimal audit bundle for POC: rotation timestamps, KMS CMK IDs, IAM role ARNs, and CloudTrail entries showing Decrypt/Encrypt operations. We usually redact ARNs if the customer wants.
+
+eli_eng: For the POC we can enable a short-lived aggregation job that pulls CloudTrail events for the CMK and exports a CSV. Example CLI snippet we can run for the customer:
+
+```
+aws cloudtrail lookup-events --lookup-attributes AttributeKey=ResourceName,AttributeValue=arn:aws:kms:us-west-2:123456789012:key/abcd-1234 \
+  --start-time 2025-03-01T00:00:00Z --end-time 2025-03-31T23:59:59Z > rotation-events.json
+```
+
+eli_eng: That will show CreateKey, ScheduleKeyDeletion (if used), and ReEncrypt/Decrypt operations.
+
+sam_security: Also include the rotation policy snippet we expect customers to use (they asked):
+
+```
+# example CMK key rotation policy
+{
+  "KeyRotationEnabled": true,
+  "RotationPeriodDays": 90
+}
+```
+
+beth_sales: Perfect. Customer also asked: who signs the CAIQ assertion that keys are customer-owned? They want a signed statement for procurement.
+
+sam_security: We can provide a statement template that indicates Redwood's responsibilities and confirms we don't hold plaintext key material when customer-managed KMS is used. Legal will need to sign the formal attestation — we can prepare an internal DR for the procurement team.
+
+ana_sales: Can we scope this to the POC (30 days) and then follow up for production? I want to avoid overcommitting.
+
+eli_eng: Yes — build the POC runbook to collect the audit bundle at the end of the POC window. No ongoing rotation obligation unless they contract Dedicated/Private production terms.
+
+beth_sales: Great. Can someone draft a short CAIQ answer string I can paste into the questionnaire? 1–2 sentences + where to find logs.
+
+sam_security: Draft for CAIQ: "When deployed in a customer-managed KMS configuration, the customer retains sole ownership and rotation responsibility for cryptographic keys. Redwood integrates with the customer's KMS via least-privilege IAM roles to perform necessary Encrypt/Decrypt operations; Redwood does not persist plaintext key material. Rotation and key usage audit evidence can be exported from the customer KMS/CloudTrail and provided as an audit bundle for POC and production engagements."
+
+beth_sales: That's excellent. I'll paste that. Last Q: can we auto-enable the CloudTrail export for the POC or do we need customer console access?
+
+eli_eng: We need either: (a) an IAM role the customer grants to our aggregation job with read-only CloudTrail/KMS permissions, or (b) the customer runs the CLI snippet themselves and uploads the JSON to the support share. Option (a) is faster, option (b) is lower friction for high-security customers.
+
+ana_sales: I'll send the two options to the customer and ask which they prefer.
+
+deploy-bot: Deploy scheduled: audit-collector-job v2.1 queued for manual run (requires IAM role).
+
+beth_sales: Thanks all — closing this thread after I confirm option with customer. :thumbsup:

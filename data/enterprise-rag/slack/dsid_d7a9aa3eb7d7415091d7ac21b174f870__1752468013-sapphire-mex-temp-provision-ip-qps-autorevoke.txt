@@ -1,0 +1,17 @@
+customer-success
+
+maya-cs: Heads-up — Sapphire Health (Hernán) just asked for a temporary MX region provision for a pilot tomorrow. Need: mex1 edge, IP allowlist for 187.45.32.0/24, and a short QPS bump to 2.5k for 48h. Trial credits nearly exhausted, they're flagging renewal urgency. Can ops/infra confirm capacity?
+liam-eng: @ops-bot can you create a provision request and check mex1 capacity? also call out model family they plan to use. renewal note logged.
+ops-bot: Provision request created: PR-9873. Assigned infra-sched. Initial capacity check ETA ~2h.
+sofia-se: Adding enablement — I can run a quick KV warmup + eval once region is ready. @hernan-sapphire can you drop 2-3 sample prompts so we can tailor cache warmup?
+hernan-sapphire: Sharing prompts now (short patient summary -> QA, symptom normalization). Traffic profile: ~10k tokens/day, demo spikes up to ~1.8k qps. Renewal decision end of week.
+liam-eng: Capacity looks tentatively OK but need to pin model. If they're on open-redwood-13b quant we should reserve a dedicated slot; fallback to open-redwood-7b is fine. @maya-cs confirm model and if fallback acceptable.
+maya-cs: Confirmed: prod tests use open-redwood-13b, fallback to open-redwood-7b. Please apply IP allowlist and this temp rate window: window=48h; qps=2500; autorevoke=true. Also set tenant tag sapphire-mex1 for monitoring.
+liam-eng: Pushing config now. Command: ```curl -X POST https://infra.internal/provision -d '{"tenant":"sapphire","region":"mex1","qps":2500,"duration":"48h","cidr":"187.45.32.0/24","models":["open-redwood-13b","open-redwood-7b"]}'``` Watching job logs.
+ops-bot: Provision PR-9873 updated: capacity reserved, allowlist applied, route pinned to mex1. Autorevoke scheduled at +48h. Internal ID: TLC-1752.
+maya-cs: FYI client asked about committed SLAs if latency stays low in mex1 — please loop sales for renewal terms. I'll include in handover.
+sofia-se: Running warmup & eval now. ETA ~30m. Warmup output: `warmup: 64 seeds warmed, avg latency pre-warm 420ms -> post-warm 130ms`. Uploading eval report to /shared/sapphire/mex1.
+hernan-sapphire: :thumbsup: Thanks. Can you enable verbose latency tracing for the tenant during the pilot? We'll send feedback live.
+liam-eng: Tracing flag enabled for sapphire tenant. Dashboards exported to: dashboards/shared/sapphire/mex1. Will tag metrics for seasonality and demo spike windows.
+maya-cs: Handover scheduled: 11:30 PT session with client includes renewal chat and pilot checklist. If any degradation, ping #eng-oncall and tag me.
+ops-bot: Reminder: autorevoke job scheduled at 1752644813; channel will be notified 1h before revoke.

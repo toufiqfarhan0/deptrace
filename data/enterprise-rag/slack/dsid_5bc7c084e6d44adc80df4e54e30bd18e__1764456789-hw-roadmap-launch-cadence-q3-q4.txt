@@ -1,0 +1,46 @@
+partnerships
+
+alex: Quick sync notes from today's cross-vendor call — capturing action items and timeline differences. Main ask: confirm GA-ish windows for H100/H200/B200, MI300, Gaudi so we can plan marketplace images and joint comms.
+
+beth_p_nvidia: H200 internal GA window is late Aug, H100 is already GA for customers but H200 perf tuning still ongoing. We're targeting Sept 15 for official availability.
+
+olga_mi_amd: MI300 firmware update rollout in mid-September, public docs late Sept. We're still finalizing microcode compat with our RDMA stacks.
+
+raj_gaudi: Gaudi B200 roadmap: general availability planned early Oct, but we have limited capacity in September for validation runs.
+
+maria: For Redwood Dedicated and Marketplace, we need final images 2 weeks before GA for compliance checks. So working backwards: if H200 GA Sept 15 -> images by Sept 1.
+
+sandeep: Confirming: we need kernel/driver versions, CUDA/Rocm manifests, and quantization guidance. @beth_p_nvidia can you share driver/container tags?
+
+beth_p_nvidia: Sharing tags in #vendor-artifacts after this. Also note H200 requires driver >=535.x and our perf kernel patch - will paste the snippet.
+
+beth_p_nvidia: ```driver: nv-driver-535.20
+container: rdx-h200-runtime:v1.2
+notes: enable-cuda-graph-optim
+```
+
+kai_product: On comms: vendors want joint blog windows. Legal asked for 4-week embargo lead. We should pick announcement dates after we have 1 week of customer validation.
+
+alex: Proposal: tentatively block Sept 22 - Oct 6 for vendor-anchored comms (gives time after H200/MI300/H200 image availability). Thoughts?
+
+olga_mi_amd: Works if MI300 docs land by Sept 15. Otherwise push to Oct.
+
+raj_gaudi: We might need an extra week for perf numbers on B200. Prefer Oct 1 announcement.
+
+maria: I'll schedule validation clusters: H200 sept1-8, MI300 sept8-15, Gaudi sept18-25. Owners: Sandeep (NVIDIA), Olga (AMD), Raj (Gaudi).
+
+sandeep: I'll kickoff test harness and share results to /shared/partnerships/hw-validation.csv
+
+infra-bot: calendar event created: "HW Vendor Roadmap - Validation Slots" 1764460000
+
+deploy-bot: marketplace build queued for sept1 images -> job 8934
+
+alex: Great. Action items: beth send driver/container tags today, vendors confirm final GA dates by EOD Thurs, maria to lock validation clusters, kai to draft embargo timeline. I'll follow up with draft announcement calendar by Friday. :thumbsup:
+
+maria: noted. tagging @kai_product for comms alignment.
+
+kai_product: on it; will sync with legal and vendor comms leads.
+
+beth_p_nvidia: uploaded artifacts link: https://files.vendor/nvidia/rdx-h200/v1.2
+
+alex: Thanks all — updating partnership tracker.

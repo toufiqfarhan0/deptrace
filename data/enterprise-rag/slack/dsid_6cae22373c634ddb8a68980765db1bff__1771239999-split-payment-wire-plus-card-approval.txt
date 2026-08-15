@@ -1,0 +1,54 @@
+finance
+
+adrian-fin: Heads-up: customer 'MiraWell' (MID MW-558) card attempt for INV-8230 ($25,600) declined 'insufficient_funds'. They offered to split payment: $15k wire + remaining $10.6k on card.
+
+sara-support: Noted. We normally allow split-pay for enterprise customers but need finance + AML sign-off for partial wire over $10k. Also need to pause automatic retries to avoid double-charge.
+
+billing-bot: Auto-retry scheduled (policy: 3 attempts). Next automatic retry in 6h (1771243600). Will pause if ops requests.
+
+leo-sales: Customer's treasury sent this message: "We can push $15,000 via wire today. Will charge remaining to a corporate card once wire confirmation is received." They asked for wire instructions and confirmation of hold/reconcile process.
+
+aml-bot: Quick KYC check: MiraWell (MW-558) onboarded; no sanctions hits; beneficial owner updated 6 months ago. Recommend standard 72h hold for inbound wires >$10k.
+
+tara-ops: Finance lead approval required to accept split-pay and to pause retries. @adrian-fin can you approve? I'll prepare wire template and a secure card paylink for the remainder.
+
+adrian-fin: Approve split-payment plan: accept $15k wire + $10.6k card capture via secure paylink. Conditions: (1) pause automatic retries, (2) flag incoming wire for 72h reconciliation, (3) require treasury to include INV-8230 in wire reference.
+
+sara-support: I'll pause retries now. Also creating a one-off invoice amendment note indicating partial payment accepted.
+
+billing-bot: Automatic retries paused by request of sara-support.
+
+tara-ops: Pasting redacted wire template for customer (share only over secure channels):
+
+```
+Beneficiary: Redwood Inference, Inc.
+Bank: Harborview Bank, N.A.
+SWIFT: HVWBUS33
+Routing (ACH): 021000021
+Account: ****1122
+Reference: INV-8230 / MiraWell (partial wire)
+```
+
+leo-sales: Sending to treasury now with instructions to include reference. Also generating secure paylink for $10,600.
+
+tara-ops: Created paylink (expires 48h): https://pay.redwood.ai/pay/INV-8230-partial-xxxx (redacted). Note: card capture will be held for 48h after capture for reconciliation; if wire posts, we'll reconcile and refund any duplicate per policy.
+
+leo-sales: Customer treasury replied: wire initiated, issued ref TXN-7788, expected ACH clearing 24-36h. They'll charge card after wire confirmation.
+
+billing-bot: Payment workflow update: awaiting_wire_and_card. Wire expected within 48h.
+
+adrian-fin: Once wire posts, mark invoice partially paid $15k and then ops can attempt card charge for remaining balance. Keep all receipts attached to invoice.
+
+sara-support: Will monitor. If card fails again, we'll open remediation: retry schedule or invoice hold.
+
+leo-sales: Customer sent screenshot of outbound wire confirmation (redacted). They're asking if we can reconcile faster if we provide account details to their bank.
+
+tara-ops: We received notice of incoming wire (bank notice id bn_334). Will confirm cleared balance and update thread.
+
+billing-bot: Bank notice: incoming wire detected -> pending_settlement. Expected settle timestamp 1771320000.
+
+aml-bot: Reminder: flag inbound wire for 72h reconciliation per policy.
+
+leo-sales: Customer confirms card charge will be attempted after we confirm $15k wire cleared.
+
+adrian-fin: Good. Closing interim loop — keep thread updates minimal. If duplication occurs we'll refund per duplicate payment policy and notify customer. Thanks. :white_check_mark:

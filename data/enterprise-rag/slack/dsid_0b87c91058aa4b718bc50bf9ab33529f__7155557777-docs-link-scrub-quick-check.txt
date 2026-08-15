@@ -1,0 +1,11 @@
+docs
+
+anya: quick ping 1: overnight scanner found ~12 dead links in runtime and onboarding. small tidy. who can pick a slice?
+link-scan-bot: automated: 12 broken links found. report: https://intranet/reports/715555 (scheduled) :robot_face:
+ben: Ill take runtime/memory.md + batching.md. will open tiny PRs.
+zoe: onboarding shortlinks look messy, I can swap to canonical URLs and rehost images if needed.
+anya: thanks. Ben, add @zoe on any image rehosts. branch name convention: `docs/linkfix/7155557777`.
+devex: local tip: `./scripts/link-check --path docs/runtime` and `./bin/preview docs/runtime/memory.md` to confirm anchors.
+ben: PR 4123 opened: small sed + rehost. assigning to @anya.
+anya: nice. prefer frontmatter redirects for runbooks when callers > 5. otherwise update callers.
+link-scan-bot: next scan scheduled in 24h. results will post to #docs.

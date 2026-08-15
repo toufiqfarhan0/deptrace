@@ -1,0 +1,91 @@
+eng-runtime
+
+maya: Heads-up — our NF4 canary that rolled at 08:45 UTC shows an unexpected throughput drop (~18%) and a KV cache memory spike (~+22% across the pool). p95 tail latency also jumped. Seen on canary cluster rc-1. :eyes:
+
+lucas: Any logs or quick perf summary?
+
+maya: Quick paste from the canary dashboard:
+```
+canary: rc-1
+deploy: nf4-v2.3.1
+traffic: 1% -> 5% (auto)
+throughput: baseline 1200 rps -> canary 985 rps (-18%)
+latency p50/p95/p99 baseline: 7/28/120 ms -> canary: 8/46/310 ms
+kv_cache_bytes baseline: 12GB -> canary: 14.7GB (+22%)
+kernel_selector: many requests falling back to 4bit_slowpath
+batching_window_ms: 8 -> 10 (changed yesterday)
+```
+
+arjun: Sounds like kernel selector is hitting the slowpath frequently. Did the selector thresholds change with that batching tweak? The sequence-length distribution could make it prefer the safer kernel.
+
+sam: I saw similar on my repro run. When sequence lengths spike above the fast-kernel safe cap (config: fast_max_seq=512), selector prefers slowpath. Yesterday's batching change increased observed avg seq in a batch due to larger microbatch coalescing. Result: more KV resurrection and bigger KV footprint.
+
+lucas: Can you paste the selector debug dump from one of the slow requests?
+
+sam: Sure — snippet from selector debug on request 2376543301:
+```
+request_id=2376543301
+seq_len=620
+kv_cache_est=1.2MB
+kernel_candidates=[4bit_fast (fast_max_seq=512), 4bit_slowpath]
+selector_reason=seq_len_overflow -> choose 4bit_slowpath
+kernel_runtime_est_fast=2.8ms/token
+kernel_runtime_est_slow=3.7ms/token
+batching_effect: coalesced 3 requests -> effective seq 1020
+```
+
+katie: So the batching micromerge made each kernel see higher effective seq and forced slowpath. That would explain both throughput drop and KV memory growth (longer KV per request + fewer cache evictions).
+
+maya: Exactly. Also noticed calibration table for NF4 was updated in the canary image (quant-calib v7). Might be unrelated but worth checking if calib changed per-layer shapes -> different packing causing higher KV per layer.
+
+arjun: Two orthogonal factors: (A) batching heuristic increasing coalesced sequence and (B) calibration / packing change increasing per-layer KV size. We should triage which dominates.
+
+lucas: Quick experiment idea: revert batching_window_ms -> 6ms on one canary subset and compare kernel_selector decisions. Also compare using old calib table.
+
+sam: I ran a local bisect yesterday across kernel-selector thresholds: reducing fast_max_seq to 480 actually forced more slowpaths (worse). Increasing fast_max_seq to 700 allows fast kernel but risks OOM on edge GPUs. Need a safety valve: prefer fast kernel when estimated token cost < threshold and fall back only if memory estimate > X.
+
+perf-bot: flamegraph: https://perf.internal/redwood/canary/2376543210/flame.svg (summary attached)
+
+maya: flamegraph shows most CPU/GPU time now in slowpath kernels (kernel name: 4b_slow_attn). Memory timeline shows steady climb in KV allocations correlated with selector decisions.
+
+katie: Are we sure the calorib calibration could increase per-layer kv size? Calibration normally changes weight packing (bits->blocks). If block packing changed from 32->64, that could increase per-row metadata. Sam, can you diff the calib v6 -> v7?
+
+sam: Did a quick diff: v6 used block_size=32 for some transformer blocks; v7 switched to block_size=64 for those layers (heuristic to improve quality). That increases weight storage and some intermediate buffers. Not huge individually, but multiplied across layers it bumps KV working set by ~8-12% in our estimates. Combined with slowpath explosion that's enough to hit high-water marks.
+
+arjun: So combined effect plausible: +12% KV from calib + coalesced batches -> more slowpaths -> more KV lifetime -> +22% observed. Good hypothesis.
+
+lucas: Action plan suggestion: 1) roll the batching_window back to previous value for the canary subset; 2) force canary to use calib v6 for 10% split and compare; 3) add selector telemetry to log estimated_vs_actual_kv for a sample set.
+
+maya: I'm OK with that. Can we do (1) as a hotfix and keep (2) for controlled A/B?
+
+katie: Yes. I'll open a quick PR for canary config rollback and route 2.5% traffic to the v6-calib variant.
+
+deploy-bot: canary update: rc-1 config change requested by katie — batching_window_ms: 8 -> 6 on canary subset (ID: canary-237654-s1). Will apply in 60s and monitor.
+
+perf-bot: monitoring probe started. Will report p95/p99 in 5m windows.
+
+maya: Local repros: after reverting window->6ms, selector logs show fast kernel chosen ~92% of the time again, KV usage drops ~9% in presample. Throughput back to ~1180 rps on that subset.
+
+arjun: Good — that implicates batching heuristic as the primary driver. Still want to test calib v6/v7 to validate the secondary effect.
+
+sam: Also adding a safety change to selector: prefer fast kernel when estimated_kv < 0.8 * gpu_available_kv to reduce cascade. Will push a guarded rollout if the canary looks stable.
+
+lucas: Please add a short-term alert for KV pool utilization > 85% post-rollout so we catch regressions.
+
+katie: Created ticket INF-4021: "canary nf4 tail-latency +KV spike — rollback batching window, A/B calib v6/v7, selector safety valve" — assign: maya, sam, arjun. ETA: 24h.
+
+maya: Thanks all. I'll keep watching the probe and post updates here. :white_check_mark:
+
+lucas: Nice catch, maya. If the canary stays healthy after 30m we can promote the smaller window as the interim.
+
+maya: Update 30m later: canary subset stable — p95 back to baseline, KV back down ~10%. Keeping the A/B with calib v6 at 2.5% for next 6 hours.
+
+sam: I'll prepare the selector patch and run perf microbench for the packed-block variant to quantify memory delta.
+
+perf-bot: summary metrics collected: pre-fix p95=46ms -> post-fix p95=29ms on canary subset; KV pool used peak 14.7GB -> 12.9GB.
+
+maya: Closing loop: primary culprit = batching heuristic change; secondary factor = calib block_size bump that increases baseline KV. Long-term: add preflight regression test that simulates microbatch coalescing with production seq distribution when we change batching heuristics or calibration.
+
+katie: Filing follow-up RFC to add that preflight test to CI.
+
+maya: End of thread.

@@ -1,0 +1,13 @@
+eng-platform
+
+Jules: small UX brainstorm 3 compact Fallback Inspector for auto-rollouts. idea: timeline shows a tiny mode pill + one-line cause, expand to full audit. keep it minimal.
+Priya: yes. include trigger type (5xx / p95 / quota) and a link to trace id. redact any user fields. :lock:
+Ravi: add a sampling badge (e.g. sampled 1%) so operators know whether payloads were captured. default low to avoid log bloat.
+sre-bot: alert: rollout #523 progressed to 25% canary by @jules.
+Jules: hover shows top 3 contributing signals and quick actions: pause, promote, export audit.
+Priya: also surface fallback path: which model/variant or region we diverted to and which mitigation (quantize / smaller model) tripped. helps postmortems.
+Ravi: telemetry: include a compact signal blob (key:value pairs, small) instead of full request so analytics can index. consider proto/bin64.
+Priya: must have an explainability_id for each fallback event to link UI -> traces -> decision logs.
+Jules: UX note: show a subtle "noisy" flame icon when >5% traffic affected. expand shows full append-only audit with who overrode.
+Ravi: CLI export for full audit (enterprise) behind RBAC would be handy. signed job link makes sense.
+Jules: I'll prototype a tiny card and drop a figma link later. thanks! :thumbsup:

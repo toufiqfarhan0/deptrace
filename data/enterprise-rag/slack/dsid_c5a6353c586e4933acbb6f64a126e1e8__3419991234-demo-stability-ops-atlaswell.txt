@@ -1,0 +1,21 @@
+customer-success
+
+Maya (CSM): Atlaswell hit intermittent 429s during a QA run today. They have a public demo Thu 2026-07-08 15:00-18:00 UTC and asked for a short-term QPS boost + CIDR allowlist for their proxy. Renewal touchpoint in 6 days.
+Atlaswell Ops (customer): Our egress ranges: 198.51.100.0/28 and 203.0.113.64/28. Expect ~2.8x traffic for the 3h window. Can you scope a windowed change?
+Ren (Edge Eng): We can do a timebound override + ACL with auto-revoke. Will stage and validate in staging; apply 10m before the start.
+Theo (SRE): Checklist: capacity sim, fallback route (eu-fallback-1), alarms on queue depth >60% and 5xx >0.5%, auto-revoke 5h after start. OK?
+Maya (CSM): OK. I'll tell the customer we'll auto-revoke and ask for an oncall contact.
+Atlaswell Ops (customer): Oncall: sarah@atlaswell.io. We'll enable client backoff.
+OpsBot: Ticket CS-11890 created 1: Atlaswell demo allowlist + QPS override (owner: Ren). Scheduled window: 2026-07-08 15:00-18:00 UTC. Auto-revoke: 5h.
+Ren (Edge Eng): Staged config snippet:
+route: eu-west-2
+allow_cidrs: [198.51.100.0/28, 203.0.113.64/28]
+qps_multiplier: 2.8
+auto_revoke: 5h
+apply_delta: -10m
+Staging validation passed (simulated burst).
+Theo (SRE): Capacity OK with fallback. I've armed alerts and added a short runbook in the ticket.
+Maya (CSM): Thanks 1 team. I'll update renewal notes that we mitigated a demo blocker; follow-up item: propose Dedicated sizing if they sustain growth.
+Ren (Edge Eng): Will apply 10m before window and post confirmation.
+OpsBot: Reminder scheduled to apply CS-11890 at 2026-07-08T14:50:00Z.
+Maya (CSM): Closing pre-demo ops. Please file quick postmortem and customer feedback capture after the demo. :)

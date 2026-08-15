@@ -1,0 +1,53 @@
+devex
+
+maria (PM): Quick RFC drop — client-side hedging + deadline surface for our SDKs. Goal: give apps an ergonomic way to express total/per-phase deadlines and an opt-in hedging strategy (race between replicas/regions) that plays nicely with retries/streaming. Looking for API feedback, acceptance criteria, and a realistic rollout plan. Short PRD below + example API. PTAL.
+
+kenji (eng): main concerns: cost amplification (duplicate tokens), correctness (dedupe on server), and observability. If we race two full requests we could double token spend. We need a telemetry plan to measure wasted tokens and a server-side idempotency/dedupe story.
+
+samir (sdk): API sketch — keeping the simple path tiny and advanced path explicit: 
+```js
+// simple (90% case)
+await client.generate(prompt, { timeoutMs: 300 });
+
+// advanced (opt-in)
+await client.generate(prompt, {
+  timeoutMs: 300,              // total deadline for the call
+  phaseDeadlines: { connect: 50, firstByte: 200 },
+  hedging: { replicas: 2, strategy: "race", minStaggerMs: 20 },
+  retry: { maxAttempts: 1 }     // explicit: hedging disables extra client retries by default
+});
+```
+Notes: default SDK behavior is backward compatible (no hedging). For streaming, hedging only races until first chunk (firstByte) and then cancels other inflight branches. Using AbortController for cancellation.
+
+olivia (devex): Ergonomics notes: expose `timeoutMs` as primary prop, keep `phaseDeadlines`/`hedging` behind an explicit opt-in object. Provide two guides: "low-effort timeout" and "advanced latency engineering". Also add an example comparing hedging vs higher model tier showing cost/latency tradeoffs. Docs must show examples for both JS and Python.
+
+ops-bot: FYI — server currently accepts `x-request-id` and does some dedupe for retries but not for concurrent hedging races. We'll need a small server change to mark ``x-hedge-token`` and return `x-hedge-winner` header so SDK can attribute billing. Ops will open an infra ticket.
+
+maria (PM): Draft acceptance criteria (please review):
+```
+- API: top-level `timeoutMs` exists. Optional `hedging` object for advanced users.
+- Backwards compatible: default behavior unchanged.
+- Retries interaction: hedging enabled => client retries limited (document exact policy).
+- Streaming: hedging races only until first chunk; SDK cancels losers cleanly.
+- Server: supports hedging dedupe + billing attribution header.
+- Metrics: p50/p95 latency delta, tokens consumed per logical request, hedged request ratio, hedging-success-rate (winner reduces latency).
+- Tests: unit tests for cancellation/abort, integration with runtime mocking delayed replicas, e2e with sample app.
+- Docs: migration + examples for JS/Python + pattern guide.
+- Launch criteria: opt-in customers show p95 improvement >= 20% with <=5% token overhead on average; no data-loss or ordering regressions in streaming.
+```
+Can folks add missing items?
+
+kenji (eng): Edge cases I want called out explicitly:
+- Streaming partials + hedging: make clear only race connect/firstByte; after first chunk we never switch winners.
+- Model-variant hedging (different model sizes) complicates dedupe and billing — block for MVP.
+- Cold-starts: hedging may hide cold starts but amplifies tokens; flag nodes accordingly.
+
+samir (sdk): Implementation plan notes:
+- Use AbortController to cancel losers; ensure we cancel underlying socket/stream so runtime receives cancellation and can free KV cache.
+- Provide helpers: `client.hedgeableGenerate()` that wraps logic for users who want simpler import.
+- Instrumentation points: emit events: `hedge.started`, `hedge.winner`, `hedge.cancelled`, `hedge.tokens_wasted` to telemetry.
+- I'll draft RFC code examples for both the callback/stream and async iterator streaming styles.
+
+olivia (devex): Scope negotiation suggestion: ship MVP hedging limited to replica racing (same model/region) — avoids variant billing complexity. Beta with 2-3 customer teams (messaging, low-latency search). Docs + dashboard tiles required before beta. Timeline suggestion: PRD final in 2 weeks, SDK RFC and prototype in 3 weeks, server dedupe work in parallel, beta in ~8 weeks.
+
+maria (PM): OK this is great — next steps: I'll fold feedback into RFC and PRD. Proposed owners: samir -> SDK prototype + RFC, kenji -> server dedupe design, olivia -> docs and telemetry dashboards. If no major objections I'll merge RFC by Friday and kick off prototype work next week. +1s? Who can prototype first spike? @samir you up? @kenji can you confirm server feasibility? :slightly_smiling_face:

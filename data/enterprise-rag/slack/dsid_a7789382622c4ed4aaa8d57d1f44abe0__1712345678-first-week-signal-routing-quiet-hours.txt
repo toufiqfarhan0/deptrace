@@ -1,0 +1,33 @@
+new-hires
+
+Dan Liu: hey everyone 1 I'm starting today — quick question on signal routing: where do i drop first-week setup snafus vs product questions vs quick shoutouts? also the welcome bot sent a bunch of DMs, can i quiet it?
+
+HR Bot: automated message: welcome to Redwood Inference! :tada: The bot sends a Day-1 DM and an optional daily tips post in #new-hires. To change or stop messages DM me `preferences` or run `/welcome unsub` in any channel.
+
+Jules: hi Dan :wave: short map: post onboarding/setup in #new-hires, infra/hardware/VPN in #help-it and tag @IT Support, API/SDK questions in #eng, product/requirements in #product. Shoutouts belong in #kudos or #random.
+
+Priya N.: tiny posting etiquette: 1) keep the root msg short; 2) put follow-ups in the thread; 3) add context (OS, CLI version, exact command) for errors. Example error paste:
+
+Priya N.: ```
+OS: macOS 13.4
+CLI: rwictl 0.8.2
+Cmd: rwictl login --org redwood
+Error: auth failed (401)
+Notes: reinstalled CLI, cleared cache
+```
+
+IT Support: if it's hardware or VPN please tag `@IT Support` and DM serial/hostname + preferred time for a remote session. For VPN include whether you need admin rights.
+
+Sam O.: threading habit: always reply in-thread so answers stay with the question. React with :white_check_mark: or :eyes: when resolved so threads don't hang. Avoid posting multiple separate messages for the same issue.
+
+Dan Liu: nice, that helps. one more — do we have quiet hours or times people expect no pings? i'm in UTC+1 so want to avoid annoying folks.
+
+Priya N.: we try to avoid non-urgent pings after 6pm PT (rough guideline). Use `@channel` only for urgent/all-hands stuff. If something can wait, schedule a message or leave it in #new-hires and mark `status: help-needed`. Also add your timezone to your profile so teammates can see it.
+
+Dan Liu: perfect. how do i get the onboarding checklist and pinned docs? i saw a few pins but not sure where the official list is.
+
+HR Bot: checklist lives pinned in #new-hires and also available via DM: send `get checklist` or run `/onboard join` to get day-by-day tasks in your DMs.
+
+Jules: pro-tip: if you're ever unsure where to post, drop a 1-line note in #new-hires like "unsure where to ask about X" and someone will redirect. Also add a short subject line in the first message for longer threads.
+
+Dan Liu: awesome, thanks everyone! i'll add my timezone and mute the daily tips until i'm ready. :thumbsup:

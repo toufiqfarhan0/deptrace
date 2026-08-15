@@ -1,0 +1,73 @@
+eng-runtime
+
+Mia: quick share — ran a targeted perf/profile pass on the continuous-batcher with KV-enabled models. saw a few interesting spikes where batches grew but KV footprint kept pushing eviction and we almost hit OOM on a p3-like node.
+
+Raj: can you paste the perf snippet? which workload, sequence lengths?
+
+Mia: mostly chat workloads, median seq ~384, tail at 1024. sending a small excerpt:
+
+```
+BatchFormation: avg_size=6.2 -> 8.1 under load
+KVCacheUsage: pre_batch=3.8GB -> post_batch=7.1GB
+Evictions: soft_evict_calls=12/min
+OOM_Guard: activated=false (late detection at kernel exec)
+Latency_p50=42ms p95=210ms p99=450ms
+```
+
+Taylor: hmm that gap between pre/post KV usage suggests we're not accounting for peak per-request kv allocs during admission. are we summing worst-case kvcosts into the token budget? we only use average estimate today.
+
+Alex: we currently compute token_budget = floor(node_tokens / running_batches) which ignores per-request KV delta. so a burst of long-kv requests can blow headroom.
+
+Sam: quick idea: maintain a KV_headroom_watermark that is subtracted from node_tokens before budgeting. treat it like reserved memory for ephemeral KV growth during a batch.
+
+Raj: +1. but what value? static watermark will either waste capacity or too small.
+
+Mia: I experimented with a dynamic watermark: watermark = max( min(0.15 * node_mem, 64MB), recent_peak_kv_delta ) where recent_peak_kv_delta is a EWMA of the per-batch observed kv delta. config snippet I used:
+
+```json
+{"kv_watermark_pct":0.15, "kv_watermark_floor_mb":64, "kv_peak_alpha":0.2}
+```
+
+Mia: results: fewer mid-batch evictions, OOM guard engaged earlier so kernel handoff could do a graceful fallback to lighter quantized kernel. throughput dropped ~3% but p99 OOM errors -> 0.
+
+Taylor: kernel handoff — is that the same warm-switch path that changes to int8 kernels mid-request? we worry about correctness / perf cliff.
+
+Alex: yes it's the graceful fallback: if kv pressure crosses high-water then we try kernel_route("quantized_parallel") for incoming batches and selectively drop KV caching for very long sequences.
+
+Sam: how are you signaling pressure? is it synchronous at admission time or async during scheduling? we need to avoid race between admission and actual allocations.
+
+Mia: admission computes a conservative est_kv_delta for each request (based on model, seq_len, past per-request delta table). then admission checks (node_free_mem - watermark) >= est_kv_delta + batch_sum_est. if not, we either delay or split the request into a smaller sub-batch.
+
+Raj: splitting at admission could increase latency for some requests — but better than OOM. did you try prioritized admission where we let small-kv low-latency reqs through first?
+
+Mia: yes — implemented a triage queue: three lanes (low_kv, normal, high_kv). batcher prefers filling low_kv first, then normal, then high_kv. high_kv only scheduled when enough headroom or after a backoff timer. that reduced tail latency for interactive requests.
+
+Alex: any regressions in kernel selection quality? if we push more to quantized kernels we may see slight drop in quality.
+
+Mia: small QoR delta — human eval on 200 prompts shows 0.8% drop in pass@threshold for a couple models, which we deem acceptable behind a canary flag.
+
+Taylor: can we make the watermark adaptive per-GPU as well? some GPUs have more persistent KV fragmentation.
+
+Mia: implemented per-device EWMA + global fallback. per-device threshold better matches fragmentation noise. also added a "soft-evict" signal the runtime can send to the cache manager to proactively compact before kernel launch.
+
+Sam: logs look noisy — any new metrics we should surface in Console to make this actionable for SRE and customers?
+
+Mia: adding metrics: kv_watermark_current, est_kv_delta_ewma, admission_rejects_by_lane, batch_splits, kernel_handoff_count. plotted p99 latency vs watermark pct in PR.
+
+Alex: do we need a config knob exposed to Dedicated customers? they might prefer lower watermark for predictable throughput.
+
+Mia: yes — default is auto-adaptive, but we expose kv_watermark_override_pct and a mode (auto, conservative, permissive).
+
+Raj: next steps? code review link and rollout plan?
+
+Mia: opened PR #5213 with the admission + triage queue + metrics. plan: canary on staging region A for 48h, then ramp to low-latency prod pool with feature flag. fallback path: feature flag off or bump watermark to 0.
+
+InfraBot: deploy status: canary started on staging-a at 3301234700, instances=12, image=ci-2026-03-15-08
+
+Sam: I'll watch the console dashboards and verify p99 on the interactive routes. if we see >5% throughput drop or >0 QoR regression we rollback.
+
+Taylor: thanks Mia — this approach seems safer than previous naive avg-based budgeting. one extra ask: add a unit test for est_kv_delta computation and an e2e that injects synthetic long-kv requests.
+
+Mia: added tests in the PR, e2e pending. I'll post a follow-up with dashboard links once canary runs a few hours. :thumbsup:
+
+Alex: awesome work. good to see graceful degradation instead of hard OOMs.

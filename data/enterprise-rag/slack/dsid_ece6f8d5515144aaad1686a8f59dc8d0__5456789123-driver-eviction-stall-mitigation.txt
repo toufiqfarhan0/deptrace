@@ -1,0 +1,71 @@
+incidents
+
+Olivia Chen: paging — seeing sustained queue growth on gpu-serving-prod for model-family:rdw-large. spike started ~10m ago, requests piling, autoscaler not recovering. :rotating_light:
+Sanjay Patel: on it, grabbing logs. is this global or regional?
+Olivia Chen: appears concentrated in us-west-2, a few latencies from eu but negligible.
+oncall-bot: Incident created: GPU_CAPACITY_EXHAUSTION (sev=2) — paging Olivia Chen, Sanjay Patel. PagerDuty: @Sanjay Patel is on call.
+Sanjay Patel: ack. first pass: autoscaler metrics show pool utilization at 98% and scale attempts failing with "scale_limit_reached".
+Maria Gonzalez: any driver errors in the node logs? could be nodes flapping rather than true capacity.
+Sanjay Patel: digging — found repeating kernel/Xid lines in dmesg on several nodes: "NVRM: Xid (PCI:0000:65:00): 31" and OOM killer invocations.
+Dave Lee: that matches an eviction storm we saw last month. If the driver is crashing, autoscaler won't get healthy nodes.
+Olivia Chen: customer impact? are requests 429ing or just queued?
+Sanjay Patel: majority are queued — end-to-end latency > 10s for many. A small subset (5%) are being throttled with 503 from the runtime because kv-cache got invalidated.
+Maria Gonzalez: posting short logs:
+```
+[2026-03-14T21:04:12Z] nvrm: Xid 31 at GPU 0:0:0, ch 0x1d
+[2026-03-14T21:04:12Z] kernel: Out of memory: Killed process 2410 (runtime-worker) total-vm:3.1G
+[2026-03-14T21:04:13Z] containerd: container restarted: gpu-runtime-7f4
+```
+Sanjay Patel: autoscaler attempted to add nodes but AZ quotas hit soft limit — request denied by cloud provider. see autoscaler.log: "quota_exceeded: launch_failed".
+Olivia Chen: ok — two simultaneous failure modes: runtime/driver instability reducing effective capacity, and quota/scale limits preventing autoscaler from replacing evicted nodes.
+oncall-bot: @PagerDuty escalated to infra team.
+PagerDuty: escalation acknowledged. Assigning Dave for live mitigation.
+Dave Lee: quick mitigation plan: 1) stop new long-running requests by enabling ephemeral throttling for rdw-large via the router; 2) shift a fraction of traffic to fallback smaller model (rdw-medium-cpu) to reduce GPU pressure; 3) identify and cordon noisy nodes; 4) request emergency quota bump.
+Olivia Chen: good. do step 1 now?
+Sanjay Patel: doing router patch: toggling per-model max_inflight to 20 -> applying:
+```
+POST /config/router/models/rdw-large
+{"max_inflight":20}
+```
+patch applied. Should drop new heavy fanouts.
+Maria Gonzalez: starting traffic-split script to divert 30% to rdw-medium-cpu:
+```
+./traffic-split --model rdw-large --fallback rdw-medium-cpu --split 30
+```
+Sanjay Patel: cordoning nodes with Xid/OOM: node-gpu-3a, node-gpu-7c, node-gpu-2b. marking as unschedulable.
+Dave Lee: infra contacted cloud support for quota bump, provided incident ticket #INC-8943. ETA unknown. Running hotfix: restart driver on noisy nodes to attempt quick recovery.
+Maria Gonzalez: restarted nvidia-driver on node-gpu-3a — driver came up but one container segfaulted on start.
+Olivia Chen: any sign of persistent mem leak in runtime? recent patch rolled last night?
+Sanjay Patel: runtime-rollout 2026-03-14T02:00 had a mem heuristic change for KV cache eviction. Could be correlated. I'll bisect if nodes stabilize.
+PagerDuty: customer-impact note: SLO degradation for rdw-large in us-west-2. Estimated affected requests: ~12k in last 15m. Priority customers experiencing >5s added latency.
+Dave Lee: mitigation updates: throttling + traffic-split decreased queue growth rate by ~40%. We still see periodic Xid bursts that drop capacity.
+Maria Gonzalez: logs show pattern: GPU processes hit peak memory after ~120s of token generation and then OOM. Might be certain prompts triggering long generations.
+Sanjay Patel: adding temporary request-duration cap: 90s for rdw-large. Patching now.
+Olivia Chen: are we safe to re-enable some nodes if we restart runtime with older runtime binary? Risky in prod.
+Dave Lee: agree risky. We'll promote a canary on node-gpu-9d with previous binary and run 10 test jobs. If stable for 5m, we'll gradually drain and replace.
+Maria Gonzalez: canary started, test jobs look fine so far. No Xid in 4m.
+Sanjay Patel: autoscaler still blocked on cloud quota. Manual standby pool available in dedicated cluster?
+Olivia Chen: we have a warm pool in dedicated-us-west, can attach but that requires config flip and will increase cost. Thoughts?
+Dave Lee: attach warm pool for 30m to absorb spike. Maria, prep attach commands.
+Maria Gonzalez: running attach sequence:
+```
+infra-cli attach-warm-pool --cluster us-west --pool dedicated-warm-1 --timeout 30m
+```
+infra-bot: Warm pool dedicated-warm-1 attached to gpu-serving-prod. +12 GPUs added.
+Sanjay Patel: after warm pool attach, queue visibly receded. throughput improved. Xid/OOM still occurring but on fewer nodes; effective capacity regained.
+Olivia Chen: update customers? Recommend posting to status: brief description, affected region, mitigation (traffic-split, throttling, warm pool attach), ETA for full recovery.
+Dave Lee: agreed. Drafting status update.
+Sanjay Patel: follow-up actions before closing: 1) revert recent runtime KV-change if bisect confirms; 2) request permanent quota bump or automated retry/backoff on launch failures; 3) add model-level generation timeout and cost guardrails; 4) add driver crash alerts to detect pre-oom patterns.
+Maria Gonzalez: creating GH issue for runtime revert and eval harness to reproduce long-gen prompt.
+PagerDuty: incident severity lowered to sev3 pending stabilization.
+noncall-bot: Incident update: Warm-pool attach successful, throttling and traffic-split active, oncall Sanjay Patel, infra Dave Lee.
+Olivia Chen: excellent work team. I'll coordinate the customer-facing note and follow-up postmortem. If anything flares up re-open this thread. :thumbsup:
+Sanjay Patel: leaving a snippet for postmortem:
+- root cause: combination of driver/kernel instability producing Xid/OOM on several nodes + autoscaler inability to replace nodes due to cloud quota limits.
+- immediate impact: increased latency and queued requests in us-west-2, ~12k requests affected, ~5% 503s.
+- mitigations: per-model throttling, generation timeout, traffic-split to CPU fallback, warm-pool attach, node cordon/restart, manual infra quota request.
+Dave Lee: timeline notes and logs saved to /incidents/5456789123/ for postmortem.
+Maria Gonzalez: assigning action items and due dates in the ticket.
+Olivia Chen: closing live mitigation. Monitor for 2 hours and escalate if new Xid waves >=3 nodes in 10m.
+PagerDuty: incident resolved for paging.
+Olivia Chen: thanks all.

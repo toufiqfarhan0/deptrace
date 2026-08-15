@@ -1,0 +1,74 @@
+eng-runtime
+
+leo: Heads up — nightly perf regressed on FlashAttention-v2 fused kernel when batching is on for long sequences. p95 latency ~2x vs baseline.
+
+leo: Quick perf dump from the nightly run: 
+```
+kernel: flashv2_fused
+commit: a7c3d9f
+seq_len=4096 bs=4 (tokens/batch=16384)
+p50=86ms p95=220ms p99=380ms
+mem_bw_util=0.92 (est 920 GB/s) smem_per_block=48KB occupancy=0.56
+kv_cache_evictions/sec=1200 memcpy_bytes/sec=1.1GB
+```
+
+jia: Oof. Do we know which change introduced this? Regression windows shows the spike after the batching heuristics tweak (max_batch_tokens auto-growth).
+
+maria: My hunch: fused kernel's shared-memory tiling + pipeline staging is crossing a threshold so warps stall on membank contention. Occ/drop in occupancy from 0.78 -> 0.56 lines up with that.
+
+alex: Also worth noting KV cache churn. When batching grows, multiple concurrent requests evict overlapping KV entries -> extra memcpy + cache sync. That knocks throughput more than raw kernel time.
+
+ben: Can we try the paged attention variant (lower smem) to see if eviction drops? Paged tends to trade compute for lower shared mem pressure.
+
+leo: Good call. I'll spin microbench runs comparing: flashv2_fused, flashv2_paged, flashv2_no_fuse at seq=1024/2048/4096 with bs tuned to ~16k tokens.
+
+infra-bot: CI job 48291 finished — found flaky test but no build failures. Regression alert pinned to commit a7c3d9f by @alex in PR #1284.
+
+jia: Experimental matrix suggestion: vary tile_width in {64,128,256}, pipeline_stages in {2,3,4}, and batching max_batch_tokens in {8k,16k,32k}. Track p50/p95, mem_bw_util, smem, kv_evictions.
+
+maria: Also capture per-kernel smem_bank_conflicts metric from CUPTI (or Nsight) otherwise we won't see pattern. If bank conflicts spike with tile_width=128, that's a smoking gun.
+
+alex: I'll roll a canary change to cap auto-growth to 16k tokens for Dedicated tier while we investigate. Quick config snippet I'm testing: 
+```json
+{"batching": {"max_batch_tokens": 16384, "growth_policy": "conservative"}, "kernel_pref": ["flashv2_fused","flashv2_paged"]}
+```
+
+ben: If paged variant avoids smem, we should also check instruction throughput (FMA_util). Lower smem but higher compute could still be net-win if KV churn is reduced.
+
+leo: Running first pass now. Will post results in ~30m.
+
+alex: If this is a kernel-selection misroute, we should add a cheap heuristic in the router: for seq>=2048 prefer paged unless mem_bw_util < 0.6. Simple rule to keep perf stable.
+
+leo: Quick experimental results (first 3 runs):
+```
+flashv2_fused seq=4096 bs=4 p95=220ms mem_bw=0.92 kv_evict=1200
+flashv2_paged  seq=4096 bs=4 p95=140ms mem_bw=0.68 kv_evict=300
+flashv2_no_fuse seq=4096 bs=4 p95=160ms mem_bw=0.75 kv_evict=450
+```
+
+jia: Nice — paged looks way better here. That supports the smem-bank/eviction hypothesis.
+
+maria: Can we try tiling tweak on fused: tile_width=64, pipeline_stages=4? If fused can reduce per-block smem it might close gap.
+
+leo: Kicked that run. Also adding CUPTI bank_conflicts capture.
+
+infra-bot: Experiment run 48302 queued on queue=gpu-nightly slot=gpu-a100-40gb. ETA ~18m.
+
+ben: If paged is consistently better for seq>=2048, I think we should update routing + add an automated fallback: if p95 on route increases >25% for 1h, switch route to paged variant and alert the oncall.
+
+alex: Agreed. I'll draft the fallback policy. For now I'm enabling conservative cap on growth and a canary route for 5% of traffic to paged.
+
+leo: Results back for fused with tile_width=64 pipeline=4: p95=180ms mem_bw=0.85 kv_evict=900 bank_conflicts=0.07 -> improved but still worse than paged.
+
+jia: So partial mitigation. Looks like fused can be tuned, but paged is safest baseline for long sequences.
+
+maria: Given this, I'd recommend: 1) short-term: route seq>=2048 -> paged by default, conservative batching cap; 2) medium-term: kernel optimizations to reduce smem per block and re-evaluate fused; 3) instrument KV cache eviction counters at route-level.
+
+leo: I'll open the tracking ticket and attach experiment results + CUPTI traces.
+
+alex: Thx. I'll push the conservative cap rollout now (:thumbsup:).
+
+infra-bot: Canary rollout started for config canary-2026-03-17-01, hitting 5% of production traffic. Monitoring metrics: latency/p95, mem_bw_util, kv_evictions.
+
+leo: Thanks all — will follow up with the ticket and traces.
+

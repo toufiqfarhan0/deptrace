@@ -1,0 +1,60 @@
+partnerships
+
+jess: Quick sync 1: we keep burning time spinning up full SEV war rooms for partner-facing incidents. Can we define lightweight response lanes for Marketplace + HW/SI issues? Not every problem needs a full bridge.
+
+omar: +1. What do you mean by 'lanes' here? a set of Slack channels / notification rules? :thinking_face: 
+
+jess: Exactly. Two lanes: Lane A = customer-impacting partner incidents (prod outage, data exposure). Lane B = integration/partner-dev issues (broken onboarding, listing errors). Lane A gets paging + ephemeral bridge. Lane B goes to a persistent shared channel and async triage.
+
+ravi: For Lane A the ephemeral bridge should auto-invite partner PM, partner SE, our oncall, marketplace ops rep, and a designated incident writer. Keep the invite list minimal.
+
+frank: From Support side 1: we need clear ownership windows. If a partner rep is unavailable, support covers first 30 mins, then escalate to SRE oncall. Also want a canned first-post message to send to partners.
+
+kate: Can partner-bot automate ephemeral channel creation with a runbook pinned? That'd speed things.
+
+partner-bot: SUGGESTION: use /partner-bridge create to bootstrap an ephemeral channel. Example usage:
+/partner-bridge create --name "ephemeral-<partner>-<yyyymmdd>" --tier A --owner @ravi --ttl 8h --runbook https://redwood.internal/runbooks/partner-sev
+
+omar: Nice. Also auto-pin the incident ticket and partner contact card in the channel header.
+
+jess: Quick routing proposal:
+- Lane A: Pager -> one-click create ephemeral bridge -> post to #partnerships-ops-summary -> email partner oncall -> update status page.
+- Lane B: Post to #partnerships-integration, assign triage owner within 2h, scheduled sync next business day if not resolved.
+
+ravi: For hardware partners add a required field when creating the bridge: hardware-SME. Also file a tracking bug on our partner integrator board with label "partner-hw" so PLs can follow cross-vendor fixes.
+
+frank: Bridge starter checklist (short):
+1) Create ephemeral bridge with partner-bot
+2) Tag severity and impacted customers in channel topic
+3) Pin runbook and initial alert/incident ticket
+4) Post 15m summary to #partnerships-ops-summary thread
+5) Assign postmortem owner and timeline
+
+kate: UX note: make runbook language partner-friendly (non-technical steps) so partner PMs can follow before SEs are added. Keep technical logs in an attached doc.
+
+omar: Ops automation idea: if an alert has tag "marketplace" or "hw" the alerting channel shows a partner-bot suggestion card to create a bridge with one click. Saves minutes and reduces context switching.
+
+jess: Action items:
+- ravi: draft a one-pager for partner response lanes (Lane A / Lane B + roles & timelines) by Friday.
+- omar: prototype partner-bot confirm flow for alerts (ETA next week).
+- frank: write support escalation windows and a short handoff script for partners.
+- kate: review and simplify runbook language for partner readers.
+
+ravi: I'll include a reusable partner-facing incident message template and a short post-incident checklist.
+
+frank: Example handoff script (short):
+"Thanks 1: we've opened an ephemeral bridge (link). Our SRE oncall, partner success, and your SE are in. We'll post a 15m status update and the incident owner for follow-up is @frank."
+
+kate: Can we add a partner contact matrix (listing owner, billing contact, integration owner) to the runbook for each partner? That removes manual lookups during incidents.
+
+jess: Good call. I'll add a spreadsheet link and required columns.
+
+partner-bot: REMINDER: dry-run simulation Friday 09:00 UTC. React with :bell: to opt in.
+
+ravi: I'll join. Planning to simulate one HW firmware fail and one marketplace listing error.
+
+omar: I'll mock the alert flow. frank 1: please act as support lead for the run.
+
+frank: Happy to.
+
+jess: Thanks everyone. We'll reconvene after the docs and prototype. If blocked ping me or drop a reaction. :thumbsup:

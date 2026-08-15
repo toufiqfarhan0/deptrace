@@ -1,0 +1,42 @@
+support
+
+elaine_sales: FYI — Acme Supply (acct: acme-supply, cid C-9823) requested a temporary burst in throughput for a 72h marketing push. They want ~2x token throughput, starting tonight. They pre-paid; asking for a quick approval. Details below.
+
+ops-bot: Ticket created: S-5043. Assigned to @sam_support.
+
+sam_support: Got it. Can someone drop the last 7d traffic graphs + list of anomalous IPs? Also: any prior abuse flags on this account? :eyes:
+
+elaine_sales: Attached quick summary: 
+```
+customer: Acme Supply
+acct_id: acme-supply
+cid: C-9823
+requested_burst: 2x
+duration: 72h
+start: 2026-04-05T22:00Z
+reason: end-of-month campaign
+prepaid: true
+sales_owner: elaine_sales
+```
+
+laura_sre: Initial check: no chargeback history, payment ok. I'll run KV cache & IP anomaly checks. If no phishing/fraud signals, we can consider Temp-Boost with rollback. @vijay_prod — any product constraints we should be aware of for a short-lived 2x throughput grant?
+
+vijay_prod: From product side: granting wide burst on hosted pool risks noisy neighbor effects. Options:
+- create a dedicated, short-lived reservation (preferred)
+- or apply burst policy on their API key with hard cap and auto-rollback
+We need to confirm model pinning (to avoid fallback to heavier variants). Also need finance sign-off for capacity billing. I can draft the change set if SRE confirms it's safe.
+
+laura_sre: Screening checklist (quick run):
+1) billing status (prepaid) — ok
+2) recent auth anomalies — none
+3) sudden pattern changes (scripts/bots) — none
+4) IP/geolocation consistency — minor variance, looks like ad partners
+If all pass, I propose: grant burst via 'temp-reservation' for 72h, max cap 2x, enable strict per-key throttles and automatic rollback + telemetry alerting.
+
+sam_support: Sounds good. I'll mark this P2 and add to product backlog under customer-requests/temporary-capacity. @vijay_prod can you review scope and estimate? @elaine_sales please confirm start time once finance clears.
+
+elaine_sales: Confirmed I'll chase finance now. Thanks all :pray:
+
+ops-bot: S-5043 updated: status=triaged, backlog_id=CR-1178, sprint_tag=backlog
+
+sam_support: Closing loop here — moving to product triage. If SRE finds any red flags I'll reopen ticket and escalate to security.

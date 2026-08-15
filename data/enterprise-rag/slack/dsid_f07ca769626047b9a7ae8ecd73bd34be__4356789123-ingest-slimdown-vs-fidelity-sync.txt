@@ -1,0 +1,52 @@
+eng-platform
+
+sasha: quick sync — we need to decide ingestion strategy for telemetry going forward. do we: 1) slim envelopes heavily at router and rely on late enrichment, or 2) keep richer per-service attributes at ingress and pay the cost in storage/ingest?
+
+jorge: +1 to discussing tradeoffs. what are the primary failure modes we care about here?
+
+sasha: main constraints: cost (ingest/retention), query fidelity for ad-hoc billing queries, and operational complexity for rollouts. latency of writes should remain low.
+
+maya: option 1 (slim at router) helps cost and keeps edge fast, but makes queries that need missing attrs need a late-join and more complex stitching. also harder to do retrospective fixes.
+
+devin: from SRE POV, late enrichment means more moving parts and windows where cost attribution is incomplete. we saw similar pain last quarter with backfilled joins. prefer simpler surface at query time.
+
+jorge: can we design a hybrid? minimal envelope at ingress + a small stable set of 'billing keys' that we always preserve (tenant, billing_key, service_id, model_tag, request_type) and defer volatile attrs.
+
+sasha: exactly my leaning. preserve a concise cost-key set at ingress, and route a copy to an enrichment pipeline async. the router stays fast and we keep deterministic billing.
+
+maya: ok but how do we guarantee determinism? if enrichment arrives late or fails, billing must still be correct. suggest enrichment be used only for label augmentation, not for core billing keys.
+
+devin: agree — bill on the preserved keys only. enrichment can add metadata for debug/querying but not change monetary attribution. if enrichment fails we still bill.
+
+jorge: implementation sketch:
+```json
+{
+  "envelope_id": "uuid",
+  "ts": 1670000000,
+  "tenant_id": "acme",
+  "billing_key": "b-12345",
+  "model": "gpt-small-quant",
+  "req_tokens": 34
+}
+```
+router writes that to hot-path. full payload (headers, full prompt, client metadata) gets fanout to async storage/enricher topic.
+
+sasha: rollout plan: 1) agree schema and minimal keys, 2) add schema gating at gateway, 3) small canary in eu-west for a week, 4) open fallback to rich-ingest for top 1% of traffic during rollout.
+
+maya: one more: we need a migration story for older telemetry. how do queries/glue handle mixed envelopes?
+
+jorge: query layer will treat missing enrichment fields as nullable. add a best-effort reconstruction job for high-value traces. also tag envelopes with 'ingest_version'.
+
+devin: ops checklist: tracing/alerting for enrichment lag > 5m, fallback rate metric, and consumer retry policy. also add a circuit breaker in router if async queue backs up.
+
+telemetry-bot: deploy-bot: canary created for env=eu-west with tag=ingest-slim-2026-03-23 — created at 4356789200 by jorge
+
+sasha: sweet. next steps: jorge to PR schema + CI validator, maya to draft migration queries, devin to add alerts. i'll sync with product about SLA implications. thanks all :thumbsup:
+
+jorge: will do a draft PR today, pinging in this thread when ready.
+
+maya: i'll add a couple of example queries to the docs repo (link coming).
+
+devin: noted. i'll add SLO docs and alert runbooks.
+
+sasha: end.

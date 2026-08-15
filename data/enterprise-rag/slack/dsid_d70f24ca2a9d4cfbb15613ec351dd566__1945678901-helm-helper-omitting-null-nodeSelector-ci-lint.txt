@@ -1,0 +1,45 @@
+eng-platform
+
+maya: FYI CI started failing on the gpu-scheduler overlay helm lint. It looks like our helper is emitting a literal "null" when values.nodeSelector is an empty map and the values schema validator rejects it. Repro in pipeline logs below.
+
+maya: ```yaml
+# templates/_helpers.tpl
+{{- define "infra.nodeSelector" -}}
+{{- if .Values.nodeSelector }}
+{{ toYaml .Values.nodeSelector | nindent 8 }}
+{{- else -}}
+null
+{{- end -}}
+{{- end -}}
+```
+
+maya: Lint error: `values.schema: nodeSelector: expected object, got null` (helm-values-schema check) :disappointed:
+
+ci-bot: CI pipeline: https://ci.internal.redwood/teams/infra/pipelines/2345/builds/6789 failed at helm-values-schema job (exit code 1)
+
+alex: Ah yeah, emitting the literal string `null` in templates sometimes produces a JSON/YAML null which the schema then picks up. Two quick fixes: change helper to not emit the field at all, or make the schema accept null. Example — don't emit when absent:
+
+alex: ```yaml
+{{- define "infra.nodeSelector" -}}
+{{- if hasKey .Values "nodeSelector" -}}
+{{ toYaml .Values.nodeSelector | nindent 8 }}
+{{- end -}}
+{{- end -}}
+```
+
+alex: That avoids emitting `nodeSelector: null`. If users intentionally set `null` in values, this preserves that intent.
+
+sam: Another option is to coerce an empty map instead of null from the helper, so the rendered manifest always has an object (when needed). E.g. use `default`/`dict`:
+
+sam: ```yaml
+{{- $ns := default (dict) .Values.nodeSelector -}}
+{{- if not (empty $ns) }}
+{{ toYaml $ns | nindent 8 }}
+{{- end -}}
+```
+
+sam: That keeps downstream overlays that expect an object happy and avoids changing the schema.
+
+rachel: For CI, we should avoid changing the schema unless absolutely necessary. Could we add a short unit test in render-tests that asserts the helper doesn't emit `null` for `{}`? Then the linter failure will be caught before pipeline.
+
+maya: Great idea — I'll add a tiny helm-unit test file and update the helper to the `hasKey` pattern for now. Thanks for the suggestions. :thumbsup:

@@ -1,0 +1,66 @@
+eng-ml
+
+carmen: quick flag on onboarding: new quantized build (staging-llama3-3b-int4) shows token repeats around the 8k prefill boundary when prefill_tokens > 8192. short repro below.
+
+mike: can you paste repro steps?
+
+carmen: repro: 
+```
+# run on staging (quant4a build)
+python tools/eval_prefill.py --model staging-llama3-3b-int4 --prefill 9000 --stream False --kv-mode append
+```
+observed: tokens OK until ~8127 then a 1-2 token repeat, followed by subtle drift vs baseline.
+
+vera: do you have KV trace/dump? sounds like an index wrap/compact.
+
+carmen: grabbed KV dump excerpt: 
+```
+[KV_DUMP] slot 8126 -> idx 8126
+[KV_DUMP] slot 8127 -> idx 8127
+[KV_DUMP] slot 8128 -> idx 0    # unexpected wrap at boundary
+[KV_DUMP] slot 8129 -> idx 1
+```
+
+mike: 8128 -> 0 is the symptom. suspect tiling/compact logic fired at window boundary and remapped incorrectly. did you run with strict-append/no-tiling?
+
+carmen: yes. with `--kv-mode strict-append --no-tiling` the duplication disappears. baseline fp16 also does not reproduce.
+
+devx: i pushed a light guard to staging to log when slot_index < prev_index (KVCHECK_WRAP). can you run seeds?
+
+ci-bot: [ci] job #4481 started: eng-ml/prefill-tiling-check matrix=quant4a,seq=9000,bs=1 seeds=5,11,17 prefill_cache=(true,false)
+
+carmen: quick kernel trace around compact: 
+```
+[2026-03-16T09:42:12.001Z] prefill: write 4096 -> slot 0
+[2026-03-16T09:42:12.334Z] prefill: write 4096 -> slot 4096
+[2026-03-16T09:42:12.900Z] compact invoked: target_window=8192 -> new_base=0
+[2026-03-16T09:42:12.904Z] remap: slot 8128 -> 0
+```
+
+vera: looks like compact condition allowed compaction when length == window_size (off-by-one). code probably uses `>` where `>=` is intended, or vice versa. also possible memcpy/alignment difference in int4 path exposed stale base_offset.
+
+mike: quick mitigation: add a safety margin to compact trigger and add an assert in int4 memcpy that checks pre/post alignment and copied length. also add an invariant check that slot indices are strictly increasing during prefill (unless intentional wrap).
+
+devx: agree. also add token-level diff harness to onboarding CI for any model with prefill > 4k so we catch regressions early.
+
+carmen: ran the matrix with the guard + safety margin branch: 3/3 seeds passed, master still reproduces 3/3. CI logs attached to job.
+
+ci-bot: [ci] job #4481 completed: 3/3 (branch: tiling-guard) vs 0/3 (master reproduces duplication).
+
+mike: PR please. include reproducer script, KV dump, kernel trace, perf delta when forcing no-tiling. we need tradeoff docs if safety margin changes behavior.
+
+vera: i opened https://git.internal/r/infer/tiling/merge_requests/121 with: compact safety margin, extra invariant logging, int4 memcpy alignment assert, and a small unit test covering compact edge-case.
+
+carmen: note: forcing no-tiling adds ~1.6-1.9% token latency on this model. tiling fix with safety margin shows negligible perf blip (<0.3%) in staging runs.
+
+mike: schedule a short RC review and a postmortem doc (1 pager) summarizing root cause, fix, and perf impact before merge to main.
+
+deploy-bot: canary deployed tag=mr-121 to staging-tiling nodes.
+
+carmen: summary to paste in PR: reproducer (prefill 9k, quant4a int4), KV compact off-by-one at 8192 boundary, root cause: compact condition + int4 memcpy alignment assumptions, fixes: safety margin + assert + invariant logs, CI: branch 3/3 green, master 0/3, perf tradeoff measured.
+
+mike: thanks all. followup: add an E2E eval comparing fp16 vs quant4a generation-quality across long-context prompt set to ensure no semantic regressions introduced by tiling changes.
+
+vera: adding that eval to onboarding harness.
+
+carmen: will drop the reproducer and raw dumps in the MR. thanks everyone :thumbsup:

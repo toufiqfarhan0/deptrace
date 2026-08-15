@@ -1,0 +1,48 @@
+partnerships
+
+Lena: Quick sync — we need to finalize the private-offer staging for CloudCo across AWS/GCP/Azure. Biggest open items: publisher SSO, KMS for trial images, and the visibility window for the initial GA push. Who can take which?
+
+Arjun: I can own SSO + publisher portal perms. Need the publisher org ID and a contact at CloudCo for their IdP metadata.
+
+Priya: I'll pick up KMS / image encryption and trial AMI packaging. Need to confirm retention policy and whether trial images must be region-restricted.
+
+Tom: I can handle visibility & storefront scheduling. Question: do we want staggered region visibility (US first, EU after 48h) or concurrent? Staggered reduces blast radius.
+
+Sofia: Legal flagged the EULA clause about telemetry. Marketplace requires explicit opt-in wording for telemetry in the listing. I have a draft clause but need product to confirm signal list (events we collect).
+
+Lena: Good. Action plan: Arjun = SSO contact + IAM role mapping, Priya = KMS/images + region gating, Tom = schedule + rollout plan, Sofia = EULA line and co-marketing copy. I'll coordinate CloudCo comms.
+
+Arjun: CloudCo contact is Rachel (rachel@cloudco.io). She says their IdP supports SAML2. I'll add them to the publisher portal and provision a dev role. Need to know required IAM policies — @Priya any constraints for image publish?
+
+Priya: For publisher publish we need s3:PutObject on their asset bucket and kms:Encrypt/Decrypt on the key ARN. If we restrict by region, AMI IDs differ — we should publish region-specific manifests.
+
+Tom: Staggered windows sounds safer. Proposal: US visible Tue 09:00 PT, EU visible Thu 09:00 CET, APAC Fri 09:00 SG time. That gives us 48-72h to monitor regressions.
+
+Sofia: Draft telemetry EULA snippet: "By enabling this product, you consent to anonymous usage and error telemetry collected to improve service quality. Customer-identifying logs will not be exported to third parties without explicit consent." Want to link to our telemetry policy.
+
+Lena: That language is a good start. Product: can you enumerate which events are "anonymous usage" vs "customer-identifying"? list here or ping Sofia offline.
+
+Priya: Quick note on KMS: CloudCo wants to manage their own key in the EU region. We need to support external key ARNs for private offers. That's supported but requires a short security review. I'll start the ticket.
+
+Arjun: For SSO mapping, we should create a minimal permission set for staging: PublishRead, PublishWrite (no billing), and SupportView. I'll drop a snippet for IAM roles: ```json
+{
+  "PolicyName": "CloudCo-Publisher-PublishWrite",
+  "Statement": [{"Effect": "Allow","Action": ["s3:PutObject","ec2:ImportImage"],"Resource": "arn:aws:s3:::redwood-marketplace/cloudco/*"}]
+}
+```
+
+Tom: Also need trial entitlement mapping. Do we expose a 14-day trial via marketplace trial bucket or use private sku entitlements? If we use private SKUs we must set up entitlement mapping to our billing.
+
+Lena: Use private SKUs for trial so we can control redemption and metrics. Product, engineering: can you ensure telemetry tags include sku_id and trial_expiry in the event payload?
+
+Sofia: I'll attach the EULA draft to the CloudCo package once telemetry events are confirmed. Also cc legal on the KMS external key note.
+
+pub-bot: publisher-portal: CloudCo added to dev org. IdP metadata uploaded. Webhook created: https://publisher.redwood.ai/hooks/abc123
+
+Arjun: Nice. I'll finish IAM role mapping and share a staging IAM role ARN by EOD.
+
+Priya: Created ticket INF-4823 for KMS external-key review and region AMI manifest. ETA 2 business days.
+
+Tom: I've added rollout schedule to the launch doc and created a monitoring playbook with metrics to watch: error-rate, avg-latency, failed-publishes. Link: https://redwood.atlassian.net/browse/LAUNCH-321
+
+Lena: Great progress. Next check-in tomorrow 10:30 PT. Please add any blockers to the thread. :thumbsup:

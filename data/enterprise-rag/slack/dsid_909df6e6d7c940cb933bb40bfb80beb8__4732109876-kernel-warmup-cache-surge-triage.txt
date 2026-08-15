@@ -1,0 +1,45 @@
+eng-runtime
+
+maria: Nightdash alert ~02:10 — p95 latency +18%, throughput -12%. Tagging eng-runtime. Grafana: https://grafana.internal/redwood/nightdash/alerts/4732 :warning:
+
+sre-oncall: I'm on it. KV miss rate jumped from ~1.2% -> 14% at 02:12 UTC. CI perf job agent-bench/#824 also failed at 01:56. Noting a rolling deploy started at 01:58 (merge pr/5213).
+
+jonah: Confirmed, pr/5213 touched kernel-selector heuristics (soft_threshold math + new opportunistic path). Reproduced locally with nightly-stress — kernel selection churn spikes at shorter sequence lengths.
+
+maria: Quick snippet from canary logs around 02:12:
+```
+[02:12:07] kernel_selector: pick kernel v2 -> v1 (delta 11ms)
+[02:12:07] kv_cache: miss rate 0.14 (hits 120, misses 20)
+[02:12:08] prefetch_manager: enqueued 43 requests, backlog 7
+```
+Looks like selection flip-flopping causes more cache thrash.
+
+perf-bot: Profiling summary (last 5m canary): kernel_selector.execute 42% CPU, prefetch_manager.process 18%, kv_cache.lookup 12%, waiting_io 9%. Flame: https://perf.internal/flame/abc123
+
+kevin: I kicked off a quick bisect across the merge range. Early signal points to commit abcdef1 (part of pr/5213) that relaxed kernel hysteresis. Repro on staging when we force smaller batch windows.
+
+anya: Can we hold the rollout? deploy-bot shows canary at 20% across eu-west-1. If cache miss is that high we risk cascading tail-latency.
+
+deploy-bot: Rollout pause requested for pr/5213 by anya. Canary paused at 20%.
+
+jonah: Before we revert, quick mitigation: increase kv_cache.initial_ttl from 30s -> 90s and restore previous kernel hysteresis values. I'll prepare a small patch and smoke it in staging — cheaper than full revert if it fixes.
+
+maria: Good call. Also add extra logging around kernel_selector.choice and prefetch eviction to get stronger signal. I'll open a triage doc and tag postmortem if revert required.
+
+kevin: Revert PR created: pr/5213-revert-2026-03-18. Staging perf job shows p95 down ~9% vs canary baseline after revert queued.
+
+anya: I'm +1 on holding. Schedule: if the patch (hysteresis + cache ttl) fails in 10m, merge revert and promote.
+
+maria: Noted. I'll monitor nightdash and add a check to the nightly perf alert to correlate kernel-switch counts with kv miss rate.
+
+kevin: Leaving a short run in staging, will post updates. Thanks all. :thumbsup:
+
+sre-oncall: Logged incident (INC-2026-045) and assigned to eng-runtime. Follow-ups: add unit test for kernel hysteresis boundary and add perf regression guard to agent-bench.
+
+maria: Closing loop — created triage doc: https://docs.internal/triage/kernel-warmup-cache-surge. Will iterate tomorrow AM if noisy overnight.
+
+jonah: FYI: small repro script attached to triage doc. Use `./repro --seq-len 32 --batch-window 8` to reproduce the flapping selection.
+
+kevin: Will watch overnight metrics. If anything spikes I'll re-open the thread.
+
+maria: Thanks team — good containment.

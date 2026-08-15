@@ -1,0 +1,41 @@
+architecture
+
+Anya: Quick brain dump 1: consider shrinking the release tag surface to make client upgrades safer. Proposal: split the monolithic `release_tag` into a compact object with a few orthogonal fields.
+
+Sam: ok what's the shape?
+
+Anya: thinking: `release.name`, `release.compatibility`, `release.grace`, plus a tiny `policy` block. Example: name=r2026-04, compatibility=backcompat, min_version=1.4.2, grace=30d.
+
+Luis: predicate strings are expressive but painful across SDKs. Suggest enums + optional min/max (easier to validate).
+
+Maya: agree. Maybe `compatibility` enum: major | minor | backcompat, and optional `min_version`/`max_version` as plain strings.
+
+Anya: tradeoff noted. Enums reduce parsing burden; we lose some routing expressivity but gain client safety.
+
+Sam: ops question: how to express emergency auto-fallback (e.g., auto-failover within 5m for some tenants)?
+
+Anya: add `policy.fallback` with `mode` (auto|manual) and `window` (durational string). Also `policy.priority` numeric for ordering. Compact JSON below.
+
+Luis: clients must degrade safely. Spec rule: unknown top-level keys ignored; unknown nested keys ignored; unknown enum values map to conservative default (e.g., `manual` for fallback).
+
+Maya: +1 on conservative default. Also add `release.source` (who set it) and `release.expires` (ISO timestamp) for telemetry & cleanup.
+
+Sam: header size constraint: we will serialize some of this into routed request headers. Keep payload << 2KB; optional fields stay optional.
+
+Anya: I'll add a CI lint that enforces max serialized size for header-eligible metadata. Also a migration tool to convert old `release_tag` blobs into the new shape while preserving `legacy_tag`.
+
+Luis: servers should accept both legacy string `release_tag` and new `release` object; prefer `release` when present. Include `legacy_tag` in converted objects for SRE correlation.
+
+Maya: gateway should emit a structured warning header when runtime can't satisfy a compatibility request: `X-Release-Warn: incompat=minor->unavailable;suggest=fallback`. Also publish an event to rollout topic.
+
+Sam: next steps: I can draft the proto + conversion examples, and write client-degrade rules doc + tests.
+
+Maya: I'll add the CI size check and implement the warning header in gateway.
+
+Luis: I'll prototype the converter and an enum linter.
+
+Anya: sounds good. Quick example compact schema we can use in proto: `release{name,compatibility,min_version?,max_version?,source?,expires?,legacy_tag?}; policy{fallback{mode,window},priority}`. We'll refine names in the proto.
+
+deploy-bot: deploy queued: schema-lint v1.2 -> staging at 2026-03-29T15:40Z :eyes:
+
+Sam: thanks all. I'll post the PR when ready and we can sanity-check in tomorrow's 15m arch sync. :thumbsup:

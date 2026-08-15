@@ -1,0 +1,20 @@
+product
+
+alec: quick call — we need to lock the April milestone scope. infra has a tight window; options are a small surgical prune (mvp-lite) or push freeze +6. want final by EOD.
+mira: can you enumerate the risky pieces again?
+alec: flagged items: (A) per-tenant model-pinning UI polish, (B) embedding warm dashboard, (C) admin bulk export/import, (D) lightweight live-trace toggle (debug). Also a perf probe hook (tiny).
+jana: customers are asking for C, but we can reduce risk by making it async and feature-flagged. A & B feel v1. D and probe are low-cost wins for MVP.
+sam: agree with jana. If export is async + whitelisted it gives customers value without broad risk. That said we need audit + RBAC before enabling.
+mira: security condition: export must produce an expiring link, have audit events, and be behind RBAC. If devs can scope that to read-only export and 24h expiry we can keep it.
+alec: dev estimate: async export + RBAC + probe ~5 dev-days, QA ~2 days. With current infra week-of-4/6 we should either add a +6d freeze or cut export to v1.
+jana: small freeze is fine — customers prefer stability. Also propose whitelist rollout: enable for pilot tenants only while QA signs off.
+sam: rollout plan: feature-flag + tenant whitelist -> staged canary 2% -> 10% -> 50% -> 100% -> GA. Fallback: rollback to last stable.
+qa-bot: opened QA ticket QA-5011. Acceptance checklist: smoke tests, RBAC regression, export integrity, audit-log verification, expiry validation.
+release-bot: milestone "2026-04-mvp-lite" updated: freeze +6 days, canary plan added (2%/10%/50%/100%), rollback target set to stable-2026-03. :white_check_mark:
+mira: action items: @jana spec export as async job + acceptance (today), @sam add feature-flag & tenant whitelist, @alec coordinate infra for week-of-4/6, @mira draft customer pilot note. Reconvene 9:30 PT.
+jana: I'll also add a minimal telemetry event to track exports and failures.
+alec: decision summary: MVP = async admin export (beta-flagged & whitelisted) + live-trace toggle + perf probe. Defer model-pinning UI and warm dashboard to v1. Freeze +6d. If anyone objects, speak now.
+sam: +1.
+mira: +1 pending security ack (SEC-629).
+jana: +1.
+alec: locking for now. Will post Notion link to acceptance criteria and the release playbook updates. Thanks all. :thumbsup:

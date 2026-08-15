@@ -1,0 +1,22 @@
+design
+
+elaine: dropped a new iteration of the error session card. goal: make quick support actions (open trace, copy id, download) more discoverable without increasing visual weight. figma: https://www.figma.com/file/yyyy/error-card-v2
+jon: skimmed it. nice simplification. question: why is the corr id moved into a secondary row? that feels like an extra glance for support teams.
+priya: seconded. maybe we keep a micro-id visible (first 8 chars) always and a chevron to expand full id inline. That balances density and discoverability.
+ben: micro-id + copy icon inline sounds good. keep the copy icon 16px and low-contrast. also add a tooltip showing full id + copy shortcut (Ctrl/Cmd+C) on hover/focus.
+aisha: accessibility: tooltips must be reachable and not hover-only. tooltip should be aria-describedby on the icon, and the copy action needs an aria-live announcement when successful.
+elaine: agree. I propose: display first 8 chars; copy icon next to it. pressing copy shows small non-reflow label "Copied" for 1.2s and SR gets "Correlation id copied to clipboard" via live region.
+jon: behaviour for collapsed cards: should Open Trace be visible on collapsed state or only in overflow? For quick triage, being able to open trace directly is handy.
+priya: put a thin ghost "Open Trace" button in collapsed view. not dominant, but tappable. keyboard nav should hit it before overflow.
+ben: on mobile, collapsed density is tight. recommend hiding the micro "Open Trace" on narrow viewports and surface only copy and overflow.
+aisha: ensure focus order consistent across breakpoints. Mobile tooltip patterns differ; use full-screen sheet for trace actions on small screens.
+elaine: noted. another point: export/download flow. current modal language says "Export trace" which some users misinterpret as sharing. propose copy: "Download trace (JSON)" + brief line: "Contains full spans, tags, and optional request logs." add a checkbox "Include request logs" default off.
+jon: good. add a small size estimate when checkbox toggled so users know approximate payload (e.g., ~120KB vs ~1.2MB).
+priya: about stack preview: the prototype shows two-line snippet and then "...". prefer showing function name + file:line truncated, not cutting inside identifiers. also keep monospaced excerpt.
+ben: CSS note: avoid mid-word hyphenation, use overflow-wrap: normal and allow the container to clip with gradient fade. maintain selectable text for debugging copy.
+aisha: keyboard shortcuts: we suggested Alt+O for Open Trace. make sure it's configurable and exposed in the help center. tooltips should include the shortcut and be accessible via aria.
+elaine: ok. I'll update frames: micro-id + copy icon, ghost open-trace button (desktop only), updated export modal copy, stack preview truncation rules, and a11y annotations in the component doc. will ping when pushed.
+jon: thanks, also can we add small analytics events: copy-id-click, open-trace-click, export-initiated? helps measure discovery.
+priya: yep, add event names and minimal props: session_id, user_role, viewport.
+ux-bot: checklist reminder: run component keyboard test, screen-reader readthrough, and color-contrast check. docs: https://internal.redwood/ux/checklists/card-components
+elaine: thanks everyone. will push and schedule a quick review tomorrow in sync.

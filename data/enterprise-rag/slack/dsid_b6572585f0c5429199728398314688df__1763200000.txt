@@ -1,0 +1,43 @@
+incidents
+
+incident-bot: ALERT: Elevated 5xx rate detected for customer 'HyperBuild' on Dedicated cluster dedicated-eu-2-c12. 5xx rate spike started ~1763199945. Paging on-call SRE.
+
+maria: acked. looking now — pulling up dashboards.
+
+aj: seeing a big spike in gateway 502/504 from gateway-proxy, not upstream model. total request queue length on cluster nodes is saturated.
+
+maria: Prom query: `sum(rate(http_requests_total{cluster="dedicated-eu-2-c12",status=~"5.."}[1m])) by (route)` -> top route is `/v1/generate` for customer HyperBuild.
+
+devon: copy. can you confirm it's a single tenant? noisy neighbor pattern?
+
+maria: yes — `sum by (customer_id)(rate(inflight_requests{cluster="dedicated-eu-2-c12"}[30s]))` shows customer_id=hyperbuild ~ 95% of inflight. background batches still running but small.
+
+nico: I’m on infra. checking node utilization: GPUs at 100% on 3/4 allocation nodes for that pool. CPU and network also spiking.
+
+ryan: logs from gateway show repeated TCP resets to model workers and timeouts: `rpc error: code = DeadlineExceeded` then 502.
+
+maria: probable capacity exhaustion by HyperBuild load causing request queueing and model workers to OOM/timeout. Repro strategy: 1) throttling customer to reduce QPS 2) move customer to dedicated reserved pool or enable burst capacity 3) temporary fallback to hosted API model variant.
+
+aj: I'm going to add a temporary rate-limit rule at the ingress for customer_id=hyperbuild: `rlimit --key customer_id=hyperbuild --rate 8r/s --burst 20`. Will monitor effect.
+
+devon: +1. also mark the customer's tasks as lower priority so kube can evict if needed: `kubectl label pod -l customer=hyperbuild preemptible=true --overwrite` then `kubectl drain`? careful with draining.
+
+nico: spinning up one extra node in dedicated-eu-2-pool now (request to autoscaler) — might take ~90s to provision (spot behaviour). enabling reserved burst from dedicated-pool-burst.
+
+maria: meanwhile CS: @cs-rep-beth please notify HyperBuild that we’ve detected elevated errors and we’re applying temporary throttling to stabilize; ETA 10–15m for mitigation. keep messaging non-technical.
+
+cs-rep-beth: pinged HyperBuild through support channel, sent transparent note: "We’re seeing increased errors for your workload on dedicated-eu-2 cluster and applying temporary throttling while we stabilize. We’ll follow up with detailed postmortem"
+
+aj: rate limit applied. early signal: 5xx rate falling from ~1200r/s to ~200r/s. p50 latency improved.
+
+ryan: can we verify model worker health? `kubectl logs` show repeated `CUDA out of memory` on worker-4 for hyperbuild job. eviction thrashing observed.
+
+devon: we'll cordon the most impacted node to prevent scheduling additional hyperbuild pods: `kubectl cordon node-12-ded-eu2` and then drain non-critical pods to make room.
+
+nico: reserved burst node provisioned and one hyperbuild shard migrated to burst node. GPU usage rebalanced to 60/100.
+
+maria: monitoring: 5xxs dropping to near baseline; gateway queue length decreasing. keep rate-limit in place until full stabilization and follow-up.
+
+aj: opened incident ticket INC-2026-348 in tracker and added runbook steps. tagging with customer HyperBuild and dedicated-eu-2-c12.
+
+devon: handoff note for next on-call (julia): state = mitigation in place (ingress rate-limit, one node added, cordon applied, migration started). still watching for requeue/evictions.

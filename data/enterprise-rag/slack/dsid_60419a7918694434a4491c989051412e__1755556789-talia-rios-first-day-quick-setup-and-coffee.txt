@@ -1,0 +1,23 @@
+new-hires
+
+Talia Rios: Hi all! Talia here — first day on Eng Runtime (remote, CET). Quick setup Qs: who do I ping for VPN/SSH and MDM? Do we have a recommended terminal config? Also curious who to grab coffee with when I'm in SF — any plants/fika folks?
+
+Maya (People Ops): Welcome Talia!! :tada: Buddy = Evan (Eng). I'll DM you the onboarding schedule. For swag + shipping: fill https://redwood.company/swag-form. Any dietary restrictions?
+
+DevEx-Bot: New onboarding checklist created: ONB-4821 for Talia Rios. Items: MDM enrollment, SSH key, email alias, Slack groups, infra access.
+
+Evan (Eng): hey Talia — welcome!! For SSH/VPN open the IT portal (https://it.redwood/portal) and attach your public key. If you want a quick setup: `ssh-keygen -t ed25519 -C "talia@redwood.com"` then paste `cat ~/.ssh/id_ed25519.pub`. I'll jump on a 15-min sync after lunch to walk through repo access.
+
+IT-Bot: IT ticket #IT-7420 opened: "Onboard Talia Rios - VPN/SSH/MDM". ETA: 1 business day.
+
+Priya Rao: For terminal, we recommend iTerm2 + zsh + our dotfiles. Clone with: `git clone git@github.com:redwood/dotfiles.git && ./install.sh` — there's a step to opt into telemetry off. Ping me if dotfiles conflict with any existing stuff.
+
+Lia (Growth): plant ppl here 🌿 I'm usually at the SF office Wed/Thu — coffee club meets 3pm in the lounge. You're welcome to join when you're in town!
+
+Talia Rios: Thanks y'all! No dietary restrictions. I'll open the portal ticket and DM Evan. Also adding myself to #eng-runtime and #random. Excited to be here :blossom:
+
+Maya (People Ops): Marked no diet restrictions. Welcome aboard again — we'll get the welcome box and sticker pack out early next week.
+
+Evan (Eng): added you to the repo ACLs, you should get an invite email shortly. If anything errs, slack me @evan.
+
+Talia Rios: Got the repo invite, thanks! Small fun fact: I make sourdough and bring cookies to standups sometimes. Looking forward to meeting the team :)

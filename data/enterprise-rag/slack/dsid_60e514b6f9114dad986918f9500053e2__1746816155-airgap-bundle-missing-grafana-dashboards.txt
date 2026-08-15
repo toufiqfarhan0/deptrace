@@ -1,0 +1,84 @@
+eng
+
+Connor O'Brien: Heads up: airgap bundle from the latest private installer build is missing the Grafana dashboards for the Private observability min pack. On-prem install comes up, Prometheus scrapes OK, but Grafana has *zero* Redwood dashboards.
+
+Fatima Noor: Confirmed on my side. Using the onprem offline flow (no egress). Grafana is reachable, datasource is configured, but dashboard folder is empty. I only see default Grafana stuff.
+
+Diego Santos: Ugh. Is it just dashboards or also alert rules?
+
+Fatima Noor: Alerts *seem* present (I see the PrometheusRule objects). The missing bit looks like the dashboard JSONs aren’t in the airgap tarball at all.
+
+Dylan Brooks: That matches what I saw in staging earlier this week. The Helm chart references dashboards via ConfigMaps, but the installer’s airgap bundle needs to include the `observability-pack` dashboards directory (or the generated ConfigMap manifests). Might be a manifest omission in the bundler.
+
+Chloe Martin: Quick check: are we expecting the installer to ship raw dashboard JSONs and render ConfigMaps at install-time, or ship pre-rendered ConfigMaps? I thought we went with “ship raw dashboards + grafana sidecar loads them”.
+
+Diego Santos: For Private installer we’re packaging the raw JSON artifacts + the helm bits. If those JSONs aren’t in the bundle, nothing to mount, so sidecar has nothing to load.
+
+Connor O'Brien: I unpacked the artifact and searched:
+`tar -tf redwood-private-airgap-bundle.tgz | grep -i grafana`
+Nothing except the Grafana image tar.
+
+Rafael Mendes: That explains the Support thread we saw last week (“dashboards blank after upgrade”). If this is the same root cause, we need a hotfix fast.
+
+Sahana Iyer: CI didn’t catch this because smoke tests run in connected env and pull dashboards from the repo path. Airgap path uses the bundle manifest only. We should add an assertion that the bundle contains at least N dashboard JSON files.
+
+Logan Wright: +1. Also can we verify the bundle includes the alert rules + recording rules too? Would rather not fix dashboards and then find rules missing.
+
+Connor O'Brien: Root cause looks like `airgap-bundle-manifest.yaml` doesn’t include the dashboards/rules artifacts from `observability-pack` (only includes images + helm charts). Probably got dropped in the last refactor.
+
+Dylan Brooks: I can take a look at the bundler config. It should include:
+- `observability-pack/private-minimum/dashboards/*.json`
+- `observability-pack/private-minimum/prometheus-rules/*.yaml`
+And then installer should copy into the expected `/var/lib/redwood/observability/` path.
+
+Chloe Martin: If we add raw dashboards, make sure we preserve folder structure so Grafana sidecar labels/folders still work (Runtime vs Control Plane vs Infra). Otherwise everything lands in “General”.
+
+Diego Santos: Also ensure checksums update. Airgap customers verify SHA256 from the manifest.
+
+Connor O'Brien: Proposed plan:
+1) Patch installer bundle manifest to include dashboards + rules
+2) Cut a hotfix PR + backport to release branch
+3) Trigger airgap build + rerun onprem validation plan (at least: install, upgrade, confirm dashboards load)
+
+Rafael Mendes: For severity: I’d call this a release-blocker for on-prem. Without dashboards the “minimum pack” story is broken.
+
+Fatima Noor: Agree. For regulated customers, they specifically asked for turnkey dashboards in offline env. This is exactly the failure mode.
+
+Sahana Iyer: I’ll add a CI step to the installer pipeline:
+- unpack bundle
+- `find . -name "*.json" | grep dashboards | wc -l` must be > 0
+- and maybe validate presence of a known dashboard UID/title file
+
+Elliot Price: Once fixed, can someone drop me the exact version + any user-facing notes? Docs currently say “dashboards included in offline bundle” so we should add a known-issue note for the broken versions + the fixed version.
+
+Connor O'Brien: Dylan can you own the PR? I’ll coordinate the backport + release note.
+
+Dylan Brooks: Yep. I’ll open a PR to `redwood-private-installer` updating the airgap manifest + post-install validation to fail loudly if dashboards directory is missing.
+
+Diego Santos: Please add a preflight warning too. Something like: “observability artifacts not present in bundle; dashboards will be empty” so we don’t silently ship a broken pack.
+
+Chloe Martin: Can we also add a quick postinstall check that Grafana has loaded at least one dashboard ConfigMap? Even a simple “list ConfigMaps with grafana_dashboard=1 label” would help.
+
+Dylan Brooks: Good call. I’ll add a postinstall validation step:
+`kubectl -n <ns> get cm -l grafana_dashboard=1 | grep redwood || exit 1`
+
+Logan Wright: While you’re in there, make sure rules path is included too. We had a similar miss earlier where recording rules weren’t copied.
+
+Dylan Brooks: Will do. I’ll verify both dashboard JSONs and rule YAMLs are bundled.
+
+CI Bot: Build notification: nightly private-installer airgap job #482 succeeded (artifact uploaded).
+
+Rafael Mendes: Nightly succeeded but doesn’t validate contents. Let’s not rely on that.
+
+Connor O'Brien: Tracking: Dylan PR today, backport tomorrow AM, then Fatima to re-run the onprem airgap validation checklist.
+
+Fatima Noor: I can rerun as soon as we have a new bundle. I’ll test:
+- fresh airgap install
+- upgrade from previous broken bundle -> fixed bundle
+- confirm dashboards render and alerts present
+
+Elliot Price: Please capture screenshots or at least the list of dashboards showing up. Helps for Support enablement.
+
+Dylan Brooks: PR incoming in ~1 hour.
+
+Connor O'Brien: Thanks all. Let’s keep this thread updated with the PR link + the fixed build ID once it’s cut.

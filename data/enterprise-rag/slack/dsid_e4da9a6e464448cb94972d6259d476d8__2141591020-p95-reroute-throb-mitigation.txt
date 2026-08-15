@@ -1,0 +1,96 @@
+incidents
+
+incident-bot: Pager: LATENCY_SLO_P95 exceeded in region(s) us-west1, eu-west1. p95=580ms (>450ms threshold). Smart-routing triggered 3 automatic reroutes in last 6m. Potential routing oscillation. Paging oncall. :rotating_light:
+
+alice (oncall): Acked. oncall here, pulling graphs.
+
+ben (eng-sre): I'm seeing repeated route decisions between model-variant A (v2-small-quant) and fallback B (v1-large) every ~90s. CPU and proxy queue spikes when switching. Errors low but tail latency jumps.
+
+carol (eng-runtime): Initial suspicion: fallback policy mis-evaluating compatibility. The policy says prefer lower-cost variant if latency > threshold, but a mismatch in sequence-length estimates causes the routing score to flip.
+
+alice (oncall): Any immediate mitigation we can do to stop the flapping? Customers complaining?
+
+eve (support): Grace flagged 2 paying customers with errors in last 10m (AcmeCorp dev and BoxyApps). Support is notifying them that we're investigating. No official outage declared yet but they see slow responses.
+
+frank (product): If we keep flipping variants, output quality might also vary for customers doing chained prompts. Need to avoid quality regressions.
+
+ben (eng-sre): Quick read of the routing logs:
+```
+[2026-03-15T14:03:40Z] route_decision: route->variant=v2-small-quant score=0.61 p95=420ms
+[2026-03-15T14:04:12Z] route_decision: fallback->variant=v1-large score=0.63 p95=530ms
+[2026-03-15T14:05:05Z] route_decision: route->variant=v2-small-quant score=0.59 p95=480ms
+```
+Looks like score jitter around decision boundary. Hysteresis currently set very low (30s) for this policy.
+
+carol (eng-runtime): Confirmed. Policy block for that route: 
+```
+policy {
+  name: "latency_based_fallback"
+  threshold_p95_ms: 450
+  hysteresis_s: 30
+  fallback_variants: ["v1-large","v2-small-quant"]
+}
+```
+Hysteresis 30s is too aggressive for noisy p95 metric. Also the model compatibility map incorrectly marked v1-large as compatible in eu-west1, but that pool has cold-started nodes causing extra latency.
+
+alice (oncall): Immediate mitigation proposal: 1) disable auto-fallback for the affected route, 2) pin route to the stable variant (v2-small-quant) for priority customers, 3) increase hysteresis to 180s. Any objections?
+
+dave (eng-platform): No objections. We can patch policy via the control plane. I'll run the change and pin for the route id: r-0a3f. Command: 
+```
+redwoodctl routing patch r-0a3f --set "policy.hysteresis_s=180" --set "policy.auto_fallback=false" --set "route.pin_variant=v2-small-quant" --reason "stop routing oscillation"
+```
+I'll apply to us-west1 and eu-west1. Expect config rollout ~30s.
+
+incident-bot: Action logged: routing.patch by dave. Change id=chg-2141591-01. Rolling out to us-west1, eu-west1.
+
+alice (oncall): Applying now. Watching metrics.
+
+(30s pass)
+
+ben (eng-sre): After patch: routing decisions stabilized. No new reroutes in last 7m. p95 back down to ~430ms in us-west1, eu-west1 trending down. CPU queues reduced.
+
+carol (eng-runtime): Also temporarily scaled warm pools in eu-west1 to reduce cold-starts for v1-large while we evaluate whether v1-large should be allowed as a fallback. Command used: 
+```
+redwoodctl capacity scale --pool eu-west1-warm --add-instances 6 --reason "reduce cold-start noise"
+```
+This is only to reduce impact while we audit compatibility map.
+
+eve (support): Customer update: told AcmeCorp & BoxyApps we are mitigating routing instability and expect normal latency in ~10m. They've acknowledged.
+
+frank (product): Good call pinning variant. We'll need to evaluate quality trade-offs later. Logging a follow-up ticket to test model outputs across pinned vs fallback variants for key prompt sets.
+
+grace (customer success): I'll follow up with affected customers once we confirm stability. Please add me to the postmortem.
+
+alice (oncall): Summary so far: - Root cause: sensitivity of routing policy combined with low hysteresis + noisy p95 estimates + one region with cold pool -> frequent reroutes. - Immediate mitigations: disabled auto-fallback for r-0a3f, pinned to v2-small-quant, increased hysteresis to 180s, warmed pool. - Customer impact: transient elevated p95 and slower responses for small subset of customers (not total outage).
+
+ben (eng-sre): Next actions: 1) Recompute routing score smoothing to use a 3-point rolling median or exponential smoothing window to reduce jitter. 2) Audit variant compatibility matrix for region capacity/cold-start footprints. 3) Add alert suppression to avoid multiple page loops from the same oscillation event.
+
+carol (eng-runtime): I can push a change to the routing evaluator to add a rolling-window median with minimal latency. Will open a PR and can ship a canary in controlled regions.
+
+dave (eng-platform): I'll create an emergency config lint that flags hysteresis < 60s for policies with p95 thresholds under 1s. Also will add a safe-mode flag that prevents auto-fallback if variant pools are under warm_threshold.
+
+alice (oncall): Oncall handoff: I'm going offline in 40m. dave, can you be the escalation during my handoff window? If needed, page eng-sre and eng-runtime.
+
+dave (eng-platform): I can take escalation. Please leave short notes in the incident runbook channel.
+
+incident-bot: chg-2141591-01 applied successfully to us-west1, eu-west1 by dave at 2141591280.
+
+ben (eng-sre): Post-mitigation metrics: us-west1 p95=410ms, eu-west1 p95=420ms, no route oscillations in 12m. Error rate unchanged.
+
+eve (support): Customers updated, no further incoming tickets about slowness for this incident.
+
+frank (product): Assigning postmortem: owner=ben. Due in 72h. Include timeline, root cause analysis, and remediation plan (policy defaults, evaluator smoothing, compatibility audit).
+
+grace (customer success): Please include a customer-facing summary we can send to the affected accounts.
+
+alice (oncall): Putting incident in monitoring-only state, closing active pager. If anything flares, please re-open thread or page with `#incident` and mention me. :white_check_mark:
+
+carol (eng-runtime): I'll start the PR for smoothing and tag ben/dave for review.
+
+ben (eng-sre): I'll draft postmortem and the customer note.
+
+dave (eng-platform): I'll follow up with the config-lint change and the safe-mode implementation plan.
+
+incident-bot: Incident resolved->monitoring. Duration: ~22m.
+
+alice (oncall): Thanks all.

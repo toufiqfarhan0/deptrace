@@ -1,0 +1,32 @@
+customer-success
+
+Maya Chen: Quick check-in on Pinecrest — token ramp + latency flags. Sharing top-level numbers below. Anyone on an enablement call today? Need to confirm renewal health before next month.
+metrics-bot: ```Account: Pinecrest
+Period: WoW / QoQ
+Tokens: +18% WoW / +62% QoQ
+Median latency (p50): 120ms -> 210ms (↑)
+P95 latency: 450ms -> 1.2s (↑)
+5xx error rate: 0.2% -> 1.6%
+Spend: +24% MoM
+Deployment: r-2026-03-19b (canary -> full)
+Notes: traffic shift around 03:10 UTC```
+Jared Patel: Yikes — p95 jump is concerning. Did Pinecrest change prompt lengths or model variant? Any config changes on our side?
+Deploy Bot: Canary deploy r-2026-03-19b: us-west-2 rolled 03:12 UTC, 25% -> 100% by 04:05 UTC. No automatic rollback triggered.
+Anika Gomez: We advised them to enable prefix caching for assistant sessions during onboarding, not seeing that enabled in their Dedicated config. Could explain token + latency pattern.
+Kai Morales: Confirming: their Dedicated pool (prod-a) has cache disabled and batching = 1. I can trial enable prefix/KV cache + increase batch to 4 on a canary if CS agrees. Memory use will go up ~8-12%.
+Maya Chen: They're on Dedicated prod-a and Jared is CSM — Jared please coordinate with customer. Renewal in ~4 weeks so we should prioritize a low-risk mitigation. :exclamation:
+Jared Patel: I'll ping the customer now. If they push back, our fallback is immediate rollback to previous runtime image. We can't risk SLA miss.
+Anika Gomez: Alternative to rollback: enable caching + batching + apply q4_0 quantization profile on non-critical routes — should reduce per-token latency and cost quickly. Low-risk config changes vs full rollback.
+Kai Morales: I can perform config canary (10% traffic) for cache+batches at 10:30 PT. Will monitor 5xx and memory. Need explicit CS ok.
+Jared Patel: CS approves canary. I'll notify Pinecrest and set expectations. Also scheduling a performance-readout email to execs for renewal. :thumbsup:
+metrics-bot: ```Post-canary (10:45 PT, 10% traffic):
+Tokens: +12% WoW (early)
+P50: 140ms (improved)
+P95: 480ms (improved)
+5xx: 0.3%
+Estimated spend impact: -9% (config changes)```
+Maya Chen: Nice lift from the canary results. Still want a deeper RCA — deploy note + trace links: https://console.redwood.dev/trace/abc123 (shared)
+Kai Morales: Saved pre/post configs to ops runbook and will escalate to infra team if error rate creeps back up. Will also run a memory sweep tonight.
+Anika Gomez: I'll set up a 1:1 enablement session for Pinecrest next Tue 10:00 PT and attach a short performance tuning playbook. Link: https://drive.redwood.dev/s/pinecrest-perf-guide
+Jared Patel: Adding session + canary notes to renewal brief. Will propose an SLA amendment (1 month performance watch) if they agree.
+Maya Chen: Thanks everyone. Please post final telemetry snapshot tomorrow AM. Closing this thread until follow-up — great coordinated response. :white_check_mark:

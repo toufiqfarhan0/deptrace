@@ -1,0 +1,43 @@
+devex
+
+eli: Noticed the Go SDK sample generator still uses range-over channel pattern and it deadlocks if auth refresh happens. Repro with short token TTL + forced refresh during stream. Anyone available to discuss quick fix?
+
+toni: Seen it. The sample spun up a retry goroutine that used `context.Background()` so cancellation never propagated.
+
+rahul: Minimal repro:```go
+ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+defer cancel()
+g := client.NewGenerator(cfg)
+stream, _ := g.Start(ctx, req)
+for e := range stream.Events() { fmt.Println(e.Text) }
+```
+If a token refresh triggers a backoff/retry, the Events channel isn't closed and the caller blocks forever.
+
+eli: Two parts: SDK ergonomics and sample docs. SDK should offer a ctx-aware Recv(ctx) + Close() surface. Sample should stop recommending background contexts in goroutines.
+
+toni: Agreed. Proposal: keep Start/Events for now but add Stream(ctx, req) -> (*GenStream, error). GenStream methods: Recv(ctx) (Chunk, error), Close() error, Done() <-chan struct{}. Deprecate Events after one release.
+
+rahul: I'll draft a tiny sample showing cancellation pattern:```go
+ctx, cancel := context.WithTimeout(reqCtx, 10*time.Second)
+defer cancel()
+stream, err := gen.Stream(ctx, req)
+if err != nil { return err }
+defer stream.Close()
+for {
+ chunk, err := stream.Recv(ctx)
+ if err == io.EOF { break }
+ if err != nil { return err }
+ fmt.Print(chunk.Text)
+}
+```
+This avoids hidden goroutines and makes cancellation explicit.
+
+eli: Also add an e2e test that simulates token refresh mid-stream and ensure there are no leaked goroutines. CI should run this in flakiness suite.
+
+toni: Optional: add a small linter rule for sample repos that warns about `context.Background()` usage in goroutines. Might be too noisy but useful for onboarding examples.
+
+ci-bot: Created issue SDK-1288: "Go SDK: generator stream - explicit cancellation API and sample fixes" and added to sprint backlog.
+
+rahul: I'll open PR with API shim, updated sample, and e2e. Will include docs on token-ttl child context pattern.
+
+eli: Thanks — tag me for review.

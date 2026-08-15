@@ -1,0 +1,18 @@
+design
+
+marco: uploaded a tiny prototype for the compact error card. trying to tighten density for high-traffic dashboards. figma: https://www.figma.com/file/zzzz/compact-error-card
+lina: nice work. first-pass: corr-id needs to be scannable. current layout hides it under the chevron when cards collapse.
+tess: suggestion: show a 6-char micro-id as pill and a separate 12px copy icon. keep both visually subdued so they don't compete with error title.
+aisha: accessibility reminder: copy must be keyboard focusable. hover-only reveal is a11y anti-pattern.
+marco: agreed. plan: micro-id visible, copy icon next to it. focus order: micro-id -> copy -> primary action. copy swaps to a transient "Copied" label for 1s without layout shift; aria-live announces success.
+tess: for the stack snippet in compact mode: prefer single-line monospaced preview showing `fnName (file:line)` and truncate the args. avoid ellipsis in middle of identifier.
+lina: also prefer a subtle gradient fade rather than hard ellipsis so users know it's selectable and copyable.
+marco: good call. also reordering of overflow menu: current prototype lists [Open Trace, Export, Group]. analytics shows open-trace used 8x more than export, so keep Open Trace visible as a ghost button in collapsed view and move Export into overflow.
+dev-rel-bot: note: recommend adding tooltip with shortcut: ⌥O for Open Trace on mac (Alt+O on Windows). show shortcut in tooltip but ensure tooltip text is readable by screen readers via aria-describedby.
+aisha: confirm for mobile: hide ghost Open Trace on < 480px and surface it inside the expanded sheet.
+marco: download/export modal copy tweak: change "Export trace" to "Download trace (JSON)" and clarify: "Includes spans, tags; enable \"Include request logs\" to attach raw logs (may increase size)." show estimated size when toggled.
+tess: minor: the copy icon should have aria-label "Copy correlation id". when copied, SR should hear "Correlation id copied to clipboard".
+lina: analytics: emit events copy_correlation_id, open_trace_click, download_trace_confirmed with session_id and viewport_size.
+marco: CSS: ensure focus outline visible at 2px. color contrast: micro-id text meets AA when focused. add a11y tokens in component doc.
+aisha: checklist: keyboard nav, screen-reader order, tooltip accessibility, color contrast, reduced-motion compliance for expand animation.
+marco: thanks. i'll update figma and the component spec, add the a11y notes and analytics fields, then ping for quick review tomorrow morning.

@@ -1,0 +1,72 @@
+incidents
+
+incident-bot: :rotating_light: HIGH ERROR RATE detected in apac-edge cluster (apac1). Metric: 5xx_rate spike from 0.2% -> 12% starting ~10:13 UTC. Auto-alert created.
+
+Maya: ack'ing, I'm oncall for apac. Looking at Grafana now — dashboards show gateway 502 and upstream timeout bursts across two AZs.
+
+Josh: Maya can you paste the grafana panel link? I want to see per-customer impact.
+
+Maya: https://grafana.internal/redwood/d/edge/apac1-errors?orgId=1&from=now-30m to=now — top noisy hosts are rbox-*-prod and a spike in gateway-lb healthcheck failures.
+
+Luca: I'm seeing NLB 502s in the access logs: a lot of "upstream reset" within the loadbalancer connection logs. Could be connection pool exhaustion on edge-proxy.
+
+Priya: Any deploys to apac in last hour? CI bot shows a rollout started 10:05 but completed 10:08 and passed health checks. No obvious config changes.
+
+Maya: No customer-facing deploys on our side. Might be transient infra — netops, can you confirm if there were recent network changes?
+
+netops-bot: NetOps alert: BGP flap reported at apac1-core-3 at 10:09 UTC, partial route suppression for a subset of prefixes for ~3m. Route stabilization completed at 10:12 UTC. Impact correlates.
+
+Josh: That lines up. Route flap + rebalancing could have suddenly shifted traffic and overloaded a subset of edge proxies. Suggest we fail traffic to us-west fallback pool while we investigate.
+
+Maya: Proposing short mitigation: enable cross-region fallback policy for apac1 -> usw2 for 15m. Will the routing policy change be atomic? How to trigger?
+
+Luca: We have a canary toggle in routing-config: toggle apac1.fallback.enabled to true. Command: ```curl -X POST -H "Authorization: Bearer $CFG" https://config-api.internal/v1/route-toggles -d '{"region":"apac1","fallback":"usw2","enable":true}'```
+
+Priya: If we do that, latency-sensitive customers in apac will go to usw2 and see higher RTT but lower error rate. Need to inform Support and Product.
+
+Maya: I'm executing the toggle now (will post the response).
+
+Maya: (10:25) toggle response: 200 OK, rollout id rto-20260315-001, progressive rollout 10%/min. Starting now.
+
+Josh: Monitor error rate and token throughput. If 10% rollout reduces 5xx rate, we can ramp to 50% quickly.
+
+Maya: Early signal: at 10:29 UTC apac 5xx_rate down from 12% -> 7% for traffic that hit fallback. Still high on remaining apac1 origins.
+
+Luca: I'm seeing edge-proxy pods in apac1 with very high socket time_wait counts. k8s nodes show nginx-ingress queue depth spiking. Suggest we scale edge-proxy deployment by +30% in apac1 while routing continues. Command to scale: ```kubectl -n edge scale deploy edge-proxy --replicas=26 --context=apac1````
+
+Maya: Scaling now.
+
+netops-bot: FYI healthcheck anomalies for target group tg-apac-edge-2: 25% unhealthy at 10:22.
+
+Priya: I'm drafting a short customer-facing note: "We're seeing elevated errors in APAC; traffic is being routed to fallback region to reduce errors. Engineers are investigating root cause." Want to post to status page after we confirm stabilization.
+
+Josh: Also recommend toggling gateway keepalive to reduce connection churn as an immediate mitigation: set proxy.keepalive.timeout from 15s -> 60s in apac profile. That will reduce upstream resets if it's connection churn.
+
+Maya: Changing keepalive now in config service. ```PATCH /v1/profiles/apac1 {"proxy.keepalive.timeout":60}``` -> response 202 accepted. Rolling config out to edge proxies.
+
+Luca: Scaling completed and pods are coming up. Early logs show fewer upstream resets, some timeouts still present but decreasing.
+
+Maya: (10:40) Routing rollout at 60% now. apac 5xx_rate down to 2.3% overall. Latency for fallbacked requests averaged +120ms.
+
+Josh: Good. NetOps follow-up: please check if any residual BGP flap events or peering flaps in last 20m.
+
+netops-bot: No further BGP events after 10:12. Post-mortem checklist: collect pcap of 10:05-10:20, lb logs, edge-proxy heap profiles, and NLB target diagnostics.
+
+Priya: Posting preliminary status page entry and Tweet draft for exec comms. Will update Support with impacted customers list (top 8).
+
+Maya: Moving to mitigation -> monitoring stage. Will leave the thread open for root cause debug. Oncall handoff in 30m to Josh.
+
+Josh: Thanks — I'll take it. Leaving note: preserve logs and don't revert rolling scale/keepalive until we confirm stable for 1 hour.
+
+incident-bot: Incident severity set to Sev3. Runbook: apac-edge-502s. Investigators: Maya (oncall), Josh (handoff), Luca (infra), Priya (commms).
+
+Maya: closing my active ops window, handing to Josh. If error rate creeps back up, please @Maya and escalate to SRE Pager.
+
+Josh: acknowledged. Updating channel topic with incident link and summary.
+
+Luca: I'll start collecting heap/conn metrics and capture tcpdump on one node for deeper analysis.
+
+Priya: I'll sync with Support and post to status page in 10 min with the mitigation steps and expected service degradation note.
+
+Maya: Thanks team. We'll continue root cause analysis under a separate thread for the postmortem.
+

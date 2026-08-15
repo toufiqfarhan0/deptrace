@@ -1,0 +1,56 @@
+marketing
+
+anna-marketing: Quick sync — pricing page sprint kicks off today. Main goals: simplify tier names, collapse repetitive FAQ into a micro-FAQ, test moving the cost calculator into hero vs below features, and wire webinar sign-ups to pricing-qualified leads.
+
+sam-growth: love it. Do we have a hypothesis for calculator placement?
+
+anna-marketing: Hypothesis = calculator in hero increases demo / webinar sign-ups but may reduce page scroll to value props; primary metric = webinar CTA CTR, secondary = time on page and calculator interactions.
+
+maria-product: Can we run a 50/50 A/B for 2 weeks, target = new users only? Also recommend a compact micro-FAQ (3 Qs) with quick anchors to more detailed doc.
+
+josh-sales: For routing, pls tag webinar signups with `pricing_interest=high` so SDR queue can prioritize. Also include plan size hint if they used the calculator.
+
+kevin-analytics: We'll send an event: `pricing_calc_interaction` with props `{position: hero|below, est_monthly_tokens, utm_campaign}`. Ping me when the AB is ready and I’ll wire dashboards.
+
+anna-marketing: sample micro-FAQ (draft):
+- Q: How does metered billing work? A: Per-token usage billed monthly with transparent unit pricing. Link to billing page.
+- Q: Can I reserve capacity for predictable throughput? A: Yes — see Dedicated options.
+- Q: Does Redwood support private deployment? A: Yes — Private plan for VPC/on-prem.
+
+sam-growth: copy looks clean. Suggest swapping "metered billing" to "usage-based billing" in hero microcopy.
+
+maria-product: tier names proposal: `Starter`, `Scale`, `Enterprise` — keep simple. Add short 2-3 word descriptors under each.
+
+josh-sales: Need a tooltip for committed discounts and a short link to case studies for Enterprise.
+
+anna-marketing: CTA wiring: webinar form -> hidden fields: `source=pricing_page`, `interest=pricing`, `calc_result` (if present). Use `utm_campaign=pricing_sprint_apr` for paid tests.
+
+cs-signal-bot: Note: CS flagged potential inbound overlap — several upcoming webinars targeted at fintech customers. Recommend dedupe rule for webinar_lead routing.
+
+kevin-analytics: Action items for analytics: 1) Event schema for `pricing_form_submit` 2) Add funnel for hero-cta -> form -> submit -> assign_tag 3) Dashboard for calc vs webinar conversion. I’ll create tickets.
+
+maria-product: UX asks: small inline animation for calculator when in hero so it’s obvious interactive, and compact results summary to encourage submit.
+
+anna-marketing: Ops/implementation owners: @maria-product owns design + A/B setup, @sam-growth owns experiment definition/segmentation, @kevin-analytics owns metrics and dashboard, @josh-sales owns lead routing rules. I’ll coordinate copy + launch comms.
+
+sam-growth: timeline check — can we QA and push experiment on Wednesday?
+
+maria-product: I can deliver designs by Tuesday EOD, dev slot Wednesday morning.
+
+kevin-analytics: I’ll prep tracking plan by Tuesday noon.
+
+josh-sales: I’ll update SDR playbook for `pricing_interest=high` tagging.
+
+anna-marketing: Great. Quick ask: keep FAQ answers ≤30 words and include a single CTA link. We want scannable.
+
+sam-growth: thumbs up. I'll set the experiment and start the feature flag.
+
+anna-marketing: Perfect — I’ll post a short launch blurb in #marketing when live. Any objections?
+
+josh-sales: none from me.
+
+maria-product: all good.
+
+kevin-analytics: good to go.
+
+anna-marketing: Thanks team :rocket: — assigning tickets now and will follow up with a checklist in the thread.

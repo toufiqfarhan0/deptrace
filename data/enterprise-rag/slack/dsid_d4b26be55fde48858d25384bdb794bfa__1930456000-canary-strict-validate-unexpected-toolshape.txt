@@ -1,0 +1,58 @@
+eng-platform
+
+alice: Heads-up — seeing an ~8x spike in fncall schema validation errors after last night's canary rollout (strict validation toggled on for 20%): model=redwood-alpha-4 route=/chat/tool
+
+ben: Confirmed. Telemetry shows concentrated failures from adapter=payment-gateway-v1, adapter_hash=0x7f3a. 77% of rejects are TypeMismatch at /result/items (expected array, got string).
+
+carla: Can you paste a failing tool response sample?
+
+ben: Sure, copied from logs (sanitized):
+```
+{
+  "tool": "fetch_invoices",
+  "result": {
+    "items": "invoice_12345,invoice_12346",
+    "total": 2
+  }
+}
+```
+validator: TypeMismatch: expected array at /result/items
+
+alice: This looks like a legacy adapter that returned comma-joined string. The strict_fncall_validation flag we flipped in rollout enforces JSON schema rather than permissive parsing.
+
+dave: We shipped that flag to reduce silent downstream parsing bugs, but obviously adapters weren't all migrated. Options:
+- rollback strict flag for canary (fast)
+- implement runtime coercion (string->array) for a whitelist of adapters (risky)
+- add a structured fallback path (preferable)
+
+carla: For observability: please add a per-adapter top-k breakdown and store a sampled payload blob for debugging (not full payloads). Also we need a metric fncall.validation.reject_rate and a dashboard panel.
+
+ben: Quick mitigation: rolled strict->false for canary via config service (config:validation.strict_fncall=false @canary). Deploy-bot: config updated by ben at 1930456120.
+
+deploy-bot: config update: {"path":"/services/validate","key":"strict_fncall","value":false,"scope":"canary"}
+
+ben: Post-toggle, error rate returned to baseline in 4m. But we should still address root cause.
+
+alice: Agreed. Long-term plan:
+1) Migration doc for adapter teams, with schema examples and a test harness endpoint.
+2) Add a 'lenient fallback' policy in routing: if validation fails, try adapter=legacy_* for up to 2 retries, then return structured error to caller (code=FN_SCHEMA_REJECT) with sanitized sample.
+3) Console UX: when rolling validation strictness, show a preview panel that samples recent tool outputs for the targeted scope and highlights common mismatches.
+4) Telemetry knobs: sample failing payloads at 1% by default, with burst allowance, and tag metrics by adapter_hash.
+5) Add alert: fncall.validation.reject_rate > 0.5% sustained 10m.
+
+carla: Also add an api-level header x-fncall-validation-mode: preview|strict|lenient so clients can opt into preview mode during migration.
+
+dave: Implementation notes:
+- validator change: enable adapter_hash in metric labels (prometheus cardinality ok if we cap to top 200)
+- telemetry: store sample blobs in object store with TTL 7d, keep only first 10 per adapter per day
+- console: a 'rollout safety' check that fails if preview shows >0.2% mismatches
+
+elaine: I'll own rollout UX mockups and the migration doc. Assigning tasks:
+- elaine -> rollout UX + migration doc (ETA 2 days)
+- ben -> metric + config quick fixes (ETA 1 day)
+- carla -> telemetry sampling + storage design (ETA 2 days)
+- dave -> validator fallback prototype + adapter whitelist (ETA 3 days)
+
+ben: pinging infra to increase object-store write qps during sampling window.
+
+alice: Thanks all — keeping this thread open until rollout UX + migration doc are live. If anyone sees new spikes, @alice @ben please ping immediately. :thumbsup:

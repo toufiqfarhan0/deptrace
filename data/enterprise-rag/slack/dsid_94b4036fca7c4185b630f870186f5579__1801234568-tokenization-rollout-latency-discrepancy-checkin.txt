@@ -1,0 +1,68 @@
+eng-platform
+
+sarah: Heads-up — noticed a p99 bump on the latency dashboard for several endpoints right after the tokenization change rolled to canary. Dashboard: https://console.redwood.ai/dashboards/latency?query=tokenizer-canary :eyes:
+
+mike: saw that too. p50 and p95 look stable, p99 jumps ~220ms for small-payload endpoints. Can we confirm sample counts? Could be a token-count shift. :thinking:
+
+anna: quick check — sample_count for those endpoints didn't change much, but average token_count increased from ~8 -> ~12 on the canary cohort. That could move a few long tails into a different bucket.
+
+julio: also double-check routing/quotas. If canary triggered a fallback to the larger model for some requests (quota/backpressure), that would blow up p99 while p50 stays fine. Any recent routing policy tweaks?
+
+mike: no routing policy changes in the last deploy. But quota controller logs show a few burst rejects around 17:02. infra-bot, can you paste the quota events?
+
+infra-bot: deploy:tokenizer-canary by mike @ 2026-03-22T17:00:12Z
+infra-bot: quota-controller: 17:01:57 - reject token-burst client=mobile-sdk region=us-west rule=per-client-qps
+infra-bot: quota-controller: 17:02:03 - fallback routed to model=redwood-llama-2-xl variant=quantized :robot_face:
+
+lisa: nice catch. So flow might be: tokenization yields more tokens -> quota accounting spikes -> controller rejects/buffers -> request is rerouted to fallback variant with higher latency -> p99 rises.
+
+sarah: agree. Two follow-ups: 1) confirm whether the fallback variant's latency distribution matches the observed p99 tail, 2) decide whether to adjust canary tokenization rollout (slower ramp or adjust quota thresholds).
+
+mike: I pulled the latency histogram for the fallback variant, it's centered ~180ms higher than the primary for same route. That aligns with the delta.
+
+anna: for telemetry parity, we should surface a token_count histogram and a per-route fallback-rate metric on the latency dashboard (quick toggle). Right now the dashboard mixes variants and hides fallback attribution much of the time.
+
+julio: agree. For rollouts UX we should add: "show variant split" and "show quota events" overlays. That would make debugging these cross-cutting issues way faster.
+
+lisa: low-cost mitigation: temporarily lower the canary traffic or adjust per-client qps thresholds for the canary tag. I'll open a quick policy change PR.
+
+mike: if we do policy change, let's also add a short-lived alert on fallback-rate > 1% for canary traffic so we catch this earlier next time.
+
+sarah: next steps:
+- mike: confirm fallback latency hist match (in progress)
+- anna: add token_count histogram + fallback-rate widget to the canary dashboard (small UX patch)
+- lisa: PR for quota threshold tweak and temporary traffic dial-down
+- julio: sketch overlay change for variant split + quota events (mock in Figma)
+
+mike: quick query to get counts for anyone who wants to reproduce locally:
+```sql
+SELECT route, variant, count(*) AS samples, approx_percentile(latency_ms, 0.99) AS p99, avg(token_count) AS avg_tokens
+FROM telemetry.events
+WHERE env = 'canary' AND ts >= now() - interval '30 minutes'
+GROUP BY route, variant
+ORDER BY samples DESC
+```
+
+anna: thanks — running now. Will paste results in a follow-up thread. :rocket:
+
+sarah: thanks team. If we want to be extra paranoid for the rest of the rollout, enable the fallback-rate alert and back off traffic until dashboards confirm stability. :white_check_mark:
+
+mike: +1
+
+infra-bot: note: canary ramp scheduled: 20% -> 50% at 2026-03-22T18:00:00Z unless blocked.
+
+sarah: Blocking the ramp until PR + dashboard widgets live. I'll update the rollout doc.
+
+lisa: PR opened: github.com/redwood-inference/policies/pull/472 — tweak per-client qps for canary. cc @sarah
+
+julio: mock uploaded: https://figma.com/file/xyz/variant-split-overlay — feedback welcome.
+
+anna: paste of the quick query: route=/generate-text variant=primary samples=4,321 p99=210ms avg_tokens=12.3 | variant=fallback samples=87 p99=398ms avg_tokens=12.1 — fallback small sample but consistent high p99.
+
+sarah: that's convincing. thanks everyone. We'll keep this thread as the rollout playbook.
+
+mike: follow-up: I'll add fallback-rate to the per-route legend so product owners can self-serve checks next time.
+
+lisa: removing ramp block after PR merges + dashboard patch. I'll coordinate with release. :+1:
+
+sarah: closing for now — follow-ups tracked in the rollout checklist.

@@ -1,0 +1,45 @@
+devex
+
+maria: Heads-up — ran into confusing error shapes while testing the new Java SDK onboarding sample. App saw a token expiry and we got a generic HttpError(401) with message "request failed". No retry hint or typed exception to catch. :frowning_face:
+
+sam: Oof. Is that from the hosted API path or Dedicated?
+
+maria: Hosted. Repro steps: call /v1/generate with an expired key, the SDK surfaces HttpError(401) and stacktrace but nothing like AuthenticationError or "token_expired" code. Users can't programmatically detect and refresh.
+
+devon: That's rough — we promised typed exceptions in the SDK parity doc. We did have AuthError in Python/TS earlier. Looks like Java missed mapping.
+
+eva: Also seeing a second related problem: rate-limited requests (429) sometimes arrive as 503 gateway errors from our infra during bursts, and the SDK surfaces a transient ServerError. That hides the semantic that the client should back off vs just retry immediately. We need clearer status/code mapping + retry hints.
+
+maria: Agreed. Proposal: adopt an explicit mapping table across SDKs that maps HTTP status + error_code -> typed exception + retry semantics + user-facing hint. Example in RFC form:```
+401 + any -> AuthenticationError (retry: NO, hint: refresh token)
+403 + permission_denied -> AuthorizationError (retry: NO, hint: check scopes)
+429 + rate_limit -> RateLimitError (retry: EXPONENTIAL_BACKOFF, hint: consider lower throughput)
+502/503/504 -> TransientServerError (retry: EXPONENTIAL_BACKOFF with jitter)
+400 + validation -> ValidationError (retry: NO, hint: check inputs)
+```
+
+sam: That looks solid. Add a field for machine-friendly error_code (string) and a human_message (clear sentence). SDKs should populate both.
+
+devon: For parity: ensure exception class names align across languages, e.g., AuthenticationError, AuthorizationError, RateLimitError, TransientServerError, ValidationError, ResourceNotFoundError. Also expose numeric status and raw body on the typed exception for debugging.
+
+eva: We should also publish a small sample app showing best-practice retry loops and token refresh logic. Maybe in examples repo under /examples/retry-refresh. Keep sample minimal: pseudocode + instrumentation showing when to give up and when to escalate.
+
+maria: Agreed. Action items: 1) update SDK mapping table doc, 2) add typed exceptions to Java SDK (and verify Go/Rust parity), 3) add sample app + unit tests for each error shape, 4) update onboarding quickstart showing how to refresh token and detect RateLimitError.
+
+ci-bot: New issue created: https://redwood.internal/issues/INF-942 "SDK: error mapping parity + sample retry app" by maria
+
+sam: I'll pick INF-942 and do the Java + Go mappings. devon can own spec PR for the canonical mapping doc. eva can author the sample app. maria can QA and update quickstart.
+
+devon: I'll draft the mapping doc now and include examples of structured error payloads we emit (error.code, error.message, error.hint, meta.rate_limit_reset). Can we also standardize rate-limit headers so clients can do smarter backoff?
+
+eva: Yes — suggest X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset or our current equivalents. We'll add tests for header presence in the sample harness.
+
+maria: One more: ensure errors from Dedicated/private deployments preserve the same shape (we shouldn't leak infra-only 502s without mapping). Add a fallback rule: anything unknown -> TransientServerError with raw body attached.
+
+sam: Sounds good. Timeline? Can we get a spec + Java PR in 2 weeks?
+
+devon: I'll open the spec PR by EOD and tag SDK owners.
+
+eva: I'll prototype the sample app this week and submit a draft MR.
+
+maria: Great — thanks all. I'll update the onboarding doc after your PRs land. :thumbsup:

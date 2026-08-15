@@ -1,0 +1,37 @@
+docs
+
+noah: FYI I opened a small PR to standardize streaming+pagination snippets across py/ts/go. Goal: use empty-string as canonical start cursor, show per-call deadlines and client stop/backpressure patterns, and add a tiny knob cheat. PR: https://github.com/redwood-inference/docs/pull/611
+isabel: Nice. Quick ask: show explicit resume-token usage (opaque) in one example and note that servers may return a token even for small pages. Also prefer `async for` in py.
+tanvi: agree on py `async for`. For TS let's demonstrate AbortController + an early stop after N events, and call out abort semantics (may flush last partial chunk).
+noah: added three tiny snippets in the PR:
+
+PYTHON:
+```py
+async def run(q):
+  async for part in client.responses.stream(model='redwood-mini', input=q):
+    handle(part)
+await asyncio.wait_for(run(q), timeout=0.25)
+```
+
+TYPESCRIPT:
+```ts
+const ac = new AbortController();
+const s = client.responses.stream({model: 'redwood-mini', input: q, signal: ac.signal});
+let seen = 0;
+for await (const p of s) { process(p); if (++seen >= 25) ac.abort(); }
+```
+
+GOLANG:
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+defer cancel()
+// token may be empty string for first page
+req.Query.Set("cursor", token)
+stream, _ := client.StreamResponses(ctx, req)
+for stream.Next() { ev := stream.Event(); handle(ev) }
+```
+
+isabel: small doc nit: some older snippets used `null` vs "". Good we normalize to "". Add a one-line migration note: "If upgrading: change default cursor nil -> \"\" (server treats as start-of-list)."
+tanvi: added a one-line knob cheat under examples: "batching -> higher throughput; per-call deadlines -> bounded latency; TTL cache -> fewer cold starts."
+docs-bot: PR 611 updated: snippet smoke-tests passed and docs linter green.
+noah: planning to merge in ~15m unless any objections. will watch release-notes bot and follow up if users ask for expanded examples.

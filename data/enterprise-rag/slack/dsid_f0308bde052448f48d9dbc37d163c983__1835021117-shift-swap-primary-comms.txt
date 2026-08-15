@@ -1,0 +1,54 @@
+eng-oncall
+
+Alex G: starting handoff — I'm primary on the latency/P95 spike (svc-text-gen) right now. currently mitigation: scaled up pool, reverted to cpu-friendly model variant, cache warmup running. impact: elevated p95 for some customers, no full outage. paging still open (INC-2026-874).
+
+ops-bot: [ALERT] INC-2026-874 created · pages sent to @Alex G, @oncall-sre · priority: P2 · service: svc-text-gen
+
+Alex G: quick status: errors are low, tails are high at 2s->3s p95, throughput okay. root cause looks like increased tokenization latency after a traffic shift from a large customer. we've applied a temporary routing rule to steer that customer to a dedicated pool.
+
+Priya S: thanks — I'm taking primary shortly. estimated overlap 10 minutes. who will own comms to affected customers?
+
+Alex G: you drive after the handoff. I'll stay as secondary for 30m for context. Comms owner: Priya. Drive = triage/mitigation, Comms = external updates.
+
+Priya S: got it. can you paste the runbook snippet for the routing rollback and the quick query to check tokenization latency distributions?
+
+Alex G: sure — runbook steps (brief):
+```
+1) check /runbooks/svc-text-gen/latency-spike.md
+2) run: k8s exec -n inference svc-metrics -- curl localhost:9090/metrics | grep tokenization_latency
+3) apply routing: rdxctl route set svc-text-gen --selector customer=big-corp --pool dedicated-east --dry-run=false
+4) if p95 still >2s, revert model variant: rdxctl model set svc-text-gen --variant small-quant --force
+5) post update to #prod-status and notify account team
+```
+
+Jon H: note: the pool autoscaler might be slow; scaling showed +2 nodes but they aren't warmed yet. warmup status: 40% warmed (kv cache build).
+
+Priya S: thanks. I'll run the routing set and monitor. Comms plan: short update to #prod-status, then DM account team (marta) with impact note. draft: "We're seeing elevated p95 for svc-text-gen due to increased preprocessing latency for Big Corp traffic. We've rerouted their traffic to a dedicated pool and latencies are improving. Investigating root cause and will provide follow-up in 30m." sound good?
+
+Marta L: yes that works. I'll prep the account note and be on standby for any escalation to CS. Please ping me when you put it in #prod-status.
+
+Priya S: putting update now. (posts)
+
+Priya S: #prod-status: INCIDENT INC-2026-874 — Elevated P95 on svc-text-gen impacting a subset of customers. Mitigation: traffic steering to dedicated pool, model variant fallback available. Owning oncall: Priya S (primary). Secondary: Alex G. Comms: Marta L. ETA next update 25m.
+
+Alex G: thumbs for handoff — I'm watching traces and can jump in if rollback needed.
+
+ops-bot: [EVENT] Pager silence window scheduled: 10m overlap between Alex G -> Priya S (handoff period).
+
+Priya S: starting active triage: I ran the routing change, verified 200 OK from rdxctl, now watching per-customer p95. initial samples show drop from 3.1s -> 1.8s for Big Corp.
+
+Jon H: FYI watchlist: model-quantization job kicked off earlier, might be causing higher mem pressure. if mem climbs >85% on inference nodes, we should shift traffic earlier.
+
+Priya S: noted. Alex, anything I should keep you in the loop on before you drop to secondary?
+
+Alex G: leave me on the thread, send me immediate p95 breaches >2.5s. If we need to revert model variant, tag me and run the revert together (I have the revert credentials).
+
+Priya S: will do. handing over now — primary := Priya S. Alex, thanks for the detailed notes.
+
+Alex G: thanks. leaving the bridge open for 30m. good luck. :thumbsup:
+
+Marta L: prepping account message now, will send once you confirm sustained improvement 10m from now.
+
+Priya S: confirm last_message_ts note — 10m check looks stable: p95 at ~1.7s across sample. I'll follow-up with a postmortem action: ensure tokenizer config pinned for Big Corp traffic.
+
+Priya S: closing handoff thread — primary transferred. further updates will be in INC-2026-874 incident channel.

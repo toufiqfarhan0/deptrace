@@ -1,0 +1,39 @@
+partnerships
+
+Maya (Alliances): Quick note1 We need a compact arbitration flow for AtlasHW launch so we don't block joint announce. Mostly marketplace vs SI claims + high-ACV escalations.
+
+Gavin (Marketplace): Marketplace gets first-touch for paid checkouts and trials. But if SI has prior signed doc or ran a pilot, they should be able to claim.
+
+Omar (SI-Atlas): Agreed. Our ask: 10-day claim window after first SI engagement, evidence = SOW/MOU or partner-signed PDF. No screenshots.
+
+Priya (Legal): Evidence definition OK. MOU/SOW must include customer name, partner sig + date. Legal will draft short addendum text for partner contracts.
+
+Sam (CRM Ops): To automate we need new CRM fields: origin_source, partner_claim_ts, evidence_type, evidence_url, first_paid_ts, acv_estimate. Ops can add them with a ticket.
+
+intake-bot: Example intake payload accepted:
+```norigin: marketplace|si|referral
+partner_claim_ts: <unix_ts|null>
+evidence_type: MOU|SOW|meeting_notes|null
+evidence_url: https://...
+first_paid_ts: <unix_ts|null>
+acv_estimate: <number|null>
+```nRouting pseudo:
+```nif account.active_enterprise_contract == true -> OWNER=AE
+else if evidence_type in [MOU,SOW] and evidence_ts < first_paid_ts -> OWNER=SI
+else if origin==marketplace and days_since_purchase <= 30 -> OWNER=MARKETPLACE
+else if partner_claim_ts and days_between(partner_claim_ts, first_si_engagement_ts) <= 10 -> OWNER=SI
+else if acv_estimate >= 250000 -> OWNER=AE_ESCALATE
+else OWNER=MARKETPLACE
+```
+
+Maya (Alliances): Also add pilot exception: if SI logged >=2 technical sessions in intake -> OWNER=SI. intake-bot should post to #partners-atlashw when OWNER=SI or AE_ESCALATE.
+
+Gavin (Marketplace): OK. For crediting, we'll show provisional splits in lead notes until legal finalizes.
+
+Priya (Legal): I'll circulate draft addendum and crediting guidance by Tue.
+
+Sam (CRM Ops): I'll open ticket CRM-5182 to add fields + webhook. ETA 4 business days.
+
+Omar (SI-Atlas): We'll bulk-upload evidence for current leads today.
+
+Maya (Alliances): Action list: 1) Priya -> addendum draft (Tue) 2) Sam -> CRM ticket CRM-5182 (in flight) 3) Omar -> evidence upload (EOD) 4) Gavin -> flag recent marketplace purchases older than 30d for review. Schedule a 30m dry-run after ops ticket. React when started. :eyes:

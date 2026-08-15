@@ -1,0 +1,25 @@
+new-hires
+
+alex_lopez: Hi all — onboarding question. I spun up the repo's docker-compose but my app keeps crashing with `FATAL: role "redwood" does not exist`. I didn't modify envs, used a bind mount `./pgdata:/var/lib/postgresql/data` so I think the DB got initialized somehow without the right user. Any quick wins before I nuke my local data?
+
+maya_ng: @alex_lopez two quick checks: is POSTGRES_USER set in your compose or .env? If the data dir already exists the postgres entrypoint won't re-run init scripts, so the user won't be created.
+
+alex_lopez: I have POSTGRES_USER=redwood in .env (copied from .env.example). docker-compose up shows the env being picked up. I suspect the bind mount came from an old attempt by me. How do I safely reset it?
+
+samir_p: If you're ok losing local db state, `docker-compose down -v` will remove named volumes but not host bindmounts. Since you're using host bind `./pgdata`, you need to `rm -rf ./pgdata/*` (or move it) so the container can initialize fresh. Also watch for permission issues if files are root-owned.
+
+maya_ng: If you want to avoid deleting everything, you can chown the directory to the postgres UID used in the image (usually 999). e.g.: `sudo chown -R 999:999 ./pgdata` then restart. That lets the entrypoint initialize.
+
+irene: Another option if you want to keep the data: exec into the container as the postgres superuser and create the role manually: `docker-compose exec db psql -U postgres -c "CREATE ROLE redwood WITH LOGIN PASSWORD 'password';"` Replace password accordingly. But only works if the container's postgres can start and accept local connections.
+
+alex_lopez: Quick followup — earlier the container logs had `initdb: directory exists` then skipped init. So sounds like a stale dir. I'll backup and nuke.
+
+dev-env-bot: Reminder: onboarding doc "local-dev-DB" has a note about host bindmounts and resetting data. Link: https://redwood.example/docs/onboarding/local-db
+
+samir_p: Also check your .env file format — sometimes stray BOM or spaces can cause Docker Compose not to load envs. `cat -A .env` to inspect hidden chars.
+
+alex_lopez: Ok I moved `./pgdata` to `./pgdata.bak`, ran `docker-compose up` and now the DB initialized and my app no longer throws the role error. Thank you! :tada:
+
+maya_ng: Awesome — welcome aboard! If you want, we can walk through a tiny script to reset safely next time: `./scripts/reset-local-db.sh` that moves the dir then restarts.
+
+alex_lopez: Yes please that'd be great. I'll ping you to pair later today. Thanks again! :pray:

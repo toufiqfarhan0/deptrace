@@ -1,0 +1,49 @@
+support
+
+Liam (CS): Heads up — customer 'stark-ind' opened a ticket: multiple backend services getting TLS errors to our Private endpoint in their VPC since rotation this morning.
+Jess (Support): Can you paste the exact error they reported?
+Liam (CS): They see java.security.cert.CertPathValidatorException: signature check failed and curl gives: "SSL: certificate subject name does not match" intermittently.
+Maria (Eng): That combination could be chain ordering or missing intermediate, or possibly we uploaded a cert with wrong SAN during rotation. Which rotation job ran?
+Alex (Infra): Rotation job ID rot-20240504-0623 ran at 06:23 UTC. Our upload logs show a 403 from customer-bucket on the first attempt. Retries succeeded later, but I'm seeing a partial artifact set on the instance.
+Sam (Oncall): Do we have any TLS handshake logs from the private gateway?
+Alex (Infra): Pasted from gateway logs:
+```
+2024-05-04T06:24:10Z tls: handshake error: x509: certificate signed by unknown authority
+2024-05-04T06:24:11Z tls: client hello for host private.stark.example
+2024-05-04T06:24:11Z tls: presented certificates: 1 cert(s)
+```
+Jess (Support): Customer says some of their services (go apps) work fine; their Java microservices fail. Typical AIA/OCSP/fetch behavior differences.
+Liam (CS): I asked them to run these debug commands and send output:
+```
+openssl s_client -connect private.stark.example:443 -servername private.stark.example -showcerts
+openssl x509 -in cert.pem -text -noout
+```
+Maria (Eng): They returned the s_client output showing only the leaf certificate and no intermediate(s). Chrome flagged NET::ERR_CERT_AUTHORITY_INVALID. That explains the discrepancy.
+Alex (Infra): Root cause likely: rotation uploaded only leaf.pem to the VM due to temporary permission failure on S3 PUT; later cleanup left leaf present but not the intermediate.
+CertBot: cert-rotator: rot-20240504-0623 attempt 1 -> 403 Forbidden; attempt 2 -> success but missing post-upload verification (no fullchain check).
+Maria (Eng): Action items: 1) Restore full chain on the customer's private gateway (fullchain = leaf + intermediate [+ root optional]) 2) Restart gateway process to pick up cert 3) Patch cert-rotator to validate fullchain after upload and fail/rollback on mismatch 4) Add IAM fix so upload won't 403 5) Add support playbook for manual combine + restart.
+Jess (Support): Manual remediation snippet I sent to customer (and can run if they provide access):
+```
+# combine certs in order: leaf -> intermediate -> (root optional)
+cat leaf.pem intermediate.pem > fullchain.pem
+# place on gateway
+sudo cp fullchain.pem /etc/redwood/ssl/private.stark.example.crt
+sudo cp privkey.pem /etc/redwood/ssl/private.stark.example.key
+sudo systemctl restart redwood-private-gateway
+# verify
+openssl s_client -connect private.stark.example:443 -servername private.stark.example -showcerts
+```
+Sam (Oncall): Also asked customer to temporarily open egress for OCSP/AIA endpoints if they can — helpful for clients that try AIA fetching; they said they have strict deny-by-default policies.
+Alex (Infra): I've applied an IAM policy update to the rotator service role (s3:PutObject on customer bucket) — ticket INF-1241. Re-ran rotator with new validations.
+CertBot: cert-rotator: re-run rot-20240504-0623 -> upload succeeded; post-upload s_client check now passes (full chain presented).
+Maria (Eng): I'll push a small change to cert-rotator to require a two-step verification: (1) list objects and checksum, (2) s_client against the endpoint via our control plane to ensure chain length >=2. If verification fails, rollback and alert.
+Liam (CS): Customer confirmed Java services recovered after we re-deployed fullchain and restarted gateway. They kept curl tests green as well.
+Jess (Support): Documenting follow-up for customer: recommend allowing OCSP responses and AIA if possible for smoother rotations; offered to run rotations during maintenance windows.
+Sam (Oncall): Follow-ups for internal teams:
+- eng-runtime: add rotation incomplete alert to ops dashboards
+- infra: ensure rotator has least-privilege but reliable bucket access; add retries/exponential backoff
+- support: add short playbook entry for "missing intermediate" with commands above
+Alex (Infra): Marking incident as resolved pending 48h stability check.
+DeployBot: deploy: cert-rotator v1.3.5 -> prod (includes post-upload verification)
+Maria (Eng): Root cause summary: cert-rotator experienced transient S3 403 during rotation which resulted in only leaf being deployed to private gateway. Clients without cached or fetched intermediates failed validation. Secondary contributor: customer's strict egress deny prevented OCSP/AIA recovery for some clients.
+Liam (CS): Customer will confirm after 24h; closing ticket if stable. Thanks everyone.

@@ -1,0 +1,24 @@
+product
+
+maya: Quick design review — updated facets layout in Figma: https://www.figma.com/file/xxxxx/catalog-facets-compact
+frank: looked — main thing: when many facets, chips overflow. Need collapsed state + count, horizontal scroll feels bad on touch
+sam: accessibility note: keyboard nav between chips, visible focus ring, and aria-label for each filter group (e.g., "Filter: Size")
+frank: also badges for performance/throughput — meaning isn't immediately obvious. suggest explicit tooltips and a legend on hover
+lina: agree. avoid color-only signals. add small icon + text in tooltip; ensure contrast for badge text (aim for >=3:1 for small labels)
+maya: on version pinning — currently a tiny pin icon on each row, folks keep missing it. options: bold pin affordance, or surface a sticky "Pinned version" bar when one or more versions are pinned
+sam: sticky bar seems more discoverable. keyboard users can tab to it if it's in DOM order. also provide an aria-live status when a version is pinned/unpinned
+frank: implementation note: back end already stores user pinned_versions per-catalog, so persistence per-user is easy. need UX agreement on placement and copy
+maya: copy tweak proposal: change tooltip from "Pin model" to "Pin version to keep in compare across sessions" — longer but clearer
+lina: microcopy for badges: instead of "perf: 90ms median" suggest "90 ms median latency" (space and unit clarity). Also a condensed hover detail: "90 ms median latency · 99th 250 ms · 12k qps"
+frank: tiny CSS for focus ring on chips, copy for devs:
+```css
+.chip:focus{outline:2px solid var(--accent);box-shadow:0 0 0 3px rgba(0,120,255,0.12)}
+```
+maya: nice — I'll add that to the component token doc. Question: when many filters are active, should we collapse into a single summary chip like "3 filters active" with a popover to expand?
+sam: yes — summary chip needs aria-haspopup and an accessible label like "3 filters active, press enter to open filter summary"
+lina: visual idea: summary chip shows small stacked icons representing groups, then the count. expands to a panel with quick-clear CTA
+maya: OK — I'll update Figma to include summary chip, sticky pinned bar mock, and updated badge legend. can we get a quick mock for the sticky bar?
+lina: I can do a draft by EOD and post here
+sam: I'll run contrast checks against the new badge colors and post screenshots before EOD
+design-bot: Added UX review checklist item: "chip keyboard nav, focus states, badge legend, pinned bar visibility" to the thread
+maya: thanks all :thumbsup:

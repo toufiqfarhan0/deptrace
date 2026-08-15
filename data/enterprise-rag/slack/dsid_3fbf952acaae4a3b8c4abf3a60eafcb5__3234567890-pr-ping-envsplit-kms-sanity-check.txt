@@ -1,0 +1,42 @@
+eng-security
+
+maya: Hey sec team — quick ping: I opened PR https://github.com/redwood-inference/repo/pull/4521 to split ENV secrets between hosted vs private (envsplit). It wires in KMS for onprem but leaves fallback for hosted. Can someone sanity-check the auth surface + egress during merge window? cc @jess @sec-bot
+
+jess: Looking now. main question: are we creating any new privileged service accounts? If yes we need ticket + approver.
+
+sec-bot: Automated scan: no clear secret leaks. KMS policy attached: projects/redwood-prod/kms/keys/envsplit-key — ensure IAM roles limited.
+
+liam: PR looks small. The new env var loader touches tenant-init and kube-sidecar. Are we restricting SA tokens to namespace? prefer token projection over host mounts.
+
+maya: Yes, it's token-projection and namespace-limited. Added tests in e2e and a config snippet:
+```
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tenant-init
+  namespace: tenant-*
+```
+
+ana: (typo) — wait wrong name.
+
+ana: Sorry ignore previous.
+
+ana: One more ask: update docs on runbooks for key rotation? If we rotate KMS key will we need rolling restart? annotate steps.
+
+jess: Good catch. We should add a note: rotation => restart init job only. I'll add to PR.
+
+maya: Merge timing? want to land during next 2hr low-traffic window (tomorrow 10:00 UTC). @liam any objections?
+
+liam: fine. just add a quick smoke plan and rollback steps.
+
+maya: added section in PR description. Thanks :thumbsup: 
+
+sec-bot: Reminder: add "security-review:approved" label and include PR in weekly compliance export.
+
+ana: Approved from privacy POV — no PII change.
+
+jess: LGTM from sec, minor nit on log redact. we'll ship after window.
+
+liam: I'll be oncall during the window.
+
+maya: Thanks everyone. Filing follow-up ticket for rotation docs: https://issues.redwood.ai/1234

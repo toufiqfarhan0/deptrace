@@ -1,0 +1,95 @@
+eng-ml
+
+jamie: Heads-up — starting a quick smoke bench for harrow13b to validate serving config before cataloging. weights are at s3://redwood-models/harrow/13b/v1/
+
+sara: thanks. any known tokenizer quirks for harrow? last time a model with similar vocab split emojis weirdly.
+
+jamie: good q. initial tokenization looks fine for en, but we hit occasional long-token glue on CJK and some punctuation. sending sample failures.
+
+leo: can you drop the sample? I can run the tokenizer locally and poke the vocab.
+
+jamie: pasted the failing inputs here:
+```
+- "おはようございます!!!"
+- "user@example.com"
+- "COVID-19/variants"
+```
+Getting tokens like: "おはよう", "ござい", "ます!!!" (not ideal)
+
+ana: that looks like a sentencepiece config mismatch. Harrow was trained with spm_model_v2, need to ensure tokenizer config points to `spm_model_v2.model` not `spm_model.model`
+
+sara: pinging @leo to check the model card — does the catalog metadata include tokenizer_model: spm_model_v2?
+
+leo: metadata currently has `tokenizer: spm_model` (oops). I'll update the catalog manifest.
+
+jamie: thanks. Also validating runtime config: using CLI `rw-bench run --model harrow13b --batch-sizes 1,2,4,8 --seq-len 512 --quant nf4` — should I include kv-cache warmup flag?
+
+ana: yes include `--kv-warmup 3` to prime cache for p99 measurements. Also run cold-start once for baseline.
+
+sara: for throughput runs, try `--concurrency 16` and `--duration 60s` after warmup.
+
+jamie: running now. sharing initial metrics.
+
+deploy-bot: bench job 1717601240 queued on bench-runner-3
+
+jamie: quick paste of results (cold start then steady):
+```
+- batch=1: p50=35ms p95=120ms p99=210ms qps=28
+- batch=2: p50=38ms p95=130ms p99=250ms qps=52
+- batch=4: p50=60ms p95=210ms p99=380ms qps=95
+- batch=8: p50=120ms p95=420ms p99=820ms qps=140
+```
+
+leo: interesting p99 rise after batch=4. what's GPU mem and kernels? Are you on a4? nvcache on?
+
+jamie: runner=https://runner-3.internal (A10G), nv_cache enabled, kernel set uses fused-attn fallback. Using default kernel-selection: `kernel_profile: auto`
+
+ana: try forcing `kernel_profile: low_latency` for batch <=2 and `throughput` for >=4. Also consider lowering `max_tokens` to 384 for latency SLOs.
+
+sara: also flag `prefetch_kv=false` can reduce jitter for small batches sometimes.
+
+jamie: re-run with suggested kernels and kv warmup=5. will post new numbers in ~5m.
+
+deploy-bot: bench job 1717601320 started on runner-3
+
+jamie: updated numbers:
+```
+- batch=1 (low_latency): p50=30ms p95=95ms p99=160ms qps=32
+- batch=2 (low_latency): p50=34ms p95=110ms p99=190ms qps=58
+- batch=4 (throughput): p50=55ms p95=180ms p99=320ms qps=110
+- batch=8 (throughput): p50=110ms p95=400ms p99=700ms qps=150
+```
+
+sara: nice improvement on small batches. For catalog entry we should recommend default batch-size range 1-4 with suggested kernel_profile mapping and a note about CJK tokenization.
+
+leo: I'll update the model card to include:
+- weights: s3://redwood-models/harrow/13b/v1/
+- tokenizer: spm_model_v2.model
+- default_batch_sizes: [1,2,4]
+- kernel_profile_map: {"<=2":"low_latency",">=4":"throughput"}
+- notes: "tokenization may split CJK punctuation, consider sentencepiece v2"
+
+ana: also add a quick config snippet for Private/Dedicated: 
+```
+serve_config:
+  kv_warmup: 5
+  max_tokens: 384
+  prefetch_kv: false
+  quant_profile: nf4
+```
+
+jamie: one last QA: CI flagged a config validator error earlier: `invalid_field: prefetch_kv` when testing with the old schema. Is the validator schema updated?
+
+leo: ah schema v3 added prefetch_kv; older validator in the repo may be pinned. I'll open a tiny PR to bump schema and add unit test.
+
+sara: if you can, include bench artifact logs and a short runbook note about when to pick batch=8 (only for throughput-heavy offline jobs) — we don't want folks to pick large batch by default.
+
+jamie: will attach logs to the catalog PR. thanks everyone. marking as ready-for-catalog once leo updates manifest and the validator PR merges. :thumbsup:
+
+deploy-bot: bench job 1717601320 completed (artifacts: s3://bench-arts/1717601320/)
+
+ana: copied the artifact link into the PR review. quick follow-up: could we add a tokenizer unit test into the onboarding checklist to catch spm_model vs spm_model_v2 regressions?
+
+leo: good idea. will add test `test_tokenizer_model_matches_card` to the onboarding-suite.
+
+jamie: great. closing thread — will ping if anything else pops up.

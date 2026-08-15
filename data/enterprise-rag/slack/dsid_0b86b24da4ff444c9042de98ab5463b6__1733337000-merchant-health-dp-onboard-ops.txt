@@ -1,0 +1,18 @@
+product
+
+Priya (PM): kickoff: Merchant Health DP planning. Need recruit targets, hard/soft acceptance gates, feedback loop, and incentives. 10m sync.
+Noah (Eng): recommend small private-first cohort to validate infra. suggest 5 private seats then scale.
+Sofia (Solutions): agree. Merchant Health requires PCI-lite controls, so cohort1 must be private with partner KMS.
+Dara (Research): we'll prepare a compact eval set (6 canonical flows + partner example cases). need partner consent for example traces.
+Priya (PM): draft gates:
+- Security: private + partner KMS (cohort1)
+- Quality: no P0s on canonical eval; critical field hallucination <2%
+- Ops: engineering hotfix window 72h for criticals (soft for cohort1)
+Noah (Eng): note: private installs add 2-4 business days for network setup. we'll add a preflight checklist.
+infra-bot: Reminder: telemetry retention default 90d. Request extension via infra/telemetry-retention.
+Sofia (Solutions): feedback channels: in-app quick flag, structured issue with sample artifact, weekly 30m sync. for urgent P0s open incident bridge.
+Dara (Research): telemetry payload we need: input_id, anonymized_user_id, model_variant, label, notes. will auto-run weekly diffs.
+Priya (PM): incentives: 3-month reduced Dedicated pricing + priority onboarding slot. ok?
+Sofia (Solutions): works. helps justify private setup effort.
+Noah (Eng): action items: preflight checklist PR (Noah), eval set (Dara), partner playbook draft (Sofia), legal blurb for KMS/data retention (Priya). due EOD Thu.
+Priya (PM): thanks. I'll assemble partner one-pager and send to Merchant Health leads. ping here with blockers. :rocket:
