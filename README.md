@@ -7,10 +7,12 @@ DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tr
 ```
 deptrace/
 ├── backend/
-│   ├── semantic/                     # Semantic extraction schema & validation (Step 6A)
+│   ├── semantic/                     # Semantic extraction schema, sampling & validation (Step 6)
 │   │   ├── __init__.py
 │   │   ├── schema.py                 # Semantic entity, statement & extraction models
-│   │   └── test_schema.py            # Validation unit tests
+│   │   ├── sample_messages.py        # Deterministic 100-message evaluation sampler (Step 6B)
+│   │   ├── test_schema.py            # Schema validation unit tests
+│   │   └── test_sample_messages.py   # Sampler invariant and coverage unit tests
 │   ├── extraction/                   # Semantic extraction foundation & slice runner
 │   │   ├── __init__.py
 │   │   ├── schema.py                 # Semantic entity and statement schemas + provenance
@@ -38,6 +40,7 @@ deptrace/
 
 ## Features
 
+- **Deterministic Evaluation Sampler (Step 6B)**: Generates a balanced, reproducible 100-message benchmark sample across customer, incident, decision, code, long, short, relationship, and bot categories.
 - **Semantic Extraction Schema & Validation (Step 6A)**: Standardized, strongly-typed semantic extraction contract (`SemanticExtraction`, `SemanticEntity`, `SemanticStatement`) with strict validation rules and provenance tracking.
 - **HydraDB Graph Foundation**: Canonical ontology with standalone `MERGE` write patterns and multi-hop Cypher queries.
 - **Deterministic Candidate Ingestion (Step 5B)**: Converts candidate graphs into supported standalone `MERGE` statements with embedded properties and integer IDs into HydraDB.
@@ -103,9 +106,17 @@ deptrace/
    python backend/graph/verify_ingestion.py
    ```
 
+### Deterministic Semantic Extraction Sample (Step 6B)
+
+Generate the 100-message representative sample:
+
+```bash
+python backend/semantic/sample_messages.py
+```
+
 ### Running Tests
 
-Run pytest for schema validation and full suite:
+Run pytest for full test suite:
 
 ```bash
 python -m pytest -q
