@@ -1,0 +1,53 @@
+eng-runtime
+
+miguel: Heads up — after flipping the FP8+INT8 hybrid kernels on H100 earlier this morning I started seeing intermittent throughput drops during KV warmup. Not a full outage but p99 spikes and bursty drops in tokens/sec.
+
+miguel: Quick summary: baseline (FP16) steady at ~125k tok/s. After FP8 hybrid: median ~118k but periodic 15%+ p99 spikes, and observed KV cache evictions coincident with spikes.
+
+miguel: Minimal repro notes: 10k small requests/sec, seq_len distribution skewed to short queries, KV warmup enabled, transformer_engine config: `auto_kernel_select: true`, `batching: adaptive`, `kv_prefetch: on`.
+
+miguel: Extract from runtime logs around spike (raw):
+```
+[2026-03-18T03:14:05Z] kernel_select: selected=fp8_hybrid_v2 fallback=int8_v1
+[2026-03-18T03:14:05Z] kv_cache: eviction_start=312 entries evicted=312
+[2026-03-18T03:14:05Z] perf: tokens/s=97.3k p99=261ms
+[2026-03-18T03:14:05Z] runtime: cuda_stream_sync=8.3ms, kernel_latency_outlier=1
+```
+
+miguel: Notably the selector oscillates between fp8_hybrid_v2 and int8_v1 roughly every 20s when the warmup traffic is happening. Might be instability in the throughput estimator used by the selector.
+
+sara: thanks for the writeup. do we have a quick perf profile (nvprof/nsys) or just runtime counters? :eyes:
+
+miguel: only runtime counters so far. can run nsys on a repro instance — want me to capture a 2-min trace?
+
+alex: yes please, nsys 2 min with `--capture-range=nvtx` would help. also enable `selector.debug=1` to get decision logs.
+
+lina: curious if quant calibration jitter is amplifying selector noise. did we run a calibration sweep for the fp8_hybrid_v2 on these sequence length distributions?
+
+miguel: we used the default calib profile (sparse short sequences). i can re-run calibration with a more representative prompt set. putting it on my list.
+
+sam: quick thought — selector uses moving avg of tokens/s over last 30s; warmup can cause steep transient due to KV prefetch costs. maybe lower weighting on immediate samples or add hysteresis to kernel handoff?
+
+alex: agree. add a 3s cooldown after a fallback decision before switching kernels again. that was cheap in earlier experiments.
+
+miguel: noted. i'll test two changes: (A) nsys trace + selector.debug, (B) cooldown=3s + smoothing window=60s, (C) re-calibrate fp8_hybrid_v2 with warmup traffic.
+
+ops-bot: Deployment_event: started job fp8-debug-repro on h100-pool (job id: fp8-debug-1930) :gear:
+
+bench-bot: FYI trigger: smoke suite shows 12% throughput variance under mixed short/long mix after FP8 flip (run id 20260318-03:30).
+
+sara: miguel — if you need a quick config patch we can push canary to 1 node to validate cooldown change before fleet.
+
+miguel: will do canary. target to capture traces + run canary by 04:30 UTC. i'll drop the nsys link + findings here once done. thanks! :thumbsup:
+
+lina: also add a metric to track "selector_switch_rate" per minute per node so we can alert if it exceeds threshold. that would have flagged this earlier.
+
+miguel: adding it now. filing a followup issue: #INF-2042 — "FP8 selector oscillation under KV warmup on H100"
+
+alex: great. after traces are up we should check kernel internal memory footprints too — fp8 paths alter temp buffer sizes which may bump eviction thresholds.
+
+miguel: noted — will include memory deltas in the trace annotations.
+
+sara: thanks, team. small checklist: nsys trace, selector.debug logs, canary with cooldown, recalib, add selector_switch_rate metric.
+
+miguel: update: nsys trace uploaded to s3://redwood-perf/fp8-debug/1930001111.nsys (will post link after scan).

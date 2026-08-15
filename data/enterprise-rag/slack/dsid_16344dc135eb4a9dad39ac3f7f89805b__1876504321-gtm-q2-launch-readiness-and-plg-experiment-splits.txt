@@ -1,0 +1,32 @@
+marketing
+
+sara_pm: Quick GTM readiness check for Q2 launch + PLG spin. Target ship window week of May 10. Need to lock launch gating and split plan for the in-product trial A/B. Main items: seller motions, enablement, experiment splits, analytics/events, infra ramp.
+kevin_mktg: my initial thought — default experiment split 20% control / 80% treatment for quickest signal, but we should reserve 10% holdback for sales-only pilot.
+ashley_sales: we need clear seller KPIs. If pilot for sellers runs, set quota credit rules: 50% of conversion credit for assisted signups, 100% for direct closes. Also need playbook by Apr 28.
+pablo_eng: backend parity note — the trial gating requires tokenized entitlement check + async refund path. ETA for infra work is 2 wks if we cut non-critical telemetry. Will need a canary plan.
+megan_growth: prefer 10/70/20 split if we want holdback + EU compliance bucket (older GDPR review might slow EU). 10% control / 70% treatment / 20% EU holdback.
+chris_ops: scaling note — rolling from 1% -> 80% in 3 days is risky. Recommend staged ramp: 1% -> 10% -> 35% -> 80% over 7 business days behind feature flag. Also need autoscaling policy validated.
+devex_bot: event schema proposal pasted: ```json
+{
+  "event": "trial_started",
+  "user_id": "<id>",
+  "variant": "control|treatment|eu_holdback",
+  "ts": "iso8601"
+}
+``` track `trial_converted` and `trial_expired` too. QA to confirm instrumentation by Apr 22.
+olivia_gm: Revenue target for this launch: incremental ARR target $1.2M over Q3 if conversion lifts by +2.5pp. If we do seller enablement simultaneously, plan for a 30% uplift in enterprise conversions.
+jason_pm: rollout gating checklist: feature flags ✅, analytics events ✅, seller playbook ✅, legal signoff for EU ✅, infra scaling test ✅. If anything missing we hold GA.
+sara_pm: Decisions so far: go with 10/70/20 split (megan suggestion) to cover EU and holdback; staged ramp per chris_ops; seller playbook due Apr 28 (ashley); instrumentation due Apr 22 (devex_bot); eng to deliver entitlement + canary by Apr 24 (pablo). Owners: kevin -> marketing creative, ashley -> enablement, pablo -> infra, megan -> growth metrics, chris -> run ramp, jason -> gating checklist.
+sara_pm: Follow-ups: 1) kevin please confirm variant names and copy by Apr 18, 2) devex_bot please post tracking PR link when ready, 3) chris_ops schedule load test for Apr 26.
+kevin_mktg: on it — will post copy drafts and variant labels by EOD Apr 18. Working with design to keep trial CTA consistent.
+ashley_sales: noted, I'll draft seller playbook template and weekly FAQ doc for sellers. Can we get a recording slot in the playbook launch week?
+pablo_eng: will scope work and put PRs up early. If we hit blockers, will triage with the PMs.
+megan_growth: I'll set up the experiment dashboard and retention cohorts; will include EU as separate dimension.
+chris_ops: scheduled preliminary load test Apr 26, full ramp test Apr 30. tagging infra-sre.
+jason_pm: I'll maintain gating checklist in the shared doc and update statuses daily.
+sara_pm: OK — thanks everyone. If no blockers by Apr 20 we move to build. :thumbsup:
+kevin_mktg: :thumbsup:
+ashley_sales: 
+megan_growth: 👍
+devex_bot: instrumentation ticket #3421 created: https://tickets.company/3421
+sara_pm: I'll close thread once Apr 20 checkpoint passes.

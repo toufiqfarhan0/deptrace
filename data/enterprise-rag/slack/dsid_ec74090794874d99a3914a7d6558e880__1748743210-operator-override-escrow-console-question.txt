@@ -1,0 +1,35 @@
+eng-platform
+
+anya: Quick q — can we make operator overrides go to an "escrow" state so two people must approve before it becomes live? Running into accidental single-operator rollouts.
+
+matt: +1, we've had one incident where a quota bump slipped through. Suggestion: escrow + 24h auto-expire.
+
+kevin: Are we talking console-level UX or API change? Both affect audit logs.
+
+anya: Both. Console should show 'Pending Escrow (1/2)' and API should return a 202 with escrow_id.
+
+sophie: Sounds good. Need telemetry: how often do overrides get approved within 1h vs expired. We should gate rollout if approvals < 2 and change increases risk score.
+
+leo: Implementation notes: we can reuse /v1/config/overrides but change semantics. Example API draft:
+
+```
+POST /v1/config/overrides
+{
+  "target": "route:read-heavy",
+  "patch": {"max_qps": 800},
+  "operator_id": "anya",
+  "mode": "escrow"
+}
+
+200 -> {"escrow_id":"esc_123","status":"pending","approvals":1}
+```
+
+matt: For ops, add `escrow_reason` and optional `slo_risk` field so rookies can't bypass.
+
+kevin: How do we handle emergency bypass? Add a required two-step: emergency_bypass requires `director_approval=true` in request and creates an audit hook + emailed ack.
+
+ops-bot: deploys: canary deploy for escrow flow enabled on prod-alpha at 2025-03-15T14:20Z :rocket:
+
+deploy-bot: alert: feature-escrow toggled in console for 10% of orgs — monitor errors
+
+anya: I'll draft a small RFC + console mockups and ping infra for telemetry counters (escrow_created, escrow_approved, escrow_expired). Thanks all.

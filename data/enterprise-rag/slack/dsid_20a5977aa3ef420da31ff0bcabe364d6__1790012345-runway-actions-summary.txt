@@ -1,0 +1,16 @@
+all-hands
+
+Elena (CFO): Following up on finance Qs from the all-hands. Short thread to capture decisions and next steps.
+Diego (Eng): thanks  what's the runway again? heard mixed numbers.
+Elena (CFO): Base-case runway = ~16 months (current signed ARR). Stress-case ~10 months if growth decelerates 30%.
+Marta (Hiring): do we pause hiring/offers?
+Elena (CFO): Not a freeze. Only roles approved as 'mission-critical' by the hiring committee proceed; others paused and reviewed weekly.
+Diego (Eng): procurement thresholds for infra (GPUs/cloud)?
+Asha (FinanceOps): effective immediately: < $25k = budget owner; $25k-$150k = owner + finance manager; > $150k = owner + finance director + CFO review + 1-page ROI for capital impact. Use https://redwood.internal/procure.
+Priya (Sales): discount caps for Dedicated deals changing?
+Sam (CEO): no blanket price increase; discount bands tightened. Sales ops will publish updated playbook this week.
+Diego (Eng): expedited path for customer-critical on-prem hardware?
+Elena (CFO): tag as 'customer-critical', loop Sales+Solutions+FinanceOps; we'll triage within 48 hours.
+SpendBot: automated note: "Infra initiative: target 12% run-rate reduction in 90 days via batching, spot, and quantization pilots."
+Asha (FinanceOps): action items: 1) FAQ + approval matrix posted in #finance by EOD; 2) hiring prioritization rubric published; 3) weekly finance office hours for infra budgets.
+Elena (CFO): DM Asha or me for sensitive items. Thanks everyone. :thumbsup:

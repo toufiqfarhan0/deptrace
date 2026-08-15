@@ -1,0 +1,32 @@
+eng-infra
+
+maria: quick FYI — PR #3587 (rename helper -> contextHelper) is ready but needs a second approval. i fixed the import ordering and one tiny doc comment, but left a question about the exported name.
+alex: on it, will take a look after standup (~30m).
+sam: quick skim: the change is small but touches a public helper; can we add a short compatibility note in CHANGES.md? otherwise looks fine.
+maria: good call, added a one-line entry in CHANGES.md and pushed.
+sam: also added a tiny suggestion — prefer `contextHelper` over `helperCtx` for readability. not blocking if you disagree.
+maria: i went with `contextHelper` to match other filenames. pushed an amend. ci kicked off (@ci-bot tag below).
+ci-bot: build #3587 — running checks...
+ci-bot: linters: passed
+ci-bot: unit tests: running
+ci-bot: unit tests: passed — all green :white_check_mark:
+alex: quick nit — please run the formatter before merge. small chance of trailing whitespace on one file.
+maria: running now:
+```
+make fmt && git add -A && git commit --amend --no-edit
+```
+maria: done and force-pushed. CI retriggering.
+ci-bot: build #3587 (rerun) — linters: passed; tests: passed.
+jason: looking — i like the rename, but can we rename the exported symbol in the package root to keep backward compat? maybe re-export the old name with a deprecation comment for one release.
+maria: good point. i added an export alias + deprecation comment:
+```
+// Deprecated: Helper is exported as ContextHelper. Use ContextHelper going forward.
+export const Helper = contextHelper;
+```
+maria: pushed as a fixup, will squash before landing.
+alex: looks safe. once ci is green i'm happy to approve.
+sam: approved :+1:
+jason: approved — thanks for the deprecation alias :thumbsup:
+maria: cool — merging in 10min unless anyone objects.
+alex: go for it.
+maria: merged and deleted branch. thanks all :tada:

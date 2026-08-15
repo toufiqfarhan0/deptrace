@@ -1,0 +1,31 @@
+eng-runtime
+
+anya: quick brain dump  we need a tenant-aware hedging/fallback protocol. goals: per-tenant latency budgets, deterministic fallback stacks, minimal cross-tenant blast radius.
+li: +1. do we want a centralized arbiter or local decisioning at the edge proxy?
+sam: leaning local  faster, but harder to enforce global cost budgets.
+jordan: local + central policy: local makes fast decisions using per-tenant SLO, central provides config and safety caps.
+maria: what signals are we going to use? latency p50/p95, token-per-request, kv-cache-hit, GPU-queue-length, model-quality-regressions?
+anya: propose probe signals: last 30s p95, model-quality-regression hook (small prompt eval), backend queue depth, and operator flags.
+li: how do we avoid oscillation? need hysteresis + rate-limit window. something like a token-leaky-bucket + cooldown per-tenant.
+sam: also define a "fallback-stack": prioritized list of variants. e.g. same-model 8-bit -> quantized 6b -> smaller family -> cached_short -> degrade. fallback should be ordered and idempotent.
+jordan: enterprise requirement: operator override + immutable audit trail for every auto-fallback event (reason + pre/post routing state).
+anya: quick API sketch for route config: 
+```json
+{"route":"/v1/generate","safepath":{"budget_ms":200,"fallbacks":["rwdx-8q","rwdx-6b-quant","cached_short"],"hysteresis_ms":1000}}
+```
+li: runtime concerns: per-tenant state in router increases memory. store only active-tenants in LRU; cold tenants use central default policy.
+maria: cache priming: when routing to smaller model, spin up async prefix-KV warmup if warmup budget allows. avoid blocking primary request unless budget generous.
+sam: session affinity: some workflows need KV continuity. fallback should prefer co-located smaller variants or cached responses that preserve session continuity.
+jordan: telemetry must include reason codes: "capacity", "latency", "quality_regression", "operator", "probe_failure"; include model-version, route, tenant_id, and pre/post token-cost estimate.
+anya: rollout plan: 1) read-only canary (observability) in single region; 2) enable auto-fallback for one internal tenant for 48h; measure triggers, cost delta, customer-visible latency.
+li: ops playbook: page if fallback rate >2% (or >500 events) for 10m OR cost delta >15% sustained 30m. provide automated rollback toggle.
+maria: long-term refactor: split router into tiny fast decision-plane (stateless cache + local signals) + control-plane for policy distribution and simulation.
+sam: policy DSL should be small: conditions on signals (p95>X, queue>Y), actions (route/hedge/fallback), cooldowns, and max-fallback-rate. evaluable in O(1) per request.
+anya: tests: unit sim for non-oscillation, integration for fallback ordering, chaos test where backend capacity drops 3x. rollout in small PRs: signal+logging -> local decision -> central caps.
+deploy-bot: deploy queued: tenant-hedge-v1 -> prod-canary scheduled 2026-04-01T16:00:00Z :rocket:
+jordan: I'll draft an RFC with API, DSL samples, and a sim harness.
+anya: add cost-accounting per-fallback-event (token-level delta).
+li: include hysteresis and eviction semantics tests in the RFC.
+maria: +1
+sam: lgtm
+anya: closing thread, will link RFC when ready :thumbsup:

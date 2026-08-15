@@ -1,0 +1,27 @@
+product
+
+zoe: Quick sync thread for a customer-driven private pilot (tenant: NorthStar). Product asks: per-tenant reserved concurrency, a fast prewarm path, KMS-based keys, and clear fallback + telemetry. Target: 6 week pilot. Need owners + minimal acceptance criteria.
+ben: From runtime: prewarm plan is serialized KV + lightweight model weight priming. Prototype estimate: 10 business days. Need exact perf targets to validate.
+arun: Infra: region-eu-west has some headroom. Can carve 10 soft-reserved slots immediately; hard-reserve (guaranteed nodes) needs ~3w. We also need an eviction policy and a pressure metric.
+clare: Security: KMS decrypt at boot is required. HSM can be deferred for pilot but we need audit log requirements and key rotation policy. ETA for scoping: 4 business days.
+zoe: Proposed minimal acceptance: 1) warm path p95 < 220ms for short prompts (<=64 tokens), 2) fallback routing defined with <=3% allowed to hosted under normal load, 3) KMS decrypt + per-key audit logs retained 30d, 4) billing/tags emitted for tenant usage.
+ben: That perf target seems reasonable. I'll include a perf harness and aim for p95 < 180ms on warm requests in staging to leave margin. Will post a small benchmark and config example.
+arun: Fallback rules: router prefers private slots, falls back to hosted if reserved_util > 85% for >12s. We'll emit metric reserved_slot_pressure and a fallback_count. Product needs to pick acceptable fallback % (zoe?).
+clare: Also require an attestable audit trail: every key unwrap event should be logged with tenant id, timestamp, and request id. We'll produce a minimal audit schema.
+zoe: Owners: runtime = ben (prototype + perf harness), infra = arun (carve slots + metrics + fallback), security = clare (KMS checklist + audit schema), product = zoe (acceptance tests + customer comms). Can each owner add ETA windows?
+ben: Owner runtime: 10 business days for prototype, + 6 business days for hardening and tests. ETA target end: May 18. I'll open a draft PR with perf numbers.
+arun: Owner infra: carve 10 soft slots by Apr 12, metrics + fallback rule by Apr 15, node add path if needed by May 3. I'll post capacity numbers and a simple flow diagram.
+clare: Owner security: deliver KMS checklist and audit schema by Apr 10. Will flag any compliance blockers early. HSM out-of-scope for pilot.
+zoe: Let's schedule a 30-min handshake Fri 9am PT to confirm API shapes and acceptance tests. Agenda: API config (reserved_slots + prewarm_ttl), perf targets, fallback thresholds, audit retention, rollback criteria. Add items here.
+ben: I'll bring the config snippet and perf targets. Example config draft I'll post: ```yaml
+reserved_slots:
+  tenant_id: northstar
+  count: 10
+  prewarm_ttl: 12m
+  fallback_policy:
+    threshold_pct: 85
+    sustain_secs: 12
+    route: hosted_pool
+```
+arun: Adding infra note: we'll expose reserved_slot_pressure and fallback_count metrics and an alert if pressure > 90% for 2mins. infra-bot: Meeting scheduled: "NorthStar pilot handshake" Fri 09:00 PT. Invites sent to @zoe @ben @arun @clare.
+zoe: Thanks all. I'll update the roadmap ticket with owners and dates and tag the customer. Ping here if anything slips. :white_check_mark:

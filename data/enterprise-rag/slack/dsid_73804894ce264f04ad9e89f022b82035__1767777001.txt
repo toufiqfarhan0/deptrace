@@ -1,0 +1,93 @@
+incidents
+
+incident-bot: Paging sam (oncall): High 5xx spike observed on inference-gateway us-west cluster (alert #INC-5802). @channel :rotating_light:
+
+sam (oncall): on it. pulling graphs now — where are we seeing errors first?
+
+lee (sre): gateway -> lb -> envoy-proxy -> model-pool. spike started ~1767776950, 5xxs peaked ~12% of requests, timeouts also up. grafana: https://grafana.redwood/display/alerts/INC-5802
+
+maria (eng-runtime): logs show a surge of 502/503 from envoy upstream: "no healthy upstream" and a lot of 504s. My hunch = routing or healthcheck flapping.
+
+jordan (support): we have two customer-reported errors: one enterprise customer saw requests failing in their integration tests, others reporting timeouts. Not widespread yet but reproducible.
+
+sam (oncall): steps — 1) gather quick blast radius (which services/endpoints). 2) try to remove retry amplification at edge. 3) potential rollback of recent LB route change (rolling out 30m ago).
+
+lee (sre): confirming — there was a routing tweak in the weighted-route rollout for /v1/stream -> model-pool-beta around 1767776800. It looks like prefix matching change accidentally shadowed exact routes, so most traffic goes to default cluster which is overloaded and triggers circuit-breakers.
+
+maria (eng-runtime): excerpt from envoy config that was applied in the rollout:
+
+```yaml
+virtual_hosts:
+  - name: inference
+    domains: ["*"]
+    routes:
+      - match: { prefix: "/v1/" }
+        route: { cluster: "model-pool-beta", weighted_clusters: { clusters: [{ name: "model-pool-beta", weight: 80 }, { name: "model-pool", weight: 20 }] } }
+      - match: { prefix: "/v1/stream" }
+        route: { cluster: "stream-service" }
+retry_policy: { retry_on: "5xx,connect-failure", num_retries: 2 }
+```
+
+maria (eng-runtime): the problem: the broader prefix `/v1/` route is matching before the more specific `/v1/stream` and also carries a retry_policy at the virtual_host level. That triggered retry amplification against model-pool-beta and overloaded it; circuit-breakers then ejected endpoints.
+
+sam (oncall): ok immediate mitigations: 1) disable retries at the envoy proxy in the cluster for model-pool-beta to stop amplification. 2) rollback the recent weighted-route to previous snapshot that had explicit regex/exact for `/v1/stream`. 3) scale model-pool temporarily. Who can do (1) now?
+
+lee (sre): I can flip the retry toggle. Running: `kubectl -n infra exec -it envoy-configmap-patcher -- patch-retry --cluster model-pool-beta --set retries=0` (helper script). Doing it now.
+
+ops-bot: running patch job on envoy fleet (canary first): canary set = envoy-us-west-02. Patch job id: pj-5802-01.
+
+lee (sre): canary applied to envoy-us-west-02. Observing logs... 60s
+
+ops-bot: canary patch success on envoy-us-west-02, rollout to remaining envoys in 30s unless rollback requested.
+
+sam (oncall): hold rollout for 30s and watch 5xx rate. If it drops, proceed. If not, rollback config to snapshot-1767776700.
+
+jordan (support): customers notified: "We're investigating elevated errors impacting inference calls in US-West. Our engineers are actively mitigating and we'll update in 15 min."
+
+maria (eng-runtime): also kicking an emergency scale: `kubectl -n models scale deployment/model-pool --replicas=12` to absorb in-flight retries and reduce circuit opens.
+
+lee (sre): 2min after canary patch — 5xx rate on canary node dropped from 15% -> 2.8%. Good signal. Proceeding to fleet.
+
+ops-bot: patch rollout to remaining envoys started (progressing).
+
+sam (oncall): while that's rolling, prepare rollback snapshot as backup in case route weighting rollback needed. maria can you stage snapshot restore?
+
+maria (eng-runtime): snapshot restore staged (snapshot-1767776700). Holding, not applying yet.
+
+lee (sre): fleet patch completed. Cluster-level 5xx rate global drop 12% -> 3%. Timeouts reduced.
+
+jordan (support): update sent to affected customers: "Mitigation in progress; retries disabled at edge and we are scaling backends. Expecting recovery within 10-20 minutes."
+
+sam (oncall): next: do a root cause blameless writeup later, but quick postmortem notes: - misordered route match in rollout - virtual_host-level retry policy that applied broadly - retry amplification -> backend overload -> circuit breaker ejection -> 5xx spike.
+
+maria (eng-runtime): planned follow-ups: 1) add unit checks for route precedence so exact/specific routes can't be shadowed by prefix routes. 2) move retry_policy from virtual_host into per-route where intended. 3) add canary traffic validation with synthetic requests that exercise specific routes.
+
+lee (sre): temporary config change we did: removed virtual_host retry_policy and applied per-route retry_policy for stream-only. Config snippet we applied to rollback the policy:
+
+```yaml
+# applied via configmap patch pj-5802-01
+virtual_hosts:
+  - name: inference
+    routes:
+      - match: { path: "/v1/stream" }
+        route: { cluster: "stream-service" }
+        retry_policy: { retry_on: "5xx,connect-failure", num_retries: 1 }
+      - match: { prefix: "/v1/" }
+        route: { cluster: "model-pool" }
+```
+
+sam (oncall): good. Any remaining customer impact?
+
+jordan (support): final check — errors trending back to baseline. Two customers still had intermittent errors earlier but both confirmed recovery after the fix. No escalations to SLAs.
+
+ops-bot: autoscale event processed for model-pool (replicas: 8 -> 12).
+
+sam (oncall): marking incident as mitigated. Moving to post-incident with action items assigned. Thanks all. :thumbsup:
+
+maria (eng-runtime): assigning action items: @maria — add route precedence checks in CI. @lee — add alert that couples sudden cb ejects with recent route rollouts. @sam — follow up with on-call docs update for retry toggles.
+
+lee (sre): I'll draft the short postmortem and link metrics + config diffs.
+
+incident-bot: Incident INC-5802 status changed: MITIGATED at 1767777090.
+
+sam (oncall): good work. I'll do a quick retro with support in the morning and then close this thread.

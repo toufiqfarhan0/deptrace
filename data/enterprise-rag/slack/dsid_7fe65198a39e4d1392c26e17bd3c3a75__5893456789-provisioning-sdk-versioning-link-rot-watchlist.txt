@@ -1,0 +1,38 @@
+docs
+
+Ava (docs): quick heads-up — found three broken anchors in the dedicated capacity handbook under 'isolation and preemption' and one SDK snippet that no longer compiles after the v0.8.1 rename.
+Ravi (eng-platform): thanks for flagging. can you paste the anchors/links here? happy to do quick redirects if it's just anchors.
+Ava (docs): sure — anchors: #tenant-isolation -> now the page uses #isolation-behavior; #preempt-policy -> removed in migration; #sla-exceptions -> changed to #slo-exceptions. the links are in /docs/dedicated/provisioning.md and a few embedded how-tos.
+Ken (sdk): which snippet broke? i can update the SDK examples if it's just param rename.
+Ava (docs): the provisioning SDK snippet uses `create_reserved_pool(region=..., capacity=..., isolation_policy="preempt")` — in SDK v0.8.1 we renamed `isolation_policy` -> `eviction_mode` and allowed an enum. current example fails with TypeError.
+Sasha (prod): Oof. Customer-facing guides should not show deprecated params. ETA to patch?
+Ken (sdk): i can cut a tiny PR to docs with the updated snippet and a short note. will also add a compatibility note showing the old param mapping.
+Ava (docs): awesome. i created a quick watchlist and a tiny PR skeleton: https://github.com/redwood-inference/docs/pull/482 — includes the three anchor redirects, markup fixes for the SLA table, and the snippet swap. needs tech review and a quick copyedit.
+Ravi (eng-platform): pinging @Ken for code change and @Sasha for SLO wording check. i can follow up to add 301 redirects for the old anchors on the static site if the filenames/paths are stable.
+Ken (sdk): taking it. i'll update the snippet to the new shape and add this example for compatibility:
+```python
+# new API (v0.8.1+)
+from redwood import DedicatedClient
+client = DedicatedClient()
+client.create_reserved_pool(region="us-west-2", capacity=2, eviction_mode="graceful")
+
+# compatibility shim (docs only):
+# old: isolation_policy="preempt" -> eviction_mode="immediate"
+```
+Ava (docs): perfect, please also add a one-sentence callout above the snippet: "If you're using SDK < v0.8.1, map isolation_policy to eviction_mode as shown."
+Sasha (prod): on the SLA wording — i noticed the 'isolation' section implies that reserved pools guarantee zero-preemption. that's not correct; wording should say 'minimized risk' and link to the SLO fallback table. small rewrite suggestion: "Reserved pools provide strong isolation but are not absolute guarantees against eviction during infrastructure emergencies; see SLO fallback policies."
+Ava (docs): good catch. i'll patch the language and add the SLO table anchor. can someone sanity-check the exact phrasing?
+Ravi (eng-platform): wording looks good to me, less absolute. i'll also confirm with infra whether we should mention soft-preempt windows.
+Ken (sdk): PR link when ready? i'll add the snippet commit to the same branch if that's easiest.
+Ava (docs): putting all changes on branch docs/589345-fix-anchors-sdk-compat. PR updated: https://github.com/redwood-inference/docs/pull/482 — note: i left TODOs in inline comments for infra/ops to confirm soft-preempt timeout values.
+docs-bot: build-preview generated at https://deploy-preview.redwood-docs.net/482 — preview includes changed anchors and updated snippet.
+Sasha (prod): preview looks ok, snippet renders fine. one nit: the SLA table still has an old column name 'preemption-risk' — can we rename to 'eviction-risk' for consistency?
+Ava (docs): will rename. also adding a changelog note under "docs changelog" section so customers see the SDK param rename callout.
+Ravi (eng-platform): i'll add a short markdown redirect file for the old anchors under the static site so external links don't 404. once infra confirms the soft-preempt number, we can merge.
+Ken (sdk): quick unit of work — update code, push to branch, request review from @Sasha and @Ravi. ETA ~2 hours.
+Ava (docs): thank you all. i'll do a final pass for microcopy and accessibility (anchor text, link titles). leaving this thread open for infra confirmation. :thumbsup:
+Sasha (prod): adding follow-up: please add the tenant-eviction flow diagram to the handbook if we have a simple onepager. customers keep asking for the sequence during failover.
+Ava (docs): good idea — i'll create a follow-up ticket and link it in the PR as a tracked improvement. ticket: https://linear.app/redwood/issue/DTX-1123 (follow-up: tenant eviction diagram).
+Ravi (eng-platform): noted. marking this thread as actionable. will update when infra confirms numbers.
+Ken (sdk): pushed snippet update to branch. PR now shows two commits. requesting review.
+Ava (docs): merged after infra confirmed soft-preempt = 30s. done. closing thread after doc pipeline publishes. thanks!

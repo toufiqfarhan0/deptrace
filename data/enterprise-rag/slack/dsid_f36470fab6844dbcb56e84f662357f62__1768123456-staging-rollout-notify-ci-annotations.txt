@@ -1,0 +1,36 @@
+eng-releases
+
+deploy-bot: Staging deploy started — service: hydra, env=staging
+deploy-bot: tag=v2.4.1-rc3 commit=9a1b2c3d4e initiated_by=@maya
+deploy-bot: change-window=2026-03-19 22:00-23:00 UTC rollout=canary(10%->50%->100%) step=10m strategy=gradual
+deploy-bot: release-notes=https://redwood.example.com/releases/v2.4.1-rc3 ci-build=https://ci.redwood.example.com/builds/48723
+deploy-bot: command:
+```
+deployctl release --env=staging --service=hydra --tag=v2.4.1-rc3 --strategy=canary
+```
+
+maya: ACK — I'll monitor logs + latency/error dashboards, ping if anything odd.
+adrian: running smoke suite against canary nodes now (text-gen + embeddings + rerank).
+chen: pinning model-serving image to commit 9a1b2c3d4e in k8s config to avoid mismatch; will push annotation.
+kate: noted quantization flag left enabled in config; checking memory footprint. @sre-oncall pls watch OOM alerts.
+sre-oncall: got it, raising alerts to +20% for the window and watching autoscaler.
+
+deploy-bot: Canary deploy completed — 3/3 canary pods healthy, 5m observation window: errors=0/1200, p50=78ms, p95=180ms. Proceeding to 50%. :rocket:
+adrian: smoke results: text-gen ✅, embeddings ✅, reranker ✅. p95 for embeddings up ~12ms but within threshold.
+maya: rolling to 100% per rollout policy.
+
+deploy-bot: Rolling progress: 50% -> 75% -> 100% (automated steps).
+
+deploy-bot: Deploy finished successfully.
+deploy-bot: summary: duration=12m34s tag=v2.4.1-rc3 commit=9a1b2c3d4e status=SUCCESS
+deploy-bot: release-notes=https://redwood.example.com/releases/v2.4.1-rc3 ci-build=https://ci.redwood.example.com/builds/48723
+deploy-bot: rollback command (if needed):
+```bash
+deployctl rollback --env=staging --service=hydra --to-tag=v2.4.0
+```
+
+maya: thanks — I'll run a quick metrics sanity (latency, token-cost, error-rate) and annotate the release page. :white_check_mark:
+chen: config pinned and PR opened to add runtime annotations for future rollouts.
+sre-oncall: clearing temporary alert adjustments, will keep normal thresholds after 10m.
+kate: leaving a note in the change log: "quantization flag enabled for v2.4.1-rc3; monitor mem and p95"
+deploy-bot: CI annotation added to release: https://ci.redwood.example.com/builds/48723 :information_source:

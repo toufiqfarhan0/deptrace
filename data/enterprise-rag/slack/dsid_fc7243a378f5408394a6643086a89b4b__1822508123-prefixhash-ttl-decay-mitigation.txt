@@ -1,0 +1,72 @@
+incidents
+
+incident-bot: :rotating_light: Alert: latency SLO breach on /v1/stream (p95 & p99). Auto-paging on-call. Detected at 2024-11-02T14:02:03Z
+
+maya (oncall): I'm taking this. seeing p95 -> ~820ms (baseline 80-120ms), p99 -> ~2.6s. Streaming stalls reported by multiple customers.
+
+sam: I can confirm in metrics dashboard — recent spike aligns with a deployment around 13:45 UTC that touched prefix-hash logic for cache keys. Hit rate for prefix cache dropped from 91% to 12% after that deploy.
+
+chris: which deploy was that? can we ID the PR?
+
+devon: PR #4218 merged 13:43 UTC — changed prefix hashing to use murmur3 64 -> rolling hash to improve distribution across shards. It also adjusted TTL semantics (shortened default to 30s).
+
+maya (oncall): that matches timeline. stack traces show more KV misses and additional backend paging to disk for KV caches. Those extra fetches are causing streaming stalls — evidenced by stalled first-byte times in traces.
+
+sam: customer-impact: 3 enterprise customers (acme, finco, edusys) reporting streaming stalls and partial response hangs. Support thread opened.
+
+support-bot: Support ticket IDs linked: S-9123, S-9124. Customers reporting token streaming stalls and occasional 502s when background fetches time out.
+
+chris: quick triage plan: 1) rollback the prefix-hash change (if safe) 2) increase TTL temporarily to allow warm cache 3) route affected traffic to warm pool (dedicated) or fallback model variant 4) follow up with a proper patch for hashing + TTL.
+
+maya (oncall): Agreed. I'll request rollback. @deploy-bot can you start a rollback of PR #4218 to staging first, then prod if green?
+
+deploy-bot: Rollback job initiated for PR #4218 -> staging (job id 88412). Notifying CI.
+
+sam: while rollback runs, let's run a quick probe to estimate rewarming time if we just bump TTL. If hit rate is 12% now, and we bump TTL from 30s -> 10m, warm pool should recover in ~3-8 minutes depending on QPS.
+
+devon: quick metric dump:
+```
+prefix_cache.hit_rate: 0.12
+prefix_cache.requests_per_min: 3200
+backend.kv.latency.p95: 240ms -> 980ms
+streaming.first_byte.delay.p95: 1.1s -> 4.7s
+```
+
+maya (oncall): Rolling TTL bump to 10m on prefix cache for all regions as an emergency mitigation. Making the change via runtime config now.
+
+chris: please also add a temporary exception to prefix-hash rotation so new keys don't invalidate warm entries during rollback window.
+
+maya (oncall): Applied runtime config: prefix_cache.ttl_override=600s. prefix_hash.rotation.disabled=true (temp). Propagating.
+
+incident-bot: Runtime config changes applied by maya at 2024-11-02T14:15:46Z.
+
+sam: monitoring: hit rate climbing to 38% after TTL bump, streaming stalls reduced in traces. p95 down to ~320ms, p99 trending down.
+
+devon: rollback to staging passed smoke tests. Prod rollback scheduled and queued. Deploy bot will run canary 10% traffic first.
+
+deploy-bot: Prod rollback (PR #4218) initiated. Canary: 10% -> 25% -> 100%. Watch windows: 3m each.
+
+chris: if canary looks good, approve full rollback. also capture a flame graph for KV backend during canary to ensure no hidden regressions.
+
+maya (oncall): canary at 10% now. initial telemetry looks good. no new 502s on canary, hit rate on canary nodes ~87%.
+
+sam: canary -> 25% now. p95 on canary nodes ~110ms. main cluster still slightly noisy but improving due to TTL bump.
+
+devon: note to postmortem later: the issue was two-fold — a hash rotation that changed key distribution + TTL reduction that made cold miss penalty visible; combined they triggered cascading backend fetches and paging. Need better rollout guard for cache key changes and perf shadow testing.
+
+maya (oncall): Rolling full rollback to prod now.
+
+deploy-bot: Rollback to prod complete at 2024-11-02T14:43:12Z.
+
+sam: immediate post-rollback metrics: global prefix_cache.hit_rate -> 89%. streaming.first_byte.delay.p95 -> 95ms. p99 -> 260ms. customer tickets from S-9123/S-9124 note improvement.
+
+support-bot: Notifying affected customers with ETA and mitigation summary.
+
+chris: assigning follow-ups:
+- sam: own postmortem and root cause analysis (include perf tests + rollout checklist)
+- devon: create canary test that simulates prefix hash rotation under load and measures hit-rate/regression risk
+- maya: verify alerts thresholds and add a synthetic test for streaming stalls that triggers before SLO breach
+
+maya (oncall): Oncall handoff at 15:00 UTC to chris. I'll leave notes in the incident doc.
+
+chris: I'll take over and keep an eye for regressions. Good triage everyone. We'll keep this thread for postmortem drafts. :thumbsup:

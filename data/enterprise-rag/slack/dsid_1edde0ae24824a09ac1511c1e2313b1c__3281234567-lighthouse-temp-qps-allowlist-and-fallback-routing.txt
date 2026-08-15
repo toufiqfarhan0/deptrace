@@ -1,0 +1,30 @@
+customer-success
+
+Priya CSM: FYI Lighthouse is hitting intermittent 429s during onboarding tests. They want a temporary QPS bump + an ingress allowlist for their engineers. Can we do a short window so the workshop doesn't fail?
+Eli NetOps: Got it. Which IPs and which regions should we include? Also confirm start/end times and whether we should auto-revoke.
+Priya CSM: IPs: 203.0.113.45/32 (workshop infra) and 198.51.101.0/26 (CI runners). Regions: us-central1 for the workshop, eu-west1 for some EU observers. Window: 2.5 hours starting 14:30 ET. Auto-revoke yes. Mark as renewal_watch:critical in metadata.
+Ravi AM: This onboarding demo is linked to their mid-Apr renewal. If the workshop fails they push back decision. Appreciate the quick turnaround.
+Eli NetOps: I'll add the CIDRs to the ingress allowlist and set a temporary rate-window for the key lighthouse-onboard-14-30. Will create ticket and tag ops on-call. ETA 12m. @Infra Bot please open CS ticket.
+Infra Bot: ticket CS-8610 opened for temporary qps increase + ingress allowlist. Assigned to network team. Link: https://redwood.atlassian.com/browse/CS-8610
+Nora Support: I'll wire up a live dashboard and add markers for the bump window. Can you give me the API key name? Also will set alerts: 429 > 2% or latency p95 > 1s.
+Priya CSM: Key: lh-onboard-week14. We'll rotate after the session. Please redact in public docs. Capture any failing payloads.
+Diego Eng: Suggest adding a quick fallback to our small-memory model for diagnostic endpoints so critical admin calls don't queue behind heavy generation. Proposed routing rule:
+```
+when header.x-cust == "lighthouse" and route == "/admin/*":
+  route_to: admin-lite
+  soft_qps: 10
+else if header.x-cust == "lighthouse":
+  rate_window: 8rps
+  regions: [us-central1, eu-west1]
+```
+Diego Eng: That keeps admin actions snappy without consuming large token budgets.
+Eli NetOps: Applied allowlist entries and created the rate-window on test key. Auto-revoke scheduled at 17:00 ET. Added metadata tag renewal_watch:critical and cs_owner:PriyaCSM. Will post provisional peer IP once peering is up.
+Nora Support: Dashboards live. Added annotation CS-8610. Pager if 5xx > 0.5% or 429 > 2% sustained for 5m.
+Priya CSM: Thanks. I'll run the workshop at 14:30 ET. Ravi — please be ready to gather NPS and a quick UX note if any errors are seen.
+Ravi AM: Will do. Also I'll capture any session quotes for the renewal team.
+Infra Bot: CS-8610 updated with peering IP 35.201.77.90. Revert job scheduled at 17:00 ET.
+Diego Eng: If you send failing prompts, we can run a fast prompt-caching pass and return recommendations within the day.
+Nora Support: Requesting team to submit top 5 error traces + request ids to cs-evidence@redwood.com and I'll attach to the ticket.
+Priya CSM: Small privacy note: The customer asked we do not include internal user emails in the ticket. Use pseudonyms.
+Eli NetOps: Noted. Using pseudonyms in logs. All changes applied.
+Priya CSM: Checklist: [x] CIDRs added, [x] rate-window scheduled, [x] dashboards + alerts, [x] ticket CS-8610, [x] peering ip provisioned, [ ] post-workshop NPS + error samples. I'll post final notes after the session. :rocket:

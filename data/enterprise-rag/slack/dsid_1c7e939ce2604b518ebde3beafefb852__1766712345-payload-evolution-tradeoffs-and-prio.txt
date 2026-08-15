@@ -1,0 +1,34 @@
+product
+
+maria: Quick sync — we need to decide chat endpoint shape for Q2 roadmap. Several customers (platform teams + startups) asked for prompt compatibility and messages[]. Asking for scope recommendation and launch gates.
+
+oliver: TL;DR: messages[] + roles is the clean model (maps to UI, tool-calling, structured output). prompt string is simpler for legacy clients. Tradeoff: extra payload size + parsing for some SDKs.
+
+jess: From UX: message array aligns with thread UIs. System role clarity helps with assistant behavior controls. Would prefer messages[] as canonical shape.
+
+dave: Ops note — function calling & structured output are easier if we standardize on messages[]. Also need telemetry hooks per-variant to monitor cost/latency impact. :eyes:
+
+sam: Research: models use 'system' differently across checkpoints. We should mandate at most one system message and run evals to ensure consistency.
+
+maria: Proposal for GA: accept both shapes but normalize to messages[] server-side. Compat rules: if payload.prompt present, convert to messages as: optional system (if provided) then user prompt. Launch criteria: SDK helpers, docs migration guide, regression evals, 3 customer integrations signed off.
+
+oliver: Implementation sketch:
+```
+if payload.prompt:
+  msgs = [{role: "system", content: payload.system || ""}, {role: "user", content: payload.prompt}]
+else:
+  msgs = payload.messages
+```
+Also validate roles, enforce single system message, and run tokenization tests.
+
+dave: Add feature flag to toggle strict validation and route old clients to compat model variant. Instrument: per-request shape, token counts, latency, cost per 1k tokens.
+
+jess: Docs + examples needed: migration checklist, UI snippets, quickstart for prompt->messages converter, and a small orthogonal section on role semantics.
+
+maria: Decision checkpoint: dual-mode GA where messages[] is canonical. Owners: @oliver implement conversion + validation, @jess docs + examples, @dave telemetry + flags, @sam evals. Target: end of next sprint. Please post estimates.
+
+deploy-bot: deploy scheduled to staging at 1766790000 :rocket:
+
+oliver: Rough estimate: 5 dev days + 2 QA days. Starting Monday. Will post PR when ready.
+
+maria: Thanks — we'll review blockers next Weds. :thumbsup:

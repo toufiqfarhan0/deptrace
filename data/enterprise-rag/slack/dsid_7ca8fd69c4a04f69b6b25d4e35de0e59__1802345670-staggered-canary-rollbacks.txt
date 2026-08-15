@@ -1,0 +1,63 @@
+eng-releases
+
+ariane: Heads-up — release train for Tue 2027-03-09 09:00 PT. Need deploy owners + smoke owners for each service. Please ack.
+
+samir: I can own runtime (models + batch). Will do canary and smoke.
+
+lina: taking console + dashboard. I'll run smoke and pager during 09:30-10:00 PT.
+
+kevin: infra (deploy infra templates + network). Any DB migrations? :thinking:
+
+maria: user-index has a small migration (backfill index). It's online and non-blocking but needs <3m maintenance window. @ariane do we want it in this train or next?
+
+ariane: put user-index in this train but schedule as last deploy in the slot. We will do canary at 10% for 20m then full rollout if green.
+
+olivia: I can be rollback owner — will coordinate rollback flag and ensure runbook is ready.
+
+deploy-bot: scheduled_deploy: train-2027-03-09-09:00 created by ariane. Canaries: 10% for 20m. Auto-notify: #eng-oncall. Link: https://deploys.redwood/inv/12345
+
+kevin: +1 to last-slot for migrations. What's the smoke checklist? share a minimal checklist?
+
+samir: smoke checklist:
+```
+- sanity liveness on /health
+- sample gen on model v2 (100 tokens)
+- latency < 200ms p50 on canary
+- error rate < 0.5%
+```
+
+lina: adding UI smoke: login flow, embed rendering, quota metrics show no spike.
+
+maria: noted. I'll ensure migration script has a revert and will tag the migration with feature-flag `idx_toggle`.
+
+olivia: rollback steps (simple):
+1. flip `feature.user_index` to off
+2. revert deploy to previous commit via deploy tool
+3. run quick reindex check
+Will post runbook link in a bit.
+
+ariane: thanks. Small timing tweak: runtime and infra deploy at 09:00-09:15 (canaries), console at 09:20, user-index last at 09:40. Sound good?
+
+kevin: sounds good. I'll be online from 08:45 PT.
+
+samir: I'll coordinate canary traffic split with traffic-router. Tagging @traffic-bot to ensure split.
+
+traffic-bot: traffic-split created: runtime -> 10% canary, rest stable. Monitor: latency, errors.
+
+lina: who owns release notes and post-deploy verification? I can do notes, but need someone to run the post-deploy smoke at 10:00.
+
+maria: I can run the 10:00 post-deploy check.
+
+olivia: runbook link: https://confluence.redwood/release/runbooks/release-train-20270309 (posting)
+
+ariane: great. if anyone can't make it, reply ASAP so we can swap owners. :thumbsup: 
+
+kevin: one more ask — if rollback happens, do we need DB rollback? not for user-index, just reconfig.
+
+maria: confirmed no down-migration; revert is config-only.
+
+samir: ok locking in owners: runtime(samir), infra(kevin), console(lina), migrations(maria), rollback(olivia). I'll add to the release calendar.
+
+deploy-bot: reminder scheduled: train-2027-03-09-09:00 in 24h.
+
+ariane: thanks all. Posting final schedule to calendar and gating docs.

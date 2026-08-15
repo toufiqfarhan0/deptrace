@@ -1,0 +1,33 @@
+partnerships
+
+sara.partnerships: quick sync — marketplace partner lab connector certification planning. goal: provide a GA-ready helm + terraform module path, multi-arch images, and an SI smoke harness for partner onboarding. who owns what?
+
+alex.eng: I'll own infra CI. plan is GH Actions matrix for arm64/amd64 + gpu variants. will gate on helm lint + kube smoke. sample matrix snippet:```matrix:
+  arch: [amd64, arm64]
+  gpu: [none, ampere]```
+
+miguel.se: +1. I'll build the terraform module for partner onboarding (vars: region, instance_profile, ami, node_pool). will include examples for VPC peering to partner env and simple ansible for post-provision.
+
+devon-sre: can we reuse the existing refarch network overlay? i can supply a terraform overlay module (overlay-refnet) and CI job that applies it to test clusters.
+
+janet.product: timeline question — marketing needs assets and copy 2 weeks before any joint announcement. is MVP realistic in ~3 weeks?
+
+alex.eng: MVP target = 3 weeks. CI gates: terraform fmt + validate, helm lint, smoke deploy (5-minute), basic e2e (latency/cold-start quick check).
+
+sara.partnerships: who will coordinate SI validation sessions? we should block a partner lab slot and invite SI to run the harness with us.
+
+miguel.se: propose a 2-hour lab window next Wed. i'll prepare a short test-plan + sample prompts for smoke traffic (embedding + chat sampling).
+
+deploy-bot: scheduled test cluster: partner-lab-17499 on Thu 10:00 UTC — created by alex.eng :robot_face:
+
+devon-sre: heads-up: we'll need a KMS access request and data-handling checklist. @legal please review the partner data flow and retention notes.
+
+janet.product: ping @marketing for announcement review. we also need partner logos, short blurb, and co-branded screenshot.
+
+sara.partnerships: owners roundup: infra CI = alex.eng, tf module = miguel.se, overlay/net = devon-sre, comms = janet.product. I'll draft the kickoff doc (repo: partners/marketplace-labs) and share checklist.
+
+alex.eng: creating GH issue + PR template now. will add required CI steps and a lightweight smoke test script. :thumbsup:
+
+miguel.se: will push module skeleton to partners/marketplace-iac and link here when ready.
+
+sara.partnerships: thanks — i'll follow up with calendar invites and the kickoff doc. anyone who can't make the slot ping me and we'll reshuffle.

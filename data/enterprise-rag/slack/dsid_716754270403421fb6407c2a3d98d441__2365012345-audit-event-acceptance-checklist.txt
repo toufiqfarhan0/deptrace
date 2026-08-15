@@ -1,0 +1,37 @@
+eng-security
+
+Alex Chen: Quick sync — we need an 'acceptance checklist' before shipping any audit-schema changes that could be customer-visible. I sketched a draft. TL;DR: coverage matrix, RBAC impacts, PII gating, KMS handling, consumer contract examples.
+
+Maria Gomez: +1. Please include explicit redaction rules and which fields are allowed in customer-facing events. We should also require a sample SIEM mapping for major vendors.
+
+Samir Patel: Question: how do we surface RBAC-caused differences? If an event only appears for admin roles, that should be documented in the event metadata.
+
+Irene Novak: Agree. Propose a field `visibility.roles` in the schema, e.g. `['admin','security_ops']` so downstream consumers can filter. Also add `sample_privacy_policy`.
+
+Alex Chen: here's a small schema snippet for the checklist:
+```
+{
+  "name": "key.rotate",
+  "schema_version": "1",
+  "visibility": {"roles": ["admin"]},
+  "redaction": {"fields": ["key_material"], "strategy": "hash"}
+}
+```
+
+Maria Gomez: For KMS: ensure `key_id` is pseudonymized unless customer explicitly asks for full key id. Log only envelope IDs by default.
+
+audit-bot: Deploy scheduled: audit-schema v0.9 -> staging at 2024-11-04T10:30Z :white_check_mark:
+
+Samir Patel: Also want an acceptance test: unit that validates event against schema + end-to-end test that a non-admin cannot see admin-only events.
+
+Irene Novak: Add a customer-acceptance checkbox: 'include example SIEM parsers (Splunk/Datadog) + sample queries'. Saves the support back-and-forth.
+
+Alex Chen: Next steps: I'll PR the checklist doc, can @Maria and @Irene review? Aim to gate any deploy with the checklist signoff. If no objections by EOD Friday we'll enforce it in the release pipeline.
+
+Maria Gomez: reviewing now, will leave comments.
+
+Samir Patel: +1 to gating deploys. Also add a rollback playbook item if new event breaks downstream consumers.
+
+Irene Novak: one more: ensure timestamp fields are RFC3339 and include `event.version` when we bump the schema.
+
+Alex Chen: great — thanks team. I'll open the PR and add acceptance-tests job to CI.

@@ -1,0 +1,35 @@
+announcements
+
+Lena (Product): Quick heads-up — we’re opening a beta for Private: Bring-Your-Own-Image (BYOI) v1. This lets enterprise customers run custom container images (custom tokenizers, patched libs, inference wrappers) inside their Private deployments. Opt-in beta starts next Monday; GA targeted ~6 weeks after if no blockers. Docs: https://redwood.internal/docs/private/byoi-v1 (internal). Security scanning + signing required for GA. Please read the rollout plan below and flag any major concerns. :rocket:
+
+Omar (Security): Important — what image scanning/signing pipeline are we mandating? we should require SBOM + vuln scan + image signature before we allow customer images in staging. Who approves exceptions?
+
+Lena (Product): Good call. Beta will accept images that pass our Clair-based SCA and generate an SBOM. For GA we require image-signing via our image-attest service (attestation header x-rw-image-signed). Exceptions go through Security review (Omar or delegated approver). We’ll add a short checklist in the docs.
+
+Priya (DevOps): How will customers enable it? config toggle? migrations for existing Private installs?
+
+Lena (Product): Opt-in is per-org. Admins flip a feature flag in the Private Console or set it in the cluster config. Migration path: we provide a helper that pins images and validates SBOMs; default is OFF for existing customers so no surprise. Canary rollout plan is in the doc.
+
+Alice (Eng): Does v1 allow images with preinstalled GPU drivers / kernel modules? need to ensure driver compatibility and host mapping.
+
+Lena (Product): v1 supports customer-built images that bundle runtime libs; driver kernel modules must match host kernel. We’ll publish a host-driver-compat matrix and a small host-side shim to map devices. Long-term we’ll move to a device-plugin model but not in v1.
+
+Omar (Security): Also want to ensure network isolation: BYOI images must not exfil telemetry by default. Add mandatory egress rules and a minimal seccomp profile.
+
+Lena (Product): Agreed — beta images run in a hardened sandbox with enforced egress policies and restricted syscalls. We’ll include the seccomp profile in the example config.
+
+Jack (Customer Success): Can we get a support playbook / troubleshooting checklist? customers will ask about driver errors and image signing failures.
+
+Lena (Product): Yes — support playbook + FAQ are in the docs repo under /support/playbooks/private-byoi. I’ll share drafts with CS tomorrow. Ping me for early access.
+
+deploy-bot: Canary scheduled: staging cluster will accept signed BYOI images starting 2026-04-05T15:00Z for 48h (auto rollback on errors >5% of requests).
+
+Priya (DevOps): One more — do we need extra infra for image scanning? cost estimates?
+
+Lena (Product): We’ve budgeted a small scanning fleet (managed) and will run scans in parallel to minimize latency. Cost impact is small and included in the Private pricing annex.
+
+Alice (Eng): I’ll validate the device mapping doc and send a short checklist for engineering acceptance.
+
+Omar (Security): I’ll draft the approval flow and required attestations.
+
+Lena (Product): Thanks — next steps: 1) internal beta signups open Monday, 2) staging canary 2026-04-05, 3) security/infra sign-off during beta, 4) GA ~6 weeks after if green. If you want early access to the docs or the acceptance checklist DM me. :wave:

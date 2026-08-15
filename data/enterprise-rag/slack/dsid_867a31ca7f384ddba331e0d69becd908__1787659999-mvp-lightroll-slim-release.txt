@@ -1,0 +1,36 @@
+product
+
+rachel: Heads-up: PM proposal for Q3 public launch. We need to lock an MVP slice that won't block the two enterprise pilots. My recommendation: 'LightRoll' MVP = Auth + Core API + PromptStore read/write + Embeddings. Defer Billing UI, Tenant Console, and Advanced Exports to v1. Goal: keep public launch lean and unblock rollout.
+
+dan: +1 to lean. Two notes: 1) BetaCorp requires SSO + per-tenant quota enforcement in contract. 2) We should avoid shipping without a basic cost telemetry dashboard (even if minimal).
+
+li: For SSO we can reuse the existing auth flow and add SAML connector config. Engineering estimate: SAML hookup for one IdP ~4 dev days, SSO QA + docs ~3 days. Per-tenant quotas: we can do a soft-enforce MVP for one tenant behind `beta_quota_flag` in ~8 dev days.
+
+omar: Infra: embeddings at scale needs a canary on dedicated nodes. Canary adds ~5 business days for config + smoke. We can overlap some of that with dev work but not all. Also minimal telemetry dashboard (tokens/cost) is doable as a lightweight Grafana panel in ~3 days.
+
+casey: Product tradeoff: if we do BetaCorp-only quotas behind a feature flag, legal is okay with pilot terms. But Sales warns BetaCorp may push for tenant billing visibility too. That would be v1 territory.
+
+rachel: OK decisions proposed:
+- LightRoll MVP: Auth (incl. SSO for one IdP), Core API, PromptStore RW, Embeddings service, minimal telemetry dashboard.
+- BetaCorp pilot: per-tenant soft-quotas behind `beta_quota_flag` (Beta-only ship).
+- Defer: Tenant Console (billing UI), Bulk Exports, Advanced Routing (v1).
+- Schedule impact: pad public launch by +6 business days to accommodate embeddings canary and SAML QA.
+
+Compact timeline snippet:
+```
+LightRoll MVP (baseline): 3w dev parallel + embeddings canary + 1wk QA
+- SAML for 1 IdP: 4 dev days + 3 QA days
+- Beta soft-quotas (beta_quota_flag): ~8 dev days (feature-flagged)
+- Metrics dashboard (minimal): 3 days (infra + grafana)
+
+Public launch shift: +6 business days
+v1 target (post-launch +4w): Tenant Console, Billing, Bulk Exports, Multi-tenant quotas
+```
+
+dan: I'll convert this into priority cards and flag BetaCorp dependencies.
+
+li: One ask: if quotas are soft-enforce, we should still surface clear UX messaging in the Console copy and API errors. Jesse (UX) can handle microcopy in 48h.
+
+omar: Ops ask: please confirm we can freeze any embedding model changes during the canary - reduces noise.
+
+rachel: Noted. Final ask: if nobody objects to the assumptions (SAML 1 IdP ~4d, quotas ~8d, canary +6bd) by EOD I'll update the milestone board and move the public release date. Please respond ASAP with objections. :rocket:

@@ -1,0 +1,96 @@
+incidents
+
+Incident Bot: 🚨 *INCIDENT OPENED* (SEV-2)
+Service: audit-ingest / audit-log pipeline
+Symptom: ingestion backlog growing; end-to-end delivery latency > 10m
+Started: ~12:37 PT
+Incident Commander: @Sean Gallagher
+
+Sean Gallagher: Looking now. Seeing `audit_ingest_queue_depth` climbing fast in us-west. Exporter also showing lag. Anyone recently deploy to audit-ingest or observability-pack?
+
+Aisha Bello: I’m on the dashboard. p95 audit delivery latency jumped from ~25s to 11m in the last 20 mins. Drop rate still low-ish but the “dropped events” metric is sparse (we might be blind here). Link: https://grafana.redwood/dev/audit-pipeline (internal)
+
+Kevin Osei: Exporter side is healthy, but it’s polling slower because ingest is behind. Splunk target queue is steady; Sentinel target queue steady too. This looks upstream.
+
+Rafael Mendes: On-call note: we saw a similar pattern last week during load test when continuous batching spiked admin actions (lots of policy edits). If it’s the ingest workers, quick mitigation is scaling consumers.
+
+Logan Wright: Telemetry stream is showing a gap window (events arriving but delayed). Coverage dashboard checks are timing out because it queries “last 5m” and there’s nothing “fresh”. Might trigger false “missing events” alerts.
+
+Sean Gallagher: OK, first objective: stop backlog growth.
+Hypothesis: ingest consumer lag + small buffer + bursty producers.
+Action: scaling `audit-ingest-consumer` from 6 -> 18 in us-west.
+
+Incident Bot: @Sean Gallagher updated incident status: *Mitigating*.
+
+Allison Grant: Any indication it’s a single tenant spamming? Cardinality explosion in `event_type` labels?
+
+Aisha Bello: Quick look: top event_types are normal: `rbac.role.updated`, `apikey.created`, `policy.routing.updated`. Volume is higher than baseline but not insane. However we’re seeing a lot of retries from a couple services (`control-plane` and `console-backend`) due to 429 from ingest.
+
+Nadia Rahman: FYI we rolled out request_id/trace_id propagation yesterday (PR-22047). Doesn’t change volume but adds a couple fields; shouldn’t affect ingest throughput unless the payload size tips batch limits.
+
+Kevin Osei: Payload size could impact if we’re hitting max batch bytes and flushing more often. In exporter I see avg event size went from ~1.1KB to ~1.8KB (rough estimate).
+
+Sean Gallagher: Consumer scale is in progress. Also bumping Kafka topic partitions from 12 -> 24 for `audit-events-v1` in us-west to reduce hot partitions. @Rafael Mendes can you do that change?
+
+Rafael Mendes: Yep. Running partition increase now. ETA 5-10m.
+
+Allison Grant: +1 on payload size. Also check compression settings? If we turned off gzip somewhere, this could be bad.
+
+Aisha Bello: Ingest CPU is pegged at 95-100%. GC time elevated. Looks like it’s just struggling to keep up.
+
+Sean Gallagher: Once backlog is stable, we can consider temporarily loosening best-effort behavior vs blocking admin actions. But I’d prefer not to touch producer behavior in an incident.
+
+Incident Bot: :information_source: Deploy Bot
+`audit-ingest-consumer` scaled to 18 replicas (us-west). Rollout complete.
+
+Aisha Bello: Seeing consumer lag start to drop. Queue depth flattening. p95 latency down from 11m -> 7m and trending.
+
+Rafael Mendes: Partition increase complete. Producers/consumers rebalancing; expect a short wobble.
+
+Kevin Osei: Exporter lag decreasing now. SIEM targets still receiving, just delayed.
+
+Logan Wright: Coverage dashboard is still yelling but that’s because it looks at “last 5 minutes”. Once we catch up it should recover. I’m muting “missing events” alert temporarily to avoid paging everyone.
+
+Sean Gallagher: Approved. Please document mute + reason in the incident notes.
+
+Allison Grant: Any evidence of data loss?
+
+Aisha Bello: Not seeing drops in the ingest side counters, but the metric is not great. We have `events_received_total` and `events_written_total` but no strong “dropped” metric. At-least-once + retry suggests duplicates possible but loss unlikely.
+
+Kevin Osei: Exporter has retries that can duplicate; customers de-dupe by `event_id`. But that’s export-side. For ingest, we need a better “accepted vs rejected” signal.
+
+Sean Gallagher: Current state?
+
+Aisha Bello: Lag is draining. Queue depth down ~60%. p95 delivery latency now ~2m.
+
+Rafael Mendes: Rebalance looks stable. No further errors. We should keep elevated replicas until we hit steady state.
+
+Incident Bot: @Sean Gallagher updated incident status: *Monitoring*.
+
+Sean Gallagher: Monitoring for 15 mins, then close if stable.
+Follow-ups we need to capture:
+1) Buffering/backpressure: we need a real buffer so a short burst doesn’t cause 429 + retry storms. (maps to ENG-4829)
+2) Better alerting: alert on consumer lag + end-to-end delivery latency, not just exporter queue. (ENG-4835)
+3) Dashboard/runbook updates: add “how to validate no loss / duplicates” + mute guidance for coverage dashboard. (runbook owner @Rafael Mendes)
+4) Payload size regression check from trace_id addition; confirm batch sizing/compression. (@Nadia Rahman + @Allison Grant)
+
+Marcus Lin: Thanks for jumping. Please ensure the post-incident notes explicitly mention customer impact: delayed audit events (up to ~11m) in us-west, no confirmed loss, possible duplicates not observed. Also add a note for enterprise accounts if anyone asks.
+
+Logan Wright: +1. I’ll also add an action item: coverage dashboard should look at “last seen within X” based on ingest watermark, not wall clock. Otherwise we’ll page ourselves during any backlog.
+
+Sean Gallagher: Good call. Add that as follow-up for telemetry team.
+
+Aisha Bello: Metrics now: p95 delivery latency 38s, queue depth back to baseline. I think we can scale consumers back down gradually (18 -> 10) to keep headroom while we investigate.
+
+Sean Gallagher: Do it in steps and watch lag.
+
+Incident Bot: :information_source: Deploy Bot
+`audit-ingest-consumer` scaled to 10 replicas (us-west). Rollout complete.
+
+Rafael Mendes: Stability looks good. I’ll start a short incident write-up and link the runbook section for “audit pipeline backlog”.
+
+Sean Gallagher: Closing.
+
+Incident Bot: ✅ *INCIDENT CLOSED*
+Duration: ~1h 10m
+Summary: audit ingestion backlog in us-west caused audit log delivery latency spike (peak ~11m). Mitigated by scaling consumers + increasing topic partitions. Follow-ups filed for buffering/backpressure + alerting improvements + runbook updates.

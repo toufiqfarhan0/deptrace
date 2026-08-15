@@ -1,0 +1,46 @@
+devex
+
+maria: Hey team — CI started failing for a couple of our Vitest suites after we switched the SDK to ESM-only builds. Error is `Error [ERR_REQUIRE_ESM]: Must use import to load ES Module` when tests import '@redwood/inference'.
+maria: Repro steps: simple test that imports the client and mocks a call. Locally `vitest` passes, but CI uses Node 18 and fails.
+aj: Can you paste the exact stack trace?
+maria: Here: `Error [ERR_REQUIRE_ESM]: Must use import to load ES Module: /workspace/node_modules/@redwood/inference/dist/index.cjs`
+maria: Then `at Module._extensions..js (internal/modules/cjs/loader.js:1158:13)` and `at Object.<anonymous> (/workspace/test/foo.test.ts:3:1)`
+kyle: Classic pkg exports/esm mismatch. Vitest sometimes resolves to the .cjs path if deps are not transformed. Are we bundling the SDK with both cjs+esm exports?
+maria: SDK has "exports" that point to ./dist/index.js (ESM) and ./dist/index.cjs for require. But CI resolver picks the cjs entry for some reason.
+aj: For vitest, try adding deps.inline for the SDK so Vite transforms it: in vitest.config.ts
+```ts
+import { defineConfig } from 'vitest/config'
+export default defineConfig({
+  test: {
+    environment: 'node',
+    deps: { inline: ['@redwood/inference'] },
+    transformMode: { web: [/\.[jt]sx?$/] }
+  }
+})
+```
+aj: That forces Vite to pre-bundle/transform the module as ESM-compatible.
+maria: Tested that locally — good signal! CI still fails though.
+kyle: CI runs `node --version`? Node 18 vs 20 differ on ESM handling. Also check that `type: "module"` isn't accidentally set in some workspace package.json on CI.
+maria: CI node is 18.12.1. package.json type is not set.
+violet-bot: @maria triggered pipeline 3987 — job logs attached: https://ci.internal/3987/jobs/21 (link)
+aj: Another trick: vitest has `test.setupFiles` where you can mock imports early or alias the package to a ESM-friendly mock. But better is inline deps. You may also need to clear vite cache on CI.
+kyle: If inline deps doesn't work, try `resolve.alias` in vite config pointing '@redwood/inference' to the source ESM entry (e.g. src/index.ts) during tests. That avoids the compiled cjs file.
+maria: Example alias: `alias: { '@redwood/inference': '/workspace/packages/sdk/src/index.ts' }` — but that assumes sources exist in the monorepo. Ours is external package in node_modules.
+aj: For external packages, `deps: { inline: [...] }` is preferred. Also ensure `esbuild` is available on CI — vite uses esbuild to transform.
+maria: There's also an issue with mocking — vi.mock('@redwood/inference', () => ({ default: { infer: vi.fn() } })) sometimes fails with ESM default vs named export.
+kyle: Right — ESM modules don't always have a default when imported by CJS-compatible compiled artifacts. Use the async import pattern: `vi.mock('@redwood/inference', async () => { const mod = await import('./__mocks__/redwood-sdk.mjs'); return { ...mod } })`
+kyle: Or explicitly mock the named exports: `vi.mock('@redwood/inference', () => ({ infer: vi.fn() }))` and import { infer } in your code under test.
+aj: Another approach: tell Vitest to run in `node` environment and set `test: { globals: true }` so you can use `vi.stubGlobal` as needed. But that doesn't address module resolution.
+maria: What about Jest projects? Some teams still use Jest and hit `SyntaxError: Cannot use import statement outside a module` for modules from SDK. For Jest we added `transformIgnorePatterns` to include node_modules/@redwood/inference: `transformIgnorePatterns: ['/node_modules/(?!@redwood/inference)']` with `babel-jest` to transpile.
+kyle: Yup, same idea — force test runner to transform the package. For Vitest, inline deps is the exact analog.
+maria: Types are also flakey: TS complains `Cannot find module '@redwood/inference' or its corresponding type declarations` in tests after we mock.
+aj: Add a test declaration file: `tests/types.d.ts` with `declare module '@redwood/inference' { export function infer(...args: any[]): Promise<any> }` and include it via `tsconfig.test.json` in `typeRoots` or `include`.
+maria: Good call — will add.
+violet-bot: CI job 3987 finished: failed (exit code 1) — rerun?
+maria: I pushed a branch with vitest.config.ts changes to inline deps and a types stub. Pushing to CI now.
+aj: If CI still picks cjs, check package-lock/resolution: maybe another package locks @redwood/inference to a version that only ships cjs.
+kyle: Also check for dual publish tags — `exports` conditional fields like `import`, `require` order matters. If package.json has `exports: { '.': { require: './dist/index.cjs', import: './dist/index.js' } }` node resolver picks based on environment. Vite might prefer cjs sometimes. Inline deps fixes it.
+maria: CI rerun green! The inline deps + test types decl + clearing vite cache did it.
+aj: Nice. Going to add a small FAQ in devex about ESM test flakiness: inline deps, resolve.alias, jest transformIgnorePatterns, types declarations, and mocking patterns for vi.
+kyle: Also add a small snippet to SDK packaging guide: include `exports.import` and avoid ambiguous main fields, and publish source-only entry `exports.test` maybe.
+maria: Will draft the FAQ and link to this thread. Thanks for the quick help :thumbsup:

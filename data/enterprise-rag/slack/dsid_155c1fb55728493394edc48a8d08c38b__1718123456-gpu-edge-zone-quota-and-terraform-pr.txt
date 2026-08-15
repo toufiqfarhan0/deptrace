@@ -1,0 +1,29 @@
+eng-infra
+
+mika: Hey infra — quick check: planning a dedicated pool in eu-west2-edge for a low-latency product. Anyone see available GPU quota (H100) in that edge zone? I have a Terraform PR ready but need a fallback plan if quota isn't available. cc @josh @priya
+josh: giving it a look now, gimme ~5m to query quotas
+josh: quick result: project H100 quota in eu-west2-edge shows 0/8 usable. Ran this to confirm:
+```
+gcloud compute regions describe eu-west2 --project=redwood-infer --format=json | jq '.quotas | map(select(.metric | test("GPUS|GPUS_H100")))'
+```
+so we don't have zone quota spare atm
+priya: procurement update — we have 2 H100 units on a pending PO with vendor_X, ETA Wed next week if PO approved today. If you need immediate capacity, use the shared fallback pool (redwood-shared-eu-west2). Also please add a billing tag in the TF module: `billing_tag = "edge-pool-123"`
+alex: can we canary this? I'd prefer a 1-node canary in eu-west2 (non-edge) and set routing to fallback to shared when edge capacity is exhausted. Rollout window 03:00-06:00 UTC works for me
+sam: vendor_X confirmed partial shipment contingent on signed contract + invoice. If @priya marks PO high-priority I can escalate. Note: edge racks sometimes hit a firmware hold — onboarding could add ~48-72h after delivery
+infra-bot: PR created: https://github.com/redwood-inference/infra/pull/987 — labels: procurement/pending, rollout/canary
+mika: Thanks all. I'll update the TF PR with fallback and billing_tag, schedule the rollout at 04:00 UTC, and mark procurement as blocker. Adding the snippet I plan to push:
+```
+module "dedicated_pool" {
+  source = "git::ssh://git@github.com/redwood-inference/infra-modules.git//gpu-pool"
+  region = "eu-west2-edge"
+  gpus = ["h100"]
+  count = var.edge_enabled ? 2 : 0
+  billing_tag = "edge-pool-123"
+  fallback_pool = "redwood-shared-eu-west2"
+}
+```
+mika: @priya i'll tag you on the PR for PO, @josh can you submit the quota request and approve once tags are applied? :thumbsup:
+josh: on it, I'll open a quota request with cloud partner and cc billing — ETA EOD today
+priya: PO raised and flagged urgent, pinged finance for release
+sam: will monitor vendor timeline and post updates in #vendors once I have exact ETA
+mika: Great — looping this closed for now. I'll follow up in the PR and move to canary when quota or fallback is confirmed. Thanks!

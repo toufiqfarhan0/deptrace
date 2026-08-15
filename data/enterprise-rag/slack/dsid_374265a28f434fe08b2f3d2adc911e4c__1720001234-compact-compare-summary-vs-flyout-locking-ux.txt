@@ -1,0 +1,39 @@
+product
+
+alyssa: Quick sync 3055 5 iterating on the model catalog compare view. Two ideas: A) sticky compact 'comparison summary' row when 2+ models are checked (shows aggregated perf + est cost), or B) compress active filters into a single 'Filters' chip that expands into a flyout. Mock attached. Thoughts?
+
+seon (Design): I'm leaning to the sticky summary for discoverability. Concern: eats vertical space on smaller screens. Maybe default to collapsed and expand on hover/focus. :thinking:
+
+mike_s (Eng): Technically ok. Sticky outside virtual list is required. Slight perf hit but acceptable. I can make a prototype if we lock design.
+
+jamie (Product): Badge copy: favor concise labels to prevent wrapping: 'Latency (p50)', 'Cost / 1k', 'Error %'. 1-2 words recommended.
+
+ravi (Eng-ML): Suggest adding 'KV cache hit' as a micro-metric for comparison. Often differentiates infra cost.
+
+luz (A11y): A11y checklist: sticky summary must be keyboard-focusable and programmatically announced. Filters chip needs aria-expanded with an accessible flyout dialog.
+
+seon (Design): Example markup:
+```html
+<button aria-expanded=\"false\" aria-controls=\"filter-panel\">Filters (3)</button>
+<div id=\"filter-panel\" role=\"dialog\" aria-label=\"Active filters\" hidden>...</div>
+```
+
+mike_s (Eng): For badges, don't rely on color alone. Add icon + text, and include visually-hidden descriptions for screen readers (e.g., 'Low latency').
+
+jamie (Product): Empty state copy for flyout: 'No filters applied — try "model size" or "latency" to narrow results.' Keep it actionable.
+
+alyssa: Where should 'version lock' live — toolbar bulk action or per-row?
+
+ravi (Eng-ML): Both. Toolbar for multi-locks, per-row for single. Implementation straightforward.
+
+seon (Design): I've updated the mock with a compact toolbar 'Lock versions' button and a small per-row lock icon. Preview posted. :sparkles:
+
+luz (A11y): Confirm flow: 'Lock versions' triggers a confirm dialog. Announce status updates via role=status (e.g., 'Versions locked for 3 models'). Ensure lock icon has aria-label.
+
+aria-bot: Accessibility scan complete — mock flagged low contrast on lock tooltip text for small sizes. Recommend 4.5:1 for small text. Report: https://mock.report/scan/xyz
+
+mike_s (Eng): I'll do a micro-prototype and link a PR. ETA Friday EOD. Please sign off on copy + A11y beforehand.
+
+jamie (Product): I can sign off after badges are switched to icon+color and the flyout copy updated.
+
+alyssa: I'll update the mock with those changes and post final assets. If no objections by Monday, I'll ask Eng to implement. :thumbsup:

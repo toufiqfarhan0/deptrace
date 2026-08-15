@@ -1,0 +1,26 @@
+eng-ml
+
+Mia K: Quick check — where are the canonical weights for aurora-13b we should point the registry to? HF repo shows `bigmodels/aurora-13b` but our mirrors historically use s3://models-prod/aurora/13b-v2. Also hitting tokenizer errors in local smoke test.
+Samir: HF is canonical origin, we mirror to S3 for serving. Use `s3://models-prod/aurora/13b-v2/weights/` and the registry manifest at `s3://models-prod/aurora/13b-v2/manifest.json`. HF commit I used: https://huggingface.co/bigmodels/aurora-13b/commit/abc123. I ran `sha256sum aurora-13b.pt` => `f1e2c9b4...`.
+Alex P: Thanks. Who owns the bucket (ops contact) and what's the presign / ACL policy we should expect? CI wants presign TTL >= 10m for chunk downloads.
+Samir: Owner is infra-models@redwood.com. ACL is private; role `models-ingest` has s3:GetObject, s3:PutObject, s3:ListBucket on the `models-prod/aurora/*` prefix. Presign example I used: `aws s3 presign s3://models-prod/aurora/13b-v2/weights/part-0000 --expires-in 900`.
+deploy-bot: mirror-job aurora-13b v2 started (triggered by Samir) at 2024-12-02T09:42Z — status: in_progress (3/24 shards copied). logs: rsync streams + multipart copy. :rocket:
+Mia K: Tokenizer quirk: local tokenization returns unknown tokens for `µ` and some ligatures. The repo tokenizer.json says `vocab_mode: byte-pair`, but files are a mix (`vocab.json` + `merges.txt`) vs our registry expecting `vocab.bpe`. That mismatch will break serving runtime.
+tokenizer-bot: Heads up — this is a hybrid HF tokenizer. Please run `tools/convert_tokenizer.py --from hf --to registry` to normalize files. Also tokenizer.json lacks `special_tokens_map` entry for `<cls>` which causes alignment shifts in evaluation prompts.
+Samir: Pushed a manifest excerpt to the registry (short):
+```
+{
+  "name": "aurora-13b",
+  "version": "13b-v2",
+  "weights": ["s3://models-prod/aurora/13b-v2/weights/aurora-13b.pt"],
+  "checksum": "sha256:f1e2c9b4ae...",
+  "tokenizer": "s3://models-prod/aurora/13b-v2/tokenizer/"
+}
+```
+Alex P: Ok — I'll action infra: grant `models-ingest` PutObject on `arn:aws:s3:::models-prod/aurora/*` and confirm presign TTL = 900s. I'll also add a tiny CI validator that checks tokenizer keys exist in the manifest. @Samir can you add the conversion step to the onboarding script `onboard.sh`?
+Samir: Yep — will add `tools/convert_tokenizer.py` step + a `sha256sum` verify in `onboard.sh`. I'll re-run the mirror in `--checksum` mode and post final checksum when done.
+Mia K: Sweet. Once mirror finishes can someone drop the final manifest checksum here and I'll run a smoke inference with the normalized tokenizer. :thumbsup:
+Alex P: noted — will post when infra confirms ACLs.
+deploy-bot: mirror-job aurora-13b v2 progress update: 12/24 shards copied, last shard copy speed ~220MB/s, ETA ~7m.
+Mia K: cool — ping here when done and I'll kick off the smoke load.
+Samir: will do. if CI flaps on token mismatch tag me and i'll debug.

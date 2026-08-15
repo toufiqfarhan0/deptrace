@@ -1,0 +1,50 @@
+marketing
+
+Emily (Marketing): Heads-up — GTM readout + external comms for the performance benchmark blog. Target publish: Tue Apr 7, 9:00 AM PT (16:00 UTC). Need final PR + legal signoff by EOD Mon. Agenda: embargo rules, press list + outreach timing, CEO quote, social copy, monitoring & rollback plan. Doc: https://docs.google.com/spreadsheets/d/bench-gotm (please add your rows).
+
+Sam (PR): @Emily (Marketing) can we shift to 9:30 AM PT? A few EU reporters asked for a later window. Also confirm embargo scope: top-tier only?
+
+Emily (Marketing): Prefer 9:00 to hit morning US feeds, but can flex to 9:30 if Ops + Deploy are OK. Embargo: top-tier + select trade (list in doc). No public mention before 16:00 UTC.
+
+Andi (Product): I’ll attach the final benchmark deck and a 2-slide TL;DR for press. @Alex (CEO) can you please review/approve the quote in the doc by tomorrow noon?
+
+Alex (CEO): I can do that — will post a suggested quote tonight. Keep it short.
+
+Maria (Ops): Ops monitoring + on-call coverage confirmed. I’ll be on deck T+0–2h, with a paging rota. Will bump log retention to 14 days for the first 48h.
+
+DeployBot: publish_job created -> id: 67821; planned window: 2026-04-07 16:00:00 UTC; T-10m alert will be posted here.
+
+Sam (PR): Quick ask: embargo emails go out Thu EOD to the list in the doc; PR will handle reporter outreach and embargo slips. No quotes or screenshots to press until we lift.
+
+Emily (Marketing): Draft social + email teaser below — pls review: 
+```
+Blog live 9AM PT: How we cut per-token cost 2x with smart batching & KV caching. Read: https://redwood.ai/blog/bench-2026 
+Short thread + demo clip.
+```
+Sam (PR): +1. Suggest adding a CTA for devs to try the hosted API. And attach a 30s demo clip.
+
+Andi (Product): CTO blurb suggestion added to the doc. Also uploading a small performance GIF for social.
+
+Maria (Ops): Ops checklist (short):
+- Confirm publish job + rollback tested in staging
+- Pager coverage T+0–2h (Maria, ops-oncall)
+- Increase log retention & sampling for 48h
+- Quick rollback flag ready (feature_flag.publish=false)
+
+Emily (Marketing): Thanks. Final checklist items for approvals: PR ✅, Legal (cc@legal) — pending, CEO quote — pending, Assets — demo + GIF uploaded. Everyone: please mark ✅ in the sheet when you sign off.
+
+Sam (PR): PR will send embargoed pitch to 6 reporters on Thu EOD. Will share final subject line + media list in this thread before send.
+
+Alex (CEO): Quote posted in doc. Minor tweak only.
+
+Emily (Marketing): All right — moving forward with 9:00 PT unless Ops says otherwise by EOD. If we change to 9:30, I’ll update the publish job. Thanks all! :rocket:
+
+Sam (PR): FYI — I'll join T-15m for the pre-publish checklist call.
+
+Maria (Ops): Confirmed. I’ll run the pre-publish smoke test at T-20m.
+
+DeployBot: Reminder scheduled: T-60m -> slack ping to #marketing and #eng-oncall.
+
+Emily (Marketing): Final note — if any press embargo breaks, we follow the incident comms playbook: notify legal + PR lead immediately and pause distribution. Link to playbook: https://wiki.redwood.ai/incident-embargo-playbook
+
+Sam (PR): Got it. I'll keep the list tight. Thanks team!

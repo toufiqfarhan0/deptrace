@@ -1,0 +1,74 @@
+incidents
+
+sarah_support: Heads-up - starting ~11:05 UTC we saw a spike of 5xx responses on the hosted /v1/generate endpoint. Several customers opened tickets. Grafana shows a jump from ~0.2% to ~12% 5xx for gen requests. Latency also climbed.
+
+sarah_support: error samples from customer and our proxy:
+```
+2026-03-15T11:07:02Z proxy-12345 ERROR upstream response 502 "bad gateway" route=/v1/generate model=redwood-7b prefix_cache_hit=false
+curl -i https://api.redwood.ai/v1/generate -H 'Authorization: Bearer <redacted>' -d '{"prompt":"hello"}'
+HTTP/1.1 502 Bad Gateway
+X-Request-Id: r-abc123
+```
+
+james_oncall: looking at infra logs now. I can see the inference nodes timing out waiting on prefix/KV lookups. Something like: `kv: read timeout (read 2s)` and `redis: ERR max number of clients reached` in the cache-proxy logs.
+
+mike_sre: Stack from cache-proxy: `goroutine 98 [IO wait]: net.(*pollDesc).Wait` then `redis.go:142 dial timeout` repeated. Also memcached pool errors: `connection refused` for two replicas.
+
+olga_infra: Redis cluster health page shows a subset of nodes in FAIL state ~11:03. Network flaps between the cache+infra AZs during a rolling maintenance earlier today might have left the pool fragmented. There are a lot of pending clients on the primary.
+
+nora_prod: Quick verification: when I disabled prefix caching on a subset of routes (for canary) the requests stopped returning 5xx but latency increased ~60ms. So the KV layer is definitely the choke point — fallback to uncached path works.
+
+james_oncall: Repro steps I'm using:
+1) Hit /v1/generate with burst 200 RPS using the test key.
+2) Observe cache-proxy logs with repeated `read tcp i/o timeout` and immediate 502s.
+
+```bash
+# repro one-off
+ab -n 500 -c 40 -H "Authorization: Bearer test-xxxxx" https://api.redwood.ai/v1/generate
+```
+
+mike_sre: Immediate mitigation plan:
+- Increase connection pool to Redis proxies (temporary).
+- Turn on prefix-caching bypass for high-volume tenants (canary route) to drain pending requests.
+- Scale memcached/redis replicas by +2 nodes to reduce queue.
+
+olga_infra: I've scaled the cache cluster by +2 read replicas and bumped the maxclients on Redis. Doing a rolling restart of the affected cache-proxy instances to reestablish healthy pools.
+
+deploy-bot: Deploy started: cache-proxy/rollout v1.12.4 -> v1.12.4 (restart) by olga_infra (CI job 4489)
+
+sarah_support: Customer-facing note draft: "We observed an external cache backing store issue resulting in transient 5xx errors for some generation requests between 11:03–11:28 UTC. We’ve routed requests around the cache and added capacity; affected requests should be resolved. We’ll follow up with full postmortem and RCA." Thoughts?
+
+james_oncall: Good. Add note about mitigation: prefix-caching bypass was enabled at 11:14 UTC and full cache scaling completed 11:22 UTC.
+
+mike_sre: Root cause so far: combination of a flapping network interface in AZ-b and a surge of client connections (a traffic spike from a customer testing burst mode), which exhausted Redis maxclients and caused lots of blocking in the cache-proxy, cascading to 502/504 at the API gateway.
+
+nora_prod: Actions / follow-ups:
+- (P0) Add backpressure in cache-proxy so KV timeouts don't block request handling path — return cached-bypass quickly if redis is slow.
+- (P1) Introduce circuit breaker per-tenant for cache failures.
+- (P1) Add telemetry: count of pending kv requests, redis RTT histogram, number of maxclients events.
+- (P2) Review maintenance windows and AZ failover test so redis replicas don't all get hit at once.
+
+olga_infra: Also we should add automation to scale cache-replicas when connection queue > 1000. Filing infra task.
+
+sarah_support: Customers impacted list: traced to three tenants (tenant-42, tenant-88, tenant-101) running high-concurrency jobs. I sent an interim message to tenant-42 support contact explaining we're mitigating and to avoid burst tests for the next hour.
+
+james_oncall: Marking incident severity SEV2 (partial outage with customer impact). I'll keep watch for 30m after last 5xx.
+
+mike_sre: After the scale and restarts error rate dropped back to normal by 11:28 UTC. Monitoring shows 2xx recovery and tail latency improving.
+
+sarah_support: Closing loop with customers: please use this draft and add ticket links.
+
+nora_prod: Post-incident tasks assigned to eng-runtime and infra. I'll create a follow-up doc with logs + heap dumps from cache-proxy and the Redis slowlog.
+
+olga_infra: Note: we found some config drift in maxclients across shards — fixed now. Will add config drift alert.
+
+james_oncall: Final timeline (quick):
+- 11:03 UTC: Redis nodes start showing FAIL/slow responses after network flaps
+- 11:05 UTC: First customer 5xx reports and SLO alert fires
+- 11:14 UTC: Prefix-caching bypass enabled (canary)
+- 11:22 UTC: Cache cluster scaled +2 replicas, restarted cache-proxy pool
+- 11:28 UTC: Error rate back to baseline
+
+sarah_support: Thanks all. Filing SEV2 incident and handing off to postmortem channel.
+
+deploy-bot: Incident SEV2 recorded: incident-2026-0315-redis-kv-outage by james_oncall

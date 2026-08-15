@@ -1,0 +1,47 @@
+partnerships
+
+Sanjay: Quick sync — we need to finalize the Orbit module packaging approach for the Cloud Partner marketplace. Primary deliverables: TF module, README ref-arch, CI smoke tests, and marketplace metadata. Aim: ship the first alpha by Friday.
+Amanda: sounds good. who's taking ownership of the CI smoke tests? I can pair on the github actions if someone sets up the initial workflow.
+Maria: I can own the README + ref-arch diagrams. Will include network/topology + expected perf numbers (latency targets for 4-instance burst).
+Jordan: I can do the TF module scaffolding and module inputs/outputs contract. Planning to follow our standard module layout: modules/, examples/, tests/.
+Samir: I'll own marketplace metadata and the packaging checklist (license, icons, screenshots, AMI/container tags). Also will validate AZ/region compatibility.
+Amanda: for CI — suggest this quick workflow snippet to run basic plan + validate:
+```
+name: tf-smoke
+on: [pull_request]
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+      - name: Terraform Init
+        run: terraform init
+      - name: Terraform Validate
+        run: terraform validate
+```
+Maria: nice. For ref-arch diagrams I'll include two views: logical (services + networking) and ops (monitoring, backup, rollback). Will attach a PNG and a short YAML for expected alerts.
+Sanjay: re: compatibility — we need to test on both x86 and arm instances (Graviton). Jordan, add a matrix test in CI for TF plan across providers/archs.
+Jordan: will do. thinking of using a test matrix like: aws-us-east-1/x86, aws-us-east-1/arm, gcp-us-central1/x86. Keep it minimal for CI and full tests offline.
+Samir: marketplace packaging note — images/screenshots must not contain customer data, and we need a short 200-char description for the listing. I'll draft the copy.
+Amanda: quick ask — any blockers for using our shared module-linter? I can add a pre-commit hook if everyone agrees.
+Maria: no blocker. please add pre-commit, and include a small docs lint rule for architecture headings.
+Sanjay: timeline check: today — agree ownerships (we have that). Tomorrow — initial PRs for module + README + Marketplace draft. Thursday — CI matrix + image assets. Friday — internal alpha publish to partner staging.
+Jordan: noted. I'll open the module PR by EOD tomorrow. Will include examples/simple/ and examples/complete/.
+Amanda: I'll wire the actions and smoke tests into the PR so CI runs on day 1.
+Samir: I'll post the packaging checklist in the partner tracker and tag @cloud-partner-bot for validation when ready.
+cloud-partner-bot: NOTE: When packaging checklist is uploaded, run `/.scripts/validate-marketplace.sh` to auto-check metadata.
+Maria: Does anyone have objections to using the 1.0.0-alpha semantic versioning for the module tag? keeps things clear.
+Sanjay: fine with 1.0.0-alpha. Also add a compatibility matrix in README listing supported model variants, minimum TF version, and expected runtime requirements.
+Jordan: adding `required_version = ">= 1.5"` to module and a quick example of usage in README.
+Amanda: small UX ask — include a short 'quickstart' with 3 commands so a dev can spin up the baseline stack in ~10 mins.
+Maria: will draft the quickstart. I'll also include a short 'what to watch' section for observability after deploy.
+Samir: ok I'll schedule a 30-min validation slot with the partner staging team Friday morning and invite everyone.
+Sanjay: perfect. Last item: can someone volunteer to run the alpha verification checklist after staging publish? needs one person to sign off.
+Amanda: I can do the verification signoff Friday afternoon.
+Sanjay: awesome — thanks all. I'll create the tracking ticket and link PRs. :thumbsup:
+Amanda: thanks — ping me if you want pairing on the workflows.
+Maria: will share the first draft of diagrams tonight.
+Jordan: PR draft coming tomorrow. :rocket:
+cloud-partner-bot: Reminder scheduled: partner-staging publish check at 2026-03-27T09:00:00Z.

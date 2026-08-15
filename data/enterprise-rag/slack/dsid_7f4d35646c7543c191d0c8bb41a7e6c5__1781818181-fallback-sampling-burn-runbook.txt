@@ -1,0 +1,11 @@
+eng-platform
+
+nora: quick thought — when auto-fallback sampling kicks in during rollouts, ops sees huge spikes in storage. can we add a burn-runbook widget?
+ben: yes. widget shows current burn rate, projected 24h cost, and recommended mitigations (reduce bump_rate, throttle by tenant).
+li: also add a "suggested preset" button that temporarily lowers bump_rate and notifies owners. should be one-click.
+ben: backend: need metric audit.burn.projected and audit.burn.current and an event audit.burn.mitigation_applied.
+audit-bot: scheduled probe: burn-runbook-check-1781 on 2024-08-15T04:00:00Z. will post results.
+li: UX: place widget on policy detail page under "Audit & Costs". include quick actions: simulate, apply-mitigation, escalate.
+ora: security note: any mitigation that reduces sampling must still record decision_ids for repro. don't lose traceability.
+ben: good call. mitigation should mark traces as "throttled" and store a compact summary (reason, time, policy_id).
+li: next steps: I'll mock widget, ben will add metrics, nora will draft runbook copy for the widget. reconvene after probe.

@@ -1,0 +1,58 @@
+eng-runtime
+
+anya: Heads-up — after merge merge/fused-attn-heuristic (author: kevin) our canary for short-seq decode shows p95 regressions. Noticed ~12% higher tail on the 8-token workload. Attaching quick profiler output.
+
+sam: saw this on my local perf runs too. flamegraph shows extra time in attention kernel selection path around KernelChooser::select_for_shortseq
+
+kevin: hmm. I changed the fallback threshold to prefer fused matmul for shapes < 64 to avoid compile thrash. suspect the heuristic is now choosing a slower kernel for our common shortseq pattern when batch size == 1.
+
+nate: CI flagged it as well: ci-bot posted the perf job
+
+ci-bot: Perf CI: decode_shortseq_regression — baseline: 2600 tokens/s, current: 1970 tokens/s (0.76x) — p95 latency up 12.1% — job: https://ci.internal/perf/7782
+
+anya: reproduction steps I used:
+```
+./tools/loadtest --model=redwood-3b --sequence=8 --batch=1 --iters=1000 --profile flame
+# output summary
+before: p95 48.2ms token/sec 2600
+after:  p95 54.0ms token/sec 1970
+```
+
+sam: also caught more KV cache churn in traces. There's a burst of cache misses while the kernel chooser rebinds kernels mid-session:
+- first tokens use fused-attn kernel
+- then runtime switches to fallback generic-attn
+- KV cache pointer/stride handling does a paincheck and forces memcopy
+
+kevin: I can replicate the kernel switch with an instrumented run. Looks like the selector uses sequence_length+batch heuristics but ignores kv-alignment flag. quick patch idea: prefer kernels that preserve KV-layout unless latency benefit > 15%.
+
+opsbot: Canary hold requested by eng-runtime at 4467899999 — blocking rollout to 100% :exclamation:
+
+nate: good call to hold. Can we get a micro-bench harness for pure attention kernels? I want to validate kernel throughput independently of batching logic.
+
+sam: I ran kernel-only bench: fused-attn (current heuristic) gave 1400 tokens/s vs generic-attn 2000 tokens/s for our shortseq microbench. So fused is slower here (weird). Attached small asm trace and GPU utilization snapshot.
+
+kevin: that explains it. My heuristic flip was motivated by long-seq wins; didn't bake in shortseq microbench. I'll open PR to revert the heuristic and add a targeted unit test to prevent reintroduction.
+
+anya: can we get a quick bisect to identify the exact commit that changed behavior? I think it's the last two commits in that PR.
+
+kevin: running git bisect now between base@a1b2c3 and head@d4e5f6. Will post result in ~10m.
+
+ci-bot: Bisect job queued: perf-bisect-4467899999 — will run kernel microbench across commits.
+
+sam: meantime, workaround: pin runtime config to force kernel_selector=legacy_shortseq in canary. That should avoid the slow path.
+
+deploy-bot: Applied canary override: kernel_selector=legacy_shortseq for canary pool (id: canary-7) — monitoring metrics.
+
+nate: nice. after override my local p95 returned to ~48ms. Can we keep the override until patch lands?
+
+kevin: yes — opening PR with revert of heuristic + improved selector tests. Link: https://git.internal/r/repo/pull/1234
+
+anya: thanks — once PR merges, let's run a targeted perf CI and then lift canary hold. Also add an eval to ensure KV cache memcopy doesn't increase when switching kernels.
+
+sam: adding a shortseq-end-to-end eval to the perf dashboard. Will post results here.
+
+opsbot: Note: created incident ticket PERF-2026 for tracking follow-up and postmortem items.
+
+kevin: quick note to self: add selector unit test that simulates kv_aligned=false and batch==1, sequence<=8.
+
+anya: :thumbsup: keep updates short. If bisect/PR shows anything unexpected ping pager. 

@@ -1,0 +1,40 @@
+eng-sre
+
+Elaine (SRE): @here Quick heads-up: we're rolling out a new capacity rebalance cadence and a short canary failover next Tue 03:00 UTC. This is to reduce long-tail latency during peak compactions. No customer-facing SLA change, but internal SLO windows are being tightened.
+
+kumar (oncall): timeline + impact? will this trigger pages? :eyes:
+
+Elaine (SRE): timeline: Tue 03:00-04:30 UTC. We'll do a staged reassignment of reserved pools across AZs (small batches). Pages: only if the canary fails or if error-rate > 1% for > 5m. We'll create a temporary alert suppression for routine drain noise.
+
+maria (prod-eng): Which regions are canary? prefer we start in eu-west-1, then us-west-2. Can we avoid routing model-serving traffic for low-tier dedicated customers during the canary?
+
+Elaine (SRE): canary regions: eu-west-1 (primary), us-east-1 (secondary). We will route low-tier Dedicated to fallback model-variants automatically during the window. No manual customer opt-out.
+
+jen (platform): adding runbook snippet for the drain step — keep sessions warm with kv-cache pre-warm:
+```
+# drain step (partial)
+kubectl cordon node-123
+kubectl drain node-123 --ignore-daemonsets --delete-local-data --grace-period=120
+# trigger kvcache-warmup job
+./tools/kv-warmup --target node-123 --model gpt-neo-small --prefix-cache 1h
+```
+
+kumar (oncall): thanks. what about Dedicated reserved capacity billing windows? we have customers in flight on monthly commits.
+
+Elaine (SRE): no billing changes. This is purely capacity rebalancing inside our Dedicated pools. We won't evict reserved allocations; only move unallocated nodes and lower-priority preemptible slots.
+
+ops-bot: Schedule created: "Capacity rebalance / canary failover" Tue 03:00 UTC — 03:45 UTC. Calendar: https://calendar.redwood.ai/event/abc123
+
+sre-bot: Preflight checks passing: cluster-health=OK, kv-cache-fill=87%, cluster-load=0.56. Test plan and rollback steps attached: https://redwood.internal/ops/rebalance-runbook
+
+maria (prod-eng): we'll run a quick synthetic through prod-edge to validate tail latency. I'll post results in this thread.
+
+Elaine (SRE): thanks. action items: 1) @jen update runbook w/ kv-warmup args 2) @maria run synthetic at T+15m after canary 3) @kumar hold page if error-rate suppression active unless >1% for 5m 4) ops-bot attach final checklist by EOD.
+
+kumar (oncall): noted. I'll be on-call for the window. pager plan acknowledged.
+
+jen (platform): runbook updated: https://redwood.internal/runbooks/rebalance-v2 (added warmup tolerances and backoff).
+
+maria (prod-eng): synthetic results (post-canary): 03:30 UTC — P50 latency +2ms, P95 +8ms, P99 +35ms. No errors. Will run one more after full roll. :thumbsup:
+
+Elaine (SRE): perfect. if we see P99 > 100ms or error-rate spike then we'll rollback and open incident. Otherwise we'll continue the staged roll. Thanks team! :party:

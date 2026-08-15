@@ -1,0 +1,46 @@
+eng-oncall
+
+IncidentBot: Pager: high error rate for /v1/generate across hosted layer. Severity: P1. Paging eng-oncall. metric: token_error_rate > 5% for 3m. link: https://metrics.redwood.local/alerts/2412345678
+Aya: I'm on it, pulling up logs and recent deploys. If anyone else is free pls ack.
+Sam: ack. I'll take concurrency surface (frontend -> serving). Aya, can you check downstream qps and cache hit rate?
+Aya: checking cache hits now. Prelim: KV cache hit dropped from 88% to ~21% starting 03:12 UTC.
+Maria: Notified support@customers about potential customer impact, flagging top enterprise tenants.
+Jake: checklist: any recent autoscaler changes or rollout? I see a canary earlier at 02:50 (model-batch-opt). Rolling back to previous variant is an option.
+Aya: Log snippet from serving at 03:13:
+```
+ERROR ServeLoop: kv_get timeout 200ms for key shard_47
+WARN Batcher: queue_length spike 450 -> increased token wait
+TRACE kernel: selinux: dispatch failed: 502 from kv-proxy
+```
+Aya: Looks like kv-proxy latency spiked and triggered downstream batching backpressure.
+Sam: Oncall mitigation plan: 1) divert traffic to regional fallback model (latency-cost tradeoff) 2) scale up kv-proxy pods + bump connection pool 3) revert canary if needed. Which do you want first?
+Aya: Start with scale up kv-proxy (fastest). Jake, can you prod infra to add +3 pods and increase pool to 200? Use the emergency autoscale script: `./scripts/emergency-scale --service kv-proxy --replicas 6`.
+Jake: running now. Pushing config to prod (will watch for errors).
+Maria: Customer impact update: initial error spike affected 12 enterprise tenants; some saw 5-15% of requests failing for ~10m. Support is sending a templated note.
+Lee: FYI I'm taking the 04:00-08:00 handoff in case this persists.
+Aya: kv-proxy pods scaled, pool bumped. Observability: kv latency dropped back to baseline in ~90s. Token error rate trending down.
+IncidentBot: Alert resolved: token_error_rate back to normal for 2 consecutive 1m windows. Auto-close in 5m.
+Sam: Good mitigation. Next: root cause analysis + tracking. Initial hypothesis: canary introduced slightly higher KV pressure (more small requests), combined with a transient kv-proxy GC spike. Also we saw queueing at the serving batcher when pool exhausted.
+Maria: Action items I can take on: notify affected customers with timeline + follow-up once RCA is ready. I'll own the customer comms doc.
+Jake: I'll open infra ticket to add pod-provision margin and add circuit-breaker to kv-proxy config. Ticket: https://tickets.redwood.local/INFRA-8242
+Aya: I'll own the immediate runbook edits: add a play for kv-proxy backpressure (how to scale, where to watch, commands). Also add explicit rollback criteria for canaries that increase per-request KV QPS. PR will be sent to ops/playbooks.
+Sam: I'll do the deep dive: correlate canary traces with GC/heap growth on kv-proxy. Assigning myself and putting to postmortem.
+Lee: For handoff: I'll include a short summary in the 04:00 notes and list the open action items.
+Aya: Proposed post-incident timeline: - Postmortem draft due in 48h - Internal review in 72h - Customer-facing summary after review (no later than 96h). Any objections?
+Sam: Sounds good. Add measurement goals: quantify end-to-end token error delta, customer impact window, and cost of mitigation (extra pods + fallback runs).
+Maria: I'll add the customer list and support ticket IDs to the postmortem doc.
+Jake: Infra ticket has tentative remediation tasks: autoscaler tuning, connection pool default, circuit breaker + healthchecks. I'll estimate effort in 2 working days.
+Aya: Action table (brief):
+- Aya: update runbook (kv-backpressure play), PR: https://git.redwood.local/playbooks/pulls/312 (draft) - due 24h
+- Sam: RCA & postmortem writeup - due 48h, doc: https://docs.redwood.local/postmortems/2412345678 (stub)
+- Jake: INFRA-8242 autoscaler + cb tasks - due 72h
+- Maria: customer comms and support tracking - due 24h (send initial note), follow-up after PM review
+- Lee: handoff notes + watch during 04:00-08:00 shift - today
+Aya: Runbook change details to include: exact commands to scale, where to check KV metrics, thresholds to trigger immediate fallback, and rollback windows for canaries. Also add a short troubleshooting flow for batcher queue spikes.
+Sam: Suggest adding a short runbook test (run a simulated kv-stall) in staging and a post-deploy smoke that verifies KV hit rate >= 80% under 90th percentile QPS.
+Jake: I'll coordinate the staging test and add it to the release checklist.
+Aya: Scheduling: Postmortem sync (internal) tomorrow 10:00 UTC. Invite: eng-oncall, eng-sre, infra, support, product. I'll create the calendar and update doc.
+Maria: I'll prepare the initial customer note template and leave placeholders for root cause and mitigation action items.
+Lee: Any other immediate risks? We should verify regional fallbacks didn't cause config drift.
+Sam: noted. I'll add a quick audit to the ticket.
+Aya: Thanks all. Leaving the thread open for updates. I'll link PR and postmortem doc as they come in. :thumbsup:

@@ -1,0 +1,52 @@
+product
+
+Elinor: Quick check — are we green for beta->GA next Tue? Need signoff on SLA, docs, support rota, monitoring alerts, pricing page. Can owners confirm?
+
+Mike: SLA is drafted. Legal approved exception for 3rd-party telemetry. Waiting on ops to confirm SLO numbers (p95/p99) and incident thresholds.
+
+Sasha: Docs status: most pages are written. Quickstart and sample prompts missing; I'll finish tonight and link runbooks. Will add changelog.
+
+Jamal: Support rota: I can cover first 72h daytime. Need a second on-call for nights — @Priya can you take nights first week?
+
+Priya: I can take nights week 1. +1 on adding escalation playbook to docs.
+
+Mike: Monitoring: dashboards are in Grafana, alerts for latency/oom/error_rate exist but we don't have alert thresholds for burst queues. I'll propose thresholds by EOD.
+
+docs-bot: Staging docs updated: https://staging.docs.redwood/inference — preview the quickstart fragment under /getting-started
+
+Sasha: I'll pull the staging link and add the quickstart fragment and sample prompts.
+
+Mike: Pricing draft (rough):
+```
+Hosted: $0.025 / 1k tokens (generation)
+Embeddings: $0.0004 / vector
+Dedicated: custom quote, baseline commit 2k GPU-hrs
+Free tier: 100k token credit
+```
+Need finance thumbs-up and margin assumptions.
+
+Elinor: Finance signoff needed — @Mike can you add margin assumptions to the pricing PR and tag @finance?
+
+Mike: Will add numbers and ping finance in the PR before EOD.
+
+deploy-bot: Canary rollout scheduled for 2026-03-24 02:00 UTC — canary=10%, monitor p99 latency, abort on >50% error rate.
+
+Jamal: Runbooks — we need a short runbook for model fallback and cache warmup. I'll draft a 1-pager.
+
+Sasha: Adding runbook links to docs now: /runbooks/model-fallback.md and /runbooks/cache-warmup.md
+
+Elinor: Action items recap:
+- SLA SLOs: @Mike (today)
+- Pricing margin details: @Mike (today)
+- Quickstart + samples: @Sasha (tonight)
+- Night on-call week1: @Priya (confirmed)
+- Runbooks: @Jamal + @Sasha (tomorrow)
+- Deploy canary: ops (tomorrow 02:00 UTC)
+
+If no blockers by EOD, we trigger GA plan.
+
+Priya: No blockers from infra side :thumbsup:
+
+Mike: OK from my side :+1:
+
+Elinor: Great — thanks all. Staying on this thread for any last-minute issues.

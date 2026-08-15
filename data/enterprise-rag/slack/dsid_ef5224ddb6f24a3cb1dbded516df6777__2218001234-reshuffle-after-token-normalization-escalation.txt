@@ -1,0 +1,66 @@
+customer-success
+
+mia-cs: FYI customer ACME reported that after last night's model rollout identical rerank payloads are returning a different ordering. They attached pair of queries where rank 1/2 swapped. Very noisy for them, escalated to SEV-2. Case: #C-11872.
+
+mia-cs: sample (redacted):
+```json
+{
+  \"query_id\": \"q-9923\",
+  \"candidates\": [\"A\",\"B\",\"C\"],
+  \"model\": \"redwood-rerank-v2\",
+  \"input\": \"same exact text repeated 10x...\"
+}
+```
+
+samir-eng: acknowledging, looking. Did customer pin a model version or used the catalog alias? Any example exact request/response with timestamps?
+
+mia-cs: they called the unnamed catalog alias `redwood-rerank-v2` (no pinned hash). They provided two request ids from our logs: r-20230301-09 and r-20230301-12. Said they saw ordering change after 2023-03-01 02:14 UTC deployment. No 5xxs on their side, but they report ~45ms higher latency on some calls.
+
+alex-ml: @samir-eng can you check tokenizer/normalization diffs between previous and rolled model? My note from release log: we shipped a small tokenizer tweak to collapse multiple whitespace sequences in the preprocessor for a couple of models to reduce token growth. Could cause subtle reranking changes.
+
+samir-eng: grabbing logs for r-20230301-09 and r-20230301-12:
+```
+[2023-03-01T02:15:02Z] r-20230301-09 model=redwood-rerank-v2 hash=sha256:abcd1234 preprocess.normalize_spaces=true
+[2023-03-01T02:18:44Z] r-20230301-12 model=redwood-rerank-v2 hash=sha256:efgh5678 preprocess.normalize_spaces=false
+```
+
+samir-eng: interesting — two different hashes. Looks like a hotfix rolled in between. I can reproduce locally by toggling normalize_spaces. Quick repro curl from my env:
+```bash
+curl -s -X POST https://api.redwood.ai/v1/rerank \\\n  -H 'Authorization: Bearer $REDWOOD_KEY' \\\n  -d '{"model":"redwood-rerank-v2","inputs":[{"id":"q-9923","text":"same exact text repeated 10x...","candidates":["A","B","C"]}]}'
+```
+
+samir-eng: With preprocess.normalize_spaces=true we get order [A,B,C]. With false we get [B,A,C]. Scores differ by ~0.03 between top two. Reproduced across CPU/GPU.
+
+jen-support: Customer asked whether pinning to old model resolves. Can we recommend that? Also what's the rollback plan?
+
+alex-ml: Short answer: yes, pin to the older model hash (sha256:abcd1234) should restore previous behavior. Longer: we need to decide if the whitespace normalization is a desired behavioral change. It reduces token counts but can change relative rankings for whitespace-sensitive queries.
+
+samir-eng: I'll open internal bug and attach minimal repro set. Proposed labels: rerank, tokenizer, regression, high-priority. Opening now and will include curl + expected vs observed.
+
+samir-eng: repro steps I used (copyable):
+```bash
+# set model to old hash (simulate pin)
+export MODEL_OLD=redwood-rerank-v2@sha256:abcd1234
+export MODEL_NEW=redwood-rerank-v2@sha256:efgh5678
+# request against old
+curl -s -X POST https://api.redwood.ai/v1/rerank -H 'Authorization: Bearer $KEY' -d '{"model":"'$MODEL_OLD'","inputs":[{"id":"q-9923","text":"same exact text repeated 10x...","candidates":["A","B","C"]}]}'
+# request against new
+curl -s -X POST https://api.redwood.ai/v1/rerank -H 'Authorization: Bearer $KEY' -d '{"model":"'$MODEL_NEW'","inputs":[{"id":"q-9923","text":"same exact text repeated 10x...","candidates":["A","B","C"]}]}'
+```
+
+samir-eng: attaching small CSV of 40 sample queries where order flips. Will link in bug.
+
+deploy-bot: Deploy notification: redwood-rerank-v2 @sha256:efgh5678 promoted to prod at 2023-03-01T02:10:00Z by release-bot.
+
+alex-ml: Proposed mitigations:
+- Short term: advise customer to pin to sha256:abcd1234 (support workaround).
+- Mid term: add a compatibility toggle in the API for preprocess.normalize_spaces with explicit default per model alias to avoid surprise.
+- Long term: add regression eval in CI comparing rerank order on a stable eval set across tokenizer changes.
+
+mia-cs: I'll propose the pin to the customer and escalate the case owner to get sign-off. Can we get an ETA for a rollback or compatibility toggle?
+
+samir-eng: ETA: I can push an emergency pin for customers in orgs who opt-in within 2 hours, or we can schedule a rollback of the tokenizer change after PM sign-off. I'll update bug with timeline.
+
+alex-ml: I'll draft the regression test and follow up with infra to ensure tokenization changes trigger the suite.
+
+mia-cs: thanks all. I'll post updates to the customer and keep this thread linked to the case. :thumbsup:

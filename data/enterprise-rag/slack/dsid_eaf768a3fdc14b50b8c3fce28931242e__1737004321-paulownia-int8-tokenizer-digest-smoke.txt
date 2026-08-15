@@ -1,0 +1,47 @@
+eng-ml
+
+mina: kicking off int8 bring-up for paulownia-v1 on staging (quant backend=fast-q, scale-per-channel). Ran bilingual_zh_ar_1000 smoke. Immediate oddity: Arabic spans gain a leading non-joiner and Chinese outputs insert a fullwidth space before punctuation. Anyone seen a similar artefact? :thinking:
+
+jon: ran the same suite. BLEU (zh->ar) down ~1.8 vs float32 baseline. quick repro below.
+```bash
+# smoke command
+python eval.py --model paulownia-v1 --quant int8 --suite bilingual_zh_ar_1000 --seed 42
+```
+Input (src zh): 我今天去市场买菜。
+Float32 output: ذهبتُ إلى السوق اليوم لشراء الخضروات.
+Int8 output: \u200cذهبتُ إلى السوق اليوم لشراء الخضروات 。
+(note the U+200C ZWNJ prefix and a fullwidth ideographic punctuation after Arabic sentence)
+
+sarah: can you paste tokenizer version + token id traces? my gut says token->byte align shifted when quantized embedding table was packed.
+
+mina: tokenizer: paulownia-tokenizer v2.3 (sentencepiece-based, model_id=paul-tok-v2). Dumping top diffs:
+jon: token id seqs (truncated):
+Float32 ids: [266, 7890, 1023, 44, 9001]
+Int8 ids:   [266, 7890, 1023, 820, 9001]
+(here 44 is the Chinese fullstop token in float, replaced by 820 in int8 run)
+
+ali: interesting — that suggests a token mapping mismatch, not KV cache yet. Two hypotheses: (1) tokenizer binary mismatch on staging image when building quant bundle; (2) rounding during quantized embedding lookup causing different argmax/beam choices for borderline tokens. try rerunning int8 with forced tokenization step (pretokenize and feed ids) to separate tokenizer vs model inference.
+
+jon: did pretokenize test — fed ids from float32 run into int8 model, outputs align much better, ZWNJ gone, punctuation correct. So tokenizer discrepancy is the culprit. Not sure how the SP model swapped token 44->820 on packaging.
+
+mina: packaging pipeline used spm v2.3 artifact from build-2026-03-18. I will verify digest. Also noticed we used fast-q kernel that lumps vocab remap for quant table; maybe the packaging step re-encoded vocab order.
+
+eval-bot: automated-eval: bilingual_zh_ar_1000 | float32 BLEU=28.3 | int8 raw BLEU=26.5 | int8 with float tokenizer (pretokenized ids) BLEU=28.1 | delta suggests packaging/tokenizer mismatch. (run_id: 1737004321-audit)
+
+sarah: good repro. next steps: 1) checksum tokenizer artifacts used in quant build vs staging runtime. 2) add a CI smoke that compares token id histograms between float and quant bundles on a small seed set. 3) keep disable-kv-cache flag test but deprioritize if pretokenize fixed it.
+
+ali: for the packaging fix, watch out for the spm --character_coverage flag; we had a rebuild of vocab in the quant pipeline last month that changed id assignment for a couple of punctuation tokens. I'll open a PR to pin tokenizer artifact and add an assert in bundle packaging.
+
+mina: thanks. I'll roll an immediate hotfix to pin paul-tok-v2 digest in the int8 pipeline and re-run the onboarding smoke. Posting results shortly. :thumbsup:
+
+jon: +1, logging snippet if helpful:
+```
+[2026-03-18T09:12:07Z] packaging: spm_model.bin loaded (digest: sha256:abcd...ef12)
+[2026-03-18T09:12:15Z] quant_bundle: vocab_map applied (manifest:vocab_map.json)
+[2026-03-18T09:12:16Z] quant_bundle: packing embeddings -> reorder perms detected
+```
+mina: re-run done, int8 BLEU now 28.2, ZWNJ/punct artefacts resolved after pinning tokenizer artifact. Closing initial smoke. Scheduling short triage tomorrow to add CI guards.
+
+sarah: sweet. can we also add a tiny locale-specific test for CJK punctuation adjacency — caught this one early.
+
+eval-bot: note added to model_onboard:paulownia-v1 -> tasks: add-token-id-histogram-check, pin-tokenizer-digest, small-locale-smoke (zh,ar,he).

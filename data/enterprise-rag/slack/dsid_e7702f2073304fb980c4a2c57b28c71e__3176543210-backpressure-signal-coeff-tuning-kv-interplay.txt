@@ -1,0 +1,32 @@
+eng-runtime
+
+alex: quick heads-up — saw a short spike of 429s from the us-west pool at ~11:45. most requests were small (1-10 tokens) but the batcher kept switching kernels which blew up service time for a lot of them.
+
+maria: logs? any perf traces?
+
+alex: attaching summary inline: kv_cache_hit dropped to ~18% in that interval, kernel_switch_rate doubled, and queue.backpressure_signal ramped. seems like prefetch churn + small batches triggering expensive kernel choice.
+
+jin: that matches theory — low kv hits -> more prefetch work -> heavier batches that then lose out to latency SLO and cause backpressure. what's current token_budget for interactive routes?
+
+sam: interactive = 1200 tokens. we also have kernel_routing_threshold=0.2 which lets heavier kernels be chosen when avg_seq > 64.
+
+jin: proposal: lower target_token_budget to 600 for interactive when kv_hit < 30%, and increase backlog_decay_coeff to 0.6 so the backpressure signal calms faster once pressure drops. also bias kernel routing to lighter kernels for batches < 8.
+
+leah: can we favor soft-shed (soft 429) instead of hard rejects here? return a Retry-After + small jitter so clients back off gracefully. that avoids client-side thundering retries.
+
+ben: suggestion for safe experimentation: A/B cohort run with mirrored traffic. cohort A: backpressure_coeff=0.45 + token_budget=600 + kernel_light_bias=true; cohort B: backpressure_coeff=0.75 + token_budget=900 + kernel_light_bias=false. run 30m and compare 429_rate, p50/p90 latency, and kernel_switch_count.
+
+ops-bot: deploy started: queue-signal-tuning -> staging (sha abc123). will post when finished.
+
+maria: quick command we used to gather histograms during the incident:
+```
+rbx/collect_perf --range 11:40-11:50 --pool us-west --metrics kernel_switches,kvcache_hit,429_rate,queue_signal --histogram
+```
+
+alex: concrete action items: (1) run ben's A/B mirror, (2) add kernel_selection_reason to batch logs (so we can correlate small-batch/light-kernel vs big-batch/heavy-kernel), (3) temporarily lower token_budget for interactive routes with kv_hit < 30%, (4) enable soft-429 path behind a flag and measure client retry behavior, (5) set rollback thresholds (soft-429 > 1% or p50 latency +20% triggers revert).
+
+sam: I'll own the A/B and dashboard panels (429_rate, kernel_switch_count, kv_hit by route). I'll push results here when ready.
+
+ben: sounds good. for the A/B, also capture batch_size distribution and per-batch kernel_id so we can see if kernel routing change actually reduced switches.
+
+alex: thanks everyone — let's treat this as a short experiment and have an emergency rollback plan. :rocket:

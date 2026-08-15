@@ -1,0 +1,77 @@
+docs
+
+morgan: FYI I'm starting a small PR to unify the Python/TS/Go streaming + retry examples so docs don't contradict each other (paging + resume tokens). Looking for reviewers.
+
+taylor: thanks — can you summarize the main API differences we'll show? e.g., async iter vs streaming callback vs Go channel.
+
+morgan: yep. plan: Python -> async generator example; TS -> for-await on the ReadableStream; Go -> channel + ctx. Keep retry backoff consistent across all.
+
+kai: also need to show cursor resume snippet for pagination. currently we have two different approaches in docs.
+
+anya: can you post the minimal snippets you want to land? I'll check wording for the migration guide.
+
+morgan: posting draft snippets below:
+
+morgan: ```python
+async def stream_responses(client, prompt):
+    async for chunk in client.responses.stream(prompt):
+        print(chunk.text)
+```
+
+morgan: ```ts
+for await (const part of client.responses.stream(prompt)) {
+  console.log(part.text)
+}
+```
+
+morgan: ```go
+respCh := client.StreamResponses(ctx, prompt)
+for r := range respCh {
+  fmt.Println(r.Text)
+}
+```
+
+taylor: looks good. For retries please add a small helper: exponential backoff with max attempts, show pseudo-code.
+
+morgan: added inline retry example:
+
+morgan: ```py
+async def with_retries(fn, max_attempts=3):
+    delay = 0.5
+    for i in range(max_attempts):
+        try:
+            return await fn()
+        except TransientError:
+            await asyncio.sleep(delay)
+            delay *= 2
+    raise
+```
+
+kai: minor: use specific exception names from SDK (e.g., RetryableError). Also call out idempotence implication for streaming requests.
+
+anya: I'll draft the migration blurb: "old cursor param -> new resume_token, small code diff included". Where should I link to the API reference?
+docbot: Automated link check failed for old pagination URL: /docs/api/paging -> 404
+
+morgan: thanks, fixing links now. Will open PR and tag @taylor @kai for review. Expecting reviewers to focus on wording + correctness for Go channels.
+
+taylor: :thumbsup: I'll do a pass tomorrow AM.
+
+kai: can we add one test-case snippet showing resuming mid-stream (cursor token + rehydrate state)? quick pseudo:
+
+kai: ```py
+# resume example
+token = last_chunk.resume_token
+await client.responses.stream(prompt, resume_token=token)
+```
+
+morgan: yes. I'll add that and squash into one commit. Planning to land by EOD.
+
+docbot: PR opened: #5123 — docs: unify streaming/retry/pagination examples. CI: docs-links, lint, snippets-validate.
+
+taylor: CI looks green except snippet-validate fails on Go import path. I'll patch.
+
+morgan: updated import path, re-pushed. Anything else?
+
+anya: small language nit in the migration guide, will push a commit to the branch.
+
+morgan: great, thanks all. If anyone wants to pair on the Go example ping me.

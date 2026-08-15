@@ -1,0 +1,37 @@
+eng-releases
+
+deploy-bot: STARTING deploy to dedicated/private prod-eu1
+Environment: prod-eu1
+Commit: 9a4f2b3
+Tag: v2.3.1-rc3
+Owner: maya
+Change window: 03/20 02:00-03:00 UTC
+Canary set: 10% traffic -> pool-dedicated-eu1-canary
+Rolling policy: 5 pods at a time
+Status: queued
+
+maya: launching now. will monitor canary. @chris @olivia
+chris: ack. watching latency dashboards and qps.
+olivia: pinned fallback tag v2.3.0 for quick rollback if needed :white_check_mark:
+sriram: small heads-up — model-loader has a pending patch in staging; watch for OOMs.
+deploy-bot: STEP 1/6: pulling image registry.redwood/v2.3.1-rc3 ... OK
+deploy-bot: STEP 2/6: draining canary nodes -> OK
+deploy-bot: STEP 3/6: applying model migration config
+deploy-bot: ERROR: model-loader failed health check on canary (503 x5 within 30s)
+chris: seeing increased 99p latency on canary, +120ms
+maya: hold rollout. initiating partial rollback of canary.
+maya: @sriram can you check model-loader logs ASAP? link: https://logs.redwood/s/abcd123
+sriram: looking. tail shows OOM in model-loader, likely due to kv-cache change in runtime commit 9a4f2b3.
+olivia: recommend pin to v2.3.0 on canary pool and rollback RC3 cluster-wide if more failures.
+chris: agree. rollback preferred to minimize user impact. no need to escalate to infra yet.
+maya: initiating rollback to tag v2.3.0 and pinning. starting rollback now.
+deploy-bot: ROLLBACK STARTED: target prod-eu1 -> tag v2.3.0 (commit 7f1e6d8)
+deploy-bot: STEP: redeploying canary -> OK
+deploy-bot: STEP: draining and reassigning traffic -> OK
+deploy-bot: ROLLBACK COMPLETE: prod-eu1 now at v2.3.0
+maya: monitoring -- latency back to baseline, no 503s observed. good.
+chris: filing a post-rollback incident note. I'll attach preliminary metrics.
+olivia: add a release note pointer and flag v2.3.1-rc3 as blocked for further canaries.
+maya: action items: (1) sriram to create fix PR for model-loader kv-cache behavior; (2) devex to run canary with larger heap; (3) release to re-run RC after fix.
+infra-bot: scheduled backfill: nightly job to run full integration on dedicated clusters tomorrow 02:30 UTC
+deploy-bot: THREAD CLOSED: rollback performed and tag pinned. If further action required, reopen thread.

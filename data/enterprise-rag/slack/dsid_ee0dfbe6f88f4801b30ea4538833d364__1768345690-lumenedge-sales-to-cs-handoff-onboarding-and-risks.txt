@@ -1,0 +1,46 @@
+customer-success
+
+Maya Ramos: Hey team — handing off LumenEdge (Enterprise trial -> committed). Quick summary: 6-seat pilot, target go-live in 6 weeks, annual contract signed but PO still pending. Main risks: customer needs VPC peering + on-prem connector, and they indicated strict data residency in eu-west-1. Sales notes a spike in expected token volume after Phase 2. @Jonah Park you'll be CS owner. @Priya Singh will lead onboarding SE.
+
+Jonah Park: 👍 thanks Maya. I'll own weekly check-ins and the renewal play. High-level health: medium — exec buy-in good, legal/ops still finalizing PO. I'll set up kickoff for next Tues.
+
+Priya Singh: Onboarding plan: 2-week pilot ramp (integration + sample prompts), enablement workshop, then production hardening. Need access to their VPC details and a network contact. Can we get a temporary test dataset? @Maya can you share contact?
+
+Maya Ramos: Yes—customer IT contact is laura@lumenedge.com. Laura can share VPC CIDRs and firewall requirements. Also asked for SSO (SAML) + role sync.
+
+Tom Becker: From support side: we'll allocate a P2 SLA for the first 30 days after go-live. If we need a connector beyond our standard S3/HTTP, we'll triage with Eng. Also flagging monitoring: they'd like token-level cost dashboards.
+
+Iris Nguyen: Eng FYI — custom on-prem connector will probably need a small spike (2–3 dev days) and an infra security review. I'll create an internal ticket. Can you paste minimal acceptance criteria? e.g.:
+```
+- connector supports TLS mutual auth
+- runs as docker image behind customer NAT
+- logs to customer-side syslog/forwarder
+- deployable into locked-down network
+```
+
+Iris Nguyen: linking ticket: https://redwood.internal/tickets/ENG-4829 (created). Please add any extra reqs there.
+
+Jonah Park: Next steps I will own + timeline:
+- This week: kickoff invite + stakeholder list (owner: Jonah)
+- Week 1: access collection (VPC, SSO, test data) (owner: Laura + Maya)
+- Week 2: integration + enablement workshop (owner: Priya)
+- Week 4: pilot metrics review + scale plan (owner: Jonah + Maya)
+- Ongoing: monitoring + support SLA (owner: Tom)
+
+Priya Singh: Enablement artifacts: I'll use the enterprise onboarding deck (link: https://redwood.shared/onboard-deck) and create a custom runbook for LumenEdge. Draft due in 3 business days.
+
+Maya Ramos: FYI on renewal: annual renewal date is 2027-03-15. Sales recommends a QBR after month 3 to lock in expansion. Risk: PO delay could push go-live and impact the 6-week timeline.
+
+Tom Becker: Support asks: please add us to their admin SAML group so we can test role mappings before go-live. Also request the sample error logs format so we can wire alerts into Ops.
+
+Iris Nguyen: Noted — Eng will review the sample logs once provided. If the connector needs secrets rotation policy, we need that answered before dev work.
+
+handoffs-bot: Task created: CS Kickoff (owner: Jonah Park) due 1768432090. Task created: ENG spike (owner: Iris Nguyen) due 1768600000.
+
+Jonah Park: I invited everyone to Tues 11am for kickoff and added customer stakeholders. Agenda: goals, integration checklist, security, timelines, ops handoffs.
+
+Maya Ramos: Perfect. One more: capture feedback loop — Priya please add a short post-mortem template to the runbook so we can capture prompt quality regressions and infra surprises during pilot.
+
+Priya Singh: Will do. I'll add a section: 'feedback capture' with fields: issue, repro prompt, expected output, mitigation, owner.
+
+Maya Ramos: Thanks all — leaving this open for updates. I'll follow up once PO is in. :thumbsup:

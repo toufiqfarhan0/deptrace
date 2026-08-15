@@ -1,0 +1,86 @@
+eng-runtime
+
+ashley: FYI customer 'AtlasForms' reporting big TPS drop on their Dedicated pool (dedicated-prod-eu-4). Throughput down ~60% vs baseline, tail latency spiking to 1.2s. They say it started after we pushed the scheduler tweak earlier today. logs attached from their session. :grimacing:
+
+vikram: thanks — can you paste the root error or a short log sample? is it 5xx from our API or timeouts from the backend GPU workers?
+
+ashley: 1) customer seeing 429-like throttles in their app (not our rate-limit header) 2) our routing shows requests queued longer in the continuous-batcher. snippet:
+
+    [2026-03-17T09:02:01Z] request_id=abc123 pool=dedicated-prod-eu-4 enqueued_ms=1320 batch_id=bf7
+    [2026-03-17T09:02:02Z] request_id=abc123 dequeued_ms=1334 tokens=120 seq_len=512
+    [2026-03-17T09:02:02Z] gpu_exec_ms=0 queued_for_prefill=true
+
+ashley: also seeing auth errors for a subset of calls around the same window — customer says "auth failed" though tokens are their own. Might be a red herring.
+
+ken: interesting. queue times >1s are suspicious. did autoscaler kick or did we hit a capacity limit?
+
+maria: autoscaler logs show no new allocation during spike. capacity steady. I pulled the batcher metrics — microbatch sizes collapsed to ~1-2 requests often, despite available GPUs. Looks like max_batch_tokens or per-request token accounting is forcing early dispatch.
+
+ashley: here's the dedicated config they use (from onboarding file they gave):
+
+    batcher:
+      mode: continuous
+      batch_window_ms: 6
+      max_batch_tokens: 1024
+      max_requests_per_batch: 16
+      token_slicing: enabled
+      fair_queue: false
+
+ben: token_slicing + low max_batch_tokens + many long sequences = tiny batches. If most requests are seq_len 512+ and token_slicing splits them, the batcher could be underutilized. Also batch_window_ms=6 is very aggressive (aiming for low latency) — that can starve throughput when seq lengths vary.
+
+vikram: agree. Customer traffic profile matters — do they have many long single-request sessions? ashley, can you share sample distribution?
+
+ashley: they included a CSV with 10k requests. 70% seq_len between 400-700, 20% >800. avg tokens/request ~520.
+
+ken: that explains it. With token_slicing enabled, effective tokens per slice are low and we hit max_batch_tokens quickly, causing many small GPU invocations. Also continuous batcher with tiny window will dispatch prematurely.
+
+support-bot: incident created: INC-2026-0457. Priority P2. Assigned: eng-runtime.
+
+maria: repro on staging: I replayed a sampled traffic trace against a dedicated pool replica — observe throughput drop and microbatching when token_slicing + max_batch_tokens=1024. baseline throughput with token_slicing off is ~3.5x higher.
+
+ashley: customer also reported intermittent 401s around the same timeframe. I suspect retry storm from their side interacting with small batches — they retried aggressively and overwhelmed fair queue fallback. They sent a sample header showing our standard auth header present.
+
+ben: two parallel mitigations: immediate (hotfix) and longer-term config guidance. Immediate: flip token_slicing=false for that pool, increase max_batch_tokens to 8192, and bump batch_window_ms to 25ms. That should allow larger batches and amortize GPU cost. Also enable fair_queue=true to avoid noisy-tenant starvation.
+
+vikram: can we do a live canary change? We need approval from infra. Also be careful with memory pressure when increasing max_batch_tokens — verify model kv-cache fit. Which model are they on?
+
+ashley: model is open-llama-30b-qlora (kv cache per token ~1.2KB). Current worker free GPU mem headroom ~8GB on that pool. If we jump to 8192 tokens max, peak mem may be high for worst-case batches.
+
+maria: I tested max_batch_tokens=8192 on staging with same model and 2x concurrency cap; memory stayed under GPU limit because we still cap requests per batch to 16. But we should keep a guard: rollout with monitoring for OOM and slowdowns.
+
+ken: procedure:
+- ashley: propose the config change in the pool metadata API with a short canary (1 node)
+- maria: run replay and smoke tests against the canary, watch GPU mem and p99 latency
+- ben: if good in 10m, promote to remaining pool nodes
+
+ashley: doing it now. patch payload:
+
+    PATCH /pools/dedicated-prod-eu-4/config
+    {"batcher":{"token_slicing":false,"max_batch_tokens":8192,"batch_window_ms":25,"fair_queue":true}}
+
+ashley: applied to 1 node (canary). starting replay at t+30s.
+
+ops-bot: deploy started for pool dedicated-prod-eu-4 node id=eu4-node-7 by ashley.
+
+maria: replay results after 90s: canary throughput restored to ~95% of baseline, p95 latency improved from 1.2s -> 320ms. GPU utilization higher but stable. No OOMs observed.
+
+vikram: good signal. ashley, roll to rest of nodes in small batches (2 at a time) and keep a cooldown of 2 minutes between steps. Also set alert for enqueue_ms > 500ms to auto-rollback if regression.
+
+ashley: rolling to remaining 6 nodes now. patching 2 nodes -> wait -> next.
+
+ken: follow-up items for follow-through:
+- runtime: add adaptive max_batch_tokens suggestion in Optimize UI based on model kv-size + traffic distribution
+- product: document recommended defaults for continuous batcher when >50% long sequences
+- support: contact AtlasForms with summary and explain why they saw auth 401s (likely client retry storm) and ask them to reduce retry backoff.
+
+support-bot: INC-2026-0457 updated: status=mitigated, summary="throughput restored after batcher config rollback for dedicated-prod-eu-4 canary -> cluster".
+
+ashley: customer confirmed improvements in their next hour of traffic. I'll leave the ticket open for postmortem and follow-ups. thanks everyone. :tada:
+
+ben: one more note — long term we should expose a simulator that shows expected throughput given token distribution + batcher config (help customers choose). filed: TASK-7123.
+
+maria: adding a runbook blurb for ops -> quick checklist: check batch_size histogram, check avg seq_len, validate token_slicing flag, and safe canary steps. I'll add to internal runbooks.
+
+ashley: tagging @vikram and @ben for postmortem. closing thread after PM writes the follow-up.
+
+vikram: great work. :thumbsup:

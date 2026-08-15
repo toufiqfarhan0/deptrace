@@ -1,0 +1,41 @@
+incidents
+
+incident-bot: PAGER: Elevated error rate from billing-worker to Stripe (payments.* endpoints). 5xx + 429 observed, error rate > 35% over 3m. Paging oncall-sara
+sara: ack. jumping in. tagging eng-sre and @mike for triage
+mike: oncall, looking now. can someone paste last 10m of billing-worker logs? also need customer-facing impact summary
+jules: support: ~14 tickets reporting 'unable to create endpoints' or 'authorization failed' since ~14:05 UTC. A cluster around EU customers. adding examples to support thread.
+mike: logs (snippet):
+```
+2025-11-21T14:07:58Z billing-worker WARN stripe=acct_7Yk status=429 body="Too many requests"
+2025-11-21T14:08:01Z billing-worker ERROR stripe=acct_2Lp status=500 body="internal_error"
+2025-11-21T14:08:04Z billing-worker INFO retrying acct=acct_2Lp attempt=3 backoff=0.5s
+```
+mike: looks like Stripe is returning a mix of 429s and intermittent 5xx. our exponential retries are amplifying the calls and causing more 429s.
+sara: dashboards show hosted-provisioning route error budget tripped. we have automatic quota enforcement that blocks provisioning if billing-check fails (fail-fast). that's why customers see access problems.
+ops-arnold: can we flip a graceful fallback to avoid blocking? e.g., serve based on cached billing-state for 10m so active customers aren't locked out
+mike: we have flag `billing_check_mode` set to `strict`. I can flip it to `allow_cached` for 1h. That will short-circuit Stripe calls for accounts with recent successful checks. will also reduce duplicate requests.
+incident-bot: action required: deploy change to feature flag and reduce retry multiplier in billing-worker
+mike: applying patch: reduce retries to linear backoff (0.5s,1s,1.5s) and flip flag to `allow_cached` in config. deploying to prod now.
+incident-bot: deploy started by mike at 2025-11-21T14:12:35Z
+jules: drafting customer advisory. will need scope before sending to top impacted.
+stripe-bot: Stripe status: https://status.stripe.com/ — posted "Partial degradation impacting some API endpoints in EU"
+mike: opened ticket with Stripe enterprise support, attaching request IDs and logs. stripe said they're investigating ingestion/back-end throttling and suggested lowering retry amplification and local caching.
+mike: mitigation step 1 complete: flag `billing_check_mode=allow_cached` active. billing-worker Stripe calls down ~68%. provisioning errors falling.
+sara: confirmed from metrics: provisioning failures dropped from ~20/min to ~3/min in last 5m. customer impact reduced but some stragglers remain.
+ops-arnold: request: bump invoice and subscription cache TTLs to 10m to cut listing traffic. can we do that safely?
+mike: yes, pushing config change to increase cache TTL for invoice/status and will monitor. also throttled outgoing concurrency to Stripe from 50->10.
+elaine: product — any customers locked out for >15 minutes? that's critical for SLA/credits decisions.
+jules: from support: two customers reported ~22-30 minutes inability to create endpoints; most other reports were transient (<5m). collecting logs/screenshots for those two.
+mike: Stripe support replied: "We are mitigating; root cause related to internal ingestion and temporary throttling. Recommend cache/local-decision and reduce retries." they gave ticket #STR-20251121-77 and request-id prefixes for correlation.
+incident-bot: mitigation checklist: feature flag applied, cache TTL increased, retry policy relaxed/throttled, reduced concurrency, Stripe ticket opened. continue monitoring.
+sara: creating incident channel #incident-stripe-billing-20251121 and a postmortem stub in postmortems. please add runbook links: /runbooks/billing-checks and /runbooks/third-party-degradation
+mike: documenting the deploy and config changes in channel. leaving `allow_cached` on for 1h, monitoring.
+ops-arnold: preparing handoff to night oncall at 15:00 UTC. I'll take over after that. current ask for night: watch Stripe status, confirm no re-escalation, and prepare list of accounts affected >20m for billing reconcile.
+sara: handoff: @ops-arnold primary at 15:00 UTC. summary: Stripe partial degradation ongoing per status page, mitigations lowered customer-visible failures to minority. remaining work: confirm no >30m impacts, coordinate with Stripe on ETA, finalize customer communications for impacted orgs, and include affected accounts in billing reconciliation.
+ops-arnold: acknowledged. paste Stripe ticket ID here and any correlation IDs for follow-up.
+mike: Stripe ticket ID: STR-20251121-77. attaching correlation IDs in ticket and channel (prefixed ids: r_9a4*, r_1b7*).
+jules: queued targeted emails to top 10 impacted; drafting support FAQ and short status blurb for status.redwood.com
+elaine: product: hold on compensation decision until postmortem; prepare provisional language if customers request credits.
+incident-bot: auto-summary: incident created 2025-11-21T14:07 UTC due to Stripe API errors causing billing checks to fail -> mitigations applied (cache fallback, retry throttle, TTL increases) -> customer impact reduced. incident channel: #incident-stripe-billing-20251121
+sara: closing active pager. incident remains open for monitoring and post-incident analysis. if error rate crosses threshold, incident-bot will re-page.
+ops-arnold: will post a 15:30 UTC status update and follow up on postmortem items. thanks team.

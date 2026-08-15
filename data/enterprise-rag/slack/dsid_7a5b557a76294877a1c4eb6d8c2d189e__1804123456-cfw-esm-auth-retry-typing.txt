@@ -1,0 +1,42 @@
+devex
+
+jamie: FYI I'm hitting a pretty nasty combo when using the JS SDK from a CF Worker — auth header gets dropped intermittently and types break in prod build. Repro: import like `import Redwood from '@redwood/inference'` and call client.generate.
+sam: Can you paste the error? is it a 401 or something else?
+maria: CF Workers don't have Node builtins. If the SDK entrypoint pulls in `stream` or `http`, bundlers sometimes swap to a CJS fallback that expects Node shims. That can mess with what code runs and how headers are attached.
+jamie: Error is 401 but the request payload looks fine locally (node). In worker it looks like fetch sent no Authorization sometimes. stack trace is just our fetch wrapper hitting https://api.redwood.ai/... returns 401.
+ben: This sounds like the old conditional exports / package.json main/exports problem — If package exports list a CJS path first, some bundlers (esbuild in wrangler) choose the wrong file for ESM runtimes. That file might have a different auth hook.
+manual copy of worker log:
+```
+Error: 401 Unauthorized
+  at sendRequest (lib/fetch-client.cjs:45:12)
+  at generate (lib/index.cjs:22:8)
+```
+anya: Do you use the SDK from unbundled source or the published package? Wranger's bundling tends to prefer the `node` target.
+jamie: published package v0.9.3. I can try a local build.
+sam: Two separate issues to watch: 1) entrypoints for ESM/Workers vs CJS for node; 2) missing browser/worker polyfills (fetch is fine but tls/node timers etc. not). For auth specifically, check if code reads `globalThis.process.env.REDWOOD_API_KEY` or `process.env` — CF doesn't have process.
+maria: Also types: our d.ts points to `index.d.ts` that uses `export =` style for CJS. That confuses TS + ESM consumers in Workers. We should ship ESM-friendly .d.ts and a `.worker.d.ts` if needed.
+ben: Quick workaround for Jamie: in your worker bundle, force the SDK to the ESM browser build: `import { createClient } from '@redwood/inference/dist/esm/worker.js'` — not ideal but helps confirm it's an entrypoint issue.
+jamie: Confirmed — forcing the ESM worker build fixes the auth header. So this is definitely an exports resolution problem.
+anya: We should add an explicit `worker` export in package.json and a `browser` field that points to a small ESM bundle without Node shims. Also publish a UMD/ESM worker build that uses fetch and web crypto only.
+ben: Agreed. Also add a top-level `exports` like:
+```
+"exports": {
+  "./worker": "./dist/worker/index.mjs",
+  "./node": "./dist/node/index.cjs",
+  "./package.json": "./package.json"
+}
+```
+so bundlers can pick `@redwood/inference/worker` explicitly.
+maria: For types: produce `dist/worker/index.d.ts` and put a `types` entry under the `worker` subpath via `typesVersions` or `exports` with `types` — simplest: ship `dist/worker/index.d.ts` and add `"types": "dist/esm/index.d.ts"` plus `types` for the worker entry too.
+jamie: One more gotcha: retries. CF Workers' fetch can reject with a network error before our retry wrapper runs, and some of our retry logic uses Node timers (`setImmediate`) which isn't available. I saw retry backoff not happening.
+sam: Good catch. We must replace `setImmediate` with `queueMicrotask` or `setTimeout(...,0)` in worker builds.
+infra-bot: :robot_face: new issue created: https://internal/issues/INF-9274 - "SDK: worker-friendly entrypoint + types + timer polyfill" assigned to devex
+anya: Action items:
+- Ben: add `worker` build + update exports (PR)
+- Maria: add worker d.ts and verify TS consumers (PR)
+- Sam: add unit test in wrangler/e2e sample app to exercise auth+retry in CF env (branch: devex/cfw-sdk)
+- Jamie: validate beta build in their app, report back
+sam: Also let's add a small sample in `examples/workers` showing `import { createClient } from '@redwood/inference/worker'` and mention bundler flags for wrangler.
+ben: I'll avoid adding node timer shims globally; prefer small conditional replacements in build.
+maria: Note for release notes: "Fix: ESM worker entrypoint and types; fix auth header resolution in edge runtimes; replace Node timer usage in worker build."
+jamie: Thanks team, I'll test the PR once it's up. :thumbsup:

@@ -1,0 +1,26 @@
+dsid_493a84eec47c4cfbab46717bfaaca2a2
+
+hana: Quick thread to decide scope for the Dedicated 'burst hedging' feature. Customers want short firm bursts and clear failover order.
+
+diego: Summary: baseline reservation + small protected burst (20-40s) that prefers not to evict. After window -> spill or preempt.
+
+sara: Ops asks: exact preempt ordering and how we bill spilled requests in GA. Also need burst shape analytics.
+
+hana: Proposal: preempt order = reserved -> micro-best-effort -> hosted. GA billing: spilled tokens billed at reserved rate (no hosted premium). Flag the billing mode for later.
+
+diego: Draft proto for runtime simulation:
+```
+burst_hedge {
+ baseline_rps: 100
+ burst_multiplier: 2.0
+ protect_window_s: 30
+ spill_behavior: "spill_to_hosted"
+ billing_mode: "reserved_rate"
+}
+```
+
+sara: +1 proto. Ops will want a per-tenant `preempt_protection` toggle (paid) and a soft billing cap for pilots. @ops-bot create analytics job for burst shapes.
+
+ops-bot: Created job `burst_hedge_shapes_v1` for tenants tagged `burst-hedge-pilot`. Posting daily summaries to #eng-runtime.
+
+hana: Launch checklist: feature flag, unit+integration tests for preempt ordering, APAC canary with 2 pilots for 14 days, dashboards for spill/eviction/cost, runbook with manual extend + TTL override. I'll book a 20m sign-off Fri.

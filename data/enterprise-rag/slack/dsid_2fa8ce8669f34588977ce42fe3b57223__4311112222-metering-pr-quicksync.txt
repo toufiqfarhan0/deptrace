@@ -1,0 +1,22 @@
+docs
+
+Hannah (docs): Pushed a small PR to modernize the quota + rate-limit examples to metering v2. PR: https://github.com/redwood-inc/docs/pull/5580. Can folks sanity-check the HTTP JSON snippet, the short SDK example, and the dashboard link?
+Marco (eng): Quick scan. Docs should show the JSON metering payload as canonical. If you include a header example, use `X-Redwood-Usage` and mark it as fallback.
+Hannah (docs): Will change header example to fallback and make JSON canonical. Current sample: ```json
+{
+  "customer_id": "acct_xyz",
+  "usage": { "generation.tokens": 72000 },
+  "timestamp": "2026-03-23T17:10:00Z"
+}
+```
+Jules (product): Update the tier numbers in the explanatory paragraph: Standard is now 75k-600k (marketing will publish the public anchor soon). Add a parenthetical: (see pricing for live bands).
+Nika (devex): SDK sample should be two lines and use `metering.submit()` v3 API. Example: ```js
+await metering.submit({ customerId: 'acct_xyz', items: [{ 'generation.tokens': 72000 }] })
+``` Keep it copy-paste friendly.
+Marco (eng): Also swap the old Grafana link to https://grafana.redwood/d/usage/overview?panelId=27 and include alt text: "Daily metered tokens by tier" for the image.
+Hannah (docs): Done. Added migration note: "If you used the X-Usage-Plan header, migrate to JSON metering or X-Redwood-Usage; unit calculations (tokens -> tier) are unchanged." Kept wording concise.
+l10n-bot: l10n check queued for new strings.
+Jules (product): Approved from Product. Marco, Nika any final take?
+Marco (eng): LGTM.
+Nika (devex): LGTM, small nit: prefer ISO timestamps in examples (already set). Merge when build preview passes.
+Hannah (docs): Thanks all — will merge after preview.

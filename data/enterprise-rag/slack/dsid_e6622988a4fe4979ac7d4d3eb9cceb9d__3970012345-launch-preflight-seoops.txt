@@ -1,0 +1,31 @@
+marketing
+
+maria g: Quick sync — we need final keyword map, schema for webinar landing, internal linking CSV, and redirect checklist before the launch posts go live. Who can own what?
+
+devon: I'll own the keyword map. Uploaded seed list to drive. Focusing on phrases around low-latency inference, inference cost, and production LLM serving.
+
+sam: I'll add Event + FAQPage schema to the landing and include Offer markup for gated registration. Will paste schema into the CMS block after review.
+
+lee: I'll produce the internal linking CSV mapping docs -> webinar -> launch posts. Will include anchor suggestions and target URLs.
+
+ashley: Redirects: short list of legacy URLs to 301 to new launch pages. Proposed edge rule: rewrite old-launch/* -> /launch/new/* permanent. I'll post the full CSV to the repo for review.
+
+seo-bot: sitemap_launch.xml updated and queued for crawl.
+
+maria g: Also need three short benchmark narratives (for posts + slides) tied to KWs and CRO hooks.
+
+devon: Drafting three bench narratives: low-latency UX gains, cost-per-inference at scale with quantized models, and predictable tail-latency under burst traffic. Will share drafts by EOD.
+
+sam: QA reminder — update canonical tags on migrated pages to point to the new launch URLs and remove duplicate self-canonicals. No hreflang needed for en only.
+
+lee: Anchor list I'm planning to include: "low-latency inference", "Redwood API", "dedicated capacity", "production inference checklist". Will open PR after CSV approval.
+
+ashley: Inline redirect list to be uploaded: old-launch/ml-inference -> /launch/new/ml-inference, /blog/fast-llm -> /launch/new/fast-llm, /docs/deploy-legacy -> /docs/deploy.
+
+maria g: Add UTM template for all webinar CTAs so Marketo routes cleanly: utm_source=webinar&utm_medium=post&utm_campaign=launch_q2
+
+devon: I'll append UTMs and run a SERP check next week to validate KW choices. I'll own the final prelaunch checklist + sitemap ping.
+
+deploybot: sitemap_launch.xml submitted to Search Console (job 8823) — status: submitted.
+
+maria g: Great. We'll do a quick standup 09:30 tomorrow to close any open items. /end

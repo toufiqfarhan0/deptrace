@@ -1,0 +1,39 @@
+sales
+
+julia_sales: Heads up — NimbusCorp wants to flip the signer on the order form and route countersign to their procurement team. OrderForm ID: OF-4582. Can legal advise on an assignment carveout? cc @alex_legal @mike_procurement
+
+alex_legal: Quick read — they want to add a broad 'contract assignment' carveout for acquisition scenarios. Our MSA currently prohibits assignment without consent except to affiliates. We can offer a narrow two-line exception. Do we have any PO milestones that depend on signature order?
+
+mike_procurement: They also asked for net45 terms and a vendor escrow requirement in Appendix B. That will change billing flow. If the countersign happens after PO, we need to update invoice routing and AR process.
+
+emma_se: From the POC side: they need a 30-day eval and access to a dedicated pool for load tests. That will affect SLA commitments (p95 latency) — flagging to product/legal.
+
+alex_legal: Draft proposed language: `Notwithstanding Section 9 (Assignment), Customer may assign this Agreement in connection with a merger, acquisition, or sale of substantially all assets to an Affiliate or successor entity, provided Redwood receives prior written notice and the assignee agrees in writing to be bound by the Agreement and to comply with Customer's data residency and KMS obligations.` Thoughts?
+
+julia_sales: Customer pushed back — they want the "prior written notice" clause relaxed and want the phrase "no material detriment to Customer" removed so assignment is effectively free. That's a hard line.
+
+sanjay_sales_engineer: Pricing/ops note — if we stand up dedicated capacity for the POC they want (2x vGPU reserved for 4 weeks), delta is roughly +$12k. Need finance confirmation before we promise.
+
+alex_legal: We should keep the exception narrow. Also want to preserve SLA and liability caps — assignment shouldn't let them escape security/KMS obligations. I'll prepare a redline that keeps protections and offers a limited M&A carveout.
+
+mike_procurement: Also signature flow: they insist their exec signs the order form first, then internal countersign by their procurement, then we countersign. They asked if we can accept a pre-signed PO followed by our countersign after review. Is that acceptable?
+
+emma_se: Operationally we can grant provisional sandbox access after Sales+SE signoff, but production or customer data access requires NDA/DPA signed and countersigned order form.
+
+devops_bot: Provisioning note: Workspace `nimbus-eval` and infra plan queued. ETA: 48h after legal greenlight and payment hold cleared.
+
+alex_legal: I'll push a redline within the hour. Key points I'll keep: (1) narrow assignment carveout tied to M&A, (2) assignee must honor data residency/KMS controls, (3) no change to SLA cap / indemnity. If they refuse, escalate to execs.
+
+julia_sales: I'll push back on removing "material detriment" and offer a compromise: 50% advance + net45 for the remainder to address their cashflow ask. Tagging @olivia_finance.
+
+olivia_finance: Net45 can work if we require a 50% deposit for the dedicated capacity. Otherwise we can't pre-commit GPUs.
+
+customer_liaison: FYI customer has signaled urgency — wants POC kickoff next week. Can legal compress the cycle?
+
+alex_legal: I can do an expedited review and send redline + comment summary within 2 hours. Sharing doc link when ready. :thumbsup:
+
+julia_sales: Great — plan: Alex redlines -> Olivia confirms deposit terms -> I coordinate signature routing and get NDA -> Devops provisions sandbox. I'll update thread with final order form and signature sequence.
+
+alex_legal: Redline uploaded: https://files.redwood/legal/redlines/OF-4582-assignment-draft.docx — see inline comments on assignment and Appendix B escrow.
+
+julia_sales: Thanks everyone. I'll loop in execs only if they refuse the narrow carveout. For now, moving forward with expedited path.

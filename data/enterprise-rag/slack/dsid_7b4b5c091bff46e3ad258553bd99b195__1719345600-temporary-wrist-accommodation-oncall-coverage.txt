@@ -1,0 +1,29 @@
+people-ops
+
+devon: Hey @maria — quick heads up, I messed up my wrist over the weekend. Doc said minimal typing for ~2 weeks. Need help with on-call & a few infra tasks. Would like to keep this private for now.
+
+maria (People Ops): Oh no — sorry to hear that. Please DM me the details. We can treat this as a temporary ADA accommodation and keep it confidential. Two options: temporary on-call exemption or reduced pager duties + backups.
+
+devon: DM sent. I can still join meetings and handle voice calls, it's just keyboard work that's painful. Pager notifications spike my stress most.
+
+anya (Manager): Thanks for flagging — I can pick up a chunk of pager shifts but I won't be able to cover infra cert rollbacks late nights. @jordan can you take two nights?
+
+jordan: I can cover Wed/Thu nights this week. Which runbooks should I review?
+
+devon: Thanks @jordan. Look at infra/kv-store and the cert-rotation play. Also the deploy rollback steps in ops/deploys.md. If you get an urgent db fail, ping me on call and I can voice-guidance.
+
+maria (People Ops): Actionable next steps: 1) Devon files a short scope of limitations in a DM to me 2) We set temporary on-call routing to backups 3) Reassign any keyboard-heavy PR reviews to peers or enable voice reviews 4) Formal accommodation note in private doc; reassess in 2 weeks. Sound ok?
+
+devon: Sounds perfect. Also, can we do code reviews via quick voice notes or Loom so I don't have to type long comments?
+
+jordan: Totally fine with voice notes — I can take extra CRs this week.
+
+hrbot: Reminder: For short-term (<30 days) accommodations we can accept self-attestation, but People Ops may request a provider note if it extends. We'll keep records private.
+
+anya (Manager): To be explicit: this isn't a performance issue. We'll log it as an accommodation and not escalate. I'll update priorities in the sprint board so nothing blocks.
+
+maria (People Ops): I'll create a private doc with the accommodation plan and add @anya + @devon. People Ops will handle routing change for on-call and notify eng-sre privately about temporary backups.
+
+devon: Appreciate it all. Really helps reduce stress. :heart:
+
+maria (People Ops): Putting the plan in motion now. If anything changes or you need extended time, ping me directly. :lock:

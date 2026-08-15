@@ -1,0 +1,25 @@
+announcements
+
+Cara (Exec): Quick update: Private/VPC/on-prem 1.3 is now available in preview for compliance customers. Highlights: FedRAMP readiness checklist, regional data-residency enforcement, and a new contract addendum template for regulated industries.
+
+Omar (Eng): Build uploaded: internal-artifacts/private/1.3-preview (sha256: a1b2c3...). New config flag `enforce_data_region` and a compact offline bundle for air-gapped installs.
+
+Jules (Security): Compliance notes: FedRAMP readiness means we ship an evidence pack and a pre-populated audit stream (JSONL). This is a previewnot FISMA-certified; customers should treat as "readiness" artifacts. KMS/HSM integrations updated; see compatibility table.
+
+Zoe (Sales): I'll share the contract addendum with legal and draft an FAQ for customers asking about the preview vs certified timelines. Can SEs book migration help?
+
+Cara (Exec): Yes, SE support slots available. Booking link: https://calendly.com/redwood/private-1-3-preview-se. Please add high-priority customers to the tracker: https://docs.redwood.ai/private-1-3-preview.
+
+Omar (Eng): Note perf caveat: when enforce_data_region is enabled, cross-region fallbacks are disabled which can increase latency on some failover paths. Documented in the runbook.
+
+Jules (Security): Action for Sales/SEs: include the "evidence pack" checkbox on all previews and advise customers to validate KMS firmware levels before attempting upgrade.
+
+release-bot: Preview channel created and rollout scheduled to opt-in customers. Monitoring: #eng-monitoring.
+
+Zoe (Sales): :thumbsup: I'll notify pilot customers and coordinate a technical onboarding session next week.
+
+Cara (Exec): TL;DR: 1.3 preview live for compliance pilots, FedRAMP readiness materials included, contract addendum ready, SE slots open. React with :white_check_mark: if you're owning a pilot.
+
+Omar (Eng): Posting the upgrade checklist to #eng-oncall now.
+
+Jules (Security): I'll post the compatibility matrix and short FAQ by EOD.

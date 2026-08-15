@@ -1,0 +1,39 @@
+support
+
+sam_support: Hey team — customer sees intermittent 502 then a 200 with an empty/closed stream. They reported client x-request-id abc123 and server trace trace-9f8e. Can we get a minimal curl repro and confirm whether x-request-id is preserved across the proxy?
+
+jessica_engineer: Thanks Sam. I asked for the raw request logs — they sent a short capture. Looks like the client sends X-Request-ID: abc123 but server logs show trace-9f8e for that time window. Possible mapping issue at the edge.
+
+li_prod: If the proxy is rewriting or dropping X-Request-ID we should still be able to reproduce. Sam, can you ask the customer to run this minimal curl (use http/1.1 to avoid chunked framing differences):
+
+```bash
+curl -v -N \\n  -H "Authorization: Bearer REDACTED_TOKEN" \\n  -H "X-Request-ID: abc123" \\n  -H "Accept: text/event-stream" \\n  "https://api.redwood.example/v1/stream?model=open-serve" \\n  --http1.1 \\n  --raw \\n  --trace-ascii curl_trace.txt
+```
+
+li_prod: Ask them to attach curl_trace.txt and the server request_id header if present. Also ask for the exact client time when they saw the 502.
+
+sam_support: Pushed that to customer. Also asked them to run without the Authorization header (if it's a public test key) and to try with `--proxytunnel` if behind a corporate proxy.
+
+jessica_engineer: Quick checklist for the customer to include with the bundle: OS and version, curl version, whether a corporate proxy/antivirus is present, and the full curl_trace.txt. Also request the raw response headers (they can pipe to `-D headers.txt`).
+
+li_prod: On our side I'll grep for abc123 and trace-9f8e in the edge logs and check if any mapping/relay services replaced X-Request-ID. If we see a different request-id in the edge, that explains mismatch.
+
+debugbot: NOTE: when attaching logs, redact Authorization tokens and any cookie headers. Use placeholder: <REDACTED_AUTH>.
+
+sam_support: Customer uploaded curl_trace.txt and headers.txt. I skimmed — response had `X-Served-Request: srv-77b` in headers but no `X-Request-ID` echoed. The trace shows connection reused with a proxy.
+
+jessica_engineer: Ok that points to upstream proxy strip/rewrite. Two actions: 1) ask customer to re-run with `--no-keepalive` / `-H "Connection: close"` to avoid reuse and see if behaviour changes, 2) we prepare a small server-side mapping check script to correlate srv-77b -> internal trace.
+
+li_prod: I'll run the mapping check against logs for the hour window. If the proxy rewrites, we should see a header like `via` or `x-forwarded-for` with a proxy id. Also check edge config for `remove_request_id` rule updated last month.
+
+sam_support: Customer tried `--no-keepalive` and got a stable 200 stream, no truncated chunks. They attached new trace.
+
+jessica_engineer: Great repro. That implies connection reuse with the proxy was triggering a bad header rewrite path. For a quick mitigation, advise customer to set `Connection: close` or update proxy config. For a long-term fix, engineering should update edge to preserve X-Request-ID when present and only generate a new one when absent.
+
+li_prod: Agreed. I'll open an internal ticket with logs and mapping evidence. Ticket will include: original curl_trace, headers, server mapping (srv-77b -> trace-9f8e), and suggested config change.
+
+sam_support: Thanks. I'll follow up with the customer and offer the workaround. Closing loop once the edge fix is deployed. :thumbsup:
+
+jessica_engineer: If anyone needs the exact grep commands I used: `rg \"abc123|srv-77b|trace-9f8e\" /var/log/edge/*` — saved me time.
+
+li_prod: Attached mapping evidence to the ticket. Leaving notes for oncall to watch for similar reports in the next 48h.

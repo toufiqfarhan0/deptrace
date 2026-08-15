@@ -1,0 +1,17 @@
+eng-infra
+
+alex: Heads-up: ap-southeast1 had a short GPU attach outage window (~03:05 UTC). Quick triage points to local NVMe IOPS spikes during nightly cleaner jobs.
+sam: any host examples/logs?
+alex: gnode-apse1-199 dmesg:
+```
+[  185.112233] nvme0n1: I/O error, writeback failed
+[  185.112500] blk_update_request: I/O error, dev nvme0n1
+[  185.112900] provisioner: scratch allocation timed out
+```
+maria: yesterday's janitor change increased concurrent_rewrites from 3 -> 8. that would explain increased write pressure.
+toni: blast radius: ~22% attach failures across the regional preemptible GPU pool for ~9m. retries mostly recovered but job start latencies spiked. no public incidents.
+alex: mitigation plan: 1) flip concurrent_rewrites -> 2 on a 5-host canary 2) add a short-term per-host iops soft-cap (45k wkB/s) 3) fallback routing to eu-west for new allocs if canary fails.
+sam: set 20m rollout hold and monitor nvme %util, attach_success_rate, attach_latency histogram.
+ops-bot: Incident INC-2026 created: "ap-southeast1 nvme iops surge during cleaner -> gpu attach timeouts" (severity: medium)
+maria: i'll open a small janitor PR to make heavy rewrite batches yield when nvme_util > 80%.
+toni: canary flipped, util dropped in ~2m, attach success normalized. expanding rollout in 5m. :thumbsup:

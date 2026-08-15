@@ -1,0 +1,82 @@
+eng-runtime
+
+mike: Heads up — saw a sharp drop in prefix-cache hit-rate after the attn kernel swap on canary (~1949990999). p50 workloads went from ~82% -> ~57%. Rolling up here to coordinate.
+
+anna: ack. paste the numbers + canary id? :eyes: 
+
+mike: Canary id: run/attn-kernel-v3b (deployed by ci-bot). Summary:
+- baseline (before): pfx_hit=0.82, tok_cost=1.0x
+- after canary: pfx_hit=0.57, tok_cost=1.3x, p95 latency +18%
+- traffic: sample set = 50k requests from prod-sampled route
+
+mike: quick perf dump from a sample worker:
+```
+2026-03-17 11:02:03 worker-7 perf: kv_prefix_hits=2850 kv_prefix_misses=2120
+cpu_util=72% gpu_util=63%
+kernel_variant=attn_v3b quant_profile=fp16_8bit_round
+batching_mode=shared_batching_enabled
+```
+
+sam: we also rolled a quant-profile tweak in the same window (fp16->fp16_8bit_round) for kernel perf. could be interacting with keying? cc @lee
+
+lee: possible vector: fused-attn kernels change intermediate KV layout + shared-batch routing enabled by default. Two suspects:
+1) key normalization now picks up raw tensor shape metadata in a different ordering -> inconsistent keys
+2) batching merge/padding makes prefix slices different, changing the canonical hash
+
+anna: can you repro by toggling shared-batch off? if hit-rate recovers that's a big signal.
+
+mike: repro steps I ran locally:
+1) checkout runtime@attn-v3b
+2) start a single worker with `BATCH_SHARED=0 KV_KEY_CANONICALIZE=1`
+3) replay sample workload (script attached)
+Result: pfx_hit=0.80 (almost back). With shared_batch=1 pfx_hit=0.56.
+
+lee: suggests padding/merge ordering difference. Did you test canonicalize=0?
+
+mike: with canonicalize=0 + shared_batch=1 => pfx_hit=0.58. canonicalize=1 + shared_batch=1 => 0.57. So canonicalize alone doesn't fix it; shared_batch seems biggest factor.
+
+ops-bot: incident-alert: prefix-cache hit-rate anomaly detected on prod-sampled route — threshold breached at 2026-03-17T11:05:00Z :warning:
+
+sam: could quant rounding subtly change float representation and affect hash if we include embeddings in key composition? @mike any embedding diffs?
+
+mike: dumped first 10 prefixes for a reproducible request across variants. Diffs look like padding bytes and shape metadata — not embeddings themselves.
+```
+# canonicalized key before: keyhash=0x7a1b..., shape=(1,64,768)
+# after: keyhash=0x3f2c..., serialized_meta=[pad_right=8, merged_batch_index=2]
+```
+
+lee: then make keying independent of transient batching metadata. I'll open a PR to strip batching fields and add a deterministic padding sentinel.
+
+anna: short-term mitigations?
+
+mike: suggestions:
+- rollback canary to attn-v3a (recovers hit-rate)
+- disable shared_batching on canary hosts
+- add a hashing-salt that ignores batch routing fields
+
+sam: are we scheduling a rollback? coordinate with releases.
+
+lee: prototyping a lightweight key-normalizer. will run offline replay with shared_batch=1 to check hit-rate recovery.
+
+mike: experiment matrix (ETA ~2h):
+- baseline: v3a shared_batch=1
+- v3b shared_batch=1 (current)
+- v3b shared_batch=0
+- v3b shared_batch=1 + key-normalizer
+Collecting pfx_hit, tok_cost, p95 latency.
+
+anna: post perf traces (nvprof / flamegraphs) if you see kernel or CPU regressions.
+
+mike: posted flamegraph link in thread. early look: GPU kernels unchanged; CPU serialization time +12% when shared_batch=1 due to merge bookkeeping.
+
+lee: likely merge/pad code path. Also check eviction heuristics — more unique keys from merge can reduce warmup effectiveness. Bloom/filter saturation could be impacted.
+
+sam: QE: add unit test simulating merged batches and asserting key stability across batch ordering permutations.
+
+mike: FYI ran quick run with quant_profile=fp16 (no 8bit rounding) + shared_batch=1 => pfx_hit=0.59 (slightly better). Quant rounding amplifies variety but padding/merge is main culprit.
+
+lee: plan: key-normalizer PR + offline replay of 200k requests with merged batches. Candidate patch for canary by EOD.
+
+anna: thanks. keep thread updated. :thumbsup:
+
+dev-bot: deploy-tracker: attn-kernel-v3b canary paused for investigation (manually paused by sam)

@@ -1,0 +1,50 @@
+eng-oncall
+
+Maria: Heads-up — quick incident summary for the evening handoff. We had a short EU-region 503 spike during peak (~14:03–14:11 UTC). Pages fired and we ran live mitigations; handing off the post-incident watch to the evening team. :rotating_light: :wave:
+
+IncidentBot: INCIDENT created INC-20260315-023 — severity: S2, affected regions: eu-west-1, triggered alerts: route_5xx_rate, batcher_queue_depth.
+
+AJ: I'm primary on this shift. Notes from the triage: KV-store latency (eu) increased causing prefix cache misses -> batcher backlog -> downstream 503s on /v1/generate. I pushed a routing fallback at 14:06 to prefer eu-fallback quantized model which brought most traffic back to 200.
+
+Li: Secondary here — observed redwood-dedicated-eu-1 GPU pool at 98% for a short burst. Found a long-running backfill job (backfill-77) consuming slots, terminated the job to free capacity. Autoscaler briefly didn’t spin fast enough; raised min nodes 2->3 for immediate relief.
+
+DeployBot: Rollout event: reroute-policy eu->eu-fallback applied at 2026-03-15T14:06:12Z by AJ. Weight changes: redwood-xl-1 70% -> 15%, eu-fallback 30% -> 85%.
+
+Maria: Logs snippet from the window (14:05–14:07):
+```
+[14:05:58] kv-get timeout host=kv-eu-2 latency=1200ms key=cache/prefix/123
+[14:06:02] batcher.enqueue queue_len=320 route=/v1/generate
+[14:06:05] downstream 503 route=/v1/generate model=redwood-xl-1 latency=0 error=Upstream503
+```
+
+Sam: Customer impact tally: ~1.9% of total requests returned 503 during the window. Two enterprise tenants (ACME Corp, NovaSearch) saw session drops — CS notified and no escalations so far. Alerts cleared at ~14:11 UTC.
+
+AJ: Immediate mitigations we ran:
+- reroute to eu-fallback model (reduces memory/KV dependence)
+- killed low-priority backfill job to relieve GPU pool
+- increased autoscaler min nodes temporarily
+All mitigations restored steady-state by ~14:11.
+
+Li: Observed residual flapping of kv-eu-2 for ~3 minutes after reroute; still collecting traces. Root cause hypothesis: KV eviction storm under load + slow disk IO on one shard. Will run disk-health and kernel dmesg check.
+
+Maria: Action items and handoff notes (evening team):
+1) Follow KV health run: run the diag in the runbook and attach traces: https://redwood.atlassian.net/wiki/spaces/OPS/pages/12345-eu-kv-eviction-runbook
+2) Review autoscaler smoothing (increase scale-up sensitivity for dedicated pools)
+3) Add a batcher circuit-breaker to fail fast (prefer 429) instead of cascading 503s
+4) Postmortem owner: AJ (prep initial timeline), secondary reviewer: Li
+
+AJ: Handoff specifics — I'm primary until 22:00 UTC. Li is secondary until 22:00 UTC. After me, Sam picks up night watch. Coverage gap: none currently, but please keep an eye on eu dedicated pool scaling between 16:00–18:00 UTC (expected customer traffic surge). If pages recur, escalate to eng-runtime and paging policy for S1.
+
+Maria: Quick runbook snippets for on-call folks:
+```
+# check kv latency & recent errors
+kubectl -n infra logs -l app=kv-eu --since=10m | grep -i latency
+# check batcher queue depth
+curl -s http://monitoring.internal/api/batcher/queue?region=eu | jq .queue_len
+# trigger fallback routing (ops API)
+curl -X POST https://ops-api.internal/reroute -H 'Authorization: Bearer $OPSTOKEN' -d '{"region":"eu","target":"eu-fallback"}'
+```
+
+Sam: Ack — I'll take the 02:00 UTC check and verify KV shard IO metrics. I'll also loop in infra-storage if disk errors show up.
+
+Maria: Thanks all. Summarized in the incident ticket INC-20260315-023. Leaving the thread open for updates; please ping @AJ on any immediate pages. :thumbsup: 

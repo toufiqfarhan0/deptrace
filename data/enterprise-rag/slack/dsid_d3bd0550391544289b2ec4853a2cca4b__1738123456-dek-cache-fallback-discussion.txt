@@ -1,0 +1,65 @@
+incidents
+
+infra-bot: ALERT: during a scheduled key rotation in staging at 2025-08-02T15:04:16Z we saw repeated KMS errors and throttling. sample error: 
+```
+ERROR: kms.Decrypt ThrottlingException: Rate exceeded (x3)
+trace: /app/keymgr/rotate.go:142
+```
+
+maria: saw that. rotate job retried 4x and then aborted. affected hosts: rotator-1, rotator-3. no prod impact, staging only.
+
+jon: which KMS provider? aws? region?
+
+maria: AWS KMS, us-west-2, using CMK alias/redwood/enc. rate looked like a burst from the rotation job. we triggered throttling and then our retry loop amplified it.
+
+sre_lead: this is a near-miss for prod. good we caught in staging. main risks: creating new DEKs requires kms:GenerateDataKey, and decrypt for bootstrapping services. If KMS is slow we need a safe fallback to keep reads/writes for long-lived workloads.
+
+security_eng: quick reminder — we cannot fall back to an unencrypted DEK or store plaintext on disk. any fallback must preserve audit trail and rotation semantics.
+
+jon: currently flow is: service asks KMS -> GenerateDataKey -> store encrypted DEK alongside object. services cache plaintext DEK in memory for 30s TTL. rotate job generates new DEKs aggressively during rollout which caused large burst.
+
+maria: proposed mitigations:
+- enforce rate limit on rotation job (chunked, staggered).
+- increase in-memory DEK cache TTL to 5m for production (with LRU + explicit revocation on rotation).
+- add a circuit breaker: if KMS errors > 5/m, pause rotation and route to a slower fallback.
+
+jon: agree. also add exponential backoff with full jitter for KMS calls. sample pseudo-config:
+```
+kms_backoff:
+  base_ms: 50
+  max_ms: 2000
+  jitter: true
+  max_retries: 6
+```
+
+security_eng: for fallback we can rely on previously-encrypted DEKs stored in DB. decrypt path: if KMS.Decrypt fails but we have a cached plaintext DEK, use it. if cached plaintext not present, we MUST NOT attempt to derive a new plaintext without calling KMS. so behavior:
+1) try KMS.Decrypt (with backoff)
+2) if fails and cached plaintext exists -> use cached plaintext and emit high-severity audit event
+3) if fails and no cached plaintext -> fail request with 503 and clear message to client -> increment pager if threshold hit
+
+sre_lead: +1. add audit fields: which key id, which service used cached DEK, and reason (KMS throttling). We need that in logs to satisfy compliance.
+
+maria: added a short runbook note:
+```
+- Incident: KMS throttling during key-ops
+- Immediate: pause rotation job, stretch DEK cache TTL, enable degraded mode (use cached DEKs only)
+- Longer: retry with backoff, open ticket with AWS (support) if persistent
+```
+
+jon: provider differences: AWS returns ThrottlingException. GCP returns 429 with different body. Azure Key Vault uses 429 / 503 in some cases. Our wrapper should normalize error types so runbooks work cross-cloud.
+
+security_eng: rotation semantics: if we extend plaintext DEK cache, we must handle revocation. when CMK is rotated or revoked, clear cached DEKs immediately and fail safely. add a short TTL-on-rotation marker that invalidates caches cluster-wide.
+
+maria: I'll open an RFC for:
+- DEK cache TTL 5m with explicit invalidate API
+- rate-limited rotation job (batch size 50, stagger 30s windows)
+- normalized KMS error codes + backoff lib
+- runbook update and audit log schema changes
+
+sre_lead: please include tests: chaos test that simulates KMS 429/Throttling to ensure we don't amplify. also replayed audit logs to verify compliance.
+
+jon: I'll queue a deploy for the backoff lib and circuit breaker to staging tomorrow morning.
+
+maria: created ticket INC-2025-117 (link: https://redwood.atlassian.com/browse/INC-2025-117) and draft RFC: https://docs.redwood.ai/rfcs/2025-dek-cache-fallback. tagging @sre_lead @security_eng for review. :thumbsup:
+
+infra-bot: Reminder: rotation job cron paused for staging until PR lands.

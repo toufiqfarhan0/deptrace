@@ -1,0 +1,31 @@
+eng-security
+
+maria: Quick question — for Private deployments, are we recommending customers create a KMS key per-tenant or one key per-project?
+cheng: short answer: per-tenant KEK (key-encryption-key) is preferred for isolation. avoids cross-tenant blast radius.
+jonathan: Agree. Implementation note: use envelope encryption — per-tenant data keys (DEKs) encrypted by the tenant KEK in Cloud KMS. we store encrypted DEKs in tenant metadata.
+alice: +1. Also, recommend keyRing location match resources (same region) to avoid egress and latency.
+maria: What minimal IAM bindings do we need on the KMS key for the private runtime SA that performs encrypt/decrypt?
+cheng: Grant the runtime service account roles/cloudkms.cryptoKeyEncrypterDecrypter on the specific cryptoKey resource. Keep scope at the key (not project) level if possible.
+jonathan: For rotation and admin ops, tenant operators should have roles/cloudkms.admin on the key ring or a separate admin SA. We should avoid giving admin to runtime.
+alice: Also note we need the runtime to be able to impersonate the customer service account in some deployments — that requires iam.serviceAccountTokenCreator on the target SA if using impersonation.
+secbot: Incident note: ensure Cloud Audit Logs for KMS Admin and Data Access are enabled and exported to customer-controlled sink (BigQuery/Cloud Storage) for retention and compliance.
+oliver: For envelope rewrap/rotation flows, we should expose a rewrap job that does: 1) create new key version or new key, 2) re-encrypt DEKs with new KEK, 3) rotate metadata pointers. keep operation idempotent.
+maria: Can you paste a minimal gcloud example for encrypt/decrypt and a rewrap skeleton?
+cheng: sure — quick commands:
+```
+# encrypt DEK with customer KEK
+echo -n "$DEK_B64" | base64 --decode | gcloud kms encrypt \
+  --plaintext-file=- --ciphertext-file=../enc_dek.bin \
+  --location=us-central1 --keyring=tenant-kr --key=tenant-kek --project=proj-123
+
+# decrypt
+gcloud kms decrypt --location=us-central1 --keyring=tenant-kr --key=tenant-kek \
+  --ciphertext-file=../enc_dek.bin --plaintext-file=- | base64
+```
+cheng: rewrap pseudo: fetch all tenant DEK blobs, for each: decrypt with old KEK locally, encrypt with new KEK, atomically update blob pointer (use DB transaction). avoid plaintext persistence beyond process memory.
+jonathan: Ops considerations: run rewrap in customer network or via short-lived worker in their VPC to avoid sending plaintext across networks. if rewrap runs in our infra, use customer-supplied transient SA via workload identity and strict ACLs.
+alice: Audit + alerting: create metric for "cryptoKey.encryption_count" anomalies and alert on sudden spikes (possible crypto misuse). log sinks should include protoPayload.methodName for decrypt/encrypt.
+maria: One last: for private deployments that are air-gapped we need on-prem KMS integration guidance — can we point to an offline envelope strategy?
+cheng: yes: local HSM or on-prem KMS can be used as KEK provider. same envelope pattern applies. document expects customers to rotate keys on their HSM and provide us the public interface or an unwrap service reachable from the runtime.
+oliver: I'll draft a short runbook: required IAM bindings, required audit exports, rewrap script template, and minimum SA scoping. will post here when ready.
+maria: thanks everyone. tagging @alice to follow up on alerts thresholds. :thumbsup:

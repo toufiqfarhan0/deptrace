@@ -1,0 +1,28 @@
+partnerships
+
+Ana (Partnerships): Quick heads-up — partner QBR is scheduled for Wed May 14. Need updated scorecards + MDF asks by EOD Friday. Can we confirm owners?
+Mike (Growth): Got it. What format for scorecards? spreadsheet or slides? Also need cloud marketplace metrics (listing installs / ARR sourced).
+Ana (Partnerships): Spreadsheet is best for numbers, slide for 1-pg exec summary. I dropped a template in the QBR folder. link: https://redwood.app/qbr/partners/May14
+partner-bot: Created QBR folder for "May Partner QBR" and set permissions for partnership+, growth+.
+Devon (Sales): MDF question — do we have a recommended split between HW partners and SIs? Last cycle was messy.
+Sarah_pd: I'd propose baseline split 50/30/20 (HW/SI/Co-marketing) but open to hearing finance's constraint. Need to know total pool.
+Jordan_ops: Current MDF pool available: $150,000 for this quarter (unallocated). If we reassign carryover we can stretch to ~180k but prefer not to assume.
+Mike (Growth): Thanks Jordan. For cloud marketplace co-funds, we should earmark $30k — channel demand there is highest.
+Devon (Sales): For HW partners I'd ask for commit-to-joint-engineering or certified reference in exchange for funding. Suggest tiered requests: Tier A up to 40k, Tier B up to 15k.
+Ana (Partnerships): That matches my instincts. Can we sketch a short `MDF ask` table in the spreadsheet like:
+```
+Partner, Tier, Ask ($), Purpose, KPI
+AcmeHW, A, 40000, Joint PoC + demo kit, 2 pilot customers
+SysIntegrateCo, B, 12000, Co-sell enablement, 3 closed-won deals
+CloudMarketCo, B, 30000, Listing promos, 50 installs
+```
+Devon (Sales): I'll fill the HW rows with names and rough asks by Thursday morning.
+Sarah_pd: Who is owning partner scorecard QA? I can sanity-check product impact numbers but need the adoption metrics from growth.
+Mike (Growth): I can export marketplace metrics and attach to the spreadsheet by Thursday EOD.
+Ana (Partnerships): Owners then: Devon -> HW asks; Mike -> marketplace metrics; Sarah -> product sanity-check; Jordan -> final MDF sign-off. I'll consolidate on Friday and circulate the exec slide.
+Devon (Sales): One more ask — can we reserve a small contingency (5k) for last-minute co-marketing creative?
+Jordan_ops: Noted. We can reserve 5k but will mark as conditional on performance KPIs.
+Ana (Partnerships): Perfect. If no objections I'll lock the calendar and send invites. :calendar: :thumbsup:
+Mike (Growth): :thumbsup: good plan.
+partner-bot: Reminder set — submit scorecards by Fri 23:59 UTC.
+Ana (Partnerships): Action items copied to the QBR sheet. I'll ping again tomorrow for updates. Thanks team!

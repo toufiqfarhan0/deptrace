@@ -1,0 +1,21 @@
+sales
+
+Jordan (AM): Acme Health ready for POC but hard geo constraints: inference + embeddings must stay in EU and Mexico. They need: 1) tenant-level MX-only routing guarantee, 2) BYOK in EU+MX, 3) subprocessor inventory for MX/EU, 4) pricing delta for geo-pin/egress isolation.
+
+Mira (SE): Quick take: Hosted API can do EU affinity/pinning; MX-only is NOT available on Hosted. Dedicated/Private can support stronger locality and BYOK. I'll confirm subprocessors for MX.
+
+Alex S (Security): Subprocessor note: EU hosted uses AWS (eu-west-1, eu-central-1), GCP europe-west*, and a global CDN. Mexico: we do not run managed clusters inside MX; traffic typically egresses via nearby POPs (US/latam). If customer requires sovereign MX residency we must offer Private/on-prem or provision a partner VPC in MX (one-off). I'll draft a subproc list + caveats.
+
+Priya (Solutions): For the POC propose hybrid approach: route MX-origin requests through edge POPs to demonstrate latency and routing; for production sovereign needs scope Private deployment with SOW.
+
+Mira (SE): Pricing sketch: geo-pin addon for Dedicated ~ +15-25% of monthly commit depending on standby; BYOK one-time setup ~$8k-$15k (KMS/HSM complexity); Private deployment setup estimate starts ~$120k + infra OPEX.
+
+presales-bot: New presales ticket PS-2025-211 created: Acme Health geo-residency POC. Assignees: Mira (SE), Alex S (Security).
+
+Jordan (AM): Action items: Alex 1 one-pager for Legal (subprocessors + routing language) by EOD tomorrow; Mira 1 include pricing ranges and note fallback behaviors in POC quote; Priya 1 schedule network/CIDR + latency SLO call.
+
+Priya (Solutions): I'll book Thu 30m and ask for expected RPS, sample prompts, whether embeddings are persisted, and if customer-managed KMS in EU/MX is required.
+
+Alex S (Security): Draft routing clause suggestion for Legal: `Provider will use commercially reasonable efforts to route and process Customer Data within selected regions. Where Provider or third-party infrastructure constraints prevent strict country-only residency, Provider will document fallback paths and provide audit logs.`
+
+Jordan (AM): Great. Drop the one-pager and quote link into this thread when ready. :thumbsup:

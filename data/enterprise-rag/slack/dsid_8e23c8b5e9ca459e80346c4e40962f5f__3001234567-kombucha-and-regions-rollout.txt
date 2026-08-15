@@ -1,0 +1,24 @@
+random
+
+yara: Quick happy update — EU private deployment is live (eu-west-1) and we just crossed 3.5M monthly requests globally. Tiny kombucha & plant-naming in the lounge at 5pm? :seedling: :tada:
+ben: YES. Naming ceremony for the office plant? I'm campaigning for 'Shimmer' or 'KV-Cache' 😂
+kai: Congrats!! Huge shoutout to infra and private-deploy squad. Also, Ill bring a portable speaker and some fizzy kombucha.
+sasha: Poll: kombucha :kombucha: or iced tea :tea:? Reply with "kombucha" or "icedtea"
+ops-bot: deploy-bot: EU private cluster eu-west-1: rollout complete at 03:12 UTC health checks green. No active alerts.
+yara: Also small ask from Legal: use "partner launch" when referencing customers externally; internal posts can say "EU private deployment live". No customer names.
+comms-bot: Draft for internal announce: "EU private deployment live; platform now serving ~3.5M monthly requests across regions. Huge thanks to infra, private-deploy, and onboarding teams." Flagging comms for review.
+ben: icedtea
+kai: kombucha
+sasha: kombucha wins 2-1. Kombucha it is.
+people-ops: Swag update: approved 15 sticker packs and 5 enamel pins for the launch. DM me shipping addresses if remote.
+yara: I'll bring tiny name tags for the plant and a polaroid camera for the group pic. Remote folks: we'll do a 10s livestream and drop pics in #team-photos.
+ben: I'll cue the confetti app on my phone. Low-volume mode.
+ops-bot: lounge booked 16:50-17:10. Please be mindful of the next booking.
+sasha: GIF: :partyparrot:
+comms-bot: Reminder: do not share contract terms or ARR externally. Use approved comms wording only.
+kai: Drop a clap if youre joining at 5pm
+yara: 👏
+ben: 👏
+sasha: 👏
+people-ops: We'll collect a short quote from leads for the weekly all-hands slide. If you lead a squad that helped, DM me a one-liner by 9am tomorrow.
+yara: Thank you team  feels good to land this. See you at 5!

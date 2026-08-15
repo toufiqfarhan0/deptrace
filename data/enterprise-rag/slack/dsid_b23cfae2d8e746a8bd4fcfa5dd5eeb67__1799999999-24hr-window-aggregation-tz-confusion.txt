@@ -1,0 +1,43 @@
+support
+
+lina: incoming support ticket from acme-corp — their daily usage chart for 2025-05-12 is split into two days, looks like cutoff used UTC instead of their org timezone. billing discrepancy reported (~250 tokens). attached CSV and screenshot.
+
+sam: thanks. what org id and org timezone?
+
+lina: org: acme-42, org tz = America/Los_Angeles (PDT). export shows rows for 2025-05-12 and 2025-05-13 with cutoff at 00:00 UTC. they expect 00:00 PDT. link: https://app.redwood/exports/ACME-42/2025-05-12.csv
+
+bernard: I can repro locally. looks like aggregation uses ingestion_time and does date_trunc('day', ingestion_time) in UTC.
+
+bernard: repro steps:
+1) run: SELECT ingestion_time, date_trunc('day', ingestion_time) AS day_utc, date_trunc('day', ingestion_time AT TIME ZONE 'America/Los_Angeles') AS day_pdt FROM events WHERE org_id = 'acme-42' AND ingestion_time BETWEEN '2025-05-12T06:00:00Z' AND '2025-05-13T06:00:00Z';
+2) see rows that belong to 2025-05-12 PDT bucket showing as 2025-05-13 UTC.
+
+jessie: do we store org tz on every event? can we apply conversion at grouping time? :thinking_face:
+
+sam: org tz is in org_metadata but our analytics batch defaulted to UTC after the refactor in Jan (pipeline param lost). probable root cause.
+
+bernard: quick patch: convert ingestion_time AT TIME ZONE org_tz then date_trunc on that value. will open PR and deploy to staging.
+
+metrics-bot: Jenkins job #1289 triggered: deploy branch fix/analytics-tz-agg -> staging.
+
+lina: told customer we have a repro and a fix in progress, ETA ~4h.
+
+bernard: deployed to staging, running the same query now — day_pdt matches expected buckets. preparing backfill for affected orgs last 7 days.
+
+sam: loop in billing before running backfill. backfills can change invoiced totals.
+
+lina: billing pinged (cc @anna-billing).
+
+anna-billing: approved backfill for acme-42 for window 2025-05-10..2025-05-15. include one-time adjustment if totals move.
+
+bernard: backfill job started (job id bfill-2025-05-13-01). will post logs when complete.
+
+metrics-bot: backfill job bfill-2025-05-13-01 finished: rows_updated=342, errors=0.
+
+lina: regenerated export and sent to customer. they confirmed daily totals now align with their expectation. :tada:
+
+sam: will add unit tests around timezone-aware grouping and a small retro in eng-telemetry.
+
+support-bot: ticket SUP-4231 updated -> status: resolved, notes: root cause = analytics grouping used UTC; fix deployed and backfilled.
+
+lina: closing thread. follow-up: add an alert if org_tz is missing in future pipeline runs.

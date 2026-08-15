@@ -1,0 +1,95 @@
+eng-runtime
+
+maya: Quick heads-up — FP8 enablement on a mixed H100/L40S farm is showing strange warmup jitter and an occasional decoder divergence for long-context prompts. Repro: 8 GPUs (4xH100, 4xL40S), batch sizes 1/4, seq=2048.
+
+raj: ugh. seen any kernel fallbacks in the logs?
+
+maya: yes, that's the weird part. transformer-engine picks fused kernels at runtime but for first few tokens it falls back to a more generic path. Profiling dump pasted below.
+
+perf-bot: auto-profile summary:
+```
+Kernel    Calls  Total(ms)  Avg(ms)  %Runtime
+fused_qk  240    1200.3     5.00     35.1
+gemm_fp8  480     520.7     1.08     15.2
+fallback_gemm  32  410.9     12.84    12.0
+kv_writeback  64   210.4     3.29     6.1
+other     100    680.2     6.80     31.6
+```
+
+maya: the fallback_gemm spikes align with first-token latency spikes. Also seeing KV cache miss penalty when mixing small batches with long prefixes — the runtime serializes writes to the host for some kernel combos.
+
+olivia: can you paste the TE config you're using?
+
+maya: sure — this is what the config looks like in the dev cluster:
+```
+transformer_engine:
+  fp8_enabled: true
+  fp8_recipe: e4m3
+  kernel_selector: auto
+  preferred_kernels:
+    - fused_attention
+    - fused_gemm
+  fallback_policy: allow_fallback
+  calibrate_on_start: true
+  calibrate_min_batches: 8
+  kv_cache_mode: async_writeback
+  first_token_low_latency: true
+```
+
+raj: couple thoughts: (1) calibrate_min_batches=8 might be low for stable scaling across L40S vs H100 — calibration variance can change scaling factors and cause numeric instability during warmup. (2) kernel_selector:auto sometimes picks a slower but more numerically stable kernel for later tokens; but first-token path may prefer a universal kernel causing the observed fallback.
+
+sasha: we've seen similar on other quant modes — calibration noise -> bad per-layer scaling -> non-deterministic GEMM choose. Could try increasing calibrate_min_batches to 64 and use per-device calibration seeds.
+
+olivia: also the KV async_writeback is probably serializing small writes when the fused kernel can't handle the layout. Try switching to kv_cache_mode: batched_writeback or local_cache for L40S nodes.
+
+maya: ran a quick experiment: calibrate_min_batches=64 + preferred_kernels pinned to fused_attention and fused_gemm removed the fallback spikes on H100, but L40S still had occasional fallback due to a missing fused kernel variant.
+
+perf-bot: new profile after tweak:
+```
+Kernel    Calls  Total(ms)  Avg(ms)
+fused_qk  240    820.1     3.42
+gemm_fp8  480    420.5     0.88
+fallback_gemm  4   28.8      7.20
+kv_writeback  60  140.7     2.34
+```
+
+maya: latency p10 improved ~18% for long-context streams on H100, p50 ~20ms better. L40S p50 improved ~8% but p95 still has spikes.
+
+raj: we need a durable routing policy: when kernel_selector:auto sees mixed hardware, prefer kernels that exist on all devices to avoid cross-device fallbacks. Also add a first-token path that prioritizes low-latency kernels irrespective of quantization throughput.
+
+olivia: Agree. Proposed policy (pseudo):
+```
+if mixed_hardware:
+  allowed_kernels = intersection(kernels_on_all_devices)
+else:
+  allowed_kernels = best_throughput_kernels
+if token_index == 0:
+  use_low_latency_kernel()
+```
+
+sasha: Another angle: calibration drift over time. We saw scale factors shifting after 1M tokens on L40S due to dynamic range changes in embedding updates. Need periodic re-calibration windowed by workload, not only startup.
+
+maya: that's scary. We observed slight output quality degradation in a few eval prompts when calibrate_min_batches was too aggressive. Not catastrophic but noticeable in rouge/qa tests.
+
+raj: add a quality guard: run a tiny eval set after calibration and if metrics drop, rollback to cached FP16 kernels for those layers. Could automate: if rouge_drop > 0.5 then disable FP8 for X layers.
+
+olivia: here's a short checklist to try this week:
+- pin preferred_kernels to fused variants where available
+- increase calibrate_min_batches to 64 (per-device) and seed calibration RNG
+- change kv_cache_mode to batched_writeback on mixed clusters
+- implement intersection-based kernel routing for mixed hardware
+- add post-calibration eval + automatic rollback threshold
+
+maya: I'll run the checklist on a staging mix of 2 H100 + 2 L40S and report perf+quality.
+
+deploy-bot: maya started a 4-node fp8-warmup experiment (<link>)
+
+olivia: if staging is green, we should roll a canary with traffic split 1% for an hour, watch p95 first-token latency and rouge/qa diffs.
+
+maya: noted. I'll also capture per-layer scale factors before/after to make drift diagnosable. Will post logs here.
+
+raj: thanks — if you hit a hard divergence, dump memrefs for the failing layer and we can inspect quantized ranges.
+
+maya: will do. thanks everyone :thumbsup:
+
+perf-bot: reminder — add a perf regression ticket if p95 increases by > 10% post-rollout.

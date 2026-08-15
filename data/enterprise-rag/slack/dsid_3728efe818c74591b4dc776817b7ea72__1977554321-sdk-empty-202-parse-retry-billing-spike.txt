@@ -1,0 +1,47 @@
+devex
+
+carla: FYI support ticket #4567 — customer reports a surge in charges and a bunch of 502/parse errors after yesterday's OpenAPI push. They use our Python and Go SDKs.
+
+bob: do we know which endpoint and what the server returned?
+
+carla: Looks like /payments/charge async flow. Server now returns 202 Accepted with empty body for queued charges. Our generated clients expect a JSON body and raise a parse error, which triggers the client retry middleware -> duplicate requests -> billing duplicates. Reproducer below.
+
+alice: ouch. can you paste logs + SDK versions?
+
+carla: Logs from the customer's py logs: ```
+ERROR PaymentClient: failed to parse response: Expecting value: line 1 column 1 (char 0)
+Traceback (most recent call last):
+  File "/opt/app/.venv/lib/python3.11/site-packages/payment_client/http.py", line 212, in _parse_json
+    return json.loads(resp.text)
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+---
+WARN retry.middleware: retrying request (attempt=2) -> POST /payments/charge 202
+```
+
+carla: Customer is on python-sdk v0.12.3 and go-sdk v0.9.1. TS client looks OK (v1.2.0) because its runtime doesn't auto-retry by default.
+
+ryan: devex-bot shows the spec bump PR: https://github.com/redwood-inference/openapi/commit/9a7b3f (merged yesterday) — it explicitly made /payments/charge return 202 for async. The OpenAPI response schema is empty for 202. I suspect codegen templates expect schema for all 2xx responses.
+
+alice: that matches. codegen will emit response deserialization that calls json.loads on response body unconditionally. If body is empty, we throw and the retry middleware thinks it's a transient failure.
+
+bob: short-term fix: update the middleware to treat JSONDecodeError for 2xx as success-with-empty-body (no retry). Long-term: regen clients with template that checks response.content length before parsing.
+
+carla: Repro steps I gave customer: ```bash
+# simulate server returning 202 empty
+python -m http.server 8080 --bind 127.0.0.1 &
+# curl to mimic SDK POST (no body back)
+curl -i -X POST http://127.0.0.1:8080/payments/charge -d '{"amount":100}'
+```
+(note: real server should return status 202 with Content-Length: 0)
+
+alice: I'll open an emergency patch PR for Python/Go middleware to avoid retrying on JSON parse errors for 2xx and add a unit test for empty-body 202. PR will target hotfix branch and backport to latest release tags.
+
+ryan: also adding a CI spec test that runs the new openapi examples against a mock server that returns 202-empty for async endpoints — will catch this in the future.
+
+devex-bot: CI link: https://ci.redwood-inference/internal/12345 showing failed integration tests for python-sdk regen job (error: JSONDecodeError).
+
+oncall: assigning oncall to monitor customer escalations and pause automated retries on their tenant if needed. @carla can you DM tenant id?
+
+carla: will DM tenant and open ticket with action items + ETA for fix. Proposed timeline: quick middleware hotfix in ~2h, regen + release tomorrow morning, CI test in the week. :eyes:
+
+alice: thanks — next steps: 1) hotfix patch PR for py/go, 2) add unit/regression tests, 3) schedule regen and release, 4) postmortem + changelog note about spec backcompat. :shipit:

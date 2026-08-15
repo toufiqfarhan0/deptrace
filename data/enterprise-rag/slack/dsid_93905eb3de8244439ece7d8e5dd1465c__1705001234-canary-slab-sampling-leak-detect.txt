@@ -1,0 +1,37 @@
+eng-ml
+
+maria chen: Heads-up: canary rollout for promptset v2-slab shows holdout leakage > expected. Small numbers but reproducible. cc @kevin rao
+kevin rao: Can you paste the holdout overlap metric and sampler code? :eyes:
+maria chen: Overlap: holdout_overlap=0.0029 (p < 1e-6) across 50 runs. Here's the sampler snippet we used in canary:
+```python
+# sampler used in canary
+def slab_sample(prompts, slab_id, total_slabs, seed=42):
+    random.seed(seed)
+    start = int(len(prompts) * slab_id / total_slabs)
+    end = int(len(prompts) * (slab_id+1) / total_slabs)
+    return prompts[start:end]
+```
+liam o'connor: That's just contiguous slicing — if dataset order has duplicates or synthetic augmentation it can bleed. Are we shuffling before slicing?
+maria chen: Ah, we assumed upstream shuffle. The pipeline uses deterministic shard order for faster locality. Not shuffled.
+sara ng: If multiple augmentations share base prompt, slicing adjacent rows will put augmentations in different splits but same base in both train/holdout. We should fingerprint base prompt and dedupe across splits.
+kevin rao: Agree. Quick fix: use hash-based slab assignment on fingerprint, e.g.:
+```python
+import hashlib
+def assign_slab(prompt, total_slabs):
+    h = hashlib.sha256(prompt.encode()).digest()
+    return int.from_bytes(h[:4], 'big') % total_slabs
+```
+Then sample by assigned slab. Will be stable and avoid adjacency leakage.
+maria chen: Nice. Running local run: `scripts/ci/run_holdout_check.sh --promptset v2-canary --method=hash`
+eval-bot: CI check queued: holdout-leak-check v2-canary (hash method). Status: queued.
+maria chen: Also found an edge-case: synthetic augmentation appended metadata tags like `|aug1|` after prompt text. Need to strip before hashing. Otherwise diffed strings create different fingerprints.
+liam o'connor: Good catch. Use canonicalize function:
+```python
+def canonicalize(s):
+    return re.sub(r'\|aug\d+\|', '', s).strip().lower()
+```
+Test goldenrun once merged.
+kevin rao: I'll open a tiny PR to change sampler + add unit test that asserts holdout_overlap==0 for canonicalized set. Assigning to me. @sara ng can you add a regression entry to the eval dashboard so we alert if overlap > 1e-4?
+sara ng: On it. Adding alert + dashboard card under `eval/holdout-leak`.
+maria chen: Thanks. Plan: hotfix sampler to hash slab, add canonicalize, run canary nightly for a week, then promote. :thumbsup:
+eval-bot: CI check passed: holdout-leak-check v2-canary (hash method). overlap=0.0. Duration 3m12s.

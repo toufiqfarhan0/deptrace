@@ -1,0 +1,71 @@
+support
+
+Maria (support): FYI, incoming Intercom ticket from FinSecure. They can't read audit logs older than 90 days via API even though their console shows '180d retention' entitlement active. They need this for compliance review today.
+
+FinSecure Admin: Reproduced this on our side. UI shows 180 days under Settings > Compliance, but API request returns 403. We only get logs up to 90 days. Ticket ID 82214.
+
+Kevin (support): thanks — can you paste the curl you used (headers masked ok) and the org id? Also screenshots of the entitlement page.
+
+FinSecure Admin: Org: org_4A7f. Curl below (sensitive headers removed):
+```
+curl -X GET "https://api.redwood.example/v1/audit/logs?org=org_4A7f&start=2024-10-01T00:00:00Z&end=2025-03-01T00:00:00Z" \n  -H "Authorization: Bearer sk-live-***" \n  -H "Accept: application/json"
+
+HTTP/1.1 403 Forbidden
+{
+  "error": "insufficient_scope",
+  "message": "audit_log:read not permitted for requested retention window"
+}
+```
+
+audit-bot: entitlement-check results for org_4A7f: retention_entitlement=ACTIVE (180d) in billing_db_v2; policy_state=DEGRADED; last_sync=1713920000.
+
+Jordan (security): interesting — billing DB says ACTIVE but policy_state=DEGRADED. That usually means the access-control role wasn't propagated to the audit service or the entitlement flag didn't sync to the read-proxy. Can you confirm when the entitlement was purchased?
+
+FinSecure Admin: Purchased 2025-02-12 via sales rep, invoice INV-5552.
+
+Kevin (support): copying Samir from eng-platform and Kristen from billing for escalation. Samir, audit-bot shows policy_state=DEGRADED which matches a propagation failure we've seen when billing updates hit a queue retry limit. Can eng check the entitlement queue for org_4A7f and the log-proxy policy?
+
+Samir (eng-platform): on it. Running quick check of entitlement-sync service and read-proxy ACLs. Will post logs.
+
+Samir (eng-platform): found errors in sync-worker logs for org_4A7f: retry_count=5 limit reached. Root cause: S3 notification duplication caused lambda to abort before setting retention_role. Snippet: 
+```
+[2025-02-12T13:41:02Z] ERROR sync-worker org=org_4A7f: MaxRetriesExceeded - failed to apply retention_role -> ReadProxyPolicy apply failed: 504 Gateway Timeout to policy-service
+```
+
+Samir (eng-platform): I requeued the entitlement update and forced a reconcile. Also patched sync-worker to tolerate transient 504s and added a backoff. Reconcile job started at 1714009500.
+
+audit-bot: reconcile job for org_4A7f completed. policy_state=ACTIVE; retention_role=applied; rpc_status=OK.
+
+Jordan (security): please run an authorization check via the read-proxy to reproduce the earlier 403 once the role is applied.
+
+Samir (eng-platform): ran the same curl against read-proxy after reconcile. Response now 200 with data for requested windows (previewed, full payload omitted).
+```
+HTTP/1.1 200 OK
+{ "items": [ /* logs */ ], "count": 12345 }
+```
+
+Samir (eng-platform): Note: audit service uses a retention enforcement service that also tracks backfills. Because the entitlement was applied after the requested window, retention metadata needed a backfill run for older buckets. I kicked off a backfill job for 180 days starting at 1714010000. ETA ~ 45 minutes for full data to become queryable.
+
+Kristen (billing): Confirmed invoice INV-5552 marked paid and entitlement recorded at 2025-02-12T13:35Z. Billing side is good. Noting that purchase timestamp aligns with the sync-worker failure window.
+
+Kevin (support): great — messaging plan: I will tell FinSecure we've applied the entitlement and we are backfilling 180 days; full visibility should be available within an hour. Can you also provide a short root-cause blurb?
+
+Jordan (security): RC: entitlement persisted in billing DB but sync-worker hit transient upstream 504 and gave up after retries; role propagation to read-proxy failed and enforcement prevented queries beyond default 90d. Mitigation: requeued and forced reconcile, hardened sync-worker backoff, and started backfill. Low risk to data.
+
+Maria (support): Drafting the customer message now.
+
+FinSecure Admin: Thank you — please cc our compliance officer (cc: compliance@finsecure.example). We will verify once access returns.
+
+Kevin (support): message sent to customer: "Hi — we applied your retention entitlement and started a backfill for 180 days. You should see full results within ~1 hour. Root cause: transient entitlement-sync failure prevented the audit-read role from being applied. We're patching the sync worker to reduce recurrence. Please confirm when you can access the older logs; if not, paste one example request and we'll troubleshoot further." :thumbsup:
+
+FinSecure Admin: Confirmed access as of 30m later. We now get logs back to Oct 1 as requested. Thanks.
+
+Maria (support): marking ticket 82214 resolved, closing after customer confirmation.
+
+Kevin (support): follow-ups: add a retry metric alert for sync-worker retry_count spikes and update runbook to escalate to eng-platform if policy_state=DEGRADED for >15 minutes. Filing engineering follow-up ticket ENG-1259.
+
+Samir (eng-platform): noted ENG-1259 created. Will monitor for a week.
+
+Jordan (security): thanks team. Adding this incident to monthly compliance summary.
+
+Maria (support): closing thread. :white_check_mark:

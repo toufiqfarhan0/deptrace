@@ -1,0 +1,19 @@
+incidents
+
+Ava (Ops): After the outage, we need a short external comms playbook: status page blurb, a one-paragraph summary for customers, and a private packet for partners. Who owns what and timelines?
+Ravi (SRE): I can own the internal RCA and list of actionable remediation tickets. Draft RCA in 48h, final in 96h. I'll tag any related past incidents for recurrence analysis.
+Tess (Support): Support needs a 2-sentence FAQ + canned replies within 24h. We also need guidance on which customers get the private packet vs public summary.
+Maya (Legal): Public copy must be non-speculative. OK to confirm impact, restoration, and no data exposure. Private packet can include more detail but only under existing NDAs or partner agreements.
+Liam (Product): Status page suggestion: "Degraded text-generation performance from 02:10-02:44 UTC. Service restored. No customer data exposed. Investigating root cause; detailed update in 72 hours." Keep it simple.
+Ava (Ops): Good. Proposed owners: Ava approves + posts status copy, Tess prepares canned replies, Ravi owns RCA & tickets, Maya reviews legal language, Liam evaluates product prioritization if recurrence is found.
+Ravi (SRE): I'll pull historical incidents with similar autoscaling/concurrency markers and attach links. If pattern exists, propose a dedicated resilience sprint.
+Tess (Support): ETA for canned replies: 18 hours if I get the approved one-paragraph summary. Please post that ASAP so Support can respond to customers.
+Maya (Legal): I'll review the customer packet within 24h once it's drafted. For any requests for RCAs from customers, route through Support and Legal.
+IncidentBot: Incident #2026-124 closed by automated runbook.
+Ava (Ops): Action summary:
+- AVA: approve + post status page copy once Tess confirms canned replies (24h)
+- TESS: canned replies & FAQ (18-24h)
+- RAVI: internal RCA draft (48h), final (96h); attach past incidents (24h)
+- MAYA: legal review of customer packet (24h)
+- LIAM: product prioritization review if recurrence found (TBD)
+Please keep all updates in-thread. We'll run a 20-min sync tomorrow 09:30 UTC to check progress.

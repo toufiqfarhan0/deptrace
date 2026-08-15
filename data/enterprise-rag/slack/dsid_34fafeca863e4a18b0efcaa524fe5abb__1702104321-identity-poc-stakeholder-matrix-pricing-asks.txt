@@ -1,0 +1,42 @@
+sales
+
+maria_sales: Kicking off POC for HearthBank — large financial. They need SSO (SAML), SCIM provisioning, and strict RBAC/domain locking. Need a short plan + security Q answers + ballpark pricing by EOD Tue. Who can own?
+
+arun_se: I can lead the POC tech run. quick q: do they require Private (VPC/on‑prem) or okay with Hosted API for POC?
+
+maria_sales: They're leaning hosted to start, but security wants an option/quote for Private. Also want canary failover to dedicated if latency spikes.
+
+priya_infosec: Heads up — security questionnaire will ask: SOC2 status, data residency, KMS/HSM integration, audit log retention, pen test schedule, and SCIM delta vs full sync behavior. I can draft answers but need some infra/arch details. :eyes:
+
+arun_se: POC plan sketch: 1) exchange SAML metadata + IdP test user, 2) run SCIM provisioning with delta sync, 3) demo RBAC mapping from SCIM groups to Redwood roles, 4) run failover test to dedicated model (synthetic load).
+
+arun_se: SCIM test snippet we usually send:```POST /scim/v2/Users
+{ "userName": "jane@hearthbank.com", "externalId": "hb-123", "groups": ["eng","admins"] }```
+
+arun_se: For RBAC mapping we do: SCIM group name -> Redwood role. Example: `scim:admins` -> `org_admin`, `scim:ops` -> `inference_operator`. Keep it simple for the POC.
+
+tom_ae: Pricing question: POC is 8 weeks, expected ~200 reqs/min peak. Can we give a hosted estimate vs reserved-dedicated? Need rough $ numbers for their procurement.
+
+arun_se: Ballpark: hosted (pay-as-you-go) ~ $7k-$12k / month depending on model/embedding usage. Dedicated reserved (2x A100-equivalent pools) ~ $35k/month committed. I'll pull a config-based quote after we confirm seq length and throughput.
+
+priya_infosec: For security answers: we need confirmation on encryption at rest (customer-managed keys), audit log retention window (they asked for 13 months), and whether request bodies are logged for debugging. We should offer option: redact payloads by default.
+
+maria_sales: They require customer-managed KMS or HSM for keys. @arun_se will that be available for Private?
+
+arun_se: Yes, Private supports CMK/HSM. Hosted: we support KMS integrations for enterprise tiers (bring-your-own-key). We'll include both options in the doc.
+
+maria_sales: Domain controls: they want tenant-level domain locking + TXT proof for initial onboarding. Any docs/snippet for TXT proof?
+
+arun_se: Send them this: Add a TXT record `_redwood-proof.hearthbank.com` with value `redwood-poc-<token>`. We verify via DNS lookup. For multi-tenant, we also support delegated domain verification per subdomain.
+
+priya_infosec: Also call out SCIM scoping: delta sync frequency, retry/backoff, and option to limit attributes (PII minimization). I'll draft the security Q responses and upload to the thread.
+
+deploy-bot: deploy-bot: POC environment created: `poc-hearthbank-us-west` (id: poc-789). URL: https://poc-hearthbank.redwood.example — creds in 1Password. :rocket:
+
+maria_sales: Nice. Next steps: @arun_se prepare a 1-page POC runbook + minimal test plan, @priya_infosec draft sec questionnaire answers, @tom_ae I'll draft the procurement email with the two pricing options. I'll send SOW once we agree.
+
+arun_se: Will do. I'll attach sample SCIM CSV and an RBAC mapping table. ETA: tomorrow noon PST. :thumbsup:
+
+priya_infosec: I'll target EOD tomorrow for the security doc. Need the CMK wording from legal for hosted — @maria_sales can you loop legal if needed?
+
+maria_sales: Yep, looping legal now. Thanks all.

@@ -1,0 +1,59 @@
+eng-runtime
+
+eli: Heads-up — after the kernel-steer merge yesterday p99 for short sequences (8–32 tokens) climbed ~18%. Quick skim of profiler points at batch slot wandering in the coalesce layer interacting poorly with the token_budget cap and KV priming. attaching sample traces below.
+
+bench-bot: perf-summary:
+  run: canary-2026-03-18
+  model: open-llama-7b
+  workload: short-reqs-90pct-8-32
+  p50: 28ms, p95: 73ms, p99: 184ms  (baseline p99 ~156ms)
+  avg-kv-hit: 62% -> baseline 78%
+
+maria: Can you paste the coalesce/microbatch config we used for that canary?
+
+eli: current config used by canary:
+```
+microbatch_interval_ms: 1
+coalesce_delay_ms: 0
+jitter_ms: 2
+token_budget_target: 32
+max_inflight_per_slot: 16
+kernel_policy: steer/latest
+```
+
+anya: That jitter=2ms smells like deterministic slot alignment. Low jitter + microbatch=1ms can make arrivals line up, causing one slot to get hot then cold -> KV cache churn. Also token_budget=32 may be too low for these seqs so we end up with more rollovers and KV re-priming.
+
+sam: FWIW the kernel-steer change also introduced a different kernel selection ordering for short seqs (fp16-amt2 picked more often). Switching kernels can add tail latency due to cold codegen paths on the first allocations. Worth isolating.
+
+eli: bench-bot, can you dump kv-hit-by-slot and kernel-switch events for the canary window?
+
+bench-bot: kv-slot-stats (sample):
+  slot-0: hit=0.41, miss=0.59
+  slot-1: hit=0.84, miss=0.16
+  slot-2: hit=0.76, miss=0.24
+  kernel-switch-events: 237 (spike around 12:14:22)
+
+maria: Proposed quick experiments:
+- A: jitter_ms=7, token_budget_target=48, microbatch_interval_ms=1 (isolate jitter + cap)
+- B: keep jitter=2 but pin kernel_policy to steer/prev (isolate kernel)
+- measure p50/p95/p99 + kv-hit, kernel-switch-count
+
+anya: I support A first. Increasing jitter reduces deterministic alignment; token_budget=48 lets longer short-reqs finish in the same slot so fewer KV priming events.
+
+sam: I'll put together the rollout plan to run A on 5% of capacity and B on another 5%. We can stream metrics into the perf dashboard and set an alert if p99 > baseline+10%.
+
+eli: I'll start the canaries now. command: `tools/deploy_canary --config experiments/coalesce-jitter-48.yaml --percent 5`
+
+maria: also capture heap + kv-stats at 1s granularity for the first 10 minutes, and trace a few p99 requests (span-based sampling).
+
+eli: noted. kicking off. will post results in this thread. :rocket:
+
+sam: thanks — also adding a short regression job to pin the kernel-policy back if new canary regresses further.
+
+bench-bot: experiment launched: id ex-2777777777-A/B, monitor: https://perf.redwood.example/runs/ex-2777777777
+
+anya: nice. if A improves p99 but B doesn't, we can prioritize jitter/token-cap heuristics in the coalesce layer.
+
+eli: ack. will follow up with first 10m snapshot in ~12m.
+
+maria: :thumbsup:

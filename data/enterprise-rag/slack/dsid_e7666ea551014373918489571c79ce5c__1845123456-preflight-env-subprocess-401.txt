@@ -1,0 +1,64 @@
+support
+
+sara: Heads up — staging customers started seeing 401s after we rotated REDWOOD_API_KEY. FastAPI app under gunicorn + uvicorn. curl against /health with the new key succeeds, but an async helper subprocess that calls Redwood embeddings gets 401. Anyone seen this pattern?
+
+charlie: Did you restart processes, or are you doing hot-rotate of env files?
+
+sara: We update the systemd env file and then `systemctl restart myapp` for a full restart in prod, but in staging we tried doing an export on the host and letting the running workers pick it up (to avoid downtime). Repro steps I used:
+
+```
+# how the app is started
+gunicorn -k uvicorn.workers.UvicornWorker app:app --workers 4 --preload
+# helper that spawns subprocess (worker.py) to do background embed calls
+subprocess.Popen(["python", "worker.py"])  # originally no env passed
+```
+
+worker.py snippet (simplified):
+```
+from redwood import RedwoodClient
+import os
+client = RedwoodClient(api_key=os.environ['REDWOOD_API_KEY'])  # global at import
+
+def run():
+    vec = client.embeddings.create("some text")
+```
+
+mike: Two likely issues: 1) global `client` reads env at import time and never refreshes, 2) gunicorn `--preload` loads the app in master before workers spawn. If you update env after preload, new child processes won't get a refreshed in-memory client. Also subprocesses started without passing `env=` to Popen will inherit whatever env they started with.
+
+aisha: We also saw logs where `X-Redwood-Organization` was missing on a couple of requests. Are you setting org/project headers from a separate env var that might not have rotated?
+
+ops_jen: paste a minimal log snippet when you see a 401 please
+
+sara: log dump: 
+```
+[2026-03-12T14:22:11Z] worker.py: request -> POST /v1/embeddings
+Request headers: {"Authorization": "Bearer <redacted>", "Host": "api.redwood.example", "User-Agent": "worker/1.0"}
+HTTP/1.1 401 Unauthorized
+{"error":"invalid_api_key"}
+```
+Notice there is no `X-Redwood-Organization` header in that trace (we set `REDWOOD_ORG` normally).
+
+charlie: That lines up with a client instantiated earlier without the org set or with a stale env. Quick fixes: instantiate the client at call time, or implement a small refresh wrapper that re-reads env on error. Example pattern:
+```
+def get_client():
+    return RedwoodClient(api_key=os.getenv("REDWOOD_API_KEY"), org=os.getenv("REDWOOD_ORG"))
+
+# use get_client() inside your task handler rather than a global client
+```
+Also, avoid `--preload` if you expect to rotate environment variables without a full restart.
+
+mike: Another option is to pass a token callback pattern (if your app can support it) or make the client accept a `token_supplier` so it can pull current credentials per-request. If you can't change the SDK, the per-call instantiation is the simplest.
+
+aisha: For the subprocess case, ensure you pass `env=os.environ.copy()` into `Popen()` so it inherits the rotated values, or explicitly pass updated values. Example: `subprocess.Popen(["python", "worker.py"], env=os.environ.copy())`.
+
+deploy-bot: deploy staging/fastapi v2.3.1 started by ci/cd at 14:30 UTC
+
+sara: Tried two things: moved client creation inside the task function, and changed our subprocess call to `Popen([...], env=os.environ.copy())`. Restarted gunicorn master (to clear preload). After that the 401s stopped.
+
+charlie: Great — can you add a short KB note? We should warn users in the SDK docs about long-lived client objects reading env at import-time and gunicorn preload interactions.
+
+aisha: Filing KB entry KB-1234: "Auth env rotation and long-running processes (gunicorn/preload/subprocess)". Will add mitigation patterns and examples.
+
+ops_jen: :thumbsup:
+
+sara: Thanks all, closing this thread. Will open a docs PR with the get_client pattern and a subprocess example.

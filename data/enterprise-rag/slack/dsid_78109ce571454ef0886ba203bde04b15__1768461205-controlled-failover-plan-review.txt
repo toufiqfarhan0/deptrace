@@ -1,0 +1,162 @@
+eng-sre
+
+Talia Benson: Kicking off plan review for Q1 controlled failover game day (us-east -> eu-west). Need owners + go/no-go by EOD tomorrow so we can send exec update. Draft plan is in Confluence: https://confluence.redwoodinference.com/display/SRE/Controlled+Failover+Test+Plan+Q1+2026
+
+Talia Benson: Proposed window: Wed 01/15 10:00–11:00 PT (30m active, 30m observe/rollback). Please confirm availability + owners for each step.
+
+Sean Gallagher: Thx. Aiming for “controlled, measurable, reversible”. Let’s align on success criteria + hard rollback triggers in this thread.
+
+Rafael Mendes: +1. Also want a very crisp checklist for go/no-go. We got burned last rehearsal by “we assumed X was on”.
+
+Miles Thornton: I skimmed the plan. Overall looks good. A few big questions:
+1) What’s our authoritative trigger for declaring “region impaired” during the test (since we’re inducing it)?
+2) Are we validating automation path (controller) vs manual policy flip?
+3) What are the “don’t fail over” scenarios in case signals get noisy?
+
+Allison Grant: For observability: do we agree on a single dashboard URL for the war room? I can pin the panels + add annotations from the controller if we have the event stream wired.
+
+Sergio Costa: I can update the dashboard pack today. Current draft has: reachability probes, 5xx burn, p95/p99 latency burn, capacity headroom, policy flips, gateway retry-after counts.
+
+Aisha Bello: For SLO math, we should call out what we’re measuring: multi-region availability from edge POV (successful responses / total) and not internal service health. Success criteria should include “no sustained 2%+ error rate for >N minutes” or similar.
+
+Talia Benson: Owners I have in the doc (pls confirm):
+- Run-of-show / timekeeper: Talia
+- Failover controller operator: Rafael
+- Routing/policy support: Ravi + Mina
+- Region health / signals: Miles
+- Observability / dashboards: Allison + Sergio
+- Network/DNS watch: Victor
+- Capacity / headroom + drain readiness: Vanessa
+- Gateway/circuit breaker watch: Peter
+- Incident-bot/status comms: Devon
+
+Ravi Menon: Confirmed for routing/policy support. We can run controller in “dry-run + approve” mode so it emits recommended actions before we execute.
+
+Mina Haddad: Confirmed. Please make sure we scope routes/models for the test. I want it pinned to a specific route group + allowlist tenants only.
+
+Benji Okafor: For safety limits: we can enforce max policy flips per tenant per hour, plus global rate limit on controller actions. If we’re doing approve mode, the “flip” is still one action but I want to validate the limiter counters are visible.
+
+Jordan Lee: Policy engine note: deterministic evaluation is in place, but if any input signal is missing, we need a default. In rehearsal we had “missing signal = unknown” which caused conservative behavior. Decide now: unknown should NOT trigger failover.
+
+Miles Thornton: +1. For this test, missing signal should be treated as “no corroboration” and block automation, not force it.
+
+Emily Zhao: Reachability probes are green in staging; for prod we should make sure the perf-canary probes are running from at least 2 external vantage points. Otherwise we’ll confuse internal packet loss with actual ingress reachability.
+
+Victor Alvarez: Agree. Also please call out in plan: DNS TTL change is already rolled out to 60s for api.redwoodinference.com, but some resolvers ignore. Don’t assume instant traffic steering. We should measure actual regional traffic shift via edge logs.
+
+Vanessa Ortiz: Capacity: eu-west has ~35% headroom right now for hosted. Dedicated is tighter. If we include Dedicated, we need explicit “safe to failover” criteria per pool.
+
+Irene Choi: Infra POV: I’m ok with hosted-only for first prod game day. Dedicated introduces too many variables unless we pre-drain and confirm spare GPUs. If we do Dedicated, do it as separate scenario.
+
+Peter Holtz: Gateway: please include a rollback trigger on elevated retries/timeouts. If clients start hammering due to retries, we’ll see a thundering herd. I can watch `retry_after_emitted` and `upstream_timeout_rate`.
+
+Devon Price: For comms: do we want incident-bot to post in #incidents or keep it in #eng-sre? For controlled test I suggest #eng-sre + a stub status-page note (planned maintenance-style) if we think customers might notice.
+
+Sean Gallagher: For this one: no status-page post unless we actually impact customers beyond allowlisted tenants. But we should have copy ready. Devon, can you prep the template + approval path?
+
+Devon Price: Yep. I’ll prep “planned reliability test” messaging and the “we observed transient errors due to a controlled test” fallback.
+
+Tomáš Novák: Can we lock the runbook entry points? During rehearsal folks weren’t sure whether to start with Hosted API runbook vs routing controller runbook. Recommend we paste 3 links at top of the plan + assign one “single source of truth”.
+
+Talia Benson: Good call. I’ll add a “Start here” section with:
+1) Hosted API regional failover runbook
+2) Routing policy failover controller runbook
+3) GPU pool drain procedure (FYI)
+
+Allison Grant: Re annotations: if controller emits audit events, I can scrape and add vertical markers to Grafana. If that’s not ready, we should at least have someone manually annotate times in Slack with “T+X action Y” so we can reconstruct.
+
+Rafael Mendes: Controller audit events are in the latest build, but I’m not 100% it’s wired to Grafana annotations. Let’s plan for manual time-stamps as backup.
+
+Sergio Costa: I can add a simple “annotation helper” panel that shows the audit stream entries; might be enough for the retro.
+
+Miles Thornton: Let’s define success criteria clearly. Proposal:
+- Controller detects induced impairment in <= 60s (from start of impairment injection)
+- Traffic shift begins <= 120s
+- 5xx rate stays < 1% overall; allowlisted tenants may see brief spike < 5% for <= 2 minutes
+- p99 latency does not exceed 2x baseline for more than 5 minutes
+- No more than 1 automated rollback unless explicitly invoked
+
+Aisha Bello: On the SLO side, can we phrase it as:
+- “No material error budget burn”: e.g., keep 30-day equivalent burn < 1% during the window (using fast-burn lens)
+That’s easier to compare later.
+
+Sean Gallagher: I like Miles’ thresholds, but we should add hard rollback triggers:
+- sustained 5xx > 2% for 3 mins across non-allowlisted traffic (should be ~0)
+- elevated timeouts + retry amplification (Peter’s metrics)
+- eu-west capacity headroom < 15% for > 5 mins
+
+Vanessa Ortiz: For capacity trigger, use “effective headroom” (accounts for reserved Dedicated) not raw GPU free. I’ll post the query we should watch.
+
+Vanessa Ortiz: Query draft (Datadog): `avg(last_5m):redwood.fleet.headroom_effective{region:eu-west,service:hosted-api} < 0.15`
+
+Victor Alvarez: Network rollback trigger: if cross-region reachability probes show >20% packet loss or >500ms RTT from 2+ vantage points, we should stop injecting and revert. Otherwise we’re testing “eu-west can’t be reached” which defeats the purpose.
+
+Ravi Menon: Re: “impairment injection” — what exactly are we doing? Options:
+A) Disable upstream in us-east for a route group (simulate 5xx)
+B) Blackhole a % of traffic at gateway
+C) Introduce latency via fault injection
+Need to pick one that doesn’t confuse signals.
+
+Miles Thornton: Plan currently says A: set routing to prefer us-east, then degrade us-east data plane by lowering pool capacity and increasing error rate via a controlled kill switch on one service shard. That will trip 5xx burn + reachability stays OK.
+
+Peter Holtz: If reachability stays OK, great. That lets us validate hierarchy: 5xx burn should dominate over latency burn and capacity. Just make sure we don’t also trigger capacity exhaustion in eu-west at same time.
+
+Mina Haddad: +1. Also want to verify the “hold-down timer” behavior: once we flip to eu-west, we should not flap back when us-east partially recovers during the test.
+
+Jordan Lee: Hold-down currently 15 minutes default. For game day we might want to shorten to 5 minutes to observe rollback logic within the window, but that’s risky. Recommend keep 15m and do rollback manually after validation.
+
+Rafael Mendes: Agree. We can do:
+- Phase 1: induce us-east impairment -> fail over to eu-west
+- Phase 2: stop impairment injection, keep traffic on eu-west for observation
+- Phase 3: manual rollback at T+30m (or earlier if triggers hit)
+
+Talia Benson: Open question: do we include streaming endpoints in allowlist? There’s a separate fix in flight for reconnect-on-redirect.
+
+Ravi Menon: I’d include 1 streaming tenant in allowlist as a canary, but only if the reconnect fix is deployed. Otherwise we’ll generate noise + support tickets.
+
+Allison Grant: If streaming is included, we need a metric panel for `stream_disconnects` and `reconnect_success_rate`. Otherwise we can’t tell if it’s client behavior or routing.
+
+Devon Price: Support risk: if any non-allowlisted tenant sees errors, #support will get pings fast. Can we pre-brief Dev Patel / Owen Phillips with the window + what to say?
+
+Sean Gallagher: Yes. Talia, can you add “Support heads-up” task? Keep it internal; do not proactively email customers for this one.
+
+Talia Benson: Yep. Action items from this thread (I’ll roll into plan):
+- Confirm hosted-only for game day 1 (Dedicated separate) (Irene/Vanessa)
+- Lock allowlist tenants + route group + models (Mina/Ravi)
+- Success criteria + rollback triggers (Sean/Miles/Aisha)
+- Dashboard URL + annotation plan (Allison/Sergio)
+- Reachability probe coverage validation (Emily/Victor)
+- Support heads-up + comms templates (Devon/Talia)
+- Runbook “Start here” section (Tomáš/Talia)
+
+Irene Choi: Confirmed hosted-only for this run.
+
+Vanessa Ortiz: Confirmed. I’ll attach the headroom snapshot for eu-west and “min headroom” thresholds in the doc.
+
+Allison Grant: I’ll post the dashboard link here once updated. Also pls confirm if we want alerts temporarily muted for allowlisted tenants so we don’t page the world.
+
+Tomáš Novák: Strong +1 on muting pages but keeping alerts visible. We can route them to #eng-sre instead of PagerDuty.
+
+Sean Gallagher: That’s the right approach. Keep paging on for global signals; route tenant-scoped alerts to Slack during the window.
+
+Devon Price: I’ll configure incident-bot to post a summary message on failover execute + rollback (who/what/why + links) in #eng-sre only.
+
+Rafael Mendes: Can we do a quick 15-min “pre-flight” at 09:45 PT day-of to confirm:
+- controller in approve mode
+- allowlist configured
+- dashboards open
+- rollback authority present
+
+Talia Benson: Yes. Adding pre-flight meeting + go/no-go checklist. I’ll post updated plan for final review tomorrow.
+
+Sean Gallagher: Thanks all. Please react :thumbsup: on Talia’s updated plan once you’ve reviewed; no reaction = not approved.
+
+Sergio Costa: I’ll have dashboard + alert routing ready by end of day. Will drop the link in #eng-sre.
+
+Aisha Bello: I’ll draft the success criteria section w/ SLO framing and drop text for review.
+
+Victor Alvarez: I’ll add a “DNS realities” note: TTL isn’t a promise; measure traffic shift via edge logs. Don’t over-index on resolver behavior.
+
+Miles Thornton: I’ll update the plan to explicitly test signal hierarchy ordering and call out “unknown/missing signal blocks automation”.
+
+Talia Benson: Great. I’ll follow up tomorrow with the consolidated doc + checklist.

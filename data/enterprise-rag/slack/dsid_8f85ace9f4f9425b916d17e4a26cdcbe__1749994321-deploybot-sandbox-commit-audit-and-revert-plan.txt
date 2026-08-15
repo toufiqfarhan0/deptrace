@@ -1,0 +1,36 @@
+eng-releases
+
+deploy-bot: Deploy started to sandbox environment
+deploy-bot: env=sandbox, user=jen, tag=v1.8.3-sb, commit=abcdef1234567890, pipeline=staged-smoke, change_window=2025-07-12T01:30Z..2025-07-12T02:30Z :rocket:
+jennifer: heads-up — pinning rollout to commit abcdef1234567890 for this sandbox run. we kept the previous model config (quant=8bit) as discussed.
+matt: copied release notes to the run: https://internal.redwood/release-notes/v1.8.3-sb — includes fix for kv-cache regression.
+charlie: quick check — what's the rollback plan if memory spike shows in smoke?
+jenifer: rollback plan: immediate pin to previous commit (commit=9f8e7d6c5b4a3210), revert tag -> v1.8.2-sb, and trigger infra autoscale to x2 for 10m. add postmortem if we hit >5% error.
+charlie: perfect, do we have a healthcheck threshold?
+olivia: healthcheck: 95th latency < 120ms, error rate < 0.5% over 60s window. set alert to #eng-oncall.
+matt: small smoke log snippet showing green on core checks:
+```
+OK  | model-load | 0.9s
+OK  | runtime-init | 1.1s
+OK  | kv-cache-warm | 0.6s
+```
+jenifer: noted. if anything looks off i'll tag @charlie and kick the rollback flow.
+deploy-bot: Smoke tests passed (3/3). Samples: 3/3 OK. duration=00:02:45. :thumbsup:
+charlie: can we hold for 15m to observe traffic pattern? want to make sure batching ramp doesn't spike latency.
+jenifer: yes — holding for 15m. will escalate after that if we see a regression.
+olivia: added temporary route pin in routing config so only qa-team hits sandbox. config snippet:
+```
+routing:
+  sandbox_qa:
+    match: team==qa
+    weight: 100
+```
+jenifer: thanks. also added a note in the release channel for customer-facing folks about this being a sandbox-only test.
+deploy-bot: Wait window active — will re-check health at +15m. next_check=1749995221
+matt: FYI, perf team will run a quick synthetic once hold period ends.
+charlie: ack. if anything goes red i will run the rollback steps and post status here.
+jenifer: looks clean at +10m. latency stable, error rate 0.12%. holding to +15.
+deploy-bot: Deploy finished to sandbox (status=stable). tag=v1.8.3-sb, commit=abcdef1234567890. duration_total=00:18:20. :white_check_mark:
+matt: nice. I'll merge the canary notes into the main release doc and schedule dedicated deploy next week.
+olivia: filing a quick post-deploy checklist item — verify autoscale behaved as expected in logs.
+charlie: closing thread unless we see regressions. great run. :tada:

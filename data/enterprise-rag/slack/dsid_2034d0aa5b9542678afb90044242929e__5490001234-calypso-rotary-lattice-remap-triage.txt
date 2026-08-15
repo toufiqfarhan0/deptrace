@@ -1,0 +1,50 @@
+eng-ml
+
+lia: bringing up Calypso-8B (int4) today. quick smoke looked fine until ~160 tokens where generated text drifts and logits diverge vs fp16 baseline. suspect rotary packing/layout mismatch.
+
+anna: can you dump tokenizer ids + tokenized span around the drift? sometimes exports shift sentinel/BOS ids into high slots.
+
+sam: seen this pattern before — stable outputs for ~128 tokens then a one-off phase shift. head-ordering / interleaved packing often the culprit. :mag:
+
+lia: minimal repro below — run fp16 then int4 and compare step 160 logits/topk.
+```python
+prompt = 'In the beginning, the dataset showed...'
+toks = tokenizer.encode(prompt)
+print(toks[-12:])  # check boundary tokens
+# run baseline fp16 -> save logits at step=160
+# run int4 -> compare topk at same step
+```
+
+kevin: what does the model export metadata say for rotary? e.g. `rotary_layout` or `rotary_pack` and `rotary_dim` fields?
+
+lia: model.json snippet: "rotary_pack": "lattice_interleaved", "rotary_dim": 64, "heads": 16. We currently assume contiguous head ordering.
+
+anna: if exporter used interleaved packing (e.g., [0,8,1,9,...]) but loader interprets contiguous ([0,1,2...]) then the KV cache indexing will misalign and cause the delayed drift. quick hack: remap q,k,v slices at load time to canonical head-major order.
+
+sam: utility I use: `model-tools inspect-rotary --file calypso.bin` prints head map. lia, can you run that?
+
+lia: ran it, output: `rotary_head_map: [0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15]`. loader want `[0..15]`.
+
+kevin: yup that's interleaved by half. That explains the ~half-buffer delay. Good catch.
+
+ci-bot: CI job calypso-int4-smoke failed: perplexity +0.21 at 00:22:11. Logs: https://ci.internal/runs/2467
+
+lia: plan: 1) add remap at load-time using reorder index from inspector, 2) compute checksum/tiny deterministic signature on reshaped weights, 3) add unit test comparing top-1 tokens for first 180 tokens between fp16 and remapped int4. ETA today.
+
+anna: add metadata auto-detect: if model.json lacks explicit rotary map but binary matches known interleaved pattern, create a `rotary_layout: interleaved_half` tag so we persist behavior.
+
+sam: also add a regression test that runs a small ngram overlap eval on our helpfulness eval set — catches subtle quality deltas that logits-only tests miss.
+
+kevin: caution: some vendors also change projection order (q,k,v interleaved vs qkkv). When doing reshape, assert shapes and compare a few sample activations to fp16 on a short prefix. If mismatch, bail and surface model metadata mismatch.
+
+lia: good call. I'll add an assert that activation L2 diff < 1e-3 for first 8 tokens post-remap. if not, fail load and annotate model in metadata.
+
+anna: for quick stopgap, we can flip a loader flag `--apply-rotary-reorder` per-bundle so customers can opt-in while we canonicalize exporters. But prefer automatic if we can reliably detect.
+
+sam: :thumbsup: automatic detection + telemetry event so we can contact partner about export normalization.
+
+lia: PR notes: include the inspector command, remap snippet, checksum step, unit test, and CI link. Will push WIP PR and ping.
+
+kevin: thanks — once merged run full smoke+helpfulness evals. If OK, we should backport to dedicated runtime patch release.
+
+lia: will do. ping me on thread if CI still shows drift after patch. :white_check_mark:

@@ -1,0 +1,59 @@
+all-hands
+
+Ravi (CTO): Quick FYI 1: all-hands this Friday 9:00am PT in main room. Target length 40m + 20m Q&A. Agenda below 1: exec notes, APAC region launch, security policy update, recent partial outage recap, Q&A. Drop questions here or use the form.
+
+Lena (Product Ops): Agenda bullets: 1) APAC region launch timeline & SLA, 2) docs/site migration checklist, 3) security defaults change, 4) outage summary + ops improvements, 5) product roadmap highlight, 6) live Q&A.
+
+Miguel (Support): Will bring top 3 customer asks related to APAC latency. Short slide + customer anonymized logs.
+
+Iris (Security): Security policy update: mandatory hardware-backed 2FA for Dedicated & Private admin console by July 1. Will explain rollout and exemptions.
+
+Ava (CEO): We'll also do a 5-minute mention of hiring updates and where to apply internal referrals.
+
+Ravi (CTO): Incident recap note: partial control-plane lag last week. Root cause: async config propagation race under a heavy rollout. Fix: serialized propagation + backoff. I'll give a 4-min summary.
+
+Lena (Product Ops): Please prefix questions with "Q:" in this thread or use https://forms.company/ah-requests. Example: Q: Will APAC launch support private deployment?
+
+OpsBot: Invite posted: <https://calendar.company/evt/1819990000|All-hands 1 Fri 9am PT> :calendar:. Recording enabled.
+
+Miguel (Support): Q: can we include runbooks for support teams in the shared slides?
+
+Iris (Security): Yes, adding runbook links and admin onboarding steps. Also will post a short FAQ.
+
+Ravi (CTO): Slide guidance: keep to 5-7 slides each. If you need >8m ping me.
+
+Lena (Product Ops): Logistics: we'll do live polling during Q&A. Pre-submitted questions prioritized.
+
+Iris (Security): Snippet I'll include in the deck: ```Enforcement: hardware 2FA required for admin roles; Exceptions: enterprise customers on private plan; Timeline: enforced July 1; Support: onboarding + token replacement policy.```
+
+Miguel (Support): Note for APAC: add per-region failover diagram. Customers asked about cross-region KV sync.
+
+Ravi (CTO): Will show a brief failover diagram and latency targets for APAC in the product slide.
+
+Ava (CEO): Communication plan: marketing will handle external APAC launch messaging after internal sync. Internal comms package will follow with suggested customer notices.
+
+Lena (Product Ops): Reminder: add any customer-facing text to the launch doc by Thursday noon. We'll redact PII.
+
+OpsBot: Speaker roster: Ravi (5m), Ava (6m), Lena (7m), Iris (6m), Miguel (4m), Live Q&A (20m).
+
+Miguel (Support): I dumped a short anonymized log sample in the shared doc for the outage section: ```[2026-03-10T03:21:45Z] WARN config-propagation timeout for rollout id=abc123; retrying with backoff```
+
+Ravi (CTO): Good. I'll mention next steps: improve rollout throttling and add canary windows.
+
+Iris (Security): For teams: please enroll admin accounts in the test 2FA flow (link in docs) before June 15 to avoid delays.
+
+Lena (Product Ops): We'll capture action owners during the call and publish the slide deck + summary within 6 hours.
+
+Ava (CEO): Quick note to managers: please reserve time for your teams to watch the recording if they can't attend live.
+
+OpsBot (post-meeting): Recording URL: https://recordings.company/1819990000 1 available now. Transcript will be up later.
+
+Lena (Product Ops) (post-meeting): Post-hands summary: - APAC launch: pilot customers next week; public GA in 6w - Security: mandatory hw-2FA for admins, exemptions for private enterprise - Outage: root cause fixed + rollout policy changes - Actions: owners assigned in doc (link). Deck + FAQ: https://docs.company/all-hands/1819990000-summary
+
+Iris (Security) (post-meeting): Follow-ups: 1) schedule admin enrollment drop-in sessions, 2) update RBAC docs, 3) contact enterprise teams for exemption cases.
+
+Miguel (Support) (post-meeting): Support pack links added to the doc: runbooks, sample notices, troubleshooting checklist.
+
+Ravi (CTO) (post-meeting): Thanks team. Main takeaways: tighten rollout plumbing, APAC ops playbook, security enforcement timeline.
+
+Ava (CEO) (post-meeting): Appreciated the concise updates. Please watch the recording if you missed it. Reactions: :clap: :earth_asia: :shield:

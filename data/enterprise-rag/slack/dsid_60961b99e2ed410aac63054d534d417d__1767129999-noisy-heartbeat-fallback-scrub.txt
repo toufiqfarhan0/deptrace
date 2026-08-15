@@ -1,0 +1,67 @@
+incidents
+
+incident-bot: :rotating_light: PagerDuty alert: HIGH error rate (5xx) on inference-gateway-usw2. metric: requests_5xx_ratio > 5% for 2m. PD escalation level: page - primary oncall. https://grafana.redwood/inference-gateway-usw2
+
+jamal_oncall: acked. oncall here, investigating. any known deploys?
+
+alice.dev: no deploys from infra in the last 30m. seeing a spike in 502s originating from kvcache eviction logs. looks correlated with a burst of long seq requests.
+
+pagerduty: PagerDuty: Incident #PD-77231 acknowledged by jamal_oncall. Auto-escalation suspended.
+
+jamal_oncall: thanks. tagging @olivia_sre for possible routing fallback. product-support FYI — are customers reporting errors?
+
+product-support: a few enterprise customers reported intermittent failures on chat endpoints. volume small so far but some retries cause user-visible latency.
+
+olivia_sre: joining. pulling traces now. preliminary: origin backend (inference-runtime) returning 502s after KV cache miss + cold KV refill. throughput spike -> eviction storms.
+
+mike_infra: I'm seeing a sudden uptick in long-lived sessions with seq_len > 2048 causing huge KV growth. Could be a misbehaving partner test.
+
+jamal_oncall: can we mitigate quickly with a routing fallback to smaller model variant? e.g., route new requests to inference-gateway-usw2-fallback pool (quantized smaller model) until kvcache warms.
+
+alice.dev: good plan. route policy already exists. I'll flip the route. command: 
+```
+# switch 100% traffic to fallback pool
+curl -X POST -H "Authorization: Bearer $ADMIN" https://control-plane/api/v1/routes/inference-gateway-usw2/actions -d '{"policy":"fallback_pool","weight":100}'
+```
+
+jamal_oncall: executing now.
+
+jamal_oncall: done. routing change propagated to edge in ~12s. monitoring 5xx rate...
+
+incident-bot: Alert: routing-change applied by jamal_oncall.
+
+olivia_sre: 5xx rate dropped to ~1.1% within 30s. good. but we should still address root cause. recording runbook step: investigate large seq sessions and add token caps. link: https://runbook.redwood/inference/kvcache-eviction
+
+mike_infra: kicked off query to find top sessions: `SELECT session_id, max(seq_len) FROM sessions WHERE seq_len > 1024 ORDER BY max(seq_len) DESC LIMIT 50;` one partner test client (ip 52.14.33.9) accounts for ~40% of long seqs. I'm throttling at LB for that IP now.
+
+product-support: pinging affected customers with note: we routed traffic to fallback model to reduce errors; performance slightly degraded for high-context requests.
+
+jamal_oncall: ok next steps: 1) keep fallback routing for 15m, 2) apply throttling to misbehaving client 3) add short-term token cap on gateway (<=4096) 4) schedule post-incident triage. I'll update PD and mark impact window.
+
+pagerduty: PagerDuty: Incident #PD-77231 status updated: Mitigated -> Acknowledged - Jamal. Impact: intermittent 5xx ~15m, primary mitigation: traffic routed to fallback pool.
+
+alice.dev: applied temporary gateway cap: `gateway.config.max_tokens=4096` and pushed.
+
+mike_infra: throttling rule applied to 52.14.33.9 at LB. KV eviction rate normalized.
+
+olivia_sre: 5xx stable under 0.8% now. keeping alerting watch for 10m.
+
+jamal_oncall: adding note to PD timeline and closing the page if no regression. thanks for the quick responses. :thumbsup:
+
+product-support: will follow up with customers and collect any lingering errors.
+
+incident-bot: Auto-check in in 10m. If no new 5xx bursts, please resolve the incident.
+
+jamal_oncall: last check — no new spikes for 8m, dropping routing to 0 over next 2m to slowly shift back to primary pool.
+
+alice.dev: traffic shifting back.
+
+mike_infra: primary pool healthy at current load. KV hit rate improving.
+
+jamal_oncall: resolving PD incident in 5m if stable. preparing postmortem outline: root cause = unbounded long-seq client causing KV eviction storm -> cascade 502s; mitigations = routing fallback, LB throttle, gateway token cap. action items: permanent token cap, alert for unusual seq_len distribution, partner contact to enforce client limits.
+
+olivia_sre: noted. I'll schedule a follow-up with partner and set a Grafana alert on seq_len p95 > 1024 for 3m.
+
+pagerduty: PagerDuty: Incident #PD-77231 resolved by jamal_oncall.
+
+jamal_oncall: incident resolved. thanks everyone. closing thread. :white_check_mark:

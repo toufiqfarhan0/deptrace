@@ -1,0 +1,54 @@
+slack/docs/1733332222-export-faq-key-management-update.json
+
+Marta: FYI opened a PR to add an FAQ about exported audit logs, TTLs, and a short migration guide for the Go SDK pseudonymization helper. PR: https://github.com/redwood-inference/docs/pull/1412
+
+docs-bot: CI: docs build queued. Running link checks and code examples.
+
+Ethan: Nice. Two quick asks: 1) we should avoid implying exports change retention policy (they don't), and 2) the anchor to the retention section was renamed in the last restructure. Link currently points to #retention-policy-old.
+
+Priya: I'll update the copy to clarify: "Exports are subject to the configured retention policy; exporting does not extend retention." Also will fix the anchor to #retention-and-exports.
+
+Legal-Bot: Wording suggestion: use the term "pseudonymized identifiers" instead of "anonymized" and include a short line saying Redwood does not hold customer salts unless explicitly configured. SOC2 reviewers prefer explicit statements about control boundaries.
+
+Marta: Good catch. I'll add: "Exported audit material may include pseudonymized identifiers derived from keys under customer control; Redwood does not retain those keys unless configured by the customer."
+
+Ethan: For the Go sample, can we show a tiny helper that returns HMAC-SHA256 using a placeholder GetCustomerKey() call? Keep it pseudocode and mark it as client-side only.
+
+Priya: Draft Go snippet:
+
+```go
+// client-side pseudonymize example (pseudocode)
+package examples
+
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+)
+
+func Pseudonymize(id string, key []byte) string {
+    mac := hmac.New(sha256.New, key)
+    mac.Write([]byte(id))
+    return hex.EncodeToString(mac.Sum(nil))
+}
+
+// key should come from customer-managed KMS; do not send raw keys to Redwood.
+```
+
+Marta: That looks good. Add a short note pointing to the KMS best practices doc and a one-line changelog entry in docs/changelog.md under Security.
+
+docs-bot: CI: linkcheck failed - broken anchor at exports.md line 56 (points to #retention-policy-old).
+
+Priya: Fixed anchor and pushed. Also tightened language around re-identification risk and added an FAQ Q: "Can Redwood re-identify exported pseudonymized IDs?" A: "No, unless customer has configured key sharing; by default keys/salts remain under customer control."
+
+QA: Found a minor formatting issue in the Go snippet (missing import grouping ") on the examples page). Pushed a tiny fix.
+
+docs-bot: CI: build passed on staging  docs lint: ok, linkcheck: ok, code-sample-check: ok.
+
+Marta: Thanks all. Merging in 5 unless anyone objects.
+
+Legal-Bot: 705 Approved language for SOC2 reviewers.
+
+Ethan: :thumbsup:
+
+Marta: Merged. Closing the PR and adding a follow-up ticket to add a short migration note to the v2 Go SDK README.

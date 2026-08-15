@@ -1,0 +1,66 @@
+marketing
+
+Ana: Quick sync — OSS 'Dockyard' refapp launch plan: blog post (benchmark narrative), short tutorial, and a 30-min webinar. Goal: community starter repo + walkthrough video + inbound lead routing in ~3 weeks. Thoughts? :rocket:
+
+Marcus: Nice. +1 on benchmarks being central. Propose two headline metrics: p99 latency at target QPS, and cost per 1k tokens for common prompts. Keep methodology repeatable.
+
+Tess: I can own the webinar slides + demo script. Need a reliable demo flow that won't break if the model picks a weird completion. Suggest recording a canned run and also doing a live small query.
+
+DevRel-Bot: Reminder: release checklist template available at https://git.internal/redwood/docs/release-checklist — use the 'refapp' tag.
+
+Sam: I'll run the benchmark harness on Dedicated. Need: (1) exact prompt set, (2) model variant to pin (e.g., small-q4), (3) target QPS for each profile. Can someone paste the prompt list?
+
+Joel: I can scaffold the repo and CI. Plan: simple Node + Docker example and a one-file quickstart. Dockerfile snippet to use in README:```Dockerfile
+FROM node:18-slim
+WORKDIR /app
+COPY . .
+RUN npm ci --only=production
+CMD ["node", "index.js"]
+```
+Use `redwood serve --model small-q4 --port 8080` in example.
+
+Maya: For inbound routing: HubSpot form + UTM campaign. Use utm_source=community, utm_campaign=dockyard_refapp_launch, and auto-tag leads to "dockyard-refapp". Also add a hidden form field for "deployment_interest" (hosted/dedicated/private).
+
+Ana: Nice checklist so far. Also: short 10-min tutorial (get started) + deep-dive blog that explains benchmark methodology and results. For blog, include reproducible commands and raw data (CSV) so community can trust numbers.
+
+Marcus: For reproducibility, let's provide a small harness and a script. Example run command:`./bench/run.sh --model small-q4 --prompts prompts/common.json --qps 50 --duration 300`
+
+Sam: I'll write `run.sh` and upload synthetic results sample. Need permissions to spin up dedicated nodes — pinging infra.
+
+Tess: Webinar format proposal: 10m intro, 10m live demo (pre-recorded fallback), 5m benchmark walkthrough, 5m Q&A. Slide checklist: goals, how it was measured, repo tour, try-it-now CTA.
+
+DevRel-Bot: Suggested social copy templates in /marketing/snippets/refapp_launch.md.
+
+Joel: Also adding a tiny GitHub Actions workflow for tests + release tag. workflow snippet:```yaml
+name: CI
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke
+        run: node smoke-test.js
+```
+
+Maya: Landing page content: hero video (1min), three bullets (quickstart, benchmark highlights, webinar signup), CTA button -> HubSpot form. Make sure GA event on CTA and HubSpot hidden field.
+
+Ana: Timeline draft:
+- Week 0: repo scaffold + tutorial draft + landing page skeleton
+- Week 1: benchmark runs + blog draft + recording of demo
+- Week 2: webinar rehearsal, slide polish, assets for social
+- Week 3: launch + webinar + post-launch followups (email drip to leads)
+
+Marcus: Volunteer list: Tess (webinar/slides), Joel (repo/CI), Sam (bench runs), Maya (inbound + landing). I can write the benchmark blog intro and co-author methodology. Ana to coordinate publish date.
+
+Tess: Quick ask — can design make a hero GIF of the refapp UI? Low-effort: 6s loop.
+
+Ana: Yep, I'll ping design. Also decide on a canary audience: community newsletter + Twitter dev list first, then broader paid push. Keep an eye on SLOs if we demo on hosted.
+
+Sam: One more technical: let's include a small KV-cache demo and show token savings. That can be a benchmark subsection.
+
+Joel: I'll add a small sample: `cache = new KVCache({ttl: 600})` and show before/after token counts in README.
+
+Maya: For lead nurturing, add a 3-email sequence: welcome + tutorial link, deep-dive blog, webinar recording + invite to office hours.
+
+Ana: Awesome. Action items captured. I'll put an Asana checklist and assign owners. We'll reconvene Thu to confirm runway. :thumbsup:

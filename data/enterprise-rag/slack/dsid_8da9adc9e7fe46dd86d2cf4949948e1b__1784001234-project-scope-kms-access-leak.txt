@@ -1,0 +1,38 @@
+eng-security
+
+alice: Heads-up — query in CloudAudit shows a service-account from project `sandbox-qa` decrypted a KMS key that lives under org `acme-prod`. that should not be possible.
+ben: can you paste the raw log line?
+alice: here (redacted):
+```
+principal: serviceAccount:sandbox-sa@sandbox-qa.iam.gserviceaccount.com
+action: kms.decrypt
+resource: //kms.googleapis.com/projects/acme-prod/locations/global/keyRings/main/cryptoKeys/payment-enc
+request_id: r-0a1b2c3d
+```
+carla: whoa, resource path shows acme-prod under projects but principal is from sandbox-qa — makes me think the authz layer is treating resource scope as "projects/*" instead of verifying org/project prefixes.
+dinesh: reproducing locally. quick theory: during the RBAC refactor we collapsed resource selectors and a wildcard match `projects/*/keys/*` now accepts keys across org boundaries if project ids collide.
+maria: audit-bot: I pulled the audit-log bundle for that principal: <https://internal.audit/redwood/1784001234|link>
+maria: also saw a role-grant event 2026-03-19T22:48:03Z: `roles/kms.decrypter` granted to `sandbox-service-role` with scope `projects/*`.
+sec-bot: alert: unexpected_cross_org_kms_access severity=high resource=projects/acme-prod/keyRings/main/cryptoKeys/payment-enc
+ben: immediate mitigation: revoke the `kms.decrypt` permission from the sandbox SA and lock down the role to explicit project path.
+carla: suggested revoke command:
+```
+rbacctl revoke --principal=sandbox-sa@sandbox-qa.iam.gserviceaccount.com --permission=kms.decrypt
+```
+alice: good. long-term fix: add strict resource-prefix enforcement in authz and a policy validation step on role grants. e.g. before our grant check allowed:
+```
+allow if resource.matches("projects/*/keyRings/*/cryptoKeys/*") && principal.has_role("roles/kms.decrypter")
+```
+and after we should require org/project alignment:
+```
+allow if resource.matches("projects/{{PROJECT_ID}}/keyRings/*/cryptoKeys/*") && principal.project == {{PROJECT_ID}} && principal.has_role("roles/kms.decrypter")
+```
+carla: also add a CI gate for RBAC rule changes that runs a suite that includes cross-org negative tests.
+dinesh: filed INC-4987 with minimal reproduction and linked logs. assigned to sec-eng. (https://jira.internal/INC-4987)
+maria: I'll push a canary to authz that enforces org-prefix checks and add regression tests to rbac-validator. rolling out to canary cluster now.
+ben: once canary looks good, please automerge to blue and run a scanning job over existing roles to find any `projects/*` scoped grants.
+alice: also add a short alert in the console: when a KMS access happens from a principal in a different org, generate a high-priority audit event + email to sec-eng.
+sec-bot: noted. will create audit rule for cross-org KMS accesses.
+maria: quick note — KMS provider teams: confirm whether key resource names always include org owning project. if some providers expose shorthand we need normalization.
+carla: thanks everyone. keep replies here so we have a single thread. :thumbsup:
+alice: updating incident ticket with mitigation steps and next actions. will follow up when revoke and canary are complete.

@@ -1,0 +1,41 @@
+new-hires
+
+Aisha K: Hey team — I accepted the org invite but I can't see the private `infra` repo, I get a 404 when I try to open it. I can see public repos though. Anyone know what's missing?
+
+Tom R: Welcome Aisha! Can you confirm you accepted the invite to the org (not just a repo) and that SSO/2FA is enabled?
+
+DevOps Bot: org-invite: Aisha K accepted at 2026-03-20 12:04 UTC
+
+Aisha K: I accepted the org invite. 2FA is on (authenticator app). SSO says 'Not authorized' when I try to access repo.
+
+Jamie P: People Ops — double-checking you were added to the infra team. @Tom R could you check team membership?
+
+Tom R: Looking... I don't see Aisha in `infra-team`. I see only the base `engineering` team. I'll add but need to confirm SSO. @Lydia M can you trigger org SSO re-sync?
+
+Lydia M: Re-synced SSO for Aisha. Try again now.
+
+Aisha K: Still 404. Here's output from `gh auth status`:
+```
+github.com
+  ✓ Logged in to github.com as aisha-k (GitHub CLI 2.30.0)
+  ✓ Git operations for github.com configured to use https
+  ✗ Logged into enterprise via SAML SSO
+```
+
+Tom R: SSO not linked — you need to authorize SAML. Visit https://github.com/organizations/redwood-inference/sso and click 'Authorize' (or use the link in your invite email). Also check the Teams tab in the org to accept the team invite.
+
+Aisha K: I don't see an 'Authorize' button — I only see 'Request access'.
+
+Jamie P: That usually means the invitation was sent to a different email. Which email did you accept with?
+
+Aisha K: I accepted with my personal email (oops). My work email is aisha@redwood.ai. How do I switch?
+
+Tom R: Okay that explains it. Please sign out of github.com, then accept the invite from your work email. If your personal account is blocking acceptance, either add your work email to the personal account and verify it (`Settings → Emails`), then accept, or tell me and I can resend to the personal address and we can adjust team membership later.
+
+Aisha K: Added and verified work email, accepted invite again. SSO shows authorized now.
+
+DevOps Bot: org-role-change: Aisha K added to infra-team by Tom R
+
+Aisha K: I can see the private repo now, thanks everyone! :tada:
+
+Jamie P: Welcome aboard! If you need elevated repo perms (write/admin) ping @Tom R or @Lydia M and we'll sort it.

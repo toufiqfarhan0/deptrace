@@ -1,0 +1,56 @@
+eng-platform
+
+Eve: midday async — quick 3-line standup (what I did / blocker / today)
+Eve: did: merged gw-proxy PR that adds header-forwarding for downstream auth.
+Eve: blocker: noticed intermittent 401s in staging when cookie rotation hits, unsure if it's timing or cache.
+Eve: today: monitor canary, add extra logs around token refresh path.
+
+Sam: nice, saw the PR — thanks. I ran a short smoke on staging and saw 1x 429 during a burst. :eyes:
+Sam: did you see anything in the gateway metrics?
+
+Maria: I dove into the logs earlier — the 401s line up with a 50ms spike in KV cache miss on the auth service.
+Maria: stack trace snippet: 
+```
+AuthClient.getUserFromCookie -> cache.get(cookie) -> timeout
+Error: KVTimeout at 50ms
+```
+Maria: hypothesis: our token-smoothing (backoff) is too aggressive and retries are tripping rate-limiter.
+
+Jon: @Maria can you paste the exact KV config? I want to compare with prod defaults.
+
+Maria: config excerpt: 
+```yaml
+auth_cache:
+  timeout_ms: 50
+  max_retries: 2
+  jitter: 20ms
+rate_limit:
+  window_ms: 1000
+  requests: 120
+```
+
+Eve: thanks — looks like staging has lower timeouts than prod (prod timeout_ms is 150). I'll bump staging to match prod and re-run canary.
+
+Sam: good call. Also saw a small routing-policy mismatch: some legacy routes still hit the old auth header code path; I opened PR 582 to add a feature-flag check and prevent double-validate.
+
+Eve: link?
+
+Sam: https://git.internal/r/582 :thumbsup:
+
+Jon: I'll pick up the 429 tracing after lunch. If it's retries causing bursts we should add a short local token-bucket per gateway instance to smooth spikes.
+
+Eve: agreed. For today I will: bump staging auth cache timeout, add a metric for cache-miss-latency, and watch the canary for 10k reqs.
+
+Maria: I'll run a focused gen-test that simulates cookie rotation churn (100 users rotate tokens at t=0).
+
+deploy-bot: deploy started: canary staging gw-proxy v2.3.1 -> 2 nodes, initiated by Eve. (follow up at 5532110000)
+
+Sam: ping @Jon if you want me to instrument the token-bucket. I can throw up a quick prometheus counter.
+
+Jon: will do, thanks.
+
+Eve: small ask — if anyone notices auth 401/429 regressions in other channels, drop them here so we can correlate timestamps. :mag:
+
+Maria: noted. will post if tests flag anything.
+
+Eve: ok closing my update. cheers. :coffee:

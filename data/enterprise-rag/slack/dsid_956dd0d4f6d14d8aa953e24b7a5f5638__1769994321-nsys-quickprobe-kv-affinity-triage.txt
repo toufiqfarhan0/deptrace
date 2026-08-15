@@ -1,0 +1,35 @@
+eng-runtime
+
+alice: quick nsys smoke to repro the kernel flip I saw on the kv cache path. trying to keep this capture tiny so we can iterate.
+ben: cool — can you paste the exact CLI you used? want to reproduce locally.
+alice: yup. ran:
+```
+nsys profile --trace=cuda,nvtx,osrt -o /tmp/nsys/smoke_kv_affinity --duration 40 \
+  --capture-range=nvtx:kv_warmup -f true
+```
+(not all flags necessary, but capture-range=nvtx:kv_warmup makes it easy to bracket the warmup window)
+carlos: nice. did you include sampling or made it full timeline? full timeline for 40s can be noisy.
+alice: this run was full timeline for cuda+osrt, but we also did a quick sample-mode run: `nsys profile --sample=cpu --trace=cuda,nvtx,osrt -o /tmp/nsys/smoke_sample --duration 20` to get coarse hotspots first.
+dana: observed anything obvious? kernel-switching between matmul variants or something else?
+alice: interesting pattern — first 5s dominated by a small fast-gemm (wmma) then after KV cache population we see a shift to a larger matmul kernel (sgemm_v2) that takes ~3x per-call time. suspect heuristic in kernel selector toggling by sequence length / batch alignment when kv entries cross a threshold.
+ben: can you paste the kernel timeline snippet (abbreviated) from the capture? a couple lines is fine.
+alice: pasted partial timeline below (trimmed):
+```
+[00:00:03] cudaKernel: wmma_fp16_kernel  —  120 us  (lots of calls)
+[00:00:06] cudaKernel: sgemm_v2           —  360 us  (starts appearing)
+[00:00:12] cudaKernel: sgemm_v2           —  420 us  (dominant)
+[00:00:13] osrtCallback: kv_readahead(16)
+[00:00:13] nvtxRange: kv_warmup_end
+```
+carlos: that nvtx marker aligns with the switch — looks like once kv_readahead crosses the prefetch threshold it changes layout which affects kernel tiling choices.
+dana: ideas for quick checks? maybe toggle the prefetch count or force kernel path?
+alice: i did two experiments in the same run using NVTX to bracket: first bracket with prefetch=8, second with prefetch=32. results: with 8 we stayed on wmma; with 32 we flipped to sgemm_v2.
+ben: good signal. next step: reproduce with minimal micro-batch loop to isolate whether it's sequence length distribution vs. cache line alignment. can you push the small repro to /tmp and i'll run it under different gpu affinities.
+alice: pushed small loop: `/tmp/repro/kv_affinity_smoke.py` — loop for 200 iterations, toggles prefetch at iteration 80 via NVTX. also added `--affinity=0,1` env toggle.
+perf-bot: uploaded /tmp/nsys/smoke_kv_affinity.qdrep (85MB), /tmp/nsys/smoke_sample.qdrep (12MB) :file_folder: 
+carlos: thanks — i'll take the qdrep and open in GUI to inspect kernel launch params (grid/block, shared mem). expecting to see different tile sizes/launch config.
+dana: one more note — when you do short captures, add `--stop-on-range-end true` so the capture ends right after the NVTX end marker. keeps files small and focused.
+alice: good tip. also adding `--sample=none` option for the next full timeline run to avoid double-sampling overhead.
+ben: if we confirm it's prefetch -> layout -> kernel heuristic, patch could be either: (1) make selector aware of kv_prefetch_count or (2) bias selection by recent latency history instead of instantaneous layout.
+carlos: agreed. i'll profile the grid dims to determine if one kernel is actually better for the populated-kv case or if it's just incorrect heuristic.
+dana: ok team — we'll converge on a small repro + a short nsys capture with NVTX brackets and affinity toggles. followups in #perf-issues if we need a longer trace. :thumbsup:

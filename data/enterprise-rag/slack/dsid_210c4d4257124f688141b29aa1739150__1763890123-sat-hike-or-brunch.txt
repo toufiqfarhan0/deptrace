@@ -1,0 +1,14 @@
+random
+
+Liam: Saturday check  whos doing a hike vs brunch? Trying to pick plans. :hiking_boot: :pancakes:
+Jules: Hike for me if its not too early. Ill bring trail mix.
+Ethan: Brunch. sorry hikers. need to nurse a wifi-less brain. :coffee:
+Priya: I can do either. If brunch, can we try that new place on 4th (Avocado Toast Co.)? Heard lines are long.
+Liam: Hm avocado toast line is real. Maybe brunch reservation at 11? Otherwise meet at Maple Ridge trail 9am?
+Jules: 9am works. anyone need a lift? I have room for 2 in my car.
+Ethan: If you take the brunch route, count me in for 11. If 9am hike, Im out.
+Priya: Im leaning brunch then. not feeling a 9am wakeup. 
+Liam: OK brunch wins for now 3-1. Priya can you grab the reso for 11?
+Priya: Yup will try for 2-3 seats. if no reso, we can wait 15 mins or pivot to The Diner.
+ops-bot: calendar: Created event "Saturday Brunch  Avocado Toast Co." for Sat 11:00 AM in #events.
+Liam: Sweet. Hike crew maybe next weekend. Thanks folks! :v:

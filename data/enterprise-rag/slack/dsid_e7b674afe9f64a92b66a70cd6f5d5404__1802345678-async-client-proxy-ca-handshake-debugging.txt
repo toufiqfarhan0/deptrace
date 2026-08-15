@@ -1,0 +1,35 @@
+devex
+
+becky: Heads-up — hitting TLS handshake failures with the Python async client when connecting to our Dedicated base_url behind the corporate HTTP proxy, using a custom CA. Anyone seen this? :thinking:
+owen: What error are you getting? Can you paste a minimal repro (async snippet + env vars)?
+becky: Error from the run: `aiohttp.client_exceptions.ClientConnectorCertificateError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1123)`
+becky: Minimal snippet I used (async):
+```python
+import os
+from redwood import AsyncClient
+
+client = AsyncClient(
+    base_url="https://private-redwood.internal",
+    api_key=os.getenv("REDWOOD_KEY"),
+    verify="/etc/ssl/certs/redwood-ca.pem"
+)
+await client.generate("hello")
+```
+becky: Env: `HTTP_PROXY=http://corp-proxy:3128`, `REQUESTS_CA_BUNDLE=/etc/ssl/certs/redwood-ca.pem`. The same cert file works with the sync client (requests) but async keeps failing — looks like the `verify` arg is ignored when proxy env is present.
+owen: Aiohttp/httpx use SSLContext under the hood; passing `verify` alone might not wire into the SSLContext when a proxy transport is used. Workarounds I've used: set `SSL_CERT_FILE` or build an ssl.SSLContext and pass it to the client. Eg:
+```python
+import ssl
+sslctx = ssl.create_default_context(cafile="/etc/ssl/certs/redwood-ca.pem")
+# httpx-style transport example (pseudo)
+client = AsyncClient(..., transport=AsyncHTTPTransport(ssl=sslctx))
+```
+marta: This rings a bell — our async client currently doesn't expose a way to inject an SSLContext (we only pass `verify` down to requests/httpx in the sync path). Also there's an edge-case where `base_url` gets dropped/replaced when proxy env vars are used because of how our transport constructs proxied requests. Filing this as a bug.
+becky: I also tried `NO_PROXY=private-redwood.internal` and `HTTP_PROXY` unset for the container; that made the handshake progress further but then we hit a hostname mismatch (proxy rewriting Host header?). Sync client never had that problem.
+marta: Can you share the full curl/openssl check output? Quick test you can run from the node:
+```
+openssl s_client -connect private-redwood.internal:443 -servername private-redwood.internal -CAfile /etc/ssl/certs/redwood-ca.pem
+```
+devexp-bot: created issue redwood/devex#2143 — "async client: proxy + custom CA + base_url -> SSL handshake + host header issues" :+1:
+ci-bot: CI shows two flaky tests around `test_async_client_proxy` reproduced on linux/amd64 in the integration job.
+owen: Short-term workaround options: 1) set `SSL_CERT_FILE` env var in the container to your CA bundle; 2) avoid proxy for internal host with `NO_PROXY` and ensure upstream proxy doesn't rewrite Host; 3) use sync client for now if feasible. Longer-term: expose `ssl`/`ssl_context` injection parameter in AsyncClient and ensure base_url is preserved when building proxied requests.
+becky: Thanks — I'll attach the openssl output + container repro to the GH issue and try the SSL_CERT_FILE workaround. Appreciate the quick triage. :+1:

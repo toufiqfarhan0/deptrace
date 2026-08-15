@@ -1,0 +1,37 @@
+people-ops
+
+maya: Hey team — quick question. Had to go to Downtown Urgent Care this morning. They wanted an insurance card and said my plan isn't in their system, so they're asking me to pay up front. I don't have the physical card, only the PDF from the portal. Do I pay now and submit a claim? Also how do I get a proper ID card to show next time?
+
+ben_dev: Were they able to bill you today or just asked for payment? If it's urgent, pay now and keep the receipt.
+
+maya: They made me pay $150 out of pocket and gave a receipt. Billed me as "self-pay". I asked for the provider's billing contact but I didn't get a clear answer.
+
+rebecca: Ugh—this happens when provider directories are out of sync. Two tips: 1) check the insurer's provider search (sometimes the clinic is listed under a different DBA). 2) call the billing dept and ask them to reprocess with your member ID once we confirm network status — it can take 24–48h.
+
+jordan (People Ops): Hi @maya — sorry you had to deal with that. Steps we recommend: 1) Download the digital ID from the insurer portal (that PDF is fine to show). 2) If provider still refuses, pay and get an itemized receipt with CPT/NDC or at least service date and billing tax ID/NPI. 3) Submit a claim to the insurer for reimbursement and cc benefits@redwood.com so we can help escalate.
+
+jordan (People Ops): Here's a simple claim email template you can use:
+```
+To: claims@insurer.example
+Subject: Claim submission — urgent care 2026-06-03 — Member ID: 123456789
+Body: Please find attached itemized receipt for urgent care on 2026-06-03 for patient Maya L. Provider: Downtown Urgent Care, Tax ID: 12-3456789. Please reprocess as in-network if applicable and advise on reimbursement steps.
+Attachments: itemized_receipt.pdf, provider_statement.pdf
+```
+
+benefits-bot: Digital ID card for member 123456789 is available: https://insurer.example/digital-id/123456789 (PDF) :card_file_box:
+
+maya: Thanks — sending the receipt now. One question: if it turns out they were out-of-network, will I still get reimbursed? I paid $150 and my usual urgent care copay when in-network is $25.
+
+jordan (People Ops): Short answer: maybe. If the provider is actually in-network but billed wrong, insurer should adjust and you'll only owe the in-network copay ($25). If provider is truly out-of-network, reimbursement depends on our plan's OON terms (balance-billing rules). We'll review the insurer EOB once it's processed and help file an appeal if needed. Typical timeline: initial insurer decision 2–6 weeks, appeal + reprocessing may add another 2–4 weeks.
+
+jordan (People Ops): Please send: (a) itemized receipt (required), (b) provider billing contact (if available), (c) screenshot of the digital ID showing Member ID and Group number. Send to benefits@redwood.com and I'll take point on escalation.
+
+ben_dev: :thumbsup: Thanks for laying out the steps, Jordan.
+
+maya: Sent everything to benefits@redwood.com — appreciate the help!
+
+jordan (People Ops): Got it, I'll confirm receipt and follow up with our broker this afternoon. If insurer needs any extra forms (claim form or appeal cover letter) we'll fill them out and attach.
+
+rebecca: One more note — if you need a temporary physical card quickly some insurers will mail expedited cards or provide a one-time paper card at a local branch. Otherwise the digital PDF works for most clinics.
+
+maya: Good to know. Thanks everyone :relieved:

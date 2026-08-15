@@ -1,0 +1,32 @@
+eng-security
+
+maria gonzalez: Async standup — quick notes
+what I did: finished S3 access audit, kicked off vuln scan for model-serving infra, added PR for iam role least-priv (https://github.com/redwood/inference/pull/3892)
+blockers: need approval for service account to keyrotate KMS (blocked by ops-oncall)
+today: will follow up on PR, triage scan findings, prep KMS rotation dry-run
+
+samir shah: saw the PR, leaving a few nits, will review later today. FYI the vuln scan flagged 1 low + 1 medium in docker base images
+
+eng-bot: Auto-scan results: vuln-scan/model-serving/2026-03-16
+```
+2 medium: CVE-2024-xxxx (glibc) - container update available
+1 low: outdated curl
+```
+
+jordan lee: @maria can you add the exact SA name here? I can do the IAM change once ops approves. also pinging @kevin for rotation schedule
+
+kevin: I can allocate a 1-hour window tomorrow 03/17 09:00-10:00 PT for KMS rotation dry-run. @maria what's the SA?
+
+maria gonzalez: SA is `svc-inference-rotator@redwood-prod`. ops-oncall, any objections to granting kms:Encrypt/Decrypt for rotation job? :pray:
+
+ashley: no objections, but we need an audit entry. @maria can you open ticket with the rotation plan? I'll attach the template.
+
+maria gonzalez: opened ticket: https://redwood.atlassian.net/browse/ENGSEC-4821 — plan + rollback + risk matrix attached
+
+samir shah: quick code-review ping: https://github.com/redwood/inference/pull/3892 — added role binding and tests. left comments inline
+
+jordan lee: I'll take the scan medium CVE after lunch, will try patch and submit image rebuild PR
+
+kevin: LGTM for rotation window. :thumbsup:
+
+maria gonzalez: thanks all — will un-block once ops confirm, ack when you review PRs. low noise after that.

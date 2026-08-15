@@ -1,0 +1,26 @@
+eng-platform
+
+jamal: quick check — are we committed to preserving message order for streaming func calls when fallback triggers? seeing reorder on staging when we fall back from gptx-quant->gptx-emu :thinking:
+kevin: we should preserve final call ordering. fallback shouldn't reorder, just switch model. what's the exact repro?
+jamal: repro: send chat with func call then large tool output -> backend triggers fallback. logs show func delta arriving before end flag then end flag from fallback model arrives earlier
+ana: can you paste logs? might be kv cache mismatch or partial buffer flush
+jamal: ```
+[2026-02-14T12:33:01Z] stream delta {type: "tool_call", name: "search", args: "{...}"}
+[2026-02-14T12:33:03Z] fallback to gptx-emu
+[2026-02-14T12:33:04Z] stream delta {type: "tool_return", name: "search", result: "..."}
+[2026-02-14T12:33:04Z] stream end
+``` 
+lina: hmm looks like we injected the fallback end before replaying pending deltas. that's a bug in router. cc @sree
+sree: ack. likely root cause: when we memcpy buffer during model swap we didn't flush queued deltas in order. I can put up a PR to gate fallback until pending deltas drain. any objections to a short pause (50ms) to drain?
+kevin: 50ms sounds fine as a stopgap but we need deterministic ordering. let's add a drain step in swap handler and add unit test for streaming ordering
+jamal: also: should we treat `tool_return` deltas as higher ordering priority than `meta/end`? currently end can preempt
+ana: yes, end should not preempt outstanding tool_return. ordering rule: all deltas emitted before A_END must be delivered before the end event
+lina: agree. filing a small design doc in PR
+deploy-bot: Deploy queued: staging/fallback-fix -> will run CI
+sree: I'll open PR with tests and changelog entry
+jamal: thanks — ping me on PR when ready, want to add a quick integration test simulating fallback under load
+kevin: noted. i'll review and merge if tests pass :+1:
+ana: tiny nit: add spec update under convo schema about fallback semantics
+jamal: copying convo schema owners @lina @kevin
+lina: will add a sentence under streaming semantics section
+jamal: cool, closing loops. thanks folks :party_parrot:

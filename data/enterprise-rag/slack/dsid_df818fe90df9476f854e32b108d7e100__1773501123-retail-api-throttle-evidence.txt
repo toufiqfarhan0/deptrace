@@ -1,0 +1,62 @@
+1773501123
+
+dena: Hey team, our retail app hit a bunch of 429s this morning and customers noticed slow responses. Happening in bursts around 09:12-09:20 UTC. Can we collect repro evidence?
+
+marta: sorry you're seeing that — can you post one or two request IDs + the exact endpoint and a sample curl?
+
+den a: request-id: req_20260317_091215_az12; endpoint: POST /v1/generate; region: eu-west-1
+
+marta: thanks. Any x-rate-limit headers from the response? If you have a HAR or a curl we can reproduce faster.
+
+den a: here's a minimal curl we used:
+```
+curl -i -X POST https://api.redwood.ai/v1/generate \n  -H "Authorization: Bearer sk_live_REDACTED" \n  -H "Content-Type: application/json" \n  -d '{"model":"gpt-retail-3","input":"quote pricing for sku 123"}'
+```
+Response headers we saw: `HTTP/1.1 429 Too Many Requests`, `x-rate-limit-limit: 120`, `x-rate-limit-remaining: 0`, `x-rate-limit-reset: 1713501180`
+
+marta: perfect. @raj can you check our rate-limit logs for that request-id and surrounding window? also, dena — can you run `curl -v` so we capture the request/response headers?
+
+raj: on it. pulling logs for req_20260317_091215_az12 and nearby IDs. preliminary: I see a burst of ~160 rps from that customer IP pool for ~90s starting 09:12:04 UTC. Some backend pods reported queueing >200ms during the spike.
+
+lucas: is this the dedicated tenant or hosted API for them?
+
+marta: hosted. quota is per-API-key for this plan. we should check if they hit a short-term burst cap vs sustained quota. dena: do you have any client-side retry/parallelization?
+
+dena: yes, we spin up 10 parallel requests per user for price checks (historical pattern), but we thought caching would cut it down. We disabled local cache yesterday while testing a new flow. 
+
+marta: that explains it. For repro: please collect a debug bundle (HAR + curl -v + timestamped logs) and attach. Steps:
+1) Run `curl -v` against the same payload and capture headers.
+2) Capture a HAR of the sequence reproducing the burst window.
+3) Export client logs showing concurrency (timestamps + request ids).
+4) If possible, run the same load but with `X-Debug-Request: true` header so we can correlate on our side.
+
+marta: example debug curl: 
+```
+curl -i -v -X POST https://api.redwood.ai/v1/generate \n  -H "Authorization: Bearer sk_live_REDACTED" \n  -H "Content-Type: application/json" \n  -H "X-Debug-Request: true" \n  -d '{"model":"gpt-retail-3","input":"quote pricing for sku 123"}'
+```
+
+raj: collected infra traces for the window. backend returned 503s to our autoscaler once queue depth spiked, but the 429s are issued by the API-gateway rate limiter. I can share header timelines if you provide the debug request header.
+
+dena: attaching a small HAR and `curl -v` output now. linking: https://files.retail-app.com/debug/dena-har-091215.har (uploaded)
+
+support-bot: Ticket created: INC-2026-4591. Assigned: eng-sre (raj), support (marta).
+
+marta: got the HAR, thanks. Two follow-ups:
+- Can you confirm the API key used (last 6 chars)? we only need it to correlate to a customer record, don't paste full key.
+- Do you have any per-user throttling toggles in the client?
+
+dena: key ends ...6f9a3b. No per-user throttle, only global concurrency of 10 per process.
+
+lucas: from our side, we can temporarily bump burst quota for this key to avoid 429s while they revert the cache change. But we need the debug header so we can match traces. Recommend: enable a 5m quota buffer and then do a short smoke test.
+
+marta: agree. dena, if you give the OK we'll grant a +5m burst allowance and watch. Please run the `X-Debug-Request: true` curl and post the new request-id here.
+
+dena: ok granting permission. running now... new req id: req_20260317_091338_bx77. `curl -v` output attached.
+
+raj: got the new req id — traced through gateway, `x-rate-limit-remaining: 12` on that one, no 429s in that small run. infra looks healthy after the temporary bump; autoscaler stabilized.
+
+marta: closing loop: root cause = client-side cache disabled + parallelism causing short sustained burst above per-key burst cap -> API gateway 429s. Mitigation path: (1) we granted +5m burst buffer, (2) client re-enable cache or add jitter/backoff, (3) we proposed longer-term runway to increase plan quota if they need steady higher QPS.
+
+dena: thanks everyone. I'll re-enable cache and implement exponential backoff. attaching post-mitigation logs for audit. :thumbsup:
+
+support-bot: INC-2026-4591 updated: resolved by support + customer mitigation.

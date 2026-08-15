@@ -1,0 +1,32 @@
+customer-success
+
+sara_cs: Quick heads-up — LooplineAnalytics usage is down ~62% over the last 10 days. Their main advocate (Marcos) left last week and procurement just looped in a new contact (Daniel). They mentioned a NimbusAI trial and the CFO is asking for cost comparisons. Need triage and a short playbook to keep renewal on track.
+
+mike_ae: Ack. Booked a procurement sync with Daniel + CFO tomorrow 2pm PT. ETA: need top 25 queries from last 30d and any notes on recent quality regressions. @jess_se can you run an output-drift check?
+
+jess_se: On it. I'll run a sample compare (Redwood vs Nimbus) using the last 1k production requests. ETA ~4h. If mismatch >8% we'll draft a remediation plan and a few prompt tweaks.
+
+ana_onboarding: Noted — onboarding playbook for dedicated/private trials is stale (we're on v1.2). I can refresh the checklist + tailored enablement slides by EOD. Should I include a private-hosting cost sheet and migration checklist?
+
+tom_pm: Can someone paste current latency (p50/p95) and avg tokens/session? I'll run a dedicated-pool p95 benchmark and approximate token cost vs Nimbus spec. Also: provisioning lead for private VPC + KMS is ~3 weeks.
+
+billing-bot: Automated alert: account LooplineAnalytics (acct_00421) usage decreased 62% over 10 days -> projected monthly recurring revenue delta: -$12,400. Last invoice: 2025-01-02 (paid).
+
+sara_cs: Copying in the quick metrics we pulled from analytics: 
+```json
+{"7d_active_users": 42, "30d_active_users": 218, "avg_tokens_session": 1200, "requests_30d": 18400, "drop_start": "2026-02-02"}
+```
+
+jess_se: Quick scan shows a normalized F1 drop on the top-intent rerank of ~11% starting 2026-02-02. Could be a model swap or prompt change on their side. Need raw prompt/examples from Loopline to confirm.
+
+mike_ae: I'll ask Daniel for their trial config and any model change logs. Propose running a 3-day joint A/B (10% traffic to Nimbus) to collect latency + cost delta. @claudia_manager can we pre-approve a small credit to keep them engaged?
+
+claudia_manager: Approve up to $7k in credits for a 3-day joint trial if it materially reduces churn risk. Also let's schedule a short exec QBR if trial results are ambiguous.
+
+ana_onboarding: Sent draft playbook link (work-in-progress) — includes onboarding checklist, trial runbook, and stakeholder contact templates. I'll add a migration checklist for hosted -> private.
+
+tom_pm: I'm kicking off a p95 latency benchmark on a small dedicated pool now. Will post numbers in this thread when done. We can produce an apples-to-apples cost-per-1k-tokens calc for the CFO by EOD.
+
+jess_se: Plan: run A/B evaluation, produce quality-delta report, and propose prompt/quantization adjustments to reduce token spend while preserving quality. Will attach suggested prompt snippets.
+
+mike_ae: Thanks team — standing sync tomorrow 2pm PT. @everyone please drop blockers here. :thumbsup:

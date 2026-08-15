@@ -1,0 +1,25 @@
+eng-platform
+
+sara: quick ping — PR #1987 (https://github.com/redwood-inference/redwood/compare/PR-1987) LumenTrust enterprise VPC: fix route table for private subnets + ensure nat-gateway fallback. Need an approval to merge before tomorrow's maintenance window (Thu 21:00 PST).
+
+devin: looking now, will run the smoke CI.
+
+ci-bot: GitHub Actions — build: success ✅, integration-tests: running
+
+anya: skimmed the diff — looks fine to me. small nit: can you add a comment on why we chose the explicit route vs managed route? otherwise approve
+
+sara: added note in the config with rationale. thanks @anya
+
+mike: leaving a quick review, found one minor Terraform var name mismatch in modules/vpc/variables.tf — suggest renaming to lumen_trust_nat_id
+
+devin: I can pick that up in a tiny follow-up, want to keep this PR for the critical routing fix only. approve from me once CI passes.
+
+ci-bot: integration-tests: success ✅
+
+oliver: approved. merging after the 5-minute merge hold to avoid deploy storm :hourglass_flowing_sand:
+
+sara: thanks all — will kick off the production rollout during the maintenance window and notify LumenTrust.
+
+ops-bot: Scheduled maintenance note created: https://internal.incidents/MT-4321
+
+sara: :thumbsup:

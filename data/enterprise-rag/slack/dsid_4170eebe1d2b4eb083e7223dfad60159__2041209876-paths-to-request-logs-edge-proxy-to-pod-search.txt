@@ -1,0 +1,58 @@
+eng-platform
+
+mia: Hey — I just saw a customer report where the UI showed `request_id=ab12cd34` and a 502. Where's the fastest place to grab all log lines for that request across edge -> proxy -> backend?
+
+devon: start with the browser/network to confirm header. usually we propagate X-Request-Id or X-RW-Req. can you paste the header?
+
+mia: confirmed header was `X-RW-REQ: ab12cd34` from the browser. also saw a trace link in the console `https://console.redwood.io/trace/1-xyz` but the trace viewer doesn't show logs.
+
+sandeep: two quick paths: console search (fast if you have RBAC access) or CLI + kubectl/stern if you need pod-level logs.
+
+sandeep: Console steps: open https://console.redwood.io -> Observability -> Logs. filter: `request_id:ab12cd34 OR headers.x-rw-req:ab12cd34` and set time window +/- 5m. also check the Edge/ingress index and backend index separately.
+
+devon: CLI quick commands (prod namespace):
+
+```
+# tail logs from edge proxy for matches
+stern edge-proxy -n prod --since 15m | rg "ab12cd34"
+
+# find candidate backend pods and grep logs
+kubectl get pods -l app=backend -n prod
+stern backend -n prod --since 30m | rg "ab12cd34"
+```
+
+mia: if stern isn't showing anything, could the header be stripped at the LB?
+
+tess: yep — check the proxy config and any HTTP/2 translation at the LB. also verify the request reached our cluster by searching ingress controller logs in the cloud console for the same request id.
+
+devon: if you have the trace id (the trace viewer link), you can map span -> service and get service names/hostnames to narrow pod search. in traces, look for span attributes: `service.name`, `http.target`, and `rpc.method`.
+
+sandeep: handy jq one-liner to pull request id out of JSON log lines and show surrounding context:
+
+```
+rg "ab12cd34" /var/log/service/*.json | sed -n -e '1,50p' | jq -r 'select(.request_id=="ab12cd34")'
+```
+
+mia: got a hit in edge-proxy log but not in backend. edge shows upstream 502. what next?
+
+tess: capture the full request headers from edge logs (look for `headers` field) and the upstream response code. then grep the trace id from the edge log and open the trace viewer for that id.
+
+devon: if you need a wrapped command to collect everything for an incident handoff, try this script (paste into a ticket):
+
+```
+# collect edge + backend snippets for req id
+for svc in edge-proxy backend worker; do
+  echo "--- $svc logs ---";
+  stern $svc -n prod --since 30m | rg "ab12cd34" -n || true;
+done > /tmp/ab12cd34-logs.txt
+```
+
+mia: perfect — I'm going to run those and attach to the ticket. one last thing: if the trace viewer shows missing spans, is that a sampling/agent drop?
+
+sandeep: could be. check our trace-sampler rate and agent logs (observability-agent). if spans are missing only for that trace id, it might be a propagation header mismatch.
+
+infra-bot: Reminder: if you request logs from Prod for customers, include the ticket ID and requestor and follow the data access checklist: https://confluence.redwood.io/prod-logs-policy
+
+mia: noted. thanks everyone :thumbsup: I'll post results shortly and ping @devon if I need help parsing the trace JSON.
+
+devon: happy to help. if you paste the raw edge log line I can point to the exact attribute to grep for across services."

@@ -1,0 +1,37 @@
+marketing
+
+maria: Quick thread 1: we need a tight battlecard for next week's launch + webinar. Focus: short lead hooks vs cloud platforms, a one-liner vs LLM APIs, and an ops rebut for infra vendors. Keep everything <2 lines for sales.
+cleo: Got it. Suggest the three-pocket structure: Hook (econ), Pain (APIs), Ops (infra). Sales wants swipe copy and one objection script per pocket.
+aj: Can we also include one simple visual callout for the webinar slide: "3x TCO reduction, same latency" but avoid hard claims—use 'up to' or 'typical customer'.
+noah: I'll give a sanitized perf blurb for the card. Note we can't promise "3x" without customer data; use benchmark language.
+zara: Draft one-liners:
+- Cloud platforms: "Convenient but variable  predictable SLAs win at scale."
+- LLM APIs: "Great for PoCs; brittle for production  we add predictable routing & fallbacks."
+- Infra vendors: "You get hosting; we run inference as a product (SLOs, autoscale, KV caching)."
+cleo: Nice. Here's a short benchmark snippet to paste into the card (sanitized):
+```
+Normalized bench (16-token avg):
+- Typical p50 latency: 10ms (Redwood-hosted)
+- Comparable public API p50: 28ms
+- Normalized token cost: Redwood $0.0007 / token vs public $0.0020 / token
+Notes: steady-state, quantized weights, batching tuned for 64-token windows.
+```
+maria: Nice numbers. Add a single-line caveat: "Normalized to short context, steady-state batching; workload variance will change results." That keeps legal happy.
+noah: Rebut scripts (very short):
+- Vs cloud platforms: "Their breadth is huge; their tail latency and billing model can spike. We lock performance and unit economics."
+- Vs LLM APIs: "APIs are frictionless to start; we give the same developer UX plus production predictability and operator controls."
+- Vs infra vendors: "Home-grown stacks require ops headcount. We deliver the serving product so teams don't become full-time SREs for inference."
+aj: Webinar hook (short): "From PoC to production: how teams cut inference surprises and control spend." Add a live demo of a drop-in fallback in the 2nd demo.
+zara: Action items:
+- @cleo: format the 3-bullet battlecard + one-slide visual by tomorrow noon
+- @noah: upload CSV of the benchmark and a 2-sentence methods blurb by EOD
+- @aj: write webinar landing copy (50-75 chars) + 3-bullet agenda by Thurs
+- @maria: pull the sales 30s intro from these one-liners and share with SEs
+
+deploy-bot: draft uploaded: /s/launch-battlecard v1 (cleo) :white_check_mark:
+
+cleo: Quick edit note for sales copy: avoid absolute pricing claims; prefer "normalized" and "typical".
+maria: Agreed. Keep language centered on "predictable unit economics" and "operational load reduction".
+aj: I'll start routing this to the field. If SEs push back on numbers, tell them it's a work-in-progress and we'll produce a field kit.
+noah: I'll add the small methods paragraph to the doc now.
+zara: Great - we'll review in the weekly creative sync. :sparkles:

@@ -1,0 +1,43 @@
+sales
+
+maria_sales: FYI — kickoff with AcmeCorp POC tomorrow 10:00 PT. Need final golden dataset + eval harness checklist by EOD today. Also: pricing question still pending from procurement. Can infra/security join?
+ajay_soleng: I can own the eval harness. Quick ask: please confirm target use cases and failure modes so we can design scoring. My proposal: create 3 buckets (extraction, summarization, instruction-following) and 2 metrics per bucket (exact-match/F1 for extraction, ROUGE/QA-EM for summarization, instruction-compliance score + hallucination flag for instruction-following).
+ben_engineering: Re: infra — we need expected QPS and max context length. For cost estimate: if they want dedicated, we'll show reserved GPU pricing + burst. SLA request? they asked for 99.9 and 2x burst capacity during business hours.
+emma_cs: I can handle the security questionnaire items. For SSO: we support SAML2 + OIDC. Data retention options: 30/90/custom. Will confirm DLP config for PII redaction.
+maria_sales: Thx. For golden set sizing I'm thinking 100 examples: 40 extraction, 30 summarization, 30 instruction-following. Format: CSV with columns: id,input,expected_output,category,notes. Keep edge-cases and ambiguous prompts included.
+ajay_soleng: Agreed. Also propose these pass/fail gates in harness:
+
+```json
+{
+  "overall_quality": {
+    "threshold": 0.85,
+    "metric": "weighted_score"
+  },
+  "regression": {
+    "max_drop_pct": 2.0,
+    "window": "last_deploy_vs_baseline"
+  },
+  "latency": {
+    "p95_ms": 300,
+    "max_tokens": 512
+  }
+}
+```
+
+We should include per-category tolerances (extraction EM >= 0.9, summarization ROUGE-L >= 0.78, instruction compliance >= 0.88).
+ben_engineering: Implementation notes: harness should run locally in CI against a pinned model sha and also against hosted endpoint for production-like numbers. I'll add a small script to scrape token usage and p95 from logs. Example command:
+
+```
+./run_eval.sh --model redwood-v2-small --input golden.csv --output results.json
+```
+
+And a quick cost projection: assume 1M tokens = $X hosted; include dedicated reserved estimation for their baseline QPS.
+emma_cs: For the security questionnaire entry: mark SSO = SAML2, encryption = AES-256 at rest + TLS1.2 in transit, access logs retained 90 days by default. I'll push the doc to their shared folder.
+luis_securitybot: Security questionnaire uploaded by emma_cs. Flag: data residency required in EU. Action: confirm private deployment options and KMS details.
+maria_sales: Pricing blocker: procurement asked for line-item showing dedicated reserve vs hosted pay-as-you-go for a 6-week pilot. Can you produce both? Also need timeline: 6-week pilot with 2 weeks setup + 4 weeks eval.
+ajay_soleng: I'll produce the eval harness template and the golden CSV schema. Plan: day 0-3 collect prompts + expected outputs, day 4-7 build harness + CI, week 2 run baseline, week 3-5 iterate prompts and model variants, week 6 acceptance. Acceptance criteria: golden-set weighted_score >= 0.85 and p95 latency within SLO under pilot load.
+maria_sales: Perfect. For deliverables today: 1) golden CSV skeleton, 2) scoring JSON template, 3) pricing rough sketch. Ack if owning.
+ben_engineering: I own the pricing sketch and latency benchmarks. Will push PR with numbers by 17:00 PT. :thumbsup:
+ajay_soleng: I'll push harness template + example results by EOD. :eyes:
+emma_cs: I'll update security Q&A and confirm EU residency options by EOD.
+maria_sales: Thanks team — I'll consolidate into the customer-facing POC plan. If any blockers ping here or DM me. :rocket:

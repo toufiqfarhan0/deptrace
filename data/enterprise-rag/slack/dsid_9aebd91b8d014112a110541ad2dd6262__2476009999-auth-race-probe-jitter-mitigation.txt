@@ -1,0 +1,35 @@
+devex
+
+ana: Quick report — onboarding sample app triggered duplicate provisioning when a 429 overlapped with token rotation. Two identical POST /users showed up in audit. :facepalm:
+sam: yikes. which client and flow? any repro?
+ana: Node SDK v1.4.2 in our internal sampleapp. Customer also reported similar from python client. Repro: initial request -> 429 rate limit -> client refreshes creds -> immediate retry -> duplicate created resource. No idempotency header in sampleapp.
+jordan: This is the usual refresh+resume race: multiple inflight handlers end up retrying the same operation once the token is available.
+ana: Exactly. Trace shows both handlers resumed and retried without coordinating.
+emily: Do we teach adding idempotency in the onboarding tutorial? I thought we reserved that for billing/prov flows.
+mike: Docs mention Idempotency-Key but sampleapp didn't include it. We should add an SDK convenience that auto-attaches a generated idempotency UUID for write endpoints used in onboarding (opt-out).
+oliver: Also flag: Node and Python SDKs are slightly inconsistent — node exposes a token-refresh hook where you can add jitter, python currently retries immediately. We need parity.
+sam: Short-term fixes: (1) introduce jitter in the refresh+retry path (e.g., base 75ms + rand(0,200ms)), (2) auto-gen X-Redwood-Idempotency header in the sampleapp for provisioning calls, and (3) add a small probe call to validate tokens before retrying side-effectful requests.
+jordan: For (3) server can add /v1/_auth_probe that returns 200 for valid token, 401 otherwise. Clients can call that non-mutating endpoint before retrying writes.
+emily: Server-side: could we start returning a Retry-After for auth-throttled windows? If infra knows token rotation windows, a Retry-After would help clients back off deterministically.
+mike: Long-term: SDKs should expose config: retry.jitter_ms, retry.max_attempts, retry.probe_on_auth boolean. Also implement helper .withAutoIdempotency({enabled:true}) used by sampleapp.
+nana: I sketched a mitigation patch for node (pseudo):
+```
+// on 429 or 401 during side-effectful request
+const wait = baseMs + Math.floor(Math.random() * jitterMs)
+await sleep(wait)
+if (client.config.retry.probe_on_auth) await client.authProbe()
+if (!headers['X-Redwood-Idempotency']) headers['X-Redwood-Idempotency'] = uuid()
+retryRequest()
+```
+sam: Add deterministic RNG seed for tests so jitter is reproducible in unit/integration tests. Document default values and a migration note for customers who already set idempotency headers.
+jordan: Server dedupe logic: accept X-Redwood-Idempotency uuid and keep short TTL dedupe store per-tenant. But we must be careful with semantics if user intentionally wants repeats. Hence sampleapp opt-out flag.
+devx-bot: Created tickets: INF-2410 (SDK auto-idempotency helper parity), INF-2411 (auth_probe endpoint + server support), INF-2412 (sampleapp onboarding changes & telemetry), INF-2413 (support playbook for duplicate side-effects).
+mike: I'll take INF-2410 (node + python parity).
+emily: I'll own INF-2411 (server probe + docs).
+nana: I'll do INF-2412 (sampleapp updates, add telemetry event dx.onboard.auto_idempotency=1).
+oliver: I'll draft INF-2413 playbook and add triage steps for Support (how to safely roll back auto-idempotency per-customer).
+sam: One more thought: include a small opt-in toggle in the Console to enable client-side auto-idempotency for a given workspace while we ramp. That way enterprise customers can opt-in without code changes.
+jordan: Good idea — Console toggle can inject a short-lived policy (for onboarding flows) and notify SDKs via config sync. 
+mike: OK team — we'll iterate. Pull requests: node change + sampleapp patch first, then python parity. Schedule sync in Friday DX standup.
+nana: if anyone sees an active customer incident, ping #support and @mike so we can prioritize a hotfix.
+sam: thanks all — moving tasks to sprint board.

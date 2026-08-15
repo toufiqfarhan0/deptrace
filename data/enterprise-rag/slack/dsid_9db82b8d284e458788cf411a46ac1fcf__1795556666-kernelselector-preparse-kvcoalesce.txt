@@ -1,0 +1,20 @@
+eng-runtime
+
+elaine: Noticed p95 bump on host ingress for short requests after kernel-selector roll. ~10% on seq<=48.
+raj: Which clusters?
+elaine: canary and pool-b. Canary is worst.
+perf-bot: profile: gs://perf/1795556666/ingress-flame.html; CPU +11%, writev syscalls +40%, kvcache miss +30% on small keys.
+jorge: Top stacks show tokenize -> preparse -> kvcache_lookup -> writev.
+dana: Could be key normalization path or extra memcopy introduced. Kernel-selector v3 changed preparse ordering.
+raj: Quick check: disable prefix normalization in dev and bench.
+jorge: bench: bench/ingress_micro --clients=150 --seq=32 --iter=1500. Disabling prefix norm improves p95 by 8%.
+elaine: I see logs where keys arrive with stray control bytes. Normalizer isn't stripping them.
+perf-bot: added kvcache debug logging to canary.
+dana: Suggest hold rolling selector until we fix normalization + land small writev coalesce.
+raj: I'll open a hotspot PR to coalesce writev calls (~20% less syscalls).
+jorge: adding unit + integration tests for key normalization.
+elaine: rolling back selector on canary now.
+perf-bot: rollback complete, canary p95 returned to baseline in ~9m.
+elaine: Actions: keep rollback; land normalization fix (jorge); land writev coalesce (raj); add seq<64 perf alert (dana).
+raj: will run 1h canary after PR.
+elaine: drafting postmortem and rollout guard. Thanks all :thumbsup:

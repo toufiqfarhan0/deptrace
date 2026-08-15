@@ -1,0 +1,26 @@
+eng-ml
+
+mei: Quick note — nightly int8 run for orion-v3 shows tokens reordering when ZWJ / narrow no-break space sits between a CJK ideograph and a fullwidth number. Repro on vertical/ja + vertical/zh smoke samples.
+mei: Example (raw characters): 明年1, expected detok -> '明年1' but int8 detok produced -> '1明年'.
+mei: Command we used:
+```bash
+./eval_local.sh --model orion-v3-int8 --locale ja-vertical --samples tests/vertical_furigana/003.json --mode detok_compare
+```
+mei: Dashboard: https://console.redwood.com/evals/73621 shows BLEU/WER jumps.
+tian: can you run tokenizer-only detok to rule out vocab/export pretokenize?
+mei: tokenizer-only detok matched fp16 on my laptop. So tokenization seems fine; ordering diverges during generation.
+alex: last week commit 9a7b3e3 changed export pretokenize. triage-bot, can you bisect 9a7b3e3..HEAD on int8 export builds (p4d, driver 525)?
+sophia: kicked off bisect. triage-bot: starting bisect across 12 commits, will post the first failing commit.
+mei: attached thin generation traces for a failing sample:
+```
+FP16: [<BOS>, 明, ZWJ, 年, 1, <EOS>] -> detok '明ZWJ年1'
+INT8: [<BOS>, 1, 明, ZWJ, 年, <EOS>] -> detok '1明ZWJ年'
+```
+mei: emission order flips — token '1' emitted early under fused int8 attention path.
+tian: matches a flaky KV write pattern we've seen with a fused attention kernel on driver 525. triage-bot: note GPU driver variant in bisect.
+triage-bot: bisect update: first failing commit = 9a7b3e3. Repro only when using int8 export path AND on driver 525.x on p4d nodes.
+sophia: propose short-term mitigation: add a locale-aware post-detok pass in runtime that reinserts ZWJ/narrowspace between ideograph and following ASCII/fullwidth digit when original sample contained it. Ship behind a feature flag.
+alex: agree. Also add unit tests for vertical/furigana/ZWJ samples and a small nightly detok-parity job for int8.
+mei: opening runtime draft PR with tests and feature flag, tagging eng-runtime and eng-ml. CI will run the added smoke set.
+triage-bot: bisect complete, root-cause metadata and logs attached to ticket INF-1289.
+mei: leaving this thread until runtime patch is reviewed and CI is green. Thanks all. :thumbsup:

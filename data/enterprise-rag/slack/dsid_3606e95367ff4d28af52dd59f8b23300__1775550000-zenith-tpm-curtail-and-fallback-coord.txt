@@ -1,0 +1,60 @@
+eng-sre
+
+Inc-Bot: :rotating_light: INCIDENT 1775550000 — Zenith model-family TPM spike causing 99th%% latency SLO violations in us-west-2. Auto-escalation to on-call.
+
+jordan: grabbing this. looking at traces & p99s. thanks for the ping.
+
+maria: I see a weird fanout on zenith-7b variants — sudden traffic shift from a large tenant. p90->p99 gap ~1.2s.
+
+kevin: confirmed. KV cache miss rate up, batching pressure + queued tokens. backend GPU queues spiking.
+
+jordan: immediate mitigation options: 1) lower Zenith TPM for hosted tier, 2) enable per-tenant soft-limit, 3) disable funcall for zenith variants. which do we prefer fast?
+
+ellie: (from ops) customers affected list prepared: 3 high-volume tenants, 7 mid, rest low. High-volume will see 429s if we hard cap.
+
+maria: prioritize preserving customer-facing low-latency — propose: soft-curtail zenith TPM by 60% + enable fallback model routing to Atlas-lite for callers that accept lower quality.
+
+jordan: ok go for soft-curtail. i'll run the flow. command: 
+```bash
+# reduce per-model TPM (soft)
+curl -X POST $CONTROL_PLANE/api/v1/quotas/zenith-family -d '{"action":"set_soft_tpm","value":400}' -H "Authorization: Bearer $TOKEN"
+```
+
+kevin: while that lands, i'll flip funcall off for zenith-7b to lower CPU work: 
+```yaml
+service: runtime-config
+model: zenith-7b
+settings:
+  funcall: false
+  max_batch_ms: 30
+```
+
+sam: flagged the three largest tenants — outreach started. they've been given an eta for degraded perf if we need to hard-cap.
+
+jordan: applied soft_tpm=400. Control plane returned 200. monitoring shows in-flight queue dropping, p99 trending down. :thumbsup:
+
+maria: good. but we still see sustained egress from tenant A. can we carve them a short-lived quota (burst->0)?
+
+kevin: we can apply tenant-level throttle: 
+```json
+{ "tenant_id": "tenant-A", "limit_tpm": 120 }
+```
+will push now.
+
+ellie: customer comms updated in status page. no external SLA yet.
+
+kevin: tenant-A throttle applied. their traffic dropped 78%, cluster queues normalized.
+
+maria: p99 back within SLO. keep soft_tpm in place and funcall disabled. continue monitoring for 30m.
+
+jordan: handing off to morning oncall @maria for watch. I'll add a follow-up runbook entry: "zenith surge — soft curtail + funcall disable + tenant carveout".
+
+sam: notes: escalate to product if we need to keep funcall disabled >2 hours (feature impact).
+
+jordan: agreed. closing active pager. IncidentBot: update incident status -> mitigated, postmortem required.
+
+Inc-Bot: Incident 1775550000 status changed to MITIGATED by jordan. Postmortem requested.
+
+maria: adding initial RCA notes: large tenant A sent amplified self-serve batch requests (misconfigured retry/backoff). Recommend: per-tenant burst detection + automated graceful fallback to atlas-lite.
+
+jordan: cool. if anything regresses ping #eng-oncall. good job team. :heart:

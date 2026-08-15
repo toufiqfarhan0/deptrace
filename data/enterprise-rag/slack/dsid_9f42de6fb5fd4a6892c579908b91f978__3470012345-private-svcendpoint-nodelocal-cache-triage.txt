@@ -1,0 +1,58 @@
+support
+
+maria-customer: Hey team — after we moved tenant acme-inc to their dedicated VPC, pods are getting NXDOMAIN for our service endpoint svc.acme.internal. Host machines can resolve it, but pods (and the app) fail with 502. Any quick triage steps?
+
+jamie-support: Sorry to hear that. Can you paste the output of a dig/nslookup from an affected pod and from the node itself? Also the VPC ID and cluster name/region.
+
+maria-customer: Sure — cluster is prod-cluster-eu, VPC vpc-0a1b2c3d, region eu-west-1. Repro from a pod:
+```
+# from a busybox debug pod
+$ nslookup svc.acme.internal
+Server: 172.20.0.10
+Address: 172.20.0.10#53
+
+nslookup: can't resolve 'svc.acme.internal'
+
+# from node (ssh to ip 10.0.5.12)
+$ dig +short svc.acme.internal @172.20.0.10
+
+# no result, then dig to VPC resolver
+$ dig +trace svc.acme.internal @172.31.0.2
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 12345
+```
+
+Also did a tcpdump and saw DNS replies coming back NXDOMAIN from 172.31.0.2. Host resolver (systemd-resolved) on node resolves fine to the internal ALB IP though.
+
+alex-eng: Thanks — two quick hypotheses: (1) Route53 private hosted zone for svc.acme.internal isn't associated with this VPC (split-horizon), so the VPC resolver doesn't answer for it, and the node-local cache/proxy returns NXDOMAIN to pods. (2) There could be a Route53 resolver rule forwarding that domain to on-prem which is failing and returning NXDOMAIN.
+
+Can you run these AWS checks from an account with permissions: 
+```
+aws route53 list-hosted-zones-by-vpc --vpc-id vpc-0a1b2c3d --region eu-west-1
+aws route53 list-hosted-zones | grep svc.acme.internal -n -A2
+aws route53 get-hosted-zone --id ZXXXXXXXXXXXXX
+```
+
+jamie-support: Also please check the node-local DNS agent / CoreDNS pods. Node-local caches often return the NXDOMAIN they saw earlier. To clear: `kubectl -n kube-system delete pod -l k8s-app=node-local-dns` or restart coredns if you run that.
+
+maria-customer: Ran the commands — found a private hosted zone for svc.acme.internal but it was owned by a central account and not associated to this VPC. Output:
+```
+$ aws route53 list-hosted-zones-by-vpc --vpc-id vpc-0a1b2c3d
+HostedZones: []
+
+# hosted zone exists Z0ABCDEF12345 name: svc.acme.internal owner: acct-999999
+```
+
+We just associated the hosted zone to vpc-0a1b2c3d and deleted the node-local-dns pods.
+
+jamie-support: Nice — that matches the split-horizon pattern. When a private hosted zone isn't associated with a VPC, the Route53 resolver will not answer authoritative records for that VPC; node-local caches will keep returning the NXDOMAIN until flushed. Good call on re-association + cache restart.
+
+alex-eng: Quick follow-ups to avoid recurrence:
+- Ensure the hosted zone is associated to every VPC that needs that name (use cross-account association if using a central zone).
+- If you have outbound resolver-rule forwarding for that domain, check rule priority and targets (`aws route53resolver list-resolver-rules --filters Name=DomainName,Values=svc.acme.internal`). A misconfigured forwarder to on-prem that is down can surface as NXDOMAIN to clients.
+- TTL+cache: node-local DNS TTLs can make NXDOMAIN sticky; add a runbook step to restart node-local/coredns after zone changes.
+
+maria-customer: After association + pod restart, pods can resolve `svc.acme.internal` and app traffic is healthy again. One small thing: after DNS fix we briefly hit an SSL host mismatch from the internal ALB (SSL: certificate common name api.acme.com vs svc.acme.internal). Turning out the ALB was serving the public certificate; we've filed follow-up to ensure ALB uses the internal cert for internal endpoints.
+
+jamie-support: Great closure. For our internal KB: we should add a short checklist: verify hosted zone association, check resolver rules, flush node-local cache, verify ALB cert SANs. I'll create a doc and link ticket. :white_check_mark:
+
+maria-customer: Thanks all — saved our morning. Filing internal docs ticket: INFR-1234. :tada:

@@ -1,0 +1,70 @@
+incidents
+
+SRE-Bot: :rotating_light: ALERT: elevated cross-region latency & misrouting detected by routing-telemetry. Several eu clients are being routed to us-west pools. incident-id=2249128888
+
+Priya: I'm on it. paging...
+
+Mateo: seeing p95 ~5s for /generate from eu region, errors +2%. traceroutes and request headers show selected_pool=us-west-2 for eu clients. snippet from router logs:
+```
+[2024-11-03T14:22:10Z] route=geo-steer-v2 selected_pool=us-west-2 weight=0.9 client_region=eu-1 request_id=abc123
+```
+
+Viktor: did someone roll geo-steer-v2 earlier? @Jamila any recent deploys?
+
+Jamila: yep rolled config geo-steer-20241103-77 at 14:20 to use new latency bucketing & cost weights.
+
+Priya: priority mitigation: add a temporary route override to pin eu traffic to eu-pool-1 while we investigate.
+
+Alex: applying override now:
+```
+redwoodctl route override geo-steer-v2 --selector region=eu --set pinned_pool=eu-pool-1 --ttl 300
+```
+
+SRE-Bot: override applied (override-id=ov-7733). Rebalancing started.
+
+Mateo: p95 back to ~220ms within ~30s, error rate dropping. :thumbsup:
+
+Jamila: starting rollback of geo-steer-20241103-77 to previous config. will confirm when complete.
+
+Viktor: inspected the diff; looks like a unit mismatch in the latency comparator. Policy used thresholds in seconds but compared against ms values, effectively treating 10ms as 10s. snippet from policy code:
+```
+// buggy
+if (latency < bucketThresholds[i]) assignWeight(high)
+
+// intended
+if (latencyMs < bucketThresholdsMs[i]) assignWeight(high)
+```
+
+Priya: good catch. that would bias weights toward remote pools.
+
+Mateo: note: some sessions sticky via DNS & connection pooling still hit wrong pool. TTL for steering record was 60s; we flushed caches and pushed a short TTL.
+
+DNS-Bot: flushed GSLB+edge caches. steering record TTL now temporarily 5s in major POPs. dig +trace shows propagation in progress.
+
+CustomerOps: opened support tickets for two customers reporting slow requests. estimated impacted traffic ~4% during the 14:22–14:40 window. CS notified affected customers with preliminary note.
+
+Priya: oncall handoff in 20m. current roles: @Jamila stay on for config/rollback verification, @Mateo watch observability and perf, @Alex own routing overrides & TTL changes.
+
+Jamila: ack. I'll also add unit tests to catch ms/second mismatches and create PR right after rollback.
+
+Mateo: metrics capture:
+```
+window: 14:22:10 - 14:40:15 (~18m)
+baseline before override: p50 180ms, p95 5.1s
+after override: p50 160ms, p95 210ms
+error-rate delta: +2% -> baseline
+estimated impacted requests: ~4% of total in the window
+```
+
+Priya: post-incident action items (short):
+1) Revert bad config (done)
+2) PR with bugfix + unit tests (Jamila)
+3) Add canary rollout gate and instant kill-switch for steer policies (Viktor)
+4) Reduce steering TTL during rollouts to 30s and document in runbook (Alex)
+5) Customer communications & postmortem draft (CustomerOps)
+
+SRE-Bot: Incident resolved. severity=Sev2. root_cause=policy unit mismatch in geo-steer-v2; impact=latency spike & misrouting for ~4% traffic for ~18m. follow-ups assigned.
+
+Jamila: created PR #5712 with fix + tests. request review from @Viktor and @Priya.
+
+Priya: updating incident tracker now (incident-id=2249128888). thanks everyone for fast mitigation. closing thread; will post full postmortem by EOD. :sparkles:

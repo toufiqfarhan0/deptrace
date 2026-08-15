@@ -1,0 +1,61 @@
+devex
+
+Jordan: Heads-up — the Python sample-app streaming example hangs when you cancel the iterator on Windows. Repro steps below, happened to a new user during onboarding.
+
+Priya: ugh, thanks for flagging. can you paste the minimal repro?
+
+Jordan: repro: run `examples/streaming_chat.py` on Win10, ctrl-c during generator iteration or call `next(gen)` + `gen.close()` from another thread. it prints partial chunks then never exits. no socket close.
+
+Jordan: log snippet: 
+```
+INFO: starting stream
+DEBUG: received chunk: {"delta":"hello"}
+DEBUG: received chunk: {"delta":" world"}
+^C
+DEBUG: cancel requested
+(then process stays alive, loop stuck in `recv()`)
+```
+
+Kevin: probably due to our SSE/chunked read loop not noticing EOF when Cancel is called. Windows sockets sometimes return 0 differently?
+
+Marta: Is this specific to sync API or async too?
+
+Jordan: both. Async version: `async for event in client.stream_chat(...):` — when caller cancels the task, the generator's finalizer isn't closing the underlying socket on Windows, so the process waits for TCP timeout. On Linux signals it usually unwinds fine.
+
+Priya: do we have a test that covers canceling the iterator? I thought we had one for graceful close but maybe only for normal EOF.
+
+Kevin: we have tests for `aclose()` but not for external task cancellation. Another wrinkle: type hints use `Iterator[str]` for sync and `AsyncIterator[str]` for async, but some users pass the generator to frameworks expecting `Iterable` and that can keep references alive, delaying cleanup.
+
+Marta: ok can we short-term add a context manager on the client that forces close on __exit__? that would at least help the sample-app docs.
+
+Jordan: sample-app already does `with client.stream(...) as s:` in one variant, but the example the onboarding doc points to uses `for chunk in client.stream(...):` without `with`. New onboarders copy/paste that and hit the hang.
+
+Priya: proposed fix: update the sample to use explicit context manager AND add a finalizer that calls `transport.close()` from `weakref.finalize(self, ...)`. Also add a platform-specific path to interrupt `recv()` on Windows by calling `shutdown(socket.SHUT_RD)` before close.
+
+Kevin: sounds reasonable. two follow-ups: 1) add a mypy-friendly typing overload so `stream()` returns a `ContextManager[Iterator[str]]` for sync and `AsyncContextManager[AsyncIterator[str]]` for async (helps editor hints). 2) add a tiny e2e test that spawns the stream, cancels after first chunk, and asserts the process finishes within 1s on CI (use loopback).
+
+Marta: +1. be careful with forcing `shutdown()` — we need to ensure we don't raise in normal code paths. wrap in try/except and only call if socket is open.
+
+Jordan: I'll open a PR with the sample change + test. will also include a note in onboarding docs to prefer `with`. cc @Priya for typing bits.
+
+Priya: ping when ready — I can help with the overloads and types. also file an issue for long-term improvement: expose `StreamHandle` object with explicit `close()/aclose()` and async context manager support (so users don't rely on generator finalizers).
+
+Jordan: created draft PR: https://github.com/redwood-inference/sdk/pull/487 (WIP) — includes sample swap and a failing test on Windows in GH actions.
+
+ci-bot: build/487 started · windows-latest · python 3.11
+
+Kevin: saw the PR. quick note: avoid touching runtime internals in the first patch. we can implement the context-manager + test in patch 1, then follow up with transport finalizer + shutdown in patch 2 after security review.
+
+Marta: agreed. also add a short blurb in the release notes: "fix: sample streaming example hangs on Windows when cancelling generator (recommend using context manager)"
+
+Jordan: will do. Thanks team — I'll post back once tests are green or if I hit any blockers. :raised_hands:
+
+Priya: thanks! great catch from onboarding user.
+
+Kevin: nice triage.
+
+Jordan: (closing loop) PR updated — switched sample, added test, moved socket shutdown to guarded helper for next PR. CI green on ubuntu, failing on windows flaky; will iterate.
+
+Marta: mark as flaky-windows and we'll queue follow-up.
+
+ci-bot: build/487 update · windows-latest · FAILED (flaky)

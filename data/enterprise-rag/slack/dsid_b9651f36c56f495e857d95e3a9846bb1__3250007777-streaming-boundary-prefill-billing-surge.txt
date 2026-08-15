@@ -1,0 +1,49 @@
+support
+
+alex: hey team — customer reported a big invoice jump vs their SDK estimator after switching to streaming. SDK shows ~1.2k tokens, invoice shows ~3.9k. they say there were no function calls. repro snippets below.
+
+maria: can you paste the curl + SDK snippet and the customer request-id? which model and streaming flags?
+
+alex: request-id: r-9f4a2b1c. model: redwood-alpha-2. streaming: true, stop on "\n\n".
+
+here's the curl they used:
+
+```
+curl -s -N -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \n  -X POST https://api.redwood.ai/v1/generate \n  -d '{"model":"redwood-alpha-2","input":"<redacted long prompt>","stream":true,"stop":["\n\n"]}'
+```
+
+alex: and their SDK estimator call was just counting tokens for user+assistant when they called client.estimateTokens(payload). they did not log any server headers.
+
+kevin: quick q — any chance the session was resumed or they used our streaming resume/continue feature? server can add prefill/system tooling tokens on resume. can you paste server meter debug if available?
+
+alex: customer says they resumed a chat from a saved session id (session: sess-77). they thought resume only replays user messages. i grabbed the runtime logs and this is the snippet we see:
+
+```
+[2026-03-10T14:01:12Z] request r-9f4a2b1c sess-77: applying session prefill: 1500 tokens (system instructions + tool metadata)
+[2026-03-10T14:01:12Z] request r-9f4a2b1c sess-77: injected assistant_summary tool output (hidden) 680 tokens
+[2026-03-10T14:01:12Z] metering: meter_total_tokens=3932 meter_user_visible=1204
+```
+
+maria: that log is telling — server injected prefill + a hidden tool output. SDK estimator (client-side) only counts the messages the client knows about (user + visible assistant messages). it misses server-side injected prefill and any hidden tool/system tokens.
+
+kevin: yep. common pitfall: resume semantics cause the control plane to expand and add ephemeral system blocks (rerankers, assistant summaries, internal tool outputs) which are billed but not surfaced to the client payload. the meter_total_tokens in runtime includes those.
+
+alex: repro steps i sent to customer support: 1) enable x-redwood-meter-debug: verbose on the request 2) reproduce the session resume flow 3) capture server logs for request id 4) paste metering lines. i included this header example:
+
+```
+X-Redwood-Meter-Debug: verbose
+```
+
+maria: for immediate customer relief we offered a partial credit and explained the root cause (server-side prefill + hidden tool output). engineering note: we should improve SDK docs to warn about resume and hidden tokens and add an optional endpoint call to fetch estimated server-prefill size.
+
+kevin: engineering follow-up: i'm going to file a small task to add a meter-preview API that simulates server-side prefill accounting so SDKs can surface a closer estimate. also adding a warning into client.estimateTokens about server-injected tokens. ticket ENG-1358.
+
+support-bot: Ticket created: #ENG-1358 (meter-preview API + SDK warning). Assigned to kevin.
+
+alex: customer accepted credit, will re-run with meter-debug header and confirm. closing on our side once they validate. :thumbsup:
+
+billing-bot: note: issued one-time invoice credit of $42.50 for customer acct-acme.
+
+maria: thanks — marking this resolved on support side, leaving ENG-1358 for follow-up.
+
+kevin: quick triage takeaway: SDK estimates are "best-effort" and exclude server-side injected tokens (prefill, hidden tool outputs, reranker summaries). add docs + meter-preview API + an opt-in header to request server-side estimate in next sprint. :white_check_mark:

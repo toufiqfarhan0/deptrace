@@ -1,0 +1,33 @@
+sales
+
+olivia_sales: AM check-in — quick pipeline + asks
+- Did demo with NovaHealth yesterday; they want KMS/BYOK details and an HSM timeline.
+- Kestrel pilot: legal asked for a data-flow diagram showing where keys live.
+Blockers: waiting on SRE to confirm Dedicated SLA + region capacity for pilot.
+Today: sync with eng at 11:30, prep KMS FAQ for the customer and circulate.
+
+ben_sales_ops: I'll start a KMS FAQ draft in Drive and ping @ashwin_engineer for the HSM timing.
+
+ashwin_engineer: Ashwin here — vendor BYOK + HSM integration ETA: ~2 weeks if we use vendor-X's managed HSM add-on; 4–6 weeks for fully packaged on-prem option. Need specific compliance matrix from the customer (e.g., FedRAMP, SOC2) and their region to confirm latency/SLA.
+
+devon_se: Devon — tagging product for the legal diagram request. @maria_se can you take the lead? I can assemble a quick sample architecture diagram (PNG) after we confirm ingress/egress controls.
+
+maria_se: I can draft the diagram by EOD. Need details: which WAN/VPC egress rules, customer IP ranges, and if they require TLS mutual auth. Also legal wants an explicit note on key residency.
+
+sre-bot: deploy-bot: Scheduled: canary provisioning for "novahealth-dedicated" cluster on 1715060000. Will post updates if provisioning or capacity changes.
+
+olivia_sales: Thanks — :pray: Ben, can you drop the Drive link here? Also customer asked about SSO/SCIM flows — anyone with docs?
+
+ben_sales_ops: Link: https://drive.google.com/drive/folders/1A2b3Ckms-faq-draft — added an outline and initial Q&A. Please comment.
+
+ashwin_engineer: Quick follow-up: do we have expected qps and typical context length? If bursty ~200 rps with 3k tokens contexts we'll want dedicated pools + aggressive KV caching to hit latency targets. @olivia_sales
+
+olivia_sales: They expect bursty traffic ~200 rps during business hours, contexts up to ~3k tokens. I'll confirm exact peak windows and share sample prompt distribution.
+
+maria_se: Adding note for diagram: include key attestations for transit/rest and call out KMS/HSM boundaries. Legal flagged that explicitly.
+
+devon_se: CR ping — pushed PR #482 to add a KMS integration docs page and sample config. Would appreciate a quick review before 4pm so I can merge and reference it in the FAQ.
+
+ashwin_engineer: On it, reviewing now. Main ask: include a sample `keywrap` config and HSM connection string examples.
+
+olivia_sales: If we can get SLA confirmation today (latency SLO + uptime) that will unblock the signature on the nondisclosure. Appreciate the quick turnaround, team.

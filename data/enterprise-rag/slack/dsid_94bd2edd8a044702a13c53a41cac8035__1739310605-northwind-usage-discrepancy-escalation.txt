@@ -1,0 +1,11 @@
+support
+
+Ben Carter: Heads up: escalation from Northwind AI. They say usage dashboard token totals are ~20% higher than their estimates. They do streaming + client timeout + retry. Tracking in SUP-1842.
+
+Vanessa Ortiz: I’m on it w/ customer. They assume timed-out attempts shouldn’t count.
+
+Priya Natarajan: Likely retries counted as separate attempts + prompt tokens counted once admitted even if stream cancelled. Let’s make sure we explain it cleanly.
+
+Aisha Rahman: Do we have a standard blurb for “attempt” vs “logical request”? If not, we should add to KB.
+
+Ben Carter: I’ll draft something and link it here once Confluence page is up.

@@ -1,0 +1,35 @@
+finance
+
+Maya (Finance): Heads-up — planning to launch a targeted microcohort pricing experiment tomorrow morning (small % of enterprise customers). Need quick sign-off on grandfathering + invoice flags.
+Ethan (RevOps): Can you paste the cohort criteria? want to double-check billing join keys.
+Maya (Finance): Criteria: customers with >$10k/mo ARR, active for >12 months, not on legacy reserved plan. Sample SQL: ```SELECT customer_id FROM customers WHERE ARR > 10000 AND months_active > 12 AND plan != 'reserved_legacy'```
+Priya (Product): Is the experiment A/B (new price vs current) or a percent discount? Need to know telemetry to attach.
+Maya (Finance): A/B: Group A gets new ratecard (per-token slight bump), Group B stays same. Also a grandfather rule: any existing committed contracts keep historical units priced until next renewal. No auto-charges beyond normal invoices.
+Kai (Growth): Recommend excluding customers currently on active negotiations. Last time we got angry emails when they heard about price test.
+Maya (Finance): Good call — add `negotiation_status = 'none'` filter.
+Nora (CS): I'll flag top 10 accounts to exclude manually just in case. Share list when ready.
+Jared (Legal): For grandfathering language, make sure communications say "pricing experiment" and not "price increase". Also confirm we aren't breaching any signed rate-lock clauses.
+Maya (Finance): We're only applying to customers without rate-locks. Jared — can you confirm the clause check will be finished by EOD?
+Jared (Legal): Can do, I'll run a quick search on contract tags `rate_lock` and `rate_lock_end_date`.
+billing-bot: automated note — feature "experiment_invoices" will tag all invoices for this cohort with metadata `experiment_id: mc_launch_2027` and `cohort: A|B`.
+Ethan (RevOps): Important: invoices for Cohort A should have breakdown lines showing old unit price vs new unit price for transparency. Can billing engine do that?
+Maya (Finance): Yes, billing engine supports line-item override. Proto config for invoice tags: ```{ "experiment_id": "mc_launch_2027", "cohort_split": "A:50,B:50", "grandfathered": "true" }```
+Priya (Product): Telemetry: we'll instrument generation_eev and cost_per_token metrics, plus user-facing latency. Sending instrumentation PR now.
+Kai (Growth): Also add a short follow-up email copy for customers in A explaining the test and how to opt-out of the trial pricing.
+Nora (CS): Opt-out flow — will customers call their CSM or is it self-serve?
+Maya (Finance): Initially CSM-only for this microcohort, we'll evaluate self-serve later. Nora — please coordinate.
+Ethan (RevOps): Ops checklist for tomorrow 09:00 UTC launch: 1) cohort SQL snapshot committed, 2) billing flags applied, 3) invoice line-item override tested on staging invoices, 4) communication draft ready, 5) monitoring dashboard live.
+Maya (Finance): Test invoice snippet (staging): ```Invoice #stg-4521
+customer: ACME
+line 1: model_tokens (old_price @ $0.0008) qty 100000 -> $80.00
+line 2: model_tokens (new_price @ $0.0009) qty 100000 -> $90.00 (applies only to cohort A)
+total: $90.00 (grandfathered credits applied)```
+Jared (Legal): Confirmed no rate-lock breach for the selected cohort as of my quick pass.
+Maya (Finance): Thanks. Two approvals needed: product (Priya) and revops (Ethan). Priya/Ethan — can you reply with :thumbsup: if good?
+Priya (Product): :thumbsup: from product — instrumentation PR merged.
+Ethan (RevOps): :thumbsup: from revops — runbook looks good, will monitor invoice diffs.
+Maya (Finance): Great. Launch window tomorrow 09:00 UTC. Nora — CSM outreach list by 07:00 UTC pls. Kai — marketing embargoed messaging by 08:00 UTC.
+Nora (CS): Will do.
+Kai (Growth): Got it, prepping embargoed copy.
+billing-bot: automated note — staging invoice test completed at 1799204600, status: PASS.
+Maya (Finance): Perfect. I'll post a short postmortem template link in the thread after 24h of data. Thanks everyone. :rocket:

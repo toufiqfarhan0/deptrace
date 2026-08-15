@@ -1,0 +1,16 @@
+design
+
+Claire M.: Quick UX ask — the 'Abort batch run' confirmation modal reads: 'Abort this run? This action cannot be undone.' Users found it confusing in tests.
+Diego P.: Yeah we had a few people unsure what 'abort' means vs 'stop gracefully'. We should clarify consequences (cancel in-flight tasks, no retries).
+Sophie N.: Suggest copy: heading = 'Stop batch run', body = 'This will cancel all in-flight tasks and mark the run as aborted. You can retry the job later from the dataset page.' Primary button = 'Stop run', secondary = 'Cancel'.
+Alex R.: Language nit: 'mark the run as aborted' maybe too technical. How about 'and mark the run as stopped' or 'and set the run status to Aborted'?
+Diego P.: Also product asks for explicit mention of side effects: if outputs/data are partial they remain stored. Add small line: 'Partial outputs are saved.'
+Claire M.: OK new draft body: 'This will cancel all in‑flight tasks, save any partial outputs, and set the run status to Aborted. You can retry the job later.'
+Sophie N.: Accessibility: ensure the destructive button is last in tab order? Usually primary is first, but for destructive actions we want clear visual affordance and confirmable focus. Need to verify pattern with a11y team.
+EngBot: Created ticket RN-428 for a11y review and keyboard/ESC behavior (created by @Claire M.).
+Alex R.: Also recommend button color: red for 'Stop run' and label prefix 'Stop run (destructive)' only in dev docs, not UI. Keep UI clean.
+Diego P.: Small microcopy tweak: use sentence case for body. Keep CTAs title case.
+Claire M.: Final proposal to lock: heading 'Stop batch run', body 'This will cancel all in‑flight tasks, save any partial outputs, and set the run status to Aborted. You can retry the job later from the dataset page.', primary 'Stop run', secondary 'Cancel', initial focus on Cancel button to reduce accidental clicks.
+Sophie N.: I think initial focus should be on Cancel for safety. Add aria-describedby linking to the small side‑effects note.
+Alex R.: I'll update Figma and include the keyboard focus notes + reduced motion handling.
+Claire M.: Thanks — please drop the exact Figma tokens into the onboarding doc and we'll hand off to eng next week.

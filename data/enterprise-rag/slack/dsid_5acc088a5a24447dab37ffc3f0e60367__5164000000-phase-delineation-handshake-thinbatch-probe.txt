@@ -1,0 +1,38 @@
+eng-runtime
+
+maro: quick update — I flipped on the "thin-handshake" probe last night (route: prefilling -> thinbatch queue, decode still separate). metric snapshot this morning shows a puzzling p95 blip across small models.
+maro: p50 +4ms, p95 +28ms on 1k-5k token requests, throughput stable. KV hit dropped ~16pts vs baseline.
+anya: hmm. did kernel selection change for prefill vs decode? any kernel fallbacks in the flamegraph?
+maro: profile attached inline — top lines from nvprof/our tracer: 
+```
+fused_attention_v2    42.1%  (prefill)
+matmul_fp16_opt       27.4%  (decode)
+matmul_generic        12.9%  (fallbacks on some shapes)
+kv_warmup             9.6%   (serialization/locks)
+other                 8.0%
+```
+maro: notable: a subset of prefill batches are triggering `matmul_generic` because batch-shape inference sees a mixed effective seq_len and disables some fused kernels.
+sam: can you share the batch shape distribution? are we co-batching long prefill prompts with short decodes anywhere?
+maro: batch shape heatmap: most prefill batches have seq_len=64/128 but there's a tail at 512 when users send long contexts. decode batches are mostly <=64, but our splitting logic sometimes lets long prefill requests sit in the thinbatch path and then a decode minibatch steals a kernel path.
+dmitri: that tail would explain matmul_generic; kernel selector heuristics use max_seq_len in the batch which kills fused kernels. if a few outliers get in, whole batch regresses.
+tess: KV hit drop — are we invalidating/evicting more aggressively for prefill? logs show more KV drains coinciding with the probe. maybe handshake timing is delaying priming?
+maro: yes, KV priming latency increased by ~6ms on average for prefill, and there were spikes where priming and kernel selection serialized. shows in the main-thread stacks.
+anya: suggestion: try two quick pilots — (A) tighten the batch formation to min-max seq_len delta <=32 for thinbatch queue, (B) raise prefill token_budget target from 32 -> 48 to prefer homogeneous batches.
+sam: also consider soft-shunting: route requests with seq_len>256 to a separate long-prefill pool to avoid poisoning fused kernels. cheap to wire a routing rule.
+dmitri: quick local sim: ran synthetic mix, enforcing seq_len delta <=32 recovered fused kernel selection and reduced p95 by ~22ms. KV hit stayed stable.
+maro: good. i can deploy A as a flag: `--thinbatch-max-delta=32` and `--prefill-token-budget=48`. plan: flip on for 2h during low-traffic window, watch p95, KV hit, GPU occupancy.
+tess: add a tracing tag so we can filter runs that hit `matmul_generic`. we need a signal for kernel fallback rate.
+maro: will add `kernel_fallback.v2` metric and export to metrics-backend.
+anya: if A shows improvement, we should still measure cost (larger token_budget -> slightly higher latency for first tokens?) keep an eye on tail latency for small requests.
+sam: ops-bot — can you schedule the rollout in the 6:30-7am PST window and run the canary on 10% of capacity?
+ops-bot: scheduled deployment window 5164026000 (6:30am PST). Canary target: 10% traffic, flag `thinbatch-max-delta=32`, `prefill-token-budget=48`. I'll post status in this thread when it runs. :white_check_mark:
+maro: will also attach a small benchmark harness to drive the tail with mixed seq lengths. aim to collect: p50/p95, kv_hit, kernel_fallback_rate, gpu_occupancy.
+dmitri: if fallback persists after A, fallback plan B = strict decode/prefill lane isolation: no prefill in the thinbatch queue (force prefill->separate pool) which will add some cost but keep fused kernels stable.
+anya: agree. experiment A -> B as conservative plan. thanks all.
+maro: logging the hypothesis here: long-prefill outliers cause kernel selector to choose conservative matmul_generic, which serializes and increases KV priming contention, amplifying p95; fixing batch homogeneity should restore fused kernels and KV warmups.
+maro: will report back after the canary (ops-bot).
+ops-bot: canary started at 5164026000 for 10% traffic. monitoring dashboards: link: https://grafana.company/r/redwood/prefill-probes (internal).
+ops-bot: 40m into canary: p95 trending down ~18ms vs probe baseline, kv_hit +10pts, kernel_fallback_rate down 70%.
+maro: rolling this to 50% for another 30m.
+ops-bot: rolled to 50% at 5164027800.
+maro: looks good in traces. keeping on for full hour then we'll decide. thanks everyone for quick input. :rocket:

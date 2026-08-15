@@ -1,0 +1,33 @@
+partnerships
+
+eva: quick heads-up: CloudMall marketplace reports a steady mismatch in daily entitlements vs our ledger for a subset of customers. Looks like their daily window is PDT-based while we use UTC. Small but consistent drift in credits. Anyone familiar with their contract window?
+
+ton y: yikes. i thought CloudMall agreed to UTC windows. i'll pull the contract.
+
+maria: we ingest partner usage with partner_window_start header and convert to UTC. sample payload?
+
+eva: sample from partner webhook: { event_ts: '2026-12-01T00:15:00-08:00', usage: 500 } They label window as "day" but not explicit timezone.
+
+ton y: contract clause 3.2 says partner reports in their account local time unless otherwise stated. hmm.
+
+maria: approach: 1) short-term: add a translation layer for CloudMall that normalizes partner-local-day to UTC-day using partner timezone metadata we already store. 2) run a 3-day backfill for accounts affected. 3) inform finance and partner.
+
+eva: agree. also add a reconciler exception for CloudMall for diffs <0.05% while we run backfill. log suppressed diffs.
+
+billing-bot: impacted_accounts_count: 412, est_delta_units: 18,430
+
+ton y: owners: maria -> ingestion translation patch + canary, eva -> partner comms + finance note, tony -> contract check and finalize timezone mapping. target: patch in staging today, backfill overnight.
+
+maria: will scope patch: partner_timezone lookup -> apply to daily bucketing; canary on cloudmall partition in staging. estimate 1h dev + 1h canary.
+
+eva: i'll draft a neutral message to CloudMall: ask them to confirm the timezone they intend for "daily" windows and recommend they include tz in tomorrow's payloads. copy accounting.
+
+ton y: confirmed. contract amendment not required, just record-based clarification.
+
+billing-bot: backfill job queued: backfill-ledger.cloudmall_window_normalize -> ETA 7h
+
+maria: canary passed, no cardinality changes. kicking off backfill in staging now. will post results when done.
+
+eva: thanks team — keep thread updated. will only escalate to exec if partner disputes corrections.
+
+ton y: resolved for now. :white_check_mark:

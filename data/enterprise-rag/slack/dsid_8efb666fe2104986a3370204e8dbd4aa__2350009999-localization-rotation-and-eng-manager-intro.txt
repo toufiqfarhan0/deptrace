@@ -1,0 +1,31 @@
+people-ops
+
+Maria Gomez: Quick heads-up — launching a small hiring pilot and rotation for Localization. We're bringing on a Localization Engineering Manager (contract-to-perm) for APAC to lead the localization squad. Start date target: May 18. Role reports to Jemma Ortiz for the first 3 months, then to Platform Eng. Approved headcount is 1 FTE (pilot), relocation stipend approved (up to $6k) for candidates relocating. More details below.
+
+Jemma Ortiz: Confirming — I'll be the interim manager and handle onboarding. Focused on infra i18n, CI for model localization, and eval pipelines. We'll rotate two ICs from eng-platform for 8 weeks shadowing to transfer knowledge. Plan to keep coverage for oncall; scheduling next week.
+
+Devon Chan: what's the interview loop? remote ok? salary band?
+
+Lia Tan: Loop: 3 interviews (hiring mgr, tech + systems, culture/leadership), 60/45/30 mins. Remote candidates ok, must be willing to work overlapping hours with APAC. Band: L5 $180k-$210k USD eq. I've got 4 candidates in pipeline, 2 screens tomorrow.
+
+Samir Patel: Will the rotation ICs be backfilled?
+
+Maria Gomez: Yes — people-ops approved 2 12-week temp backfills (contractors) for the rotations. Finance signed off on budget. I'll post the requisition and PO tomorrow.
+
+People Ops Bot: Reminder — please submit New Hire Packet and background check forms within 48 hours after offer to avoid start delays.
+
+Lia Tan: Can we get interviewers: @Devon, @Samir, @Jemma, @Priya (obs)? Also need a product person for the culture loop; @Anya volunteered last sprint.
+
+Devon Chan: I can take tech/system slot on Tue 10am PT. Samir can cover oncall overlap questions.
+
+Jemma Ortiz: Onboarding plan draft: week 0 — paperwork + infra access; week 1 — shadowing; week 2 — small ownership task (eval infra); week 4 — first solo run. Will share doc.
+
+Maria Gomez: Great — will open the candidate offer flow once Lia greenlights. Please react with :thumbsup: if you can interview next week.
+
+Samir Patel: +1
+
+Devon Chan: +1
+
+Lia Tan: :party: will update candidate status after screens.
+
+Maria Gomez: Thanks everyone — posting this to #people-ops so the hiring tracker picks it up. Ping me if any blockers.

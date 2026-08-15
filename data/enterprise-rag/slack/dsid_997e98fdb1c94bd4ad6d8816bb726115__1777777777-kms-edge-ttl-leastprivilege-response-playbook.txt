@@ -1,0 +1,41 @@
+eng-security
+
+priya: quick question — we're designing envelope encryption for the edge inference proxy that we run in customer VPCs. Mix of AWS KMS + GCP KMS for different customers. goal: minimize KMS egress/cost, maintain strong amber/forensic evidence (audit logs), and keep rotation/incident playbook simple. proposed: cache wrapped DEKs at the proxy and only call KMS to unwrap on cache miss or rotation event. thinking: DEK TTL = 1h, cache by tenant, pinned to process pid with LRU. thoughts?
+
+sam: prefer caching wrapped DEKs (i.e., store ciphertext only) — never cache plaintext DEKs. TTL 1h sounds OK for perf but think 15m default with ability to raise for low-risk tenants. also add jitter/splay to TTL expiry to avoid stampede. :gear:
+
+linh: agree on storing only wrapped DEKs. couple of points: 1) KMS call frequency = #new DEKs + rotation ops, not requests. if you reuse a DEK for N requests during TTL then calls are limited. 2) use short-lived per-tenant DEKs (rotate daily) and keep KEK only in KMS. 3) protect against stolen instance by encrypting warm cache with a process-local encryption key derived from the machine identity (e.g., instance attestation / TPM/HSM) so plaintext never sits unprotected on disk.
+
+priya: good, a few clarifications: when you say "rotate daily" do you mean generate a new DEK per day per tenant and rewrap with KEK? how expensive is rewrap if we have 10k tenants? also RBAC: we will have edge-proxy service account with decrypt permission on the KMS key for that tenant only. need checklist for least-priv changes and audit retention.
+
+sam: rotation strategy: staged rolling rotation. generate new DEK for tenant, wrap with KMS (Encrypt) and push wrapped DEK to proxies (or let proxies pull on next request). rewrap is basically KMS Encrypt of new DEK and KMS Decrypt of old if you need to migrate plaintext — avoid double-decrypt at scale. better: key-derive new DEK from old with HKDF and only call KMS to rewrap the derived material if you must. cost wise: 10k tenants x 1 rewrap/day = 10k KMS Encrypts per day — that's feasible but check quota and budget. add exponential backoff and rate-sleep during mass rotation.
+
+security-bot: RBAC checklist: 1) grant edge-proxy minimal IAM: kms:Decrypt + kms:Encrypt only for the specific key ARN(s); use IAM conditions to restrict by request IP / VPC if possible. 2) use service account per-customer or per-tenant SA when practical. 3) enable key access logs and send to central audit bucket with immutability/lifecycle. retention: compliance asked for 13 months, but check region/legal. 4) enable KMS key rotation and record key metadata in CMDB.
+
+linh: on audit: store KMS audit events (Decrypt/Encrypt/GenerateDataKey) in a separate write-only stream (e.g., GCP PubSub or Kinesis -> S3) with SSE and restricted reader roles. correlate decrypt events with proxy instance ids and request ids for forensics.
+
+priya: incident question — if we detect potential KMS compromise (unusual decrypts), what's the playbook for minimizing blast radius?
+
+sam: quick IR steps: 1) revoke service account keys / disable service account / add deny statement to IAM for suspect keys. 2) create new KEK, re-encrypt (wrap) new DEKs with new KEK. 3) rotate tenant DEKs as fast as possible, prefer lazy rotate on access + emergency bulk rotate. 4) invalidate cache (send revocation event to proxies). 5) preserve audit logs and snapshot access history for forensics.
+
+linh: automation notes: have a splayed background job for cache invalidation so we don't stampede KMS. when revoking, push a tombstone object per-tenant; proxies check tombstone TTL before using cached DEK. for mass rotate, use per-region concurrency limits and progressive ramp.
+
+security-bot: recommended quick config snippet for proxy DEK cache (example):
+
+```
+# DEK cache example
+DEK_CACHE_TTL_SECONDS=900  # default 15m
+DEK_CACHE_MAX_ENTRIES=2000
+DEK_CACHE_JITTER=0.1       # 10% jitter on expiry
+DEK_STORE=wrapped_ciphertext_only
+```
+
+security-bot: monitoring + alerting: 1) alert on KMS Decrypt spikes (per-key and global), 2) alert on decrypts from unexpected regions/IPs, 3) alert on rewrap failure rates, 4) alert on sudden cache eviction storms.
+
+priya: thanks. last Q: storing wrapped DEKs centrally vs push-to-proxy — pros/cons?
+
+sam: push model reduces a central hot read but increases network complexity and guarantees; pull model centralizes control (can revoke centrally) but creates a read hotspot on vault. both OK; recommend push-on-rotate + pull-on-miss hybrid: push new wrapped DEK on rotate, proxies fall back to central fetch with rate-limited path.
+
+linh: add one more: for zero-trust, consider ephemeral DEKs per-process derived from tenant DEK + process nonce — then even if a process is compromised the attacker only gets short-lived material. increases complexity but lowers blast radius.
+
+priya: awesome — I'll draft a short playbook and RBAC change request with these points and include KMS quota estimates. will ping infra for rate-limits. :thumbsup:

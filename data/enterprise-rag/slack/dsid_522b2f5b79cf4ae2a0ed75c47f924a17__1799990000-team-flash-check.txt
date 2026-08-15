@@ -1,0 +1,35 @@
+all-hands
+
+Zara: Morning async — quick flash check. Please drop 1) yesterday, 2) blockers, 3) today. I’ll synthesize.
+
+Jamal: Yesterday: merged kv-cache fix into runtime. Blockers: CI flakes on fp16 tests. Today: triaging CI + hotfix.
+
+Devon: Yesterday: finished API contract for rollout traffic-split. Blockers: none. Today: wire up canary metrics and update the doc.
+
+Ashley: Yesterday: onboarding call with ACME sales. Blockers: waiting on SOW from legal. Today: prep demo for Dedicated.
+
+Priya: Yesterday: updated per-route latency dashboards. Blockers: alert firing for redis cache misses — need a hand. @Jamal can you take a look? :thinking_face:
+
+Jamal: @Priya looking now — pushing a log decorator to staging; will report back in ~30m.
+
+Kevin: Quick FYI — deploy-bot shows canary finished for frontend. No regressions seen. :tada:
+
+deploy-bot: Canary deploy complete (service: frontend). status=success, errors=0, p95_latency=42ms. logs=https://ci.internal/redwood/logs/1799990000
+
+Priya: Re: redis, I suspect eviction policy is too aggressive after the recent load test. I’ll paste the config after lunch.
+
+Ethan: Small ask — can someone review PR #4384? It’s a tiny perf tweak but needs a green CI to merge.
+
+Ashley: I can review PR #4384 this afternoon.
+
+Zara: Action items: 1) Jamal to fix CI flakes / stabilize fp16 tests, 2) Devon to add canary metrics + schema, 3) Priya to follow up on redis evictions. If anything urgent, ping #eng-oncall. :sparkles:
+
+Zara: Also note — if you’re OOO tomorrow, reply here so I can adjust the rollout schedule.
+
+Jamal: Quick note — local repro for CI flake is flaky on my laptop too; trying containerize a repro now.
+
+Devon: I’ll add a dashboard tile for the new metric and link it in the rollout doc.
+
+Kevin: Heads-up: billing sent revised quote for Dedicated; sharing in #finance later.
+
+Zara: Thanks all — short and actionable. Back to async updates, I’ll post a consolidated checklist by EOD.

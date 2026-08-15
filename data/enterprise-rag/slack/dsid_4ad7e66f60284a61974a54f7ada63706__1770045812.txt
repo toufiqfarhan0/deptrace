@@ -1,0 +1,89 @@
+incidents
+
+IncidentBot: :rotating_light: Alert triggered: Hosted canary / runtime-1.21 / kernel_autoselect_v2
+Signal: p99 latency +42% (baseline 1.9s -> 2.7s) for chat.generate
+Scope (initial): us-east-1, canary pool "hosted-canary-rt121", GPU=L40S
+Error rate: stable
+Start: 12:03 PT (auto)
+Runbook: https://confluence.redwood/eng-serving-runtime/runbooks/kernel-selection-v2-override-and-rollback-runbook
+
+Sean Gallagher: oncall here. Seeing the spike on the canary dashboard too. It’s narrow but pretty sharp. Anyone around from runtime kernels/selector?
+
+Omar El-Sayed: here. Looking at selection telemetry panels now (sampling 1%). It looks like selection distribution shifted specifically on L40S: prefill kernel choice is skewing to `prefill_fa2_packed_qkv` (which we normally avoid on this SKU for long context).
+
+Aisha Bello: confirming from SLO view: only p99 is affected; p95 is up ~8%. No corresponding increase in 5xx. Tail looks like long-context requests.
+
+Allison Grant: +1. Alert threshold tripped on p99 only. No error-budget burn yet but we should mitigate before the canary window continues.
+
+Connor O'Brien: release train perspective: canary is supposed to run for another 3 hours. If we need to flip gate we can, but let’s keep it scoped if possible.
+
+Yuki Sato: I’m in. That kernel shouldn’t be getting picked on L40S unless we’re in the short-prefill bucket. Do we know what seq bucket the selector thinks these are?
+
+Omar El-Sayed: looking at the event fields: `seq_bucket=prefill_short` on a bunch of these, but request traces show prompt_tokens ~14k+ on the slow ones. Smells like misclassification / bad token count estimate.
+
+Marcus Reed: I can cross-check with perf-canary scenario logs. In canary, we enabled scheduler hint passthrough last week—could be feeding the selector stale distribution hints?
+
+Hiro Tanaka: L40S is sensitive to that packed QKV path at long context; it can blow up tail if it hits the wrong memory pattern. Agree this is likely wrong bucket or wrong SKU mapping.
+
+Sean Gallagher: proposing immediate mitigation: disable v2 only for L40S in us-east-1 canary pool. That should snap latency back while we debug.
+
+Benji Okafor: I can apply a deny rule in the gate config: `kernel_autoselect_v2=false` when gpu_sku=L40S AND env=hosted-canary AND region=use1. Hot reload should be <2 min.
+
+Ethan Park: control plane gate supports that. Benji, please do it via the standard policy repo so we get an audit trail. Link the incident.
+
+DeployBot: Change requested by Benji Okafor
+Repo: control-plane-policy
+Change: disable kernel_autoselect_v2 for gpu_sku=L40S region=us-east-1 env=hosted-canary-rt121
+Status: pending
+
+Sahana Iyer: while that rolls, I’m pulling selector debug dumps from a couple slow traces. If we see `prefill_short` + 14k prompts, it’s definitely feature extraction/hinting.
+
+Yuki Sato: Omar/Marcus: can you confirm whether the selector is using request-level token counts or scheduler-provided `workload_hint` for bucket? In v2 we added “mixed workload stability” using observed distribution hints (PR-28502).
+
+Marcus Reed: in hosted canary, I believe we enabled `selector.use_scheduler_hints=true` for that pool (for stability testing). If the hint says “mostly short prefill” it could bias bucket decisions.
+
+Omar El-Sayed: yeah, field `hint_source=scheduler` shows up in the telemetry for most of these. That’s probably it.
+
+Sean Gallagher: if that’s the case, mitigation (disable v2) is fine. We’ll need a follow-up: either lower weight of scheduler hints or cap hint influence when request prompt_tokens exceed threshold.
+
+DeployBot: Change applied successfully
+Status: live
+
+Aisha Bello: watching p99 now. Already dropping—p99 back to ~2.0s within the last 3 min window. Looks like mitigation worked.
+
+Allison Grant: alert should auto-resolve once the 10-min window clears. Please keep an eye on cardinality/telemetry; but this looks clean.
+
+Sean Gallagher: great. Let’s keep canary running for non-L40S SKUs. Benji/Ethan, thanks. Omar/Yuki/Hiro/Sahana: can you own the RCA?
+
+Yuki Sato: yep. Hypothesis: scheduler hint incorrectly biasing seq bucket selection for long-context requests; selector uses hint too aggressively. Action: add guardrail: if `prompt_tokens >= long_context_threshold`, force `prefill_long` regardless of hint. Also check if token count is coming in late/estimated.
+
+Sahana Iyer: I have one debug dump showing:
+- request prompt_tokens reported to selector: 1024 (estimated)
+- actual prompt_tokens at execution: 14832
+So we might be using pre-tokenization estimate (or truncated) in the selector feature extraction.
+
+Hiro Tanaka: that matches older bug class: token count isn’t final until after tokenizer pass / prefill setup. If selector runs earlier, it sees a default/placeholder. We should rely on max of (scheduler hint + conservative upper bound) or delay selection until real token count is known.
+
+Omar El-Sayed: we can also add a safety rule: if `prompt_bytes` is high (or input length in chars), treat as long context. Not perfect, but better than misclassifying to short.
+
+Connor O'Brien: for release notes / comms: this is canary-only and mitigated by gating. Please document that L40S in us-east-1 canary had v2 disabled pending fix. We’ll want to mention “scheduler hint integration guardrail” as a patch.
+
+Sean Gallagher: incident summary for the thread:
+- Impact: brief p99 latency spike in hosted canary pool on L40S only
+- Mitigation: disabled kernel_autoselect_v2 for L40S us-east-1 canary via gate (hot reload)
+- Status: recovered
+Next: RCA + patch, then re-enable and re-run canary.
+
+IncidentBot: :white_check_mark: Alert resolved: p99 latency returned to baseline for chat.generate (hosted canary / us-east-1 / L40S)
+Duration: 18 minutes
+Owner: Sean Gallagher
+
+Allison Grant: please file a follow-up ticket and link here; also add an explicit rollback trigger note to the canary checklist (“if selector sees estimated tokens, force conservative bucket”).
+
+Omar El-Sayed: will do. I’ll also add a temporary dashboard annotation so future viewers know why L40S selection distribution changes abruptly at ~12:12 PT.
+
+Benji Okafor: gate change is scoped + reversible. I’ll leave it in place until runtime confirms fix.
+
+Ethan Park: +1. Make sure we capture the exact policy condition; we’ve had SKU normalization issues ("L40S" vs "NVIDIA-L40S" vs instance family) in the past.
+
+Sean Gallagher: closing out. Thanks all.

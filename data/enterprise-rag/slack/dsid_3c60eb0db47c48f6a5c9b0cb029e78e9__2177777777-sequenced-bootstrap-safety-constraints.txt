@@ -1,0 +1,44 @@
+architecture
+
+anya: Quick follow-up on the packaging RFC — I'm proposing a sequenced bootstrap + operator-controlled activation windows for air-gapped nodes. TL;DR: three-phase activation (seed -> verify -> activate) with deterministic sequence numbers and a small backstop policy. Looking for objections and corner cases we missed.
+
+raj: Sounds reasonable. Main worry: what if several nodes are N+1 behind and miss their window because of bandwidth slowness? Do we block rollout or let them catch up next window? :thinking_face:
+
+sylvie: How does this interact with the verifier agent? Do we require per-component signatures or a single bundle signature? Also need to think about memory limits during verify on small boxes.
+
+anya: Proposed config snippet: ```yaml
+activation:
+  phases: ["seed","verify","activate"]
+  window_seconds: 3600  # operator-configurable
+  seq_policy: strict  # require exact seq match to activate
+```
+
+david: If a node misses the window, what's the backstop? auto-rollback to previous active or mark as needs-operator? I'd prefer failing-safe (serve previous image) over half-upgraded nodes.
+
+anya: Backstop idea: if missed -> mark node as STALLED, keep old active artifacts mounted, and require operator ACK to attempt reapply. Agents should surface failure reasons in a compact enum for UI.
+
+raj: Edge-case: power loss mid-activate. We probably need an atomic apply pattern + idempotent activation steps instead of a full distributed 2PC. Marker files + atomic rename on move seems pragmatic.
+
+anya: Example atomic step (very small):
+```bash
+# atomic swap of artifact dir
+mv /var/lib/redwood/new /var/lib/redwood/active.tmp && mv /var/lib/redwood/active.tmp /var/lib/redwood/active
+```
+
+ops-bot: ops-bot uploaded seed-bundle-202603 (sha256: abcd1234...), assigned seq 7832, size 124MB
+
+sylvie: Also: require verification timeout and resource caps (verify should not OOM). Proposal: verify_mem_limit: 128MB, verify_cpu_shares: 2, verify_timeout_seconds: 600.
+
+anya: Agree, we'll include resource caps and a circuit-breaker so verify failures mark STALLED instead of trying infinite retries.
+
+raj: Suggest adding a lightweight preflight-check endpoint on the agent so ops can run QA and optionally skip straight to activate when they control the node (useful for validated airgap installs).
+
+david: Logging: include seq, phase, and short failure-code in structured logs to make tracing and alerts easier. Also emit telemetry event for each transition.
+
+anya: I'll update the RFC with: 1) three-phase state machine, 2) atomic apply pattern, 3) operator backstop (mark STALLED + keep previous active), 4) resource caps and timeouts, 5) preflight endpoint, and 6) structured logs/telemetry. cc @matt for acceptance criteria.
+
+matt: +1. Test matrix I want before merge: normal flow, partial transfer, verify-failure, powercut-during-activate, signature-mismatch. Include checks for storage-left and OOM behavior.
+
+sylvie: +1, also add explicit operator runbook steps for STALLED -> retry vs manual recover.
+
+anya: Great — I'll push an updated RFC patch with diagrams and the state table by EOD tomorrow. Thanks for the feedback :thumbsup:

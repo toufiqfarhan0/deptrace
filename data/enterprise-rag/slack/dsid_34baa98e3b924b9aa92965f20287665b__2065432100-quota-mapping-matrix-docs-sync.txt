@@ -1,0 +1,33 @@
+docs
+
+Alex M (docs): Heads-up — I'm opening a PR to clarify the mapping between quota tiers and metering events. Current table in /docs/pricing/tiers.md is ambiguous about burst credits vs sustained throughput. PR: https://github.com/redwood-inference/docs/pull/4892 :eyes:
+Priya R (billing): thank you! can you add an explicit example for a mobile app usage profile (low qps, spiky bursts)? product asked for pricing example they can share with customers.
+Jorge L (eng-runtime): ping — when you add the example, make sure to call out which header we emit for metering: `X-Redwood-Quota-Bucket` and the new `X-Redwood-Burst-Consumed`. otherwise the dashboard panels won't match.
+Alex M (docs): good point. I'll include sample curl + SDK snippet. propose adding both a REST header and JS SDK example (v2). snippet for REST: ```bash
+curl -H 'Authorization: Bearer $REDWOOD' -H 'X-Request-Id: mobile-123' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rwd-qa-1","input":"hi"}' \
+  https://api.redwood.ai/v1/generate
+```
+Sam K (devex): For SDK v2 make sure to show quota headers reading: ```js
+const res = await client.generate(...);
+console.log(res.meta.headers['x-redwood-quota-bucket']);
+```
+Priya R (billing): Also we need one short paragraph explaining how tiered pricing interacts with Dedicated commits (reserved capacity). People keep assuming commits ignore quotas. Could we include a small matrix: Tier -> Metered unit -> When commits apply -> Example?
+Alex M (docs): yes — I'll draft a compact matrix. Thinking CSV-like example in docs and a rendered table in the PR description so reviewers can eyeball.
+Jorge L (eng-runtime): FYI the runtime team changed the behavior for residual quota reporting in 12.4.0 — the header name changed from `X-Quota-Residual` to `X-Redwood-Residual`. If you reference older docs, add a migration note.
+Alex M (docs): great catch. I'll add a migration snippet: "If you rely on `X-Quota-Residual` update to `X-Redwood-Residual` and check SDK v1->v2 mapping."
+Priya R (billing): can you also add a sample dashboard panel JSON for the usage analytics team? They asked for an example to import to Grafana Loki/Prometheus panels.
+Alex M (docs): yep — will attach `dashboard-panel.json` to the PR. quick question — should that go in /docs/analytics/examples or /docs/pricing/ assets?
+Sam K (devex): put analytics JSON under /docs/analytics/examples and reference it from pricing and quotas pages. less duplicated.
+Docs Bot: new pull request opened by Alex M (docs): https://github.com/redwood-inference/docs/pull/4892 (files changed: pricing/tiers.md, analytics/examples/dashboard-panel.json, sdk/snippets/js-v2-quota.md)
+Priya R (billing): quick review notes: 1) clarify the unit for embeddings (per-512-tokens vs per-vector) 2) add a short FAQ entry: "How do burst credits work with per-token billing?" 3) link to SLA page for Dedicated commits.
+Alex M (docs): thanks — adding those now. I'll ping @Priya R when ready for final billing phrasing. ETA EOD today. :thumbsup:
+Jorge L (eng-runtime): once it's up, I can validate the header names against a staging response and confirm the dashboard JSON mapping.
+Sam K (devex): happy to do a quick pass on the JS snippet for idiomatic usage and error handling.
+Alex M (docs): awesome — I'll push an update in a bit. if reviewers want tiny edits, keep them as inline PR comments so I can batch them.
+Priya R (billing): approved in principle, waiting on the migration note and embeddings unit clarification.
+Alex M (docs): update pushed (added migration notes, CSV matrix, dashboard JSON). pinging reviewers.
+Jorge L (eng-runtime): checked staging — headers match the doc and `X-Redwood-Burst-Consumed` increments on spikes. LGTM.
+Sam K (devex): fixed a tiny code formatting nit in JS snippet, left comment.
+Alex M (docs): merged. thanks all. closing thread. :party:

@@ -1,0 +1,38 @@
+sales
+
+Nadia (AE): MerchantBridge reached back. goal: replace current LLM vendor for transaction summarization. they asked for a 6-week POC, vendor-parity on API surface, and a signed security questionnaire.
+Tom (Sales Eng): primary asks: function-calling parity (same call signatures), streaming parity, predictable billing (procurement hates surprises). they want a cost estimate for 200k -> 900k tokens/month ramp.
+Ivy (Sec): red flags: EU-only residency for customer data, customer-managed KMS, deletion attestation, and vendor SLA for data access logs. will need Private or Dedicated for KMS + residency.
+Rohit (Platform Eng): tech notes: common mismatches we see: tokenization (affects billing), differing stop-sequence behavior, and function-calling wrapper shape. we normally do: 1) adapter shim translating vendor payloads, 2) prompt normalization to match heuristics, 3) optional token-count shim for billing parity.
+Maya (Solutions): can we ask for 150 representative prompts? include edge cases: long histories, malformed JSON returns, and function-invocations. we'll run side-by-side diffs and produce a short report for procurement.
+Nadia (AE): they can share samples; they already have a 20-prompt set. ask: who owns the SxS runner?
+Tom (Sales Eng): SE owns runner. Maya + Tom will craft the runner spec. deliverables: token delta table, response diff (levenshtein + semantic), function-name mismatches, and latency percentiles.
+Rohit (Platform Eng): infra constraints: if they require EU data residency + customer KMS, we'll provision a Dedicated sandbox in eu-west-1. timeline 3 business days to create sandbox + IP allowlist. if they accept hosted w/ KMS integration, we can do hosted w/ CMK but need legal ok.
+Ivy (Sec): security questionnaire item: "Can customer provide their own KMS?" answer: yes, for Dedicated and Private. Hosted supports envelope encryption with customer keys via partner KMS — need to surface limitations.
+infra-bot: Note: Dedicated provisioning ETA ~72 hours once ticket created. Docs: https://redwood.internal/dedicated-provisioning
+Maya (Solutions): parity approach idea: instead of forcing exact text equality, define an acceptance threshold: top-1 intent match + function-name match OR structured-output equivalence. this reduces false negatives from innocuous wording diffs.
+Tom (Sales Eng): procurement will insist on a billing reconciliation clause if tokenization differs. propose: for POC we run billing in vendor-normalized tokens (using our token-count shim) and then reconcile post-POC to agreed method.
+Rohit (Platform Eng): there's one tricky vendor quirk: they return function payload as a stringified JSON in the "result" field and sometimes include trailing commas. our adapter must robust-parse and normalize.
+Nadia (AE): action items: @Maya get 150 prompts (they have 20), @Tom + @Maya spec runner, @Rohit prepare adapter prototype and token-shim, @Ivy start draft Q&A for questionnaire. timeline wanted: kickoff next Tue, SxS week 1-2, security sign-off week 2-3, POC run weeks 3-6.
+Maya (Solutions): I'll write the vendor-feature-mapping doc: map competitor endpoints -> Redwood endpoints, list behavior diffs (streaming, backpressure, retry), and include short code examples. procurement loves that 1-pager.
+Ivy (Sec): also request their Data Processing Addendum and network egress requirements. if they need signed deletion certs, legal needs that in the ticket.
+Tom (Sales Eng): code sample they gave (old vendor):
+```
+POST /api/v1/respond
+Authorization: Bearer OLD_KEY
+{
+  "model": "x-transaction-3",
+  "prompt": "Summarize user transactions for 2025-01",
+  "call_functions": true
+}
+```
+Rohit (Platform Eng): adapter plan: translate `call_functions` -> our `functions` array + `call_preference` and re-map response wrapper. small Node shim should do for POC. I'll drop a repo link once created.
+Nadia (AE): pricing ask: they prefer pay-per-use but might agree to a 3mo commit if price cap provided. propose two offers: (A) Hosted per-token with 12% POC discount + token-shim reconciliation, (B) 3mo reserved Dedicated with monthly cap and uplift for KMS.
+Maya (Solutions): for metrics we'll provide latency p50/p95, error rates, and token cost delta per prompt bucket.
+Ivy (Sec): note on SLAs: they want deterministic function-call behavior. legal should scope "deterministic" (no arbitrary renaming or signature changes) for the POC term.
+Tom (Sales Eng): can legal sign a narrow SOW guarantee for the POC only? procurement will request that.
+Nadia (AE): adds: they want IP allowlist, short-lived client certs for staging, and audit log access. Rohit: can we provide?
+Rohit (Platform Eng): yes for allowlist and certs. audit logs available in Dedicated/Private. hosted can expose aggregated logs; need to confirm retention.
+infra-bot: Reminder: create internal ticket with priority = high and attach merchantbridge questionnaire to start security review.
+Maya (Solutions): I'll assemble the 1-pager and runner spec by EOD tomorrow. Tom + Rohit will demo the adapter prototype in 2 business days. Ivy will post a draft questionnaire response in the ticket.
+Nadia (AE): perfect. I'll consolidate and send to MerchantBridge. thanks all :thumbsup:

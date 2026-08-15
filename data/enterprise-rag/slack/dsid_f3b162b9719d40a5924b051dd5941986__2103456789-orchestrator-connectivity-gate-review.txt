@@ -1,0 +1,27 @@
+customer-success
+
+elaine_cs: Heads-up: Orbital cutover dry-run tomorrow 10am PT. Found two potential blockers re: split-horizon DNS & KMS aliasing for audit logs. CCing netops/sec/eng. Short thread to triage.
+
+jason_netops: Noted. For split-horizon we saw asymmetric routes when the customer uses 172.16.0.0/16 internally + our VPC. Can you paste route table IDs? Also check MTU — their VPN is 1400, our ENIs default 1500. Quick test: `sudo iperf3 -c <peer-ip> -M 1400`
+
+simon_sec: KMS: Orbital wants audit logs encrypted with their CMK in their account but we need decrypt for processing in our audit pipeline. We'll need a cross-account grant + key policy that allows: `kms:Decrypt` to `arn:aws:iam::REDACTED:role/redwood-audit-batcher`. Also confirm key alias format: `alias/redwood/orbital-audit`
+
+karen_eng: For CloudTrail/S3 delivery: S3 bucket must allow PutObject from `cloudtrail.amazonaws.com` and allow `kms:GenerateDataKey` if objects encrypted. Recommend lifecycle: `90d -> Glacier` and S3 access logs enabled to separate bucket.
+
+jason_netops: Route suggestion: tag route tables with `redwood:env=prod` and `redwood:customer=orbital` so our routing policies pick correct AZ egress. Also check NACLs — they have a deny-all default on subnets.
+
+deploy-bot: deploy-bot: orbital-private-deploy-dryrun scheduled by @elaine_cs for 2026-04-02T17:00:00Z
+
+elaine_cs: Can security confirm audit retention counts toward their compliance ask? They called out 1yr immutable logs (SOX-ish). If we can't support immutable in their account we'll need to propose a managed retention w/ export.
+
+simon_sec: We can support 1yr. Two options: (1) customer CMK + S3 Object Lock (governance mode) — they must enable in their account; (2) Redwood-managed bucket with cross-account replication and Object Lock. Option 2 is faster but raises privacy questions.
+
+karen_eng: Action items: Jason — verify MTU + NACL exceptions (today). Simon — draft key policy and cross-account role (by EOD). Elaine — schedule 30m enablement with Orbital engineer and attach runbook. I'll prepare S3 lifecycle policy PR.
+
+elaine_cs: Thanks. One more: Orbital asked for a pre-cutover checklist we can run during the dry-run. I'll attach here after the call. Also capturing feedback request: ask them about what they'd like improved in onboarding docs (network diagrams, sample policies, runbook steps).
+
+jason_netops: :thumbsup: will post route table snippet and iperf results in the channel
+
+simon_sec: Flagging renewal-risk note: if audit delivery and key handoff slip past the cutover window, they may push on SLA/discount conversation. Keep leadership looped.
+
+elaine_cs: Understood. I'll ping AM + CS lead if blockers remain after dry-run. Thanks team :rocket:

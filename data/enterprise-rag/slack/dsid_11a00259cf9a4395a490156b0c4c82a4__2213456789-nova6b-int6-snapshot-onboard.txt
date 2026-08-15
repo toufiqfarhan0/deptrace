@@ -1,0 +1,31 @@
+eng-ml
+
+olivia: quick sync — brought nova-6b through initial int6 quant pipeline today, ran a small smoke suite (conversational + summarization + instruct). sharing numbers and a short rec.
+raj: awesome, send raws?
+olivia: pasted rough results below
+```
+variant        p50(ms)  p95(ms)  tok/sec  rel-qual(Δ)  est-cost/$ per 1M toks
+nova-6b-fp16   85       240      2.1k     baseline     $14.2
+nova-6b-int8   72       210      2.6k     -0.6%        $9.1
+nova-6b-int6   64       190      3.1k     -1.8%        $6.3
+```
+notes: all on a 80GB gpu, batch=8 chat, knob: KV cache warm for p50 numbers.
+li: interesting — where are quality deltas measured (which eval)?
+olivia: Glowbench-lite (mix of chat + abstractive summarization + instruction), weighted by product traffic (65% chat, 35% long-form). int6 shows small drop mainly on abstractive summarization.
+mateo: can you quantify the summarization regression?
+olivia: for long-form summarization subset: ROUGE-L drop ~2.6 pts, factuality classifier AUC -0.9 pts. chat turns are near parity.
+priya: unit-econ math looks appealing. but product care about the summarization tail. prefer not to regress >2 pts on rouge.
+raj: one routing idea: default to int6 for interactive chat and low-latency endpoints, fallback to int8 for summarization or tasks flagged via prompt metadata. cheap policy + AB test.
+mateo: agree. also add an eval-based threshold: if prompt length > 1024 tokens or instruction type == "summarize", route to int8.
+li: what about hybrid: start token generation on int6 and if model confidence/factuality low, call int8 re-ranker? costy though.
+priya: can we do a cheap rerank on compressed embeddings instead? reranker cost lower than full decode.
+olivia: good thought. quick sim: rerank cost ~= +$0.8 per 1M toks vs full redo which is +$3.2 — still better than routing all traffic to int8.
+raj: operational concerns: dont want to add big latency tail. routing + async rerank might be best: serve int6, stream response, kick background int8 rerank and signal front-end if better version available.
+mateo: for SLOs, add a canary: 10% traffic int8, 90% int6 for two weeks, compare user-level quality metrics and cost. if delta <1% quality drop, promote int6.
+priya: also add eval prompt set focused on multi-paragraph summaries — we should ensure we have coverage before rollout.
+li: logging: capture prompt-type, length, tok count, model-variant, response score. need trace ids to join evals.
+olivia: I'll upload the detailed eval artifacts to the model onboarding bucket and open a quick PR with routing policy sketch. planning canary next Tue.
+deploy-bot: scheduled canary deployment: nova-6b-int6 -> canary slot on 2026-03-24T18:00Z (owner: olivia)
+raj: 👍 :thumbsup:
+priya: thanks — happy with that plan. once we have canary data we can decide routing thresholds and the rerank budget.
+olivia: thanks all. I'll post the artifact link and short A/B plan later today.

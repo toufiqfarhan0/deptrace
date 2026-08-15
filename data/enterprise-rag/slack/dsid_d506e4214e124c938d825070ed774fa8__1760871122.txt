@@ -1,0 +1,108 @@
+marketing
+
+Camila Reyes: ok team — distribution planning thread for the first customer story drop. need decisions on (1) which case study goes live first, (2) blog timing, (3) newsletter slot, (4) sales sequence insert / enablement assets. want to lock today so we can hit the week 9–10 enablement milestone.
+
+Soojin Lee: +1. from a narrative standpoint, i’d still recommend Northwind first. it hits the messaging pillars cleanly: Dedicated → predictable throughput + routing/fallbacks + unit economics. also less compliance-sensitive than Helios.
+
+Ethan Wallace: Northwind draft is the closest to “publishable” rn. Helios is still in compliance language / anonymization mode. Atlas needs more proof sourcing (they keep asking for exact baselines we can’t publish yet).
+
+Tyler Benson: distribution calendar: 
+- blog: Tue/Thu are best for our list + organic
+- newsletter: we have a slot Thurs AM next week if we confirm by EOD tomorrow
+- social: can do Tue launch + Thurs newsletter reminder + following week “behind the scenes” post
+also if this is going into outbound sequences, i need final URL + UTM conventions.
+
+Avery Johnson: for sales: please give us (a) 3–5 approved bullets, (b) 1 paragraph “why Redwood” snippet, (c) a 1-pager PDF. AEs will copy/paste into late-stage emails. also — can we get it into the enterprise sequence template by end of next week?
+
+Stephanie Nguyen: +1 on Northwind first. it’s the one i can actually use in 3 deals currently. Dedicated story plays well in exec calls.
+
+Markus Klein: diagram for Northwind is basically done (Dedicated sizing + routing policy + caching). i’m waiting on final confirmation that we’re describing fallback as “compatible model variant” vs naming exact model IDs.
+
+Soojin Lee: please keep it at “compatible model variants” unless we have explicit approval. aligns with the messaging doc + avoids unnecessary debates.
+
+Rachel Kim: CS note: if we’re pushing this live next week, pls make sure we include the reference-load guardrails in the internal enablement post. Northwind already asked for “no more than 2 calls/month” and a heads-up process.
+
+Camila Reyes: yes. we’ll pair the public launch w/ internal reminder: no surprise asks, must go through intake + CSM/AE approval.
+
+Isabelle Laurent: tracking: if we’re doing a sequence insert + reference calls, we should ship the “Reference used?” HubSpot property update at the same time. otherwise we won’t be able to report influence. i can set up the report + a quick how-to for AEs.
+
+Tyler Benson: ^ perfect. also: for newsletter, i’d like a short module:
+- headline (<= 50 chars)
+- 2 sentence blurb
+- CTA button
+plus a “for builders” angle usually performs better than “enterprise scale” language.
+
+Ethan Wallace: headline idea: “How Northwind cut inference cost without losing latency” (assuming we’re okay with ranges, not exact).
+
+Soojin Lee: careful: we should avoid “cut X%” unless it’s approved + backed. we can say “reduced unit cost” + “improved p95 latency” with ranges and include the standard metrics disclaimer.
+
+Camila Reyes: agree. keep it conservative. we can optimize later once we’ve validated what they’ll sign off on.
+
+Avery Johnson: ok but sales will ask: what’s the proof point we can actually say on calls? we need at least one crisp “before/after” statement.
+
+Ethan Wallace: in the draft we have: “p95 latency improved from ~900–1100ms to ~450–650ms” and “$/1M tokens reduced by ~25–35%” but both are pending final customer sign-off. if that gets softened, we can keep “material latency + cost improvements” + explain measurement on request.
+
+Markus Klein: tech proof is solid (dashboards + dedicated sizing notes). only risk is the support blip last week (the transient latency spike). we already have the RCA summary, but it’s a reminder to not over-commit to a single p95 number.
+
+Soojin Lee: +1. phrase as “typical p95” + include time window. and the disclaimer about workload variability.
+
+Tyler Benson: logistics question: are we launching as (1) docs site story page only, or (2) blog post + story page? if both, we should decide canonical + crosslink.
+
+Camila Reyes: i’d do both:
+- customer story page is canonical (docs “Case Studies”)
+- blog post is a distribution wrapper (summary + quote + CTA to story page + book a call)
+
+Soojin Lee: works. blog can be more narrative + exec-friendly, story page can be the detailed technical format.
+
+Isabelle Laurent: if canonical is docs page, please make sure the CTA buttons have consistent UTM params. i’ll send the standard set.
+
+Tyler Benson: ok, proposed schedule (assuming approvals are ready):
+- Tue: publish docs story page + blog post (same day)
+- Tue PM: social post (main channels)
+- Thurs: newsletter module (drives to blog, which drives to story)
+- Following Mon: sales enablement post in #announcements + update sequences
+
+Avery Johnson: can we also have a “sequence snippet” for the Dedicated/Private late-stage template? like 3 lines + link.
+
+Soojin Lee: yep. i’ll draft:
+1) 1-sentence hook
+2) 2 bullet proof points (approved language)
+3) link + “happy to connect you w/ the team / reference call via our process”
+
+Rachel Kim: pls add one line: “reference calls are limited + require lead time” so AEs don’t promise next-day calls.
+
+Camila Reyes: decision check:
+1) go-live first = Northwind ✅
+2) Helios second (once compliance + anonymization is locked) 
+3) Atlas third (after procurement milestones + proof clean)
+4) Polaris as a lighter “developer-first” story (maybe blog-only) later
+
+Stephanie Nguyen: 👍 to that ordering.
+
+Ethan Wallace: 👍. for Northwind, i need final customer quote selection today/tomorrow. also we should keep the CTA consistent: “Talk to us about Dedicated” vs “Request a demo”.
+
+Soojin Lee: CTA suggestion: “See how Dedicated works for your latency + cost targets” (button) + secondary “Read the technical breakdown”.
+
+Tyler Benson: i can fit that in the newsletter module.
+
+Markus Klein: i’ll finalize the diagram export + alt text and send to Ethan + Camila. also will sanity check the wording around routing/fallbacks.
+
+Isabelle Laurent: i’ll post UTM standards + the HubSpot property instructions by EOD. if someone can tag me on the final URLs once merged, i’ll wire up reporting.
+
+Camila Reyes: action items:
+- @Ethan Wallace finalize Northwind blog wrapper draft + story page copy edits (focus: conservative claims + disclaimer placement)
+- @Soojin Lee draft sales sequence snippet + approved bullets (pull from messaging pillars)
+- @Tyler Benson reserve Thurs newsletter slot + prep module copy once we have final headline + URL
+- @Markus Klein deliver final arch diagram export + confirm fallback language
+- @Isabelle Laurent prep tracking + quick AE instructions
+- @Rachel Kim add CS guardrails blurb for internal enablement post
+
+Camila Reyes: if Northwind legal review slips, backup plan = publish “Case Studies landing page + template” only, no named customer, and hold the full story. but let’s try not to do that :)
+
+Tyler Benson: :thumbsup: reserving the newsletter slot as “tentative” now. pls confirm by tomorrow 3pm PT.
+
+Avery Johnson: thanks all. pls don’t forget the 1-pager PDF — sales will use that way more than the blog.
+
+Ethan Wallace: noted. i’ll repurpose the story page into the 1-pager format (problem → solution → results → architecture) once the quotes/metrics are locked.
+
+Camila Reyes: cool. keep updates here. once we have final publish date + URLs, i’ll post a short launch checklist.

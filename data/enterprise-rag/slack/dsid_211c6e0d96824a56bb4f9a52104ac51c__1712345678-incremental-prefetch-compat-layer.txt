@@ -1,0 +1,24 @@
+eng-ml
+
+marta: Quick sync — I sketched an incremental prefetch + compat loader approach. Goal: single loader that can handle safetensors, legacy .pth/.bin shards, and do on-demand mapping under a memory budget.
+kevin: Nice. What's the surface area? manifest? lazy-map flags?
+sri: main tradeoff: mmap gives cheap reads but poor control over working set; quantized files + page faults kill tail latency.
+dena: Also warmup: full eager warmup is great for p50 but expensive in memory/time. Streaming + async prefix warmup might be best for large seq short-lived requests.
+marta: Proposed API (pseudo):
+```
+# pseudo API
+Loader.open(uri, budget_bytes=4294967296, prefetch_policy="critical-tensors")
+# returns Reader that lazily maps or streams tensors
+reader.read_tensor("transformer.h.0.attn.k.weight") -> tensor_view
+```
+kevin: Manifest should list chunk ranges and a "critical":true flag for tensors we prefetch. Example: `model.manifest.json` with entries like `{ "path":"model.safetensors", "chunks":[[0,65536],[65536,131072]], "critical":true }`.
+sri: For mmap + quant: we should allow `prefer_mmap=false` per-model and expose `eviction_hints` from runtime so loader can `madvise(DONTNEED)` after warmup.
+oliver: Hybrid idea: prefetch tiny but hot tensors (embed table, final LN, lm_head) synchronously, and stream big attention weights. Keep a small pinned cache of most-recently-used tensor slices.
+dena: Warmup profiles: two knobs: `prefix_warmup_tokens` and `async_stream_threshold_bytes`. We can warmup only the KV-prefetch for first N tokens.
+kevin: Safety/validation: call `safetensors.verify()` on open for hosted models. For legacy .pth, run a fast header check and fail-open to on-the-fly conversion only if allowed by policy. Security teams want conversion audited.
+marta: Metrics to expose: `loader.open_ms`, `warmup_latency_p50/p95`, `page_fault_rate`, `prefetch_bytes`, `fallback_count`.
+sri: Perf tests: I'll run across 7B/13B/70B quant and fp16 on dev-nvlink to compare: eager warmup vs hybrid streaming.
+kevin: I'll prototype manifest v2 with per-tensor critical flag + chunked ranges. Will add a small CLI to build manifests from model converters.
+marta: Action items: I will draft an RFC with API + backward compat plan, include example manifests and conversion policy. @kevin prototype, @sri perf runs, @dena add warmup heuristics.
+load-bot: CI: loader-compat unit tests passed on 3/2, integration flaky on large models (timeout), filing follow-up. :robot_face:
+marta: Thanks — I'll drop the RFC link here when it's up and add a short PoC checklist.

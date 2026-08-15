@@ -1,0 +1,46 @@
+incidents
+
+incident-bot: :rotating_light: Pager triggered — APAC (ap-northeast-1) p95 token latency spike on text.generate. Current p95=1200ms (baseline ~320ms). 5xx error rate up to 5%. Affected lane: economy. Auto-dampening didn't converge. Runbook: https://redwood.internal/runbooks/traffic
+
+oncall-jess: Taking this — I'm on pager. @ops-bridge can you open bridge and post link?
+
+ops-bridge: Bridge created: https://tools.redwood/bridge/BR-1749998888 :white_check_mark:
+
+pat: Initial ask: reduce economy traffic in ap-northeast-1 immediately. Options: 1) tier-disable economy in region, 2) route economy -> standard (if capacity), 3) apply per-route rate limit. I'd vote for 2 + 3.
+
+anika: Agreed. I'll update smart-routing policy to prefer standard for APAC and apply a soft throttle to economy. Doing a 5% canary then 100% if stable.
+
+anika:
+``
+# patch smart routing policy via ops-api
+curl -X POST https://ops-api.redwood/v1/policies/route/update \
+  -H "Authorization: Bearer $OP_API_KEY" \
+  -d '{"region":"ap-northeast-1","change":{"prefer_tier":"standard","economy_throttle_pct":30,"canary_pct":5}}'
+```
+
+ryan: heads-up: moving economy->standard will increase cost and may raise latency for some long-context workloads. We should pin model variant to lowest-latency q4 variant for canary.
+
+mike: I'll coordinate model pin and deploy canary. Command:
+``
+opsctl rollout --policy-id route-apac-prefer-standard --canary 5 --pin-model redwood-q4-lite
+```
+
+sam: Notifying support & affected customers now. Draft msg: "We're seeing degraded latency on economy tier in APAC; we've rerouted traffic and applied mitigations; your service should see improvements within minutes. Reach support with high-priority if you see issues."
+
+oncall-jess: Applying changes now. Patch in flight :eyes:
+
+incident-bot: Action log: smart-routing update started by anika at 1749998950.
+
+anika: Canary metrics after 60s: canary p95=340ms, errors ~0.8% (down from 5%). Increasing canary to 25%.
+
+mike: Increasing canary to 25% completed.
+
+anika: After 5min: global p95 back to ~360ms, errors <1%. Promoting to 100% for ap-northeast-1 and disabling economy lane in-region as fallback.
+
+incident-bot: Mitigation applied at 1749999140: economy lane disabled in ap-northeast-1; routing policy set to prefer standard; model pinned for canary. Incident severity decreased.
+
+pat: Notes for postmortem: check why auto-dampening didn't act, why economy lane caused 5xx, and review capacity buffers for standard tier in APAC. Assign owners.
+
+sam: Customer comms sent. Support queue updated with list of affected customers.
+
+oncall-jess: I'll close the pager after monitoring for 30m. Thanks everyone :thumbsup:

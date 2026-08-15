@@ -1,0 +1,35 @@
+product
+
+aria: heads-up — we need to finalize the reserved-pool surge policy for the Q3 roadmap doc. ACME & BetaBank expect predictable burst behavior.
+sam: agree. customers ask for burst headroom + clear cost model. we should avoid making promises that force prewarm everywhere.
+leila: proposal: default soft-burst credits per tenant (sliding 24h window) + a concurrency safety cap. defaults: 12%/day, 4 concurrent surge slots. configurable per-contract.
+chen: engineering concerns: if we allow many concurrent surge slots the scheduler will fragment GPUs. prefer tokenized surge slots with admission control and backpressure policies.
+deepa: ops perspective: need an automated circuit breaker and a clear rollback path. runbook should include: immediate traffic shaping, model variant fallback, and cross-region spill with degraded SLA.
+mike_sales: sales will sell higher burst % as a paid option. need a clear matrix: default, premium, enterprise (12/30/60%). contracts will expect SLO language.
+aria: can we make the burst budget consumable via a single metric? e.g., "surge_ru" consumed per token. Also expose consumption in console and alerting.
+chen: implementation sketch (pseudo-config):
+```json
+{
+  "name": "reserve_tiered_surge_v1",
+  "burst_window_hours": 24,
+  "burst_pct_default": 12,
+  "burst_pct_contract_max": 60,
+  "concurrent_surge_slots_default": 4,
+  "admission": "priority+fairshare",
+  "fallback_policy": "model_variant|regional_spill"
+}
+```
+leila: add quality gate to launch checklist — must run end-to-end prompts under surge and ensure no >2% regression in task accuracy for critical customers.
+deepa: ops metrics to surface before GA: per-tenant 50/90/99 latency, surge_ru consumption, eviction events, prewarm GPU-hours. Also add envelope alerts: sustained queue_time > 200ms for 1m.
+sam: rollout plan draft:
+- alpha: internal + 2 friendly customers (prod mirror) for 2 weeks
+- beta: 6 customers across regions for 4 weeks
+- GA: staged enable with UI toggles and pricing tiers
+- abort criteria: any customer sees >5% SLA misses or >20% cost overrun vs. estimate
+chen: infra ask: need historical QPS windows + token distribution from billing to simulate burst RU usage. I can run Monte Carlo sim for top 30 tenants.
+mike_sales: please include how this appears on invoice — customers want to see burst consumption line-item.
+aria: UX owner volunteer? leila taking telemetry mocks; i'll take billing line-item mock.
+deepa: runbook owners? i'll draft circuit-breaker automation and fallback orchestration.
+ops-bot: Canary created for policy reserve_tiered_surge_v1 on staging at 2024-08-02T09:00Z.
+sam: decision list for this week: 1) default burst % and contract max, 2) concurrent surge slot default, 3) precise telemetry events + console expose owner, 4) pilot customer list.
+leila: I'll post UI mock by Wed. chen: simulation numbers by Thu. deepa: runbook draft by Thu EOD. sam: i'll sync with sales for pilot list. reconvene Fri 9am PT. :rocket:

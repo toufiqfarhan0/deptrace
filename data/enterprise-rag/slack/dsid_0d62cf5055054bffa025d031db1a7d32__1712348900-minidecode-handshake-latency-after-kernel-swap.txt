@@ -1,0 +1,45 @@
+eng-runtime
+
+eric: Heads-up — after the kernel-selection swap on canary we see a small but consistent host-side latency bump on tiny streaming requests: ~+3-7ms/request. Suspect microburst of small writev/syscalls + extra tokenization jitter. :eyes:
+mina: repro steps? sample payload size?
+eric: minimal repro: 1 short prompt (~120 tokens) via streaming gRPC -> see curl/gRPC client below. repro script: ```python
+# abridged
+import grpc
+stub = ClientStub()
+resp = stub.StreamGen(Request(prompt='short'), timeout=5)
+for chunk in resp: pass
+```
+jordan: hmm could be handshake/serialize path now hitting different kernel path, causing more writev fragments. Did the swap change batching thresholds?
+sasha: we changed kernel fingerprinting so some requests now fall into the "minidecode" slow path. earlier perf run: small writes were coalesced, now they're split. iirc that was the kernel-affinity decision.
+kevin: quick mitigation: coalesce at proxy edge when payload < 2k and streaming enabled. small config hint: ```yaml
+ingress:
+  coalesce_small_writes: true
+  coalesce_threshold_bytes: 2048
+```
+eric: ran pprof on hostpreproc: ```
+(pprof) top10
+  45.1%  parse_tokenize
+  21.3%  grpc_writev
+  12.0%  tokenize_pool_lock
+  7.8%   http2_frame_write
+  6.2%   kvcache_lookup
+```
+ci-bot: perf-alert-bot: regression alert for runtime-host (canary) — median p99 increased 6.2% vs baseline 2024-03-12. job=ingress-smallwrites-heaprun
+mina: can you run the same test with KV cache disabled? that will tell us if lookup/eviction is amplifying the syscall cost.
+eric: did that — KV off -> latency delta drops from +5.1ms -> +2.0ms. so KV is part of it but not whole story. posted raw numbers in the baseline doc.
+jordan: OK KV interaction + fragmented writev = cause chain. If small writes trigger more lock contention on tokenize_pool_lock then we see addtl CPU. Can we snapshot /proc/locks during repro?
+sasha: i dug up the canary config diff: kernel swap toggled `prefer_minidecode=true` and lowered `microbatch_size_hint` from 8->3. that explains smaller batch sizes arriving to the runtime.
+eric: attached short trace (tcpdump + strace): ```
+# high level
+writev(0) size=512
+writev(1) size=256
+writev(2) size=128
+futex(0x7f, FUTEX_WAIT, ...)
+```
+kevin: suggested hotfix plan: 1) re-enable microbatch hint -> 8 on canary 2) enable coalesce_small_writes at proxy 3) add short-term KV backoff so lookups are batched.
+mina: agree. also add a tiny perf test to CI that hits small streaming path to prevent regressions. :+1:
+jordan: i'll prepare a PR to flip microbatch_size_hint and add a small coalesce flag (should be trivial in proxy). aiming for canary redeploy in ~2h.
+sasha: once deployed watch these dashboards: [runtime/ingress/p90], [runtime/host/sys_cpu%], [runtime/ingress/writev_count_small]. also watch KV hit latency and futex counts.
+eric: action items: jordan -> PR and canary (2h), kevin -> config patch for coalesce + yaml, mina -> add CI perf test, eric -> run extended A/B with KV toggled and post numbers. I'll post measured p95/p99 after canary. :fire:
+ci-bot: perf-alert-bot: noted follow-up run queued (ingress-smallwrites-2)
+eric: thanks — will update thread with canary telemetry.

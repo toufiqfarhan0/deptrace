@@ -1,0 +1,71 @@
+eng-runtime
+
+marta: Heads-up — I landed an experiment for opportunistic buffer borrowing between in-flight batches to cut allocations for short requests. Quick profiling attached below.
+
+li: curious numbers. what did you see?
+
+marta: micro-bench on A10, model=gpt-small, seq=512, concurrency=8.
+- baseline peak GPU: 1.04GB
+- with borrowing: 0.92GB (≈12% drop)
+- p50 latency: ~unchanged
+- p99 latency: +2% on canary traffic
+- observed: KV cache churn up ~8% for some prefix-heavy traces
+
+jamal: +2% tail is annoying. any clue where the tail comes from?
+
+marta: flamegraphs point to a few extra mutex+reclaim stalls in slab allocator when a borrowed buffer gets returned late and forces a compact path. Not huge but shows at high concurrency.
+
+carmen: can you paste the runtime flag and repro commands?
+
+marta: sure. config toggle we used:
+
+```\n# runtime.conf\nallocator.enable_buffer_borrowing = true\nallocator.borrow_max_lifetime_ms = 50\nallocator.borrow_prefer_slab = true\n```
+
+repro: `./bench --model gpt-small --seq 512 --concurrency 8 --iters 200 --enable-borrow`
+
+li: borrow_max_lifetime looks suspicious. if a cached KV lookup or kernel swap stalls for >50ms you get pinned buffers. maybe make it adaptive based on observed kernel latency.
+
+marta: agree. quick follow-ups I tried: reduce lifetime to 20ms -> tail goes back down but mem savings drop to ~6%. Also tried jittered return so not all buffers compact at once — helped tail by ~0.7%.
+
+jamal: what about kernel selection fallout? borrowing may change allocation patterns that prefer different kernel shapes. any regression there?
+
+marta: good point. on one canary we saw more fallback to the small-matmul kernel for very short sequences (due to tighter memory pressure on scratchpads). That increased cpu-gpu syncs in a few traces.
+
+carmen: safety checklist before rolling:
+- gate behind runtime flag (yes)
+- add telemetry: borrowed_bytes, borrow_count, borrow_hit_ratio, borrow_spill_count
+- add canary autopause if p99 latency > baseline * 1.05
+- run dedicated KV-heavy trace set overnight
+
+marta: added metrics in the patch (names above) and a quick alert rule. infra-bot created a canary: runtimes/r1 borrow-experiment (canary id 2024-03-borrow).
+
+infra-bot: deploy started: runtimes/r1:canary/2024-03-borrow -> 3 hosts.
+
+li: prefer adding an allocator fallback that forces eager free of borrowed scratchpads when a kernel selector downgrade happens. That should avoid the small-matmul thrash.
+
+marta: prototype pushed. logic: on kernel downgrade event -> scan borrowed list and try to convert borrow->own (i.e., copy to new buffer) or free opportunistically. cheap scan with a cap of 16 entries.
+
+jamal: sounds good. can we also record "kernel_downgrade_count" and correlate with borrow_spill_count in dashboards?
+
+carmen: agreed. if correlation > 0.3 on canary we roll back.
+
+marta: plan for next steps:
+1) reduce default borrow_max_lifetime -> 20ms
+2) enable jittered returns
+3) add kernel-downgrade-triggered eager-free path
+4) run KV-heavy overnight test and collect the new metrics
+5) if stable, roll to 20% of fleet for a week
+
+li: one more thing — add a tiny unit test that simulates borrow race where return arrives after kernel swap to ensure no double-free. saw one flaky in local.
+
+marta: noted, added test and made return path idempotent.
+
+carmen: thanks. please attach the overnight trace when done and post results here. :thumbsup:
+
+marta: will do — starting the overnight run now.
+
+infra-bot: canary finished initial pass: 3 hosts, 6h, no alerts. metrics uploaded to /canaries/2024-03-borrow/summary.json
+
+marta: initial glance looks promising: borrow_hit_ratio ~0.28, borrowed_bytes steady, kernel_downgrade_count low. posting full graphs shortly.
+
+li: great, keep us posted.

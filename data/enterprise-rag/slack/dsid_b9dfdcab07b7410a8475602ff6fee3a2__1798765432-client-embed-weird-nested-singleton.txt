@@ -1,0 +1,31 @@
+support
+
+liyah: Hey @support, our embeddings suddenly doubled in length today. We send a single string to /v1/embeddings and get back a vector of 1536 instead of 768. No model change on our side, started after deploy. Request id: req_01G...
+
+alex: sorry about that — can you paste the curl you used and the model name?
+
+liyah: sure, here's the curl:
+```bash
+curl -X POST https://api.redwood.ai/v1/embeddings \
+  -H \"Authorization: Bearer $TOKEN\" \
+  -H \"Content-Type: application/json\" \
+  -d '{\"model\":\"open-embedding-768\",\"input\":\"Our sample text\"}'
+```
+
+alex: thanks. Quick check: are you using any client libs that might wrap the input? also what's the model exactly (we have open-embedding-768 and open-embedding-1536)...
+
+liyah: we call open-embedding-768. No client lib, simple curl from CI. We also tried Node fetch and got same. 
+
+support-bot: [Automated] routed to eng-oncall
+
+sam (eng): pinging. Two quick hypotheses: 1) model name mismatch on the request routing (maybe alias resolved to 1536 variant), 2) request body got JSON-stringified twice so server sees a single-item array vs a string and uses a different encoder. Can you run a tcpdump of the request payload or paste raw request bytes?
+
+liyah: attached raw request payload: `{"model":"open-embedding-768","input":"Our sample text"}`. Also tried `\"input\": [\"Our sample text\"]` and got 768 as expected. So singleton string seems to trigger 1536?
+
+sam (eng): aha — that's a great repro. Looks like our routing layer applies an optimized 1536 encoder for batches and some legacy path when input is a JSON string vs array. We shouldn't do that. Escalating to runtime team. For workaround, send input as an array: `{"input":["Our sample text"]}` or explicitly set content-type `application/json; charset=utf-8` and ensure not double-quoted.
+
+nina (sre): also check CDN caching/edge mutation — we saw edge rewriting that adds quotes for some requests when certain headers are present. We'll look at edge logs for this customer.
+
+alex: I'll send a follow-up to the customer with exact curl + quick fix.
+
+liyah: thanks, the array workaround works. Please let me know ETA for proper fix, we have nightly jobs depending on embeddings shape. :pray:

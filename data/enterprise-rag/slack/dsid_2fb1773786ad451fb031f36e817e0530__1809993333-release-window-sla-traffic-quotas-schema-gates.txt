@@ -1,0 +1,57 @@
+eng-releases
+
+release-bot: deploybot scheduled a release window 2026-03-22 02:00-03:00 UTC for cross-service changes (API/runtime/console/router). Need final pins, traffic quotas, schema gate confirmation, and explicit rollback criteria. Please acknowledge and post any blockers.
+
+alex: ack. I will pin API to v3.4.2 (no auto-promote). Adding release-notes + changelog now.
+
+maria: runtime ack — plan is r2026-03-canary -> ramp. Canary will start at 10% traffic for 20m, then 50% for 15m if stable. KV eviction tweak included; need cache-warmup verification.
+
+kai: router ack. We'll use slow-roll weight shift: 10%/minute. kernel-batching flag will be disabled during this window for compatibility with the new runtime kernel. Header-swap rule pinned to v2 to avoid routing mismatches.
+
+sarah: console ack. Console 1.14.0 has telemetry schema changes (events.v2). Migrations were applied to staging, but we need a quick verification run against canary metrics before 02:00. UI feature toggles preserved.
+
+alex: adding rollback triggers — propose automatic rollback if error-rate >= 1% sustained for 5m OR p95 latency increases > 2x baseline for 5m. Manual rollback authority: @alex, @maria.
+
+ops-bot: deploybot preflight started. Smoke tests queued, infra checks running (disk, GPU health, network). Will post status updates.
+
+maria: automated smoke tests include prefix-cache warmup check and KV latency probe. Also validating quantized kernel sanity on a small GPU pool.
+
+kai: router note — if kernel-batching off causes throughput drop, we'll throttle traffic to runtime and failover to older runtime variant. Need a fallback tag: runtime-fallback:v2026-02.
+
+alex: release-notes draft: <https://internal/redwood/releases/3.4.2-digest> (please add sections for runtime perf delta, router flags, console schema).
+
+sarah: added schema gate checklist to the release notes. Two items: (1) metrics migration run, (2) console feature-flag verified on canary.
+
+alex: config snippet I'm pushing to the interlock repo:
+```
+deploy:
+  api: v3.4.2
+  runtime: r2026-03-canary
+  console: 1.14.0
+  router: kernel-batching=false
+  fallback_runtime: runtime-fallback:v2026-02
+```
+
+maria: perf SLOs to monitor: p50/p95/p99 token-latency, error-rate, KV tail-latency. I’ll wire up a short dashboard and a canary alert.
+
+ops-bot: deploybot: preflight OK (all checks green). Canary pool reserved on eu-west1 and us-east1.
+
+kai: question — any soft traffic quotas to watch? Dedicated capacity might hit reserved limits if we warm too many hosts.
+
+alex: yes — we have a soft quota on Dedicated burst in us-east1: 120 GPU-min per 10m. I’ll limit initial canary footprint to 80 GPU-min to avoid throttle.
+
+maria: noted. I’ll reduce canary shard count accordingly.
+
+sarah: one more thing — console tracking events get a new field (session_id_v2). If telemetry pipeline drops that it should not block the release, but file a postmortem if >0.5% events fail schema validation in canary.
+
+alex: final call: if no objections by 01:30 UTC we'll proceed with the scheduled kickoff. Otherwise call it out here or ping me directly.
+
+maria: no objections from runtime.
+
+kai: router clear.
+
+sarah: console clear.
+
+release-bot: deploybot will start rollout at 02:00 UTC. Summary posted to #release-archive after completion. Good luck and ping in-thread if rollback is required.
+
+ops-bot: deploybot: rolling canary now (simulated message for test run).

@@ -1,0 +1,51 @@
+docs
+
+Ivy: Dropped a short draft for the changelog entry on KV/prefix caching + batching and the Dedicated canary UI. Need quick eyes on known issues, py/js snippets, and the Private migration blurb. Plan to publish tomorrow AM unless anything blocks.
+
+Ned: Link?
+
+Ivy: https://docs.redwood.ai/drafts/cache-batching-rollout-2026-tidy (WIP)
+
+Rae: I'll take the JS snippet. Make sure streaming example shows `stream: true` and `cache: { kv_enabled: true }`.
+
+Omar: I'll handle the Private migration blurb: config key rename (`kv_cache.enabled` -> `cache.kv_enabled`), helm override, and a warmup curl to prime KV after rolling update.
+
+Kira: Known issue to call out: small tokenization diffs with some 4-bit quant kernels on long contexts. Add mitigation suggestions (re-tokenize with model vocab, run warmup) and link to the eval artifacts. Keep exact bench numbers internal.
+
+Ned: Draft Python snippet (v1):
+```python
+from redwood import Client
+client = Client(api_key="REDACTED")
+resp = client.generate(
+  model="redwood-optim-1",
+  input="Summarize the changes",
+  stream=True,
+  options={"cache": {"kv_enabled": True}, "batch": {"max_tokens": 512}},
+)
+for chunk in resp.stream():
+  print(chunk.text)
+```
+I'll add a short JS mirror.
+
+Rae: Note: include a v0.9 callout showing `client.options` for users on older SDKs.
+
+Omar: Warmup curl example (draft):
+```bash
+curl -X POST "https://internal-infer.example/api/warmup" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"redwood-optim-1","variant":"pinned"}'
+```
+This primes KV for pinned variants after a rolling update.
+
+Kira: Add an "opt-out" one-liner for operators: `cache.kv_enabled=false` in the deployment spec. Also add a rollback command: `kubectl -n redwood rollout restart deploy/inference-worker`.
+
+Ivy: good. @docs-bot can you schedule a snippet-lint and linkcheck dry-run tomorrow 2026-03-24T18:45:00Z?
+
+docs-bot: Scheduled dry-run: 2026-03-24T18:45:00Z. Snippet linter and linkcheck queued.
+
+Ned: After linter results I'll push the JS snippet and update the anchors if needed.
+
+Rae: If linter flags deprecated args, leave inline comments and add migration notes. Aim to merge after green lint.
+
+Ivy: Thanks all 0 :thumbsup: 0 flipping to "ready for review" after snippets + migration blurb land.

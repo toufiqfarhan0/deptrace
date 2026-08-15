@@ -1,0 +1,26 @@
+docs
+
+maya: Quick heads-up — opened a PR that adds a tiny UX example showing trace->heatmap correlation + cost breakdown for the console dashboard. url: https://github.com/redwood-inference/docs/pull/987
+jon: nice. does it include the new KV-cache cost attribution table we discussed?
+tegan: I glanced — it has a table but the numbers look synthetic. we should indicate they are example values and show how to swap to live metrics.
+maya: yes, added a short note and a code snippet for switching from static csv to our metrics API. snippet: ```js
+// fetch cost rows for span groups
+const rows = await fetch(`/api/metrics?project=demo&metric=kv_cache_cost`)
+```
+samir: CI is failing on the embed screenshot step (render job timeout). looks unrelated to content but blocks the publish. @doc-bot any idea?
+doc-bot: DeployJob #445 failed: render timeout after 10m. Recommendation: retry with smaller viewport or split the heatmap into two images.
+jon: repro locally — the heatmap image is big. i can regenerate a smaller image and push.
+maya: if we shrink the heatmap we should also tweak the caption to call out the zoom control (so readers know they can get a full-res view).
+tegan: also please add one line about how trace IDs map to heatmap tiles — folks kept asking in the last office hours. a 1-sentence mapping + a screenshot callout should do.
+maya: added the callout and updated caption. pushed a force update to the PR.
+samir: pushed a small change to the example query to use the new aggregated tag key (service.name -> svc). avoids a mismatch with the current telemetry schema.
+itegan: thumbs up on that. can someone sanity-check the code examples in the Node and Rust quickstart? we had subtle param name diffs last time.
+jon: checking Node now. found one param named `traceKey` that should be `trace_key` in the SDK example — fixing.
+maya: i also updated the cost/latency explanation to include the delta when KV cache hit-rate increases (short paragraph + chart).
+samir: note for docs reviewers: the cost numbers are illustrative. please do not copy them into customer-facing guides without replacing with live query results.
+tegan: LGTM once CI passes. can we get a quick visual review from the UX folks? @jon can you ping them with the new screenshot?
+jon: pinged ux-pictures with the smaller heatmap and callouts. asked for a 1-hour turnaround. :hourglass_flowing_sand:
+maya: thanks — once UX gives green i’ll merge and schedule a small release note for the console changelog.
+jon: after merge we should run a short smoke test on prod console (non-blocking) to ensure the embed renders in older browsers. i can take that.
+samir: FYI i added a one-line migration note in the top of the doc for teams migrating from the legacy dashboard: "If you relied on the legacy tile IDs, switch to `trace_key` mapping — see mapping table below."
+maya: perfect. thanks everyone. i’ll re-run CI after the regenerated images land. :thumbsup:

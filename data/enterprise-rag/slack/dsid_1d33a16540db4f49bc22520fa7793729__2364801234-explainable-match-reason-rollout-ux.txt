@@ -1,0 +1,30 @@
+eng-platform
+
+maria: quick check — we keep running into weird routing surprises from customers when header overrides and service aliases both apply. proposing we make match reason visible in console and make precedence deterministic
+chao: +1 for exposing reason. right now it's opaque — ops just see a 200 but the wrong backend. can we show the rule that matched? :eyes:
+sam: agree. do we want deterministic by score or by lexicographic stability? score gives more control but is harder to reason about for human operators
+elaine: short answer: humans prefer stability. if we change rule order during rollout, we break caches and metrics. lexicographic (stable sort) wins for predictability imo
+prashant: lexicographic stability is fine but we need explicit tie-breakers for host vs path vs header. propose precedence: exact host > path specificity > header anchor > service alias > wildcard host. that mirrors most user expectations
+maria: example cases would help. here's a tiny matcher snippet we saw in prod logs that caused trouble:
+```
+matchers:
+  - host: *.example.com
+    path: /api/*
+    service: payments-v1
+  - host: api.example.com
+    path: /api/payments
+    header: X-Env=staging -> service: payments-staging
+```
+chao: with lexicographic only, the order could pick the first rule above for api.example.com (because of wildcard) if it's earlier in the file. folks expect the exact host rule to win though
+sam: what if we compute a match score vector and then sort by that vector (host_exact:1/0, path_specificity: N, header_anchor:1/0, created_ts) — deterministic and explains tie-breakers
+elaine: that's basically score-based but deterministic. good compromise. show the vector in console as "match_reason" like: host_exact=1,path_specificity=5,header_anchor=1
+prashant: also need to consider service aliasing: aliases can be attached to services and should not outrank an explicit header override. header should trump alias unless user marks alias as 'strong'
+maria: for rollout UX, we should surface when a change would flip match_reason for existing routes. console should warn "this rollout changes match_reason for 23% of prefixes"
+chao: +1 for pre-rollout diff. also add telemetry tag so we can tie latencies and error rates to match_reason buckets for post-rollout analysis
+prashant: agree. telemetry fields: matched_rule_id, match_vector, route_version, applied_overrides. we can emit those as structured logs to tracing pipeline
+sam: one more: for debugging CLI, make a `redwood route explain` that takes host+path+headers and prints ordered candidate list and final selected rule
+maria: love it. ok owners? chao for console UI, prashant for runtime matcher impl, sam for CLI, elaine to draft rollout warning wording
+elaine: I'll put a small spec in docs by EOD and include examples + warning UI mockups
+deploy-bot: scheduled deploy: matcher-service v0.62 -> canary on infra-us at 2026-03-20T21:40:00Z
+chao: noted — will coordinate to avoid noisy flips during canary
+maria: thanks team. I'll open a RFC with the score vector schema and telemetry fields. keeping this thread as sync record.

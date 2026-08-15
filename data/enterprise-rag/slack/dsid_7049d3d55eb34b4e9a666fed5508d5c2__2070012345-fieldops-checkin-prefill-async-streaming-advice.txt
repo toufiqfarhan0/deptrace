@@ -1,0 +1,70 @@
+customer-success
+
+Maria: quick heads-up — ACME renewal next Wed. account shows rising stream dropouts and a faint uptick in latency during long conversations. want to lock a lightweight customer-facing runbook we can hand to them for preflight + a safe rollout plan.
+
+Sam: got it. can you share the current symptom windows? is it intermittent or tied to certain session lengths?
+
+Maria: mostly sessions > 8 turns or tokens > 2.5k. streaming stalls ~10–20s after start for some prefixes. dropoff metric (client disconnects mid-stream) ~0.09 last week -> 0.16 this week.
+
+Kevin: rough strategy that has worked: staged prefill + short-prefix KV caching + adaptive streaming with sync fallback. i.e., prefill likely prompts to warm kv cache, enable streaming on most requests, but if stream fails fallback to a synced non-stream generation call. keep rollout conservative.
+
+Jess: agree. recommend these guardrails we can ship in the runbook:
+- prefill window: call prefill for the first 2 messages of a session or when session tokens > 512
+- cache TTL: 25–45s depending on traffic pattern
+- streaming timeout: 12s client-side, if no bytes by X then attempt sync fallback
+- canary: 10% traffic for 24–48h, monitor token-cost and stream_err_rate
+
+Maria: adding customer-friendly 3-step checklist for the CS handoff:
+1) Run preflight (see prefill example)
+2) Enable adaptive_streaming:true on route and set fallback_route to low-cost-variant
+3) Monitor dropoff & latency dashboards; if dropoff > 0.12 escalate to eng
+
+Kevin: sample prefill snippet (put in runbook):
+```bash
+# prefill to warm KV cache (replace API_KEY and session_id)
+curl -s -X POST https://api.redwood.example/v1/prefill \\\  
+  -H \"Authorization: Bearer $API_KEY\" \\\  
+  -H \"Content-Type: application/json\" \\\  
+  -d '{"session_id": "acme-123", "prefixes": ["Hi, can you summarize the last chat?", "System: user context\"]}'
+```
+
+Jess: we should also include a short snippet for the fallback config in the customer console UI (copy for them):
+```
+route: customer-main
+adaptive_streaming: true
+stream_timeout_ms: 12000
+fallback_route: customer-main-lowcost
+cache_ttl_s: 30
+```
+
+Robin: i'll own the canary. plan: enable at 10% traffic on Monday morning, watch stream_err_rate, dropoff, and token-cost. if token-cost spikes > 25% notify finance & cs.
+
+Maria: for renewal risk capture — include a one-click CS checklist item: 'run prefill + confirm first 50 sessions have stream_success_rate > 95%'. if not, flag renewal risk.
+
+Aaron: quick note on feedback capture while streaming: add an unobtrusive post-stream micro-survey and an in-stream implicit rating event. telemetry example (one-liner to include):
+```
+event: user_feedback
+session_id: acme-123
+rating: 3/5
+comment: "answer truncated, missed user name"
+```
+we can use that to tie quality regressions to model/config changes when we run evals.
+
+Maria: perfect. also request that CS closes the loop with customers within 48h on any flagged session, capture screenshots + session_id. that feed goes into the weekly quality sync.
+
+Sam: from infra side: if streaming stalls are reproducible we can enable a short-lived hot-cache during the canary and instrument more granular traces (per-prefix KV hit). please ping me when canary starts.
+
+Robin: noted. i'll create a runbook doc for ACME and drop the link here once done. also cc'ing @Deploy Bot to create a canary alert.
+
+Deploy Bot: alert created -> channel #eng-oncall: rule 'acme_stream_canary_err_rate' threshold 0.03 over 10m.
+
+Kevin: one last prod-safety tip for the customer doc: include an explicit rollback step (toggle adaptive_streaming:false and revert to stable model) and a notes section for expected token-cost changes.
+
+Maria: great. action items:
+- Robin: author runbook + drop link (by EOD Friday)
+- Jess/Sam: prefill & fallback snippets verified by infra (Mon morning)
+- Kevin: add sample dashboard widgets to the runbook (dropoff, stream_err_rate, token-cost)
+- Aaron: add feedback capture examples to runbook
+- Maria: handoff to AM + include renewal-risk checklist
+
+Robin: will do. thanks team — i'll post the runbook link when ready. :thumbsup:

@@ -1,0 +1,22 @@
+eng-infra
+
+alex: Heads up — macOS CI is red across all lanes after the toolchain flags change merged into main (rpath/stdlib tweak). Anyone seen this? cc @maya @sam
+eng-ci-bot: Build failed: macos-catalina-x86_64 #342 failed: link error: undefined symbol: _objc_msgSend_stret
+Logs: https://ci.redwood.ai/build/342
+maya: looking now. can you paste the top of the link error? is it linker or compile?
+alex: linker. short snippet:
+```
+ld: symbol(s) not found for architecture x86_64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+Undefined symbols for architecture x86_64:
+  "_OBJC_CLASS_$_RDSomething", referenced from:
+      objc-class-ref in libredwood.a(Some.o)
+``` 
+sam: hmm looks like libc++ vs libstdc++ mismatch or missing -ObjC or -all_load. The toolchain change removed `-stdlib=libc++`? @jen
+jen: I rolled that toolchain change — I removed the explicit `-stdlib=libc++` because the new SDK defaults to libc++. Didn't think it would affect legacy runners.
+alex: quick test — adding back `-stdlib=libc++` in the macos toolchain should be minimal. I pushed branch `fix/macos-toolchain-add-stdlib`. PR: https://github.com/redwood-inference/redwood/pull/87
+eng-ci-bot: PR build started: #87 (fix/macos-toolchain-add-stdlib)
+eng-ci-bot: PR build passed ✅ — macos-catalina-x86_64 happy on the branch
+maya: nice. jen can you open a revert/adjust PR for the main toolchain change so we don't keep breaking old runners?
+jen: on it. I'll revert the change and add a comment explaining the compatibility issue. cc @alex for the temp branch cleanup
+alex: I'll close the temp branch after merge. thanks all :thumbsup:

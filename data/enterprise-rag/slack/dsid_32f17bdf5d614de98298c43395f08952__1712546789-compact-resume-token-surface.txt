@@ -1,0 +1,51 @@
+eng-platform
+
+alex: Following up on the iterator/paging RFC — quick proposal: standardize on a single opaque `resume_token` (string) that servers emit in page/frame footers, and have small SDK helpers to surface it. Keep transports (gRPC stream vs HTTP chunking) hidden. Thoughts?
+
+priya: +1 to opaque token. Simpler for users and avoids leaking transport details.
+
+jin: Concern: semantics for token validity and retries. If a client retries and then resumes, do we guarantee token stability? Is token tied to a time window?
+
+michael: My vote: server guarantees token identifies a stable checkpoint; tokens may be short-lived. Proposal: default validity ~30s, configurable per model/route. Clients must handle `resume` failures (retry/backoff).
+
+vera: For SDK surfaces we should follow language idioms. Ideas: Python — provide a small Handle object so iterator yields `(item, handle)` where `handle.token` and `handle.resume()` are available. TS — return an `AsyncIterable` that yields items and expose `meta` on the final frame. Go — return `(item, token, err)` from `Next()`.
+
+alex: Sketches:
+```
+# python
+for item, h in client.iter_responses(prompt):
+    ...
+# h.token or h.resume()
+```
+```ts
+// ts
+for await (const item of client.responsesStream({resumeToken})){ ... }
+```
+```go
+// go
+it.Next() -> (item, resumeToken, err)
+```
+
+priya: small nit: global helpers like `client.last_resume_token()` are racy if the same client is used concurrently. Prefer explicit handle/token returned alongside progress.
+
+jin: Agreed. For Go the token-as-return value fits well; for Python, the `Handle` object avoids races and stays ergonomic for `for` loops. In TS, we can provide a small `Cursor` object returned from a separate `getCursor()` call or include the token in a trailing frame.
+
+michael: On transport fallback: server should emit the same opaque token whether it uses streaming gRPC or chunked HTTP/SSE. That ensures client code doesn't have to change when we add fallback. Also require `Idempotency-Key` header for resumable requests so proxies and load-balancers can dedupe.
+
+vera: Retry behavior: if resume fails (token expired or mismatch), client fallback options: 1) exponential backoff + reattempt resume, 2) if still failing, restart from last known safe page (server can accept `start_after` anchors), 3) as last resort, full restart. Document recommended pattern.
+
+alex: Decision proposal (summary):
+- Keep `resume_token` opaque string returned in every page/frame.
+- SDKs expose token in-page and provide a small Handle helper in Python/TS with `.token` and `.resume()` convenience. Go returns token explicitly from `Next()`.
+- Do NOT provide a global `last_resume_token()` on client instances.
+- Require `Idempotency-Key` header for resumable streams; server will use it for dedupe.
+- Default token validity = 30s (server-configurable); clients must handle resume failures.
+- Do not expose internal token format or parsing.
+
+deploybot: infra note: tagging runtime and api teams — will schedule server-side token stabilization + Idempotency-Key rollout after RFC patch lands.
+
+priya: Please add concurrency caveats and example patterns to the doc (show how to resume safely from multiple workers).
+
+jin: LGTM, will draft the follow-up RFC patch with concrete SDK shapes and examples for Python/TS/Go.
+
+alex: Thanks everyone — moving this into RFC -> patch PR. :thumbsup:

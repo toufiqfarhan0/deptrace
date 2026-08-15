@@ -1,0 +1,32 @@
+eng-releases
+
+mike.h: Heads-up — I'm opening the DB migration thread for billing_events. Planning quiet slot tonight 02:00-03:00 UTC. Claiming the lease now.
+
+deploybot: deploybot: Lease claimed for quiet slot 2025-03-10T02:00Z by @mike.h. Holdpoint configured: canary on tenant range 1000-1999. abort_on_lock=true.
+
+olga: Can we pin service fleet to v1.24.0 for the window? Prevents client/schema mismatch during backfill.
+
+raj: +1 on pin. Also propose preflight check: if number of long-running tx > 50 then abort the window.
+
+natalie: Backfill plan: staggered waves (25% each). 30s gap between waves, KV cache warmup between waves. Canary will run on staging at 01:00 to validate metrics.
+
+mike.h: Lock strategy: attempt `FOR KEY SHARE` locks first. Escalate to `SHARE ROW EXCLUSIVE` only if necessary. Bail if any lock held > 45s.
+
+oncall-sre: If we hit lock threshold, deploybot should pause and notify #eng-oncall automatically. Can we expose a quick rollback action?
+
+deploybot: Added quick action: `/deploybot rollback-migration 1738884444 --reason "lock-threshold"` — requires manual confirmation from owner. Also exposes `/deploybot pause-migration 1738884444`.
+
+olga: If rollback happens, beware partial-backfill markers. Run the cleanup snippet after abort:```sql
+BEGIN;
+UPDATE migration_log SET status='aborted' WHERE migration_id = 1738884444;
+DELETE FROM backfill_queue WHERE migration_id = 1738884444 AND state='pending';
+COMMIT;
+```
+
+mike.h: Ack. I'll own manual rollback. We'll add a short playbook: steps to verify no orphaned rows, re-run sanity queries, and post to release-notes if we abort.
+
+natalie: :thumbsup: I'll monitor success rate and tail latencies during canary. If canary 5xxs spike > 0.5% for 5m, we abort and revert service pin.
+
+raj: Finalising owners: mike.h primary for rollback, olga backup, natalie on monitoring. Everyone on call list?
+
+mike.h: Confirmed. I'll post the release note stub and pin the deploy steps in the ops doc. Add reaction :white_check_mark: when you ack the runbook."

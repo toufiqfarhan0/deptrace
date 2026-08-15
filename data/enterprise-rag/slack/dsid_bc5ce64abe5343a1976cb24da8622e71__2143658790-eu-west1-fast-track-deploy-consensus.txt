@@ -1,0 +1,31 @@
+eng-releases
+
+marta: deploy-bot reported sustained 3x tail latency on kv-cache GETs in eu-west1 since 04:12 UTC. patch candidate v2026.3.5-hotfix queued. asking for fast-track approvals to accelerate rollout and limit customer impact. brief: index lock introduced in last refactor leads to stalls under burst load. @shawn @amanda_w please ack and provide rollback thresholds.
+
+shawn: looking now. can you paste the rollback criteria and which metrics we’re watching?
+
+marta: rollback if p95 > 400ms OR kv_get_err_percent > 0.5% for 5m. metrics: kv_get_p95, kv_get_err_percent, request_rate. patch is migration-less, pure binary swap.
+
+amanda_w: :eyes: can we do canary 10% for 15m? skipping canary feels risky.
+
+marta: ops reports 4 customer-facing incidents in last 10m, error budget burning. ops requests fast-track.
+
+devops-bot: deploy-bot: Release v2026.3.5-hotfix prepared. Proposed canary: 10% for 10m. skip_canary=false. Approvals required: eng lead + oncall.
+
+ben_engineer: I approve the fix (ben). suggest lowering rollback p95 to 350ms to be safe.
+
+cecilia_pm: :thumbsup: approving expedited rollout. CS and SRE pagers notified.
+
+shawn: I approve as compute lead. setting p95 rollback threshold to 350ms. did we update the release notes?
+
+marta: release notes updated in PR: https://git.redwood/repo/runs/1234 (short summary added). Will wait for deploy-approvals green.
+
+deploy-approvals-bot: approvals: marta (owner) -> APPROVED; shawn (lead) -> APPROVED. Required approvals satisfied. Initiating deploy in 30s. Canary config: 15% for 10m, rollback hook enabled.
+
+devops-bot: deployment started: v2026.3.5-hotfix -> eu-west1 canary 15% (nodes=6). tracking: #canary-eu-west1 stream.
+
+marta: monitoring dashboard: https://internal.redwood/boards/kv-cache-eu1. Pager will trigger on threshold breach. posting progress here.
+
+ben_engineer: if rollback needed, run: `./scripts/reset-kv-index.sh` then revert to tag v2026.3.4.
+
+marta: noted. will post stability update in 10m and close thread once stable. thanks all :heart:

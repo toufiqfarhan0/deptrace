@@ -1,0 +1,33 @@
+new-hires
+
+maya: hey team — finished day 1, trying to get into Redwood Console (staging + admin panels) to work on a feature-flag experiment. getting a 403 when I hit /flags. who owns approvals for staging vs prod access? need read+toggle for a short test. thanks!
+
+jordan: welcome! for staging most access is self-serve via the infra-access doc. can you paste the exact error you see?
+
+maya: ```
+403 Forbidden
+request id: x7f-abc123
+path: /console/flags
+```
+
+jordan: looks like you're missing the role `console-flag-editor`. i can kick off a staging grant. @lee can you approve a short prod toggle window if she needs it later?
+
+lee: i can approve prod windows but we need a ticket and a business justification first. also confirm okta/sso status — sometimes group assignment is the blocker. @maya did you finish Okta onboarding?
+
+maya: yep, Okta setup completed and MFA is on. i filed a help ticket: https://go/help/12345 — put basic justification in there (experiment A/B test for onboarding flow).
+
+sam: fyi — if it's just a short experiment we usually do just-in-time access from the devops jump service. i can grant staging or prod for a limited time (2h) and it auto-revokes. @maya ping me when you're ready.
+
+maya: that would be perfect, thanks @sam.
+
+infra-bot: role assignment complete — `console-flag-editor` granted to maya on staging (expires in 2h).
+
+maya: confirmed i can see the flags and toggle in staging now, thanks everyone :tada:
+
+maya: quick follow-up — where's the runbook for rolling back flag changes? want to avoid any accidental prod impact.
+
+sam: ops-runbooks -> feature-flag-rollback has the steps. TL;DR: set flag to previous state, run smoke tests, notify #prod-alerts and any downstream owners. happy to DM a short checklist.
+
+lee: note on prod: we still need the ticket + PM owner approval before i can give prod toggles. loop in your PM (nora) if you need prod access.
+
+maya: will loop in nora, thanks all :heart:

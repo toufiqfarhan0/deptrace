@@ -1,0 +1,41 @@
+marketing
+
+lex: Quick kickoff 1 1 We need a single landing frame that scales to Hosted / Dedicated / Private. Goal: one hero, three short proof points, one primary CTA per mode, and clear inbound routing for Private leads. Timeline: finish copy by Thu so ops can wire forms Fri.
+
+sophie: Suggest hero focus on outcome not feature. Short options: 
+- 'Ship LLM features with predictable latency.'
+- 'Serve models fast, at scale.'
+Pick short + outcome. Social will need a snappier line. :rocket:
+
+njordan: For CTAs: Hosted -> "Start free", Dedicated -> "Reserve capacity", Private -> "Request deployment". For Private, prefer the CTA to open a calendar widget, not a form. Otherwise SDR routing gets messy.
+
+sam_ops: Calendar is fine. If we keep a form fallback include fields: company_name, company_size_range, compliance_needs (checkbox), desired_deploy (VPC/on-prem), utm_campaign. Example payload keys: `company_name`, `company_size`, `compliance=yes/no`, `deploy_type`. Also add hidden `lead_tag=private_launch`.
+
+lina_sdr: Confirmed. For Private leads tag `enterprise_private`. We also want a field `priority_timeline` so we can triage. If `utm_campaign=private_launch` auto-assign to me. :raised_hands:
+
+content-bot: Note: previous benchmark doc suggests using conservative phrasing. Recommended midsection copy: 'Common p95: ~120ms on typical configs; batching + KV-cache can reduce token cost by up to 3-4x in some workloads.' Link to benchmarks.
+
+lex: Nice. For Dedicated messaging, avoid 'cheap' claims. Use 'control predictable throughput' and note committed discounts in pricing section. For Hosted emphasize self-serve speed and immediate access. For Private highlight compliance: 'KMS, audit logs, VPC, on-prem options'.
+
+sophie: Micro copy for proof points (one-liners): 
+1) 'Latency you can count on 1 median p95 < 120ms'
+2) 'Lower per-token cost 1 batching & smart caching'
+3) 'Deploy where you need 1 hosted, reserved, or in your VPC'
+Keep each under 8-10 words.
+
+njordan: Webinar hooks: 30-min demo + benchmark deep-dive. Two subject lines to test: 
+A) 'Reduce token cost 3x 1 live demo & benchmarks'
+B) 'Predictable low-latency LLM serving 1 see live'
+Also offer an APAC-friendly time slot.
+
+sam_ops: UX note: add a tiny "How it works" microflow under hero: 1) route by policy, 2) cache + batch, 3) fallback to verified model variants. Each step one sentence. We'll hand off an SVG.
+
+lina_sdr: On inbound routing, please ensure form includes `discovery_channel` and `utm_source`. That helps SDR attribution. Also add radio for 'interested_in' values: hosted/dedicated/private.
+
+lex: Final asks: @sophie draft hero variants and subheads; @njordan write webinar copy for comms; @sam_ops produce field spec and microflow copy; @lina_sdr confirm routing; I'll compile variants and push to content repo Fri morning.
+
+content-bot: Reminder scheduled: 'Marketing x Product copy sync' Fri 9:30am PT. Recording link will be posted to the doc.
+
+sophie: Sending a couple hero candidates in the doc now. Short test: reaction if you prefer one. :thumbsup: or :heart:
+
+lex: Thanks all. We'll prioritize concise, verifiable claims and clear CTAs per mode. If no objections by Wed EOD I'll lock the hero and proof points.

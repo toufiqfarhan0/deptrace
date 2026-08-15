@@ -1,0 +1,37 @@
+all-hands
+
+Maya (CEO): Quick ping — company all-hands this Thursday 10:30am PT (40m). This one's a bit different: short exec update + product demo + a policy tweak we need everyone to see. Please read and drop questions in-thread or use the form.
+Maya (CEO): High-level agenda:
+- 7m: Exec pulse (financial + hiring snapshot)
+- 12m: Product demo: new rollout path + failover validation (live)
+- 8m: Policy update: audit log exports & retention defaults (what changes)
+- 10m: Roadmap fast-hit + live Q&A (we'll answer pre-submitted first)
+- 3m: Close + action owners
+Maya (CEO): Pre-reads & slides here: https://docs.google.com/presentation/d/redwood-allhands-apr (view/comment)
+Comms-bot: Please submit live Qs via the short form so we can triage: https://forms.gle/redwood-apr-allhands-qa (1-2 bullets). We'll prioritize pre-submitted.
+Ravi (CFO): Quick note on headcount: hiring slightly paused for non-customer-facing ICs this quarter; critical roles continue. Full breakdown in slides.
+Jamal (VP Product): Demo will show the Dedicated rollout with Hosted fallback and the new canary gating. I'll post the sample prompts and flags in the deck.
+Kendall (Head Eng): Infra will run a warmup window before the demo to avoid cold-start spikes. I'll have SRE on standby for 30m after rollout.
+Ivy (People Ops): In-person viewing + lunch sign-up: tinyurl.com/rw-apr-allhands-lunch — stipend covered, dietary prefs in the form. RSVP by Wed EOD.
+Maya (CEO): Policy snippet for preview: default audit log retention for internal dev orgs shortens to 60 days to reduce storage costs; audit exports for enterprise customers remain available and retention is contract-driven. Security & Legal approved this change; we'll publish the official policy doc after the meeting.
+Jamal (VP Product): Important: if your team relies on longer internal audit windows, file an exception request before Fri so we can evaluate.
+Kendall (Head Eng): Tech note: exportability will be improved — CSV/NDJSON options and a managed S3 export path. We'll demo the export in the meeting.
+Comms-bot: Recording + captions enabled. If you can't attend, check the recording link in this channel after the meeting.
+Ops-bot: Calendar invite created and shared company-wide; reminders at 1h and 15m.
+Maya (CEO): If you want your question anonymized in the digest, say "anon" in reply to this thread. Otherwise we'll attribute.
+-- meeting occurred --
+Comms-bot: Recording uploaded: https://meet.google.com/rec-redwood-4120000000 (auto-transcript ready)
+Maya (CEO): Thanks to everyone who joined live. Quick top-line takeaways: 
+- Exec: cash runway healthy; hiring selective (see slides for targets)
+- Product: rollout path approved, fallback flow validated in staging
+- Policy: internal default audit retention reduced to 60 days; enterprise exports/retention unchanged but easier export UX shipped
+Maya (CEO): Key action items (owners & due dates):
+- Jamal: publish final rollout checklist + canary gate metrics (Due: Thu COB)
+- Kendall: enable managed export S3 path + docs (Due: Mon EOD)
+- Ravi: update hiring plan slide with approved requisitions (Due: Fri EOD)
+- Ivy: post TL;DR + recording on the company wiki + digest (Due: Mon)
+Jamal (VP Product): Runbook link (draft): https://docs.google.com/document/d/rw-rollout-runbook-4120000000  comments welcome.
+Kendall (Head Eng): Created infra tickets for warmup and S3 export; tagging SRE. Will update #eng-runtime.
+Ivy (People Ops): Recording and TL;DR will be in the weekly digest. Reply "anon" here if you want question anonymized.
+Ravi (CFO): If your team needs a headcount exception conversation, DM me and cc Ivy to schedule.
+Maya (CEO): We'll lock the action list in 72h and post a final status update. Appreciate everyone's prep and short, focused meeting today. :sparkles:

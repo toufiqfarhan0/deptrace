@@ -1,0 +1,45 @@
+eng-platform
+
+Maria Chen: Quick question — for per-route rate limits, when we return 429 should we include a stable bucket id header? e.g. `X-RateLimit-Bucket` + `X-RateLimit-Limit`/`-Remaining` + `Retry-After`? Clients want to group by bucket for dashboards.
+
+Samir Patel: +1 on the headers but worried about leaking internal routing info. Could we hash the bucket id? e.g. `bucket: sha256(route+window+quant)` so it's stable but opaque.
+
+Devon Nguyen: Hashing SGTM. Also suggest returning limit/remaining on every response (200 and 429) so clients don't have to handle 2 code paths.
+
+Shreyas Rao: My concern: adding headers on every 200 might be a breaking size/regression for a few lightweight clients, but header additions are usually fine. If we add versioning on header names we can iterate: `X-RW-RateLimit-Bucket-v1`.
+
+Maria Chen: Good point about versioned names. Backcompat question: do we also put `Retry-After` in seconds only, or both seconds + HTTP-date? many SDKs parse seconds.
+
+Samir Patel: Keep seconds in `Retry-After` (integer) and optionally `Retry-After-Date` (HTTP-date) if we want. But don't change body shape. If we need extra advice include JSON body `{\"retry_after\": 12}` on 429 for clients not reading headers.
+
+Devon Nguyen: Can we publish a small compatibility note in the changelog: "new headers (v1): X-RW-RateLimit-Bucket-v1, X-RW-RateLimit-Limit-v1, X-RW-RateLimit-Remaining-v1, Retry-After" + example curl.
+
+Maria Chen: Example (for PR):
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 12
+X-RW-RateLimit-Bucket-v1: 3f2a9b8c
+X-RW-RateLimit-Limit-v1: 120
+X-RW-RateLimit-Remaining-v1: 0
+Content-Type: application/json
+
+{\"error\":\"rate_limited\",\"retry_after\":12}
+```
+
+Shreyas Rao: One more operational detail: when we send hashed bucket, ensure the hash salt is static per deployment and rotated slowly; otherwise dashboards will split. Document rotation semantics.
+
+Samir Patel: Also callout: per-route vs per-tenant buckets. We'll expose per-route hashed bucket; backend can map to tenant-level bucket but we won't expose tenant id.
+
+ratebot: alert: observed spike 2:03pm UTC on /v1/generate — 5xx->429 cascade from a single customer (acme-inc). Bucket hash: 3f2a9b8c (seen).
+
+Maria Chen: Action items:
+- Devon: draft API contract PR with header names/examples and note about body `retry_after` fallback (assign to you).
+- Shreyas: doc short note about hash salt & rotation.
+- Samir: confirm SDKs will ignore unknown headers (quick check).
+- I'll add a changelog entry and link to rollout plan.
+
+Devon Nguyen: will send PR today, pinging reviewers.
+
+Samir Patel: I'll check SDKs + add test that asserts headers present on both 200 and 429.
+
+Maria Chen: thanks all :thumbsup:

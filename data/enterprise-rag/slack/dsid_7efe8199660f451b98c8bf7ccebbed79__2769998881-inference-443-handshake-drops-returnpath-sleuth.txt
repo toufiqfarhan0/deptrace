@@ -1,0 +1,61 @@
+support
+
+support-alice: Hey team — acme-analytics hitting intermittent 504s + 'TLS handshake failed' when calling our hosted inference from their Private VPC (dedicated placement, eu-west-1). They say it started after their infra team applied a firewall hardening change last week. customer reports only our inference endpoints affected, not other external services. Any quick triage ideas?
+
+ashok: Thanks Alice. First checks: can they reach 443 and complete TCP handshake? If TLS fails after TCP then look at middleboxes. Ask for `tcpdump` on their NAT instance / firewall and a curl with `-v`. Also confirm SG outbound + NACL rules for both inbound/outbound ephemeral ranges.
+
+maria: Agreed. Useful commands to run on their NAT/firewall host:
+```
+# check local ephemeral port range
+cat /proc/sys/net/ipv4/ip_local_port_range
+# tcpdump SYNs towards our endpoint
+sudo tcpdump -n -i eth0 "tcp and host api.redwood.ai and port 443 and tcp[tcpflags] & tcp-syn != 0"
+# quick TLS test
+curl -v --resolve api.redwood.ai:443:REDACTED_IP https://api.redwood.ai/v1/ping
+```
+Include the `curl` output and tcpdump snippet.
+
+eng-infra-joe: Also have them check conntrack / SNAT pool exhaustion — if many concurrent flows you can run out of source ports and see asymmetric return paths or resets. Commands:
+```
+sudo conntrack -L | wc -l
+sysctl net.netfilter.nf_conntrack_max
+cat /proc/sys/net/ipv4/ip_local_port_range
+```
+If `ip_local_port_range` is narrow (e.g., default 32768 60999) and they have heavy NAT, they might exhaust.
+
+customer-bob: Sharing what our infra team ran: tcpdump shows SYN->SYN/ACK sometimes, but about ~15% of TCP sessions get RST immediately after SYN/ACK from a firewall box. curl -v shows TLS handshake fails:
+```
+* Connected to api.redwood.ai (REDACTED_IP) port 443 (#0)
+* TLS 1.3 (OUT), TLS handshake, Client hello (1):
+* TLS 1.3 (IN), TLS handshake, Server hello (2)
+* TLS handshake failed: tls: handshake failure
+* Closing connection 0
+```
+We also ran `traceroute -n` and see an intermediate hop responding with `ICMP unreachable` for some flows.
+
+ashok: ICMP unreachable on path often points to PMTU or inspection device dropping fragments. But the immediate RSTs after SYN/ACK smell like a stateful ACL/NAT mismatch — e.g., a NACL deny on the return (source/destination reversed) or firewall that sees SNATed ports it doesn't expect. Can you paste NACL and SG entries?
+
+customer-bob: Pasting redacted NACL rules (subnet 10.20.0.0/24):
+```
+100: ALLOW 0.0.0.0/0 443 TCP (outbound)
+110: DENY 0.0.0.0/0 1024-65535 TCP (outbound)
+120: ALLOW 0.0.0.0/0 ALL ICMP (outbound)
+```
+And inbound rules mirror similarly. We had assumed SG statefulness would handle this but the NACL has an explicit deny for 1024-65535 outbound and it has higher precedence than the 443 allow.
+
+maria: Bingo — that NACL deny will drop the ephemeral return traffic for SNATed sessions. Remember NACLs are stateless: you must allow both sides. If client uses SNAT to a high source port, the NAT's return traffic needs the outbound NACL entry to permit the ephemeral port range. The `DENY 1024-65535` will match and drop.
+
+eng-infra-joe: Quick remediation options:
+- Add explicit ALLOW outbound 1024-65535 TCP for the subnet (priority < 110), or
+- Narrow the deny to only the CIDR you need and avoid blocking ephemeral ranges, or
+- Put a managed NAT gateway with proper SNAT port range scaling so less chance of port exhaustion and then allow those ephemeral ports.
+
+ashok: Also check their firewall appliance — some devices terminate TLS or perform deep inspection and will RST sessions if TLS parameters don't match policies (ALPN mismatch, SNI rewrite). But given NACL deny above I think that's the root cause here.
+
+sre-bot: Automated checks run: route-table -> OK; NAT gateway status -> healthy; our endpoint health checks -> PASS; client subnet NACL shows DENY 1024-65535 outbound in rule set.
+
+support-alice: Customer applied change: they removed the DENY 1024-65535 outbound and added explicit allow for ephemeral range. They report test load ran for 30m with 0 TLS handshakes failed and no 504s. customer confirms working and will roll fix to prod ACLs. :tada:
+
+maria: Recommend note in our support KB: when customers use stateless NACLs in front of a NAT/firewall, ensure outbound/inbound ephemeral port ranges are permitted for TCP flows to public endpoints. Also include conntrack/SNAT troubleshooting checklist.
+
+customer-bob: Thanks everyone, appreciate the quick help — we'll do a post-mortem on the ACL change that introduced the deny.

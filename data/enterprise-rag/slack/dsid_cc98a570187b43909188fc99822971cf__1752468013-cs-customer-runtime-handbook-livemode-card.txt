@@ -1,0 +1,44 @@
+customer-success
+
+Maya (CS): quick draft — customer-facing runtime handbook card for go-live. short checklist + troubleshooting for caching, batching, streaming, and renewal-risk signals. sharing for review :eyes:
+Jules (SE): love it. can we keep config suggestions tiny (3 lines) and include a fallback recipe? customers hate 4-page docs during a launch
+Arman (SRE): +1. add a tiny observability check: token latency p95, queue depth, and cold-kernel count. also note circuit-breaker thresholds.
+Maya (CS): draft below. please poke holes.
+Maya (CS): ---
+Maya (CS): CUSTOMER RUNTIME HANDBOOK (one-pager card)
+Maya (CS): 1) Preflight (before go-live) — run these in staging with a 10m synthetic replay:
+Maya (CS):    - Verify model variant matches SKU and quantization profile.
+Maya (CS):    - Run 2x peak qps for 2m, watch queue depth and p95 token latency.
+Maya (CS):    - Confirm KV cache hit rate > 60% for chat/history flows.
+Maya (CS): 2) Quick recommended knobs (customer-visible fields)
+Maya (CS):    - `batch_size`: 4–8 for interactive UI; 16+ for async jobs
+Maya (CS):    - `cache_ttl`: 45s–120s depending on session churn
+Maya (CS):    - `stream_timeout_ms`: 1500–3000 (lower for snappy UIs)
+Maya (CS): 3) Degradation & fallback path (if latency spikes or queue > 100)
+Maya (CS):    - First fallback: route to a smaller model variant (same API).
+Maya (CS):    - Second: enable prefix caching for high-frequency prompts.
+Maya (CS):    - Emergency: return cached summary + throttled retry header.
+Maya (CS): 4) Account-health signals we surface to CS & Sales
+Maya (CS):    - sustained p95 > 2s for 30m
+Maya (CS):    - sudden drop in request success rate (>5% errors)
+Maya (CS):    - increasing reliance on fallback model > 20% of requests
+Maya (CS):    - engagement delta: active sessions down > 15% week-over-week (possible renewal risk)
+Maya (CS): 5) Enablement & handoff script (what CS asks engineering during a bridge call)
+Maya (CS):    - "Show me the p95 graph for the last 2 hours, and recent cache hit rate."
+Maya (CS):    - "Can you toggle routing to the dedicated pool for 10 minutes?"
+Maya (CS):    - Put a temporary quota or soft-throttle while we triage.
+Maya (CS): 6) Feedback capture (post-incident, customer-facing)
+Maya (CS):    - short survey link to embed: https://redwood.ai/go/live-feedback (1–2 q's + free text)
+Maya (CS):    - tag the ticket with `cs-runtime-feedback` and summarize in the next account health pulse
+Maya (CS): ---
+Jules (SE): small nit: change `stream_timeout_ms` wording to "idle stream timeout". otherwise looks very actionable. also suggest a tiny snippet for how to toggle fallback routing:
+Jules (SE): ```json
+Jules (SE): { "routing_policy": "fallback_model:small; threshold:queue>80" }
+Jules (SE): ```
+Arman (SRE): can we add an ops-command to clear KV cache for a tenant? one-liner like `rwctl cache purge --tenant <id>`
+Maya (CS): added that to the card notes.
+Priya (Acme Corp): thanks team — this is super helpful. a question: for `cache_ttl` what's safe for privacy-sensitive sessions?
+Jules (SE): if customer needs short retention, set `cache_ttl`=0 and rely on per-request context. note cost/latency tradeoff.
+Maya (CS): action items: (1) Jules to update wording and add routing snippet; (2) Arman to confirm rwctl command; (3) Maya to create final one-pager and a short Loom for customers.
+redwood-deploy-bot: deploy queued — handbook-card-v1 -> staging (ci/1234) :rocket:
+Maya (CS): thanks! will share final link in onboarding kit and attach to the renewal-risk checklist for the first 30 days. :white_check_mark:

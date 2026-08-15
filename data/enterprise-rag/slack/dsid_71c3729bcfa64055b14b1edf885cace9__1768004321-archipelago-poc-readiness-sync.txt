@@ -1,0 +1,85 @@
+sales
+
+sam-se: Kicking off a quick async sync on the Archipelago POC readiness — customer wants a hard go/no-go by Wed next week. Need to confirm owners and blockers. High level: VPC peering, sample data ingest, model variant selection, and canary SLA.
+
+nina-pm: Timeline check — sales expects internal demo Mon, customer UAT Tues, go/no-go Wed EOD. Can we hit that?
+
+mike-eng: I can own runtime changes for the custom prompt routing and quantization profile. ETA to have a dev branch with configs is Tue noon. Blocker: need the sample data schema and a small token budget estimate.
+
+jordan-sre: I'll take network/VPC peering and test cluster readiness. Need the customer's VPC CIDR and an owner to open for peering. ETA for peering once we get CIDR is ~8 business hours.
+
+elaine-cs: I have the CIDR and will share it with @jordan-sre by EOD. Also pushing the customer to provide a 5k-line sample dataset by tomorrow.
+
+sam-se: Owners summary then: 
+- Integration + API test harness: sam-se (me)
+- Runtime + quantization config: mike-eng
+- Network/VPC: jordan-sre
+- Customer liaison / data: elaine-cs
+- PM / milestones: nina-pm
+All agreed? :thumbsup:
+
+mike-eng: Agree. Quick question — do we need KMS/HSM access for the PII in the sample? If so, that adds a day for IAM approvals.
+
+nina-pm: Customer said data is pseudonymized but they want KMS for keys at rest. @sam-se can you confirm if staging KMS creds are ok or we need a dedicated key?
+
+sam-se: I'll confirm. My guess is staging key is fine for trial but I will ask legal. If we need a dedicated CMK, flagged as a potential delay.
+
+jordan-sre: For staging peering, we can do a temporary tunnel instead of full peering to speed things up. Requires customer firewall rule for 10.2.0.0/16.
+
+elaine-cs: Customer prefers peering but will accept a tunnel for demo. They can open the firewall today if we supply the IP and port.
+
+mike-eng: For validation we need a small smoke test and a perf run: 1000 short-chat requests to measure p95. I can script that. Can someone confirm the model variant? Customer wants the smallest (quantized) flavor for cost — we should run both q4_0 and q8_1 for comparison.
+
+sam-se: Decision: run canary on q4_0 as default, fallback to q8_1 if latency > 350ms 95th. @mike-eng, can you add the fallback policy to the config?
+
+mike-eng: Yep, will add. config snippet I plan to push:
+```
+route: archipelago-poc
+model_preference: ["arch-q4_0", "arch-q8_1"]
+fallback_policy:
+  p95_latency_ms: 350
+  switch_to: arch-q8_1
+```
+
+nina-pm: Success criteria (from sales): 
+- p95 latency < 350ms for demo traffic
+- end-to-end response correctness for 10 sample prompts (customer verified)
+- no data exfil events during trial
+If we meet these, they sign trial extension.
+
+elaine-cs: I'll get the 10 verification prompts and the signed data handling addendum uploaded to the shared drive.
+
+sam-se: API test harness: I will provide a template curl and a Postman collection. Quick curl for smoke: 
+```bash
+curl -X POST https://staging.redwood.ai/v1/generate 
+  -H 'Authorization: Bearer xxxxx' 
+  -H 'Content-Type: application/json' 
+  -d '{"model":"arch-q4_0","input":"test"}'
+```
+Replace bearer with staging key.
+
+jordan-sre: deploy-bot: schedule a canary rollout window Wed 09:00-12:00 so SRE can monitor.
+
+deploy-bot: Canary rollout scheduled for archipelago-poc on 1768008000 (Wed 09:00). Alerts: p95 latency, error rate > 1%.
+
+mike-eng: Small blocker — we need a test account with sample tokens for the customer so metrics are tied to the POC. @elaine-cs can you get that created?
+
+elaine-cs: I'll have a test account and token by EOD tomorrow and will DM it to @sam-se and @jordan-sre.
+
+sam-se: Outstanding blockers list: KMS decision, sample data, test account/token. Owners: mike, elaine, sam. Next check-in: Tue 10:00AM sync channel update. If anyone hits a hard blocker before then, ping here.
+
+nina-pm: I'll send a calendar invite for Tue 10 and attach the success criteria doc.
+
+mike-eng: One more note — if quantization regressions show up, fallback to the unquantized dev model for demo. I'll watch logs and flag quickly.
+
+sam-se: Perfect. Thanks everyone. If you can drop a one-line status by EOD, helps me summarize for sales.
+
+mike-eng: will do — dev branch ready Tue noon.
+
+jordan-sre: I will start peering prep now.
+
+elaine-cs: test account + CIDR shared in DM in 30m.
+
+nina-pm: Invite sent.
+
+sam-se: Great — closing the loop for now. :rocket:

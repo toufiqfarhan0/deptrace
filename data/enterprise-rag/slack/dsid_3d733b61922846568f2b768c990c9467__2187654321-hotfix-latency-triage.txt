@@ -1,0 +1,29 @@
+eng-runtime
+
+alex: Heads up: after rolling runtime v3.2.1 at 2026-03-16T15:12Z I'm seeing p95/p99 spike on /v1/generate for long sequences. p95 120ms -> 420ms, p99 350ms -> 1.2s. Dashboard: https://dash.redwood/runtime/route=/v1/generate :rotating_light:
+maria: @alex thanks — pinging oncall @jamie :eyes: any initial thoughts?
+jamie-oncall: On it. Can you paste the PromQL and a short sample of the histogram?
+alex: PromQL snippet:
+```
+sum(rate(request_duration_seconds_bucket{job="runtime",route="/v1/generate",version="v3.2.1"}[2m])) by (le)
+```
+Quick numbers: p95 ~ 420ms, p99 ~ 1.2s for sequences >512. Only v3.2.1 appears impacted.
+jamie-oncall: Looks correlated with the kernel-selector change in v3.2.1 (PR #987). Are heavy sequences being routed to the new kernels? Canary was 5% earlier but only short window.
+kevin: I deployed the hotfix — kernel selector fallback order was adjusted to prefer fast-fp16 kernels on A100s. My assumption was perf win; could be a regression for long seqs due to KV layout. I'll bisect.
+jamie-oncall: Mitigation options: 1) route seq_len > 512 to v3.2.0, 2) reduce max_concurrency for v3.2.1 to 2, 3) rollback canary. Which do we want now?
+maria: Do 1+2 now, rollback if not stable. Please post exact admin commands so support can reproduce steps.
+jamie-oncall: Commands: 
+```
+# route long sequences back to 3.2.0
+curl -X POST -H "Authorization: Bearer $ADMIN" https://control-plane.internal/routing -d '{"route":"/v1/generate","match":{"seq_len_gt":512},"version":"v3.2.0"}'
+
+# reduce concurrency for 3.2.1
+curl -X POST -H "Authorization: Bearer $ADMIN" https://control-plane.internal/runtime/v3.2.1/config -d '{"max_concurrency":2}'
+```
+infra-bot: Deployment event: rollback scheduled for canary 3.2.1 -> 3.2.0 by jamie-oncall at 2026-03-16T15:30Z
+jamie-oncall: Started applying routing + config changes. Observability: https://dash.redwood/runtime/rollouts/123
+support-bot: Support ticket #2026-348 created for customer "AcmeApp" complaining about high latency; linked to this thread.
+jamie-oncall: After routing change p95 dropped to ~130ms, p99 ~300ms for long seqs — holding and watching for 10m. Will bisect the kernel-selector change in staging: run with selector=legacy vs selector=new.
+kevin: I'll instrument detailed traces in staging and run the reproduction script (seq_len 1024, batch=1) against both builds, then post spans. cc @maria if you want to coordinate messaging to the customer.
+maria: Thanks. Action items: jamie keep rollback/progress, kevin run bisect + post traces, alex keep posting p95/p99 snapshots every 10m. I'll update the customer and support ticket.
+alex: Copy — posting snapshot at 2026-03-16T15:45Z: p50 90ms p95 128ms p99 312ms. :thumbsup:

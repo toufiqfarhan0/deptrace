@@ -1,0 +1,56 @@
+devex
+
+maya: Heads-up — hitting a flakey auth + timeout combo in the Kotlin sample app on Android 14. OkHttp keeps reusing connections that the platform closes, then our Authenticator kicks off multiple token refreshes.
+
+maya: Repro: run sampleapp on Pixel 8 emulator (Android 14), enable okhttp logging, hit /v1/generate concurrently (x8). After ~30s you see repeated 401->refresh loops and some calls hang.
+
+maya: Log excerpt: 
+```
+I/OkHttp: <-- 401 http://api.dev.redwood/v1/generate (216ms)
+I/Auth: starting token refresh (reqId=xyz)
+I/OkHttp: <-- 401 http://api.dev.redwood/v1/generate (218ms)
+I/Auth: starting token refresh (reqId=abc)
+W/OkHttp: connection closed during stream, retrying
+```
+
+jen: ugh. Did you try using a synchronized refresh so only one coroutine does the refresh? we saw duplicates before.
+
+tariq: Also Android 14 changed some keepalive behavior in the system TLS stack; idle sockets can be closed earlier which makes okhttp get NO_IDLE sockets and triggers reconnects. Could exacerbate races.
+
+maya: I tried a quick Mutex around refresh (Kotlin coroutines) and it dramatically cut duplicates, but still some calls hang waiting on the refreshed token because the Call was canceled by timeout before the Authenticator completed.
+
+alex: Which timeout specifically? OkHttp call timeout or Retrofit's deadline? If calls cancel we shouldn't trigger more refreshes.
+
+maya: Call timeout = 30s, connect/read intact. Sequence: existing call gets 401, Authenticator runs, token refresh takes ~3s, meanwhile more parallel calls get 401 and queue up. Some callers hit callTimeout and are canceled -> okhttp cancels the connection while the Authenticator is still running, leaving in-flight streams weird.
+
+tariq: Workarounds we've used: 1) move token refresh off the OkHttp Authenticator into an application-managed interceptor with a singleflight/synchronized refresh; 2) bump call timeout or return an immediate 401 fallback earlier; 3) use Dispatcher.setMaxRequestsPerHost to reduce bursty parallelism during refresh.
+
+jen: Sample mutex pattern I used: 
+```
+private val refreshMutex = Mutex()
+private suspend fun refreshTokenBlocking(): String {
+  refreshMutex.withLock {
+    if (tokenValid()) return currentToken
+    // suspend network refresh here
+    currentToken = api.refresh().accessToken
+    return currentToken
+  }
+}
+```
+Then interceptor uses refreshTokenBlocking() when 401 detected and retries once.
+
+maya: Thanks — I'll try moving logic to interceptor and using synchronized refresh + retry-once behavior. Also going to add an explicit connectionPool evictAll() on token rotation in the sample to avoid reused stale sockets.
+
+alex: For the SDK we should add a recommended pattern in the Android guide: "Avoid heavy work in OkHttp Authenticator; prefer app-managed singleflight refresh; set retry-once; consider increasing call timeout slightly on mobile". Add sample code and mention Android 14 socket quirks.
+
+tariq: Agreed. Also add note about emulator repro: toggle airplane mode rapidly to expose the early-closed-socket behavior.
+
+ci-bot: build/ci: sampleapp-instrumentation-tests #482 succeeded (15m)
+
+maya: I'll open a small PR to the sample app with the mutex pattern, one-retry policy, and docs in devex. Will ping you all when ready. :thumbsup:
+
+jen: great — can you include a minimal e2e repro script? that helped us triage.
+
+maya: Yep. I'll paste steps + a grep-friendly okhttp log snippet in the PR.
+
+alex: thanks — this will help reduce onboarding friction for Android teams hitting auth/retry weirdness on newer OSes.

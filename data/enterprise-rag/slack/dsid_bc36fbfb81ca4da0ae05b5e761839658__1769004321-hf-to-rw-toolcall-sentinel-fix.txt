@@ -1,0 +1,54 @@
+eng-ml
+
+emily: Starting a quick thread re: HF->Redwood tool-calling conversion weirdness I hit during q4 quant experiments.
+
+raj: what happened?
+
+emily: Model uses HF conversation template with role tokens <|sys|> / <|usr|> / <|ass|>. When we convert to Redwood chat format the tokenizer doesn't preserve the <|...|> tokens as single specials -> they get split. JSON-mode parsing fails when function args are emitted.
+
+kai: ugh. Got a small repro?
+
+emily: Yep. Minimal snippet:
+```
+# config.json (from HF)
+"special_tokens": {
+  "additional_special_tokens": ["<|sys|>", "<|usr|>", "<|ass|>", "<|tool_open|>", "<|tool_close|>"]
+}
+```
+When I run tokenizer.tokenize on `{"tool_call": {"name": "search", "args": {"q":"x"}}}` the `<|tool_open|>` appears as `'<', '|', 'tool_open', '|', '>'` tokens in the model input.
+
+marc: Is this the fast tokenizer (tokenizers lib) or slow py tokenizer?
+
+emily: fast (rust) tokenizers. Also reproduces with the HF transformers fast byte-level BPE on our LLaMA forks.
+
+raj: Did you add them via tokenizer.add_special_tokens or via config.json -> from_pretrained?
+
+emily: I tried both. add_special_tokens works at encode time but when loading model + tokenizer from checkpoint in Redwood conversion we rely on config.json. The issue seems to be tokenizer.json vs config mismatch.
+
+kai: Workaround idea: map tool tags to single unicode sentinel chars e.g. \uE000.. instead of angle-bracketed tokens. Those are always treated as single tokens by BPE.
+
+emily: tried that. Helps tokenization but breaks readability and some eval harnesses that expect printable markers.
+
+marc: Another thought: during HF->Redwood conversion add a pretokenization rule using tokenizer.backend_tokenizer.post_processor or added pattern to split/join? If we can make tokenizer treat `<|tool_open|>` as a single pre-token via `tokenizer.add_tokens(["<|tool_open|>"])` before saving tokenizer.json it should persist.
+
+emily: I patched our conversion script to inject the special tokens into `tokenizer.json`'s `normalizer` and `pre_tokenizer` rules. After that function calling outputs stable chunks and JSON-mode tests pass.
+
+ops-bot: deploy 1769004321 -> staging successful :white_check_mark:
+
+raj: What about role tokens? Any collisions with JSON-mode token boundaries?
+
+emily: Yes. Role prefix `\nSystem:` vs explicit `<|sys|>` caused mismatch in generation logits when we swapped. Recommendation: pick one canonical role encoding at model bring-up. For new models we prefer explicit single-token sentinel chars so module code can reliably detect boundaries without having to run the tokenizer again.
+
+kai: Any perf impact from extra special tokens after quantization (4-bit/8-bit)?
+
+emily: negligible on throughput, but quant libs sometimes require remapping token ids at compile time. We added a remap table in the compile step that preserved the specials. No quality regression in our sanity prompts: delta BLEU ~0.
+
+marc: Nice. Can you open a small PR to the hf-to-rw conversion scripts and add a test that ensures `<|tool_open|>` is one token? Include a tokenizer.encode assert.
+
+emily: will do. Also capturing the failing example and the fix in release notes. :eyes:
+
+raj: thanks — this explains several weird tool-calling truncations we saw in the logs.
+
+kai: assigning follow-ups: emily -> PR + test, marc -> release note blurb, raj -> add to onboarding checklist.
+
+emily: ack.

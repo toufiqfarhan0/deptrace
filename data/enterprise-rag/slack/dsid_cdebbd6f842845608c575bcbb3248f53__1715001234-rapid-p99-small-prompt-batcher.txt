@@ -1,0 +1,97 @@
+support
+
+support-ian: FYI: Customer BrightCart opened CS-4821 — sudden p95/p99 regressions on POST /v1/generate since ~04:15 UTC. They report intermittent requests hitting ~1.6-1.9s p99 while p50/p95 look fine.
+
+support-ian: quick snapshot from our metrics:
+- baseline p99 ~240ms, current p99 ~1.8s for that customer / route
+- error rate stable, 2% 429s from downstream quota but not correlated with these spikes
+- logs show messages like `waited N ms in continuous-batcher` on affected requests
+
+support-ian: sample request ids: r_abc123 r_def456 r_tiny001
+I attached a minimal curl repro (same as customer):
+```bash
+for i in {1..200}; do 
+  curl -sS -X POST https://api.redwood.internal/v1/generate \
+    -H "Authorization: Bearer <REDWOOD_TEST>" \
+    -H "Content-Type: application/json" \
+    -d '{"prompt":"hi","max_tokens":10,"model":"open-llama-13b"}' &
+done; wait
+```
+repro shows a subset of requests with 700ms-2s latency.
+
+anya: I’m on it. pulled the trace for r_abc123 — spans show the majority of time in `batcher.hold_wait` on the serving node (gpu-12). The continuous-batcher appears to be deferring small prompts waiting for additional tokens to join the batch.
+
+anya: metrics snapshot: small_prompt_fraction (len<=8 tokens) jumped from 12% -> 48% for that route in the past hour (customer started a load test of short prompts). Our current config for the continuous batcher is:
+```yaml
+continuous_batcher:
+  max_batch_tokens: 2048
+  max_batch_items: 32
+  hold_ms: 12   # currently 12ms globally
+  min_items_to_dispatch: 2
+```
+
+anya: hypothesis: with many tiny requests, hold_ms of 12ms tries to improve throughput but ends up adding tail latency as small prompts are starved waiting for a full batch that never materializes.
+
+jake: agree. Also seeing `kv-cache` pressure low; not a cache miss issue. This looks like the classic hold_time vs arrival-rate tradeoff.
+
+maria: Can we toggle a per-route override for BrightCart to reduce hold_ms to 2-4ms or enable an immediate-flush for prompts < 16 tokens? That would reduce p99 for this customer without changing global economics.
+
+tim: quick mitigation options (ranked):
+1) route-level: set `hold_ms=3` + `min_items_to_dispatch=1` for that customer route (fast lane for short prompts) — low risk, immediate effect.
+2) runtime feature flag: `small_prompt_fastlane=true` that bypasses batching for payloads < N tokens — medium risk, needs code change + rollout.
+3) global: reduce hold_ms from 12 -> 6ms — lower tail for everyone but increases cost/throughput tradeoff.
+
+anya: I prepared the route override JSON for canary:
+```json
+{
+  "route": "/v1/generate",
+  "customer_id": "brightcart",
+  "batching": {
+    "continuous_batcher": {
+      "hold_ms": 3,
+      "min_items_to_dispatch": 1,
+      "max_batch_items": 24
+    }
+  }
+}
+```
+
+anya: Repro steps for SRE to test on staging (doable locally):
+1) deploy the override to staging for a single route.
+2) run the same `for i in {1..200}` curl flood from a box pinned to the same zone as the serving node.
+3) measure p50/p95/p99 and check `batcher.wait_ms` histogram.
+
+support-ian: Customer is amenable to a quick change if it reduces p99; they prefer not to move to Dedicated yet.
+
+jake: I'll spin up a canary with the override on staging and run the repro now. If results look good I'll request a controlled production canary for just BrightCart.
+
+sre-bot: deploy-request: canary-config apply by jake at 2024-05-06T04:32:10Z — awaiting approvals.
+
+maria: Quick note — make sure to monitor token-level cost after change. Small-prompt bypass will reduce latency but could reduce batching efficiency; send a small alert for token/sec delta on that route.
+
+anya: Ran staging run (200 concurrent tiny prompts) with override:
+- p50: 98ms -> 90ms (small change)
+- p95: 220ms -> 150ms
+- p99: 1.75s -> 210ms  ✅ dramatic improvement for tail
+- batcher.wait_ms histogram shows almost no >50ms buckets for that route.
+
+jake: production canary queued for 10% of BrightCart traffic for next 15 minutes. Rolling out now.
+
+sre-bot: canary-deploy: route-override applied to 10% of brightcart traffic by jake at 2024-05-06T04:40:05Z
+
+support-ian: Customer confirmed p99 improved on their side within minutes. They reported a drop from ~1.8s -> ~220ms.
+
+tim: Follow-ups:
+- create a small internal playbook entry for per-route hold_ms overrides.
+- add telemetry: small_prompt_fraction per-customer, and a suggested hold_ms in Optimize console when fraction>30%.
+- longer-term: implement `small_prompt_fastlane` as a runtime option with opt-in per-customer.
+
+anya: I’ll open a product/infra ticket to track adding per-route recommended values and a dashboard card for small_prompt_fraction.
+
+maria: Also file a cost-impact note in the ticket; include sample math for token-cost delta if batching efficiency drops by X%.
+
+support-ian: Closing CS-4821 with workaround applied. Will keep monitor for 24h and follow up. Thanks team :thumbsup:
+
+jake: leaving notes in the incident doc: `https://redwood.atlassian.net/browse/CS-4821` — link posted.
+
+sre-bot: log: thread closed by jake at 2024-05-06T05:02:10Z

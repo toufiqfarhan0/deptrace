@@ -1,0 +1,79 @@
+eng-releases
+
+alex (eng-release): FYI — we're putting the orbit service canary on hold. Incident in us-west triggered DB connection saturation, want to avoid adding traffic during mitigation.
+
+deploybot: Deploy #3345 to orbit-canary queued -> HOLD (reason: incident_us-west_db_saturation). Action: coordinator required to reschedule.
+
+maria (oncall): Confirmed the DB pool is the bottleneck. We're throttling write-heavy jobs and scaling read replicas. ETA for stabilization ~30–45m.
+
+jen (pm): Thanks. Can you also confirm whether this affects the feature-flag rollout? Need to message affected product owners.
+
+alex (eng-release): Feature-flag rollout is tied to canary. We'll keep the flag off until canary completes. Planning a soft requeue once DB ops gives green.
+
+sam (sre): Quick note: if we resume full canary immediately we risk compounding the backlog. Suggest a staged resume: 10% traffic -> 30% -> 100% with 15m observation windows.
+
+noah (infra): Agree. Also recommend switching canary instances to smaller batch-size, e.g., set BATCH_SIZE=8 temporarily to reduce peak DB requests.
+
+ops-manager: Are we pinning the release to the current artifact version to avoid accidental re-queues?
+
+alex (eng-release): Yes — pinning to orbit-1.12.3 for now. Will update release notes and the rollout config.
+
+deploybot: Action taken: release pinned to orbit-1.12.3, canary job #3345 remains HOLD. To un-hold: `@alex unhold --staged 10,30,100 --observe 900s`
+
+maria (oncall): Ops update: replicas scaled +2, DB connections down 40%, backlog draining. Reassess in 25m.
+
+jen (pm): I'll prepare a short status blurb for the stakeholders and pause the release calendar entry.
+
+sam (sre): Also creating a canary-watch alert for request errors > 1% during staged rollout. Will link runbook in thread.
+
+alex (eng-release): Runbook link: https://intranet.redwood/runbooks/db-saturation. Checklist before unhold: 1) DB error rate < 0.2% over 5m, 2) backlog < 500 items, 3) replica CPU < 70%.
+
+noah (infra): Patch suggestion: temporary kvcache TTL increase to avoid DB hits for repeated reads. Pushed config to staging; can try in prod if needed.
+
+ops-manager: If hold extends beyond 3 hours we'll need to rebook the change window for tonight. Heads-up to support teams that SLA may be impacted.
+
+maria (oncall): If we need to reschedule, prefer the 02:00–04:00 window (low traffic). I'll hold that slot tentatively.
+
+jen (pm): Noted. Also adding a line to release notes: "Delayed canary due to incident in us-west; pinned to orbit-1.12.3. Will reschedule once infra stabilizes."
+
+alex (eng-release): Thanks everyone. @deploybot keep hold until I run the unhold command. I'll post when I start the staged resume.
+
+deploybot: Acknowledged. HOLD maintained.
+
+maria (oncall): Update: backlog down to 420, error rate 0.15%. Looks like we might be able to start staged resume in 10–15m.
+
+sam (sre): I'll be standby for canary metrics and ready to abort if errors spike.
+
+ops-manager: Please confirm final go/no-go in this thread before unhold.
+
+alex (eng-release): Will do. Planning to unhold at ~1749356890 if metrics hold.
+
+jen (pm): I'll send the stakeholder blurb now.
+
+noah (infra): One more: after completion, recommend a thorough postmortem and a tweak to our autoscaling policy for DB pools.
+
+alex (eng-release): Agreed. We'll open a postmortem ticket and include rollout timing, mitigation, and follow-ups.
+
+maria (oncall): Standing by.
+
+sam (sre): Ready.
+
+deploybot: Thread locked for actions: pin=orbit-1.12.3, hold=#3345, unhold-owner=alex.
+
+alex (eng-release): Unholding now — starting staged resume 10% -> 30% -> 100% with 15m observ. If anything, abort with `/deploybot abort #3345`.
+
+deploybot: Staged resume accepted. Stage 1 (10%) started.
+
+maria (oncall): Monitoring: error rate stable at 0.12%, DB connections nominal.
+
+sam (sre): Stage 1 looks good. Proceed to 30%.
+
+deploybot: Stage 2 (30%) started.
+
+alex (eng-release): Proceeding with observation.
+
+noah (infra): Systems stable.
+
+deploybot: Stage 3 (100%) started. Canary completed successfully. Release moving to main rollout as per schedule.
+
+jen (pm): Thanks team — updating release notes to say: "Canary delayed due to incident; resumed with staged rollout; no customer impact observed." :tada:

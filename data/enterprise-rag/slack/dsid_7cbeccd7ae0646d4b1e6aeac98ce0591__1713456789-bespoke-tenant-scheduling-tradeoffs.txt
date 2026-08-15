@@ -1,0 +1,46 @@
+product
+
+Maya Patel: ACME pilot request — they want per-tenant reserved capacity + short burst for peak windows. Can we triage across runtime/infra/security? Need clear launch criteria for private deploys.
+
+Arjun Singh: Do we have numbers? QPS pattern? SLA?
+
+Diego Morales: Customer said 5 steady slots per tenant, burst to 20 for up to 10m during batch ingestion. 99.9% p95 latency goal.
+
+Lena Zhou: Runtime note: reserved GPU slots + warm KV caches. Burst to 20 will need prewarm or fast replica spinup; cold-starts will break the p95.
+
+Priya Nair: Infra: can provision node pool with taints per-tenant but autoscaler lag is ~45s. Need a short-term prewarm strategy or buffer pool.
+
+Samir Gupta: Security: per-tenant isolation OK, but HSM-backed key access for private deploy needs entitlement; adds 2-3 days ops work. Also logging retention and audit scope?
+
+Maya Patel: Proposed acceptance criteria: 1) 5 reserved slots per tenant + buffer pool to support 20 bursts for 10m w/o cold starts 2) p95 <300ms for text-generation for pilot queries 3) audit logs available in S3/KMS. Thoughts?
+
+Lena Zhou: Alternatives: continuous prefix caching + small hot pool. Suggest: hot pool size = 4 per region, global buffer of 10 for bursts. Might meet latency without full 20 prewarm.
+
+Priya Nair: We can do hot pool + node-pool for dedicated tenants. Autoscaler policy:
+
+```yaml
+autoscale:
+  target_utilization: 0.65
+  buffer_pool: 10
+  prewarm_timeout: 30s
+```
+
+Arjun Singh: Engineering lift estimate?
+
+Lena Zhou: Runtime changes: ~2 engineer-weeks for hot-pool + eviction tuning. Needs testing on dedicated infra.
+
+Priya Nair: Infra: ~1 week to provision node pools + config + runbook.
+
+Samir Gupta: Security: 1 week for HSM entitlements + 2 days for logging config. Risk: audit approvals.
+
+Maya Patel: Owners: Runtime = Lena, Infra = Priya, Security = Samir, PM = Maya, CS = Diego. Can everyone take these? I'll kick off a canary pilot to validate assumptions.
+
+deploy-bot: Canary job scheduled: canary/acme-pilot v1 -> staging at 1713460200
+
+Diego Morales: I'll coordinate with ACME for 2-week pilot window and test prompts.
+
+Arjun Singh: OK. Can we target Q2 beta (blockers cleared by end of next sprint)? :thumbsup:
+
+Lena Zhou: Yes, if no unexpected perf regressions. I'll queue perf baseline runs.
+
+Maya Patel: Great — I'll update roadmap doc and add launch gates: capacity verification, perf regression <2% over baseline, security signoff. Thanks all. :raised_hands:

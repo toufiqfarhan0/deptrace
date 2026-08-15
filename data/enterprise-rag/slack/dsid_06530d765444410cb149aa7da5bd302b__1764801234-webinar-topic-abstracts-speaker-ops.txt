@@ -1,0 +1,62 @@
+marketing
+
+elena: pitching two webinar abstracts — need quick vote. A) "Cost-first serving: practical levers to cut inference spend" (bench + playbook). B) "Latency vs cost: pick the right SLAs for real products" (decision framework + case). which resonates more?
+
+maria: leaning A because it maps directly to trial CTA (we can give an evaluation kit). also easier to quantify with bench numbers.
+
+ada: (fyi) both are good but A probably converts better for fintech/marketplace customers. we can A/B the subject lines instead of the whole theme.
+
+jay: agree. plan: announce email with subject A/B, targeted LinkedIn ads for platform engineers, and an SDR follow-up flow for signups. budget: small test $2k.
+
+prashant: speaker availability: I can do a 10–12min technical segment on batching/kv-cache + 3 concrete config snippets. happy to demo a simple fallback policy. need a pre-recorded clip for the demo in case of live flub.
+
+nora: customer case study option: finance customer saw 35% lower P95 after batching + model routing. can present if we anonymize numbers. available Apr 20.
+
+elena: draft abstracts:
+- abstract A: "Many teams solve accuracy first, then get surprised by inference costs. In this session we'll show measurable levers — batching, prefix caching, model routing — that cut unit costs without sacrificing latency. Includes a short customer story and a reproducible evaluation kit."
+- abstract B: "Tradeoffs matter: we walk through SLA-driven decisions for latency and cost, with templates for setting SLOs and automating fallbacks when budgets or capacity change."
+
+ada: thumbs on A. next: run-of-show (45m). propose slightly longer to allow deeper Qs.
+
+elena: suggested run-of-show (45m):
+```
+0:00-0:05 host intro + goals
+0:05-0:20 product/ops (prashant) — strategies + config examples
+0:20-0:30 customer case study (nora) — metrics + lessons
+0:30-0:38 pre-recorded demo (30s clip) + live dashboard walkthrough
+0:38-0:44 live Q&A (moderated, upvotes)
+0:44-0:45 CTAs + links + evaluation kit
+```
+
+jay: lead routing: hidden field source=webinar_cost_playbook, tag=webinar_cost, and engagement scoring: asked question or watched >50% -> route to AE; registered but no engagement -> SDR nurture. I can implement mapping in HubSpot.
+
+maria: marketing assets we need: announcement email copy (2 variants), landing page, 30s demo clip, 3 FAQ snippets for sales, one-pager evaluation kit. elena please draft both abstracts + 2 subject lines by Tue.
+
+prashant: tech checklist for demo: mic check, backup laptop, demo MP4, VPN access for customer metrics, slide PDF backup. will upload demo MP4 by Wed COB.
+
+elena: promo calendar: week -3 announce, week -2 paid ads + partner outreach, week -1 reminders + blog post, webinar day: 2h reminder + 15m before.
+
+ops-bot: Webinar platform check: recording enabled, max attendees 3k, live polling enabled.
+
+ad a: quick ask — can we include a tiny bench claim in promo copy: "customer observed 35% P95 improvement" with methodology line on landing page? legal ok with anonymized customer metrics?
+
+nora: legal ok with anonymized and methodology note. we'll provide a 1-line methodology: 2-week rolling windows, matched workload.
+
+elena: action items (short):
+- elena: abstracts + 2 subject lines + landing hero copy (due Tue)
+- prashant: slides + demo MP4 + 3 config snippets (due Wed)
+- nora: anonymized metrics + short quote (due Wed)
+- jay: hubspot mapping + paid brief (due Wed)
+- ada: final sign-off on promo copy and bench blurb (Thu)
+
+maria: will schedule tech check + dress on calendar after assets land. also drafting evaluation kit README to drop into follow-up email.
+
+elena: I'll post A/B subject line variants in the doc once done. quick poll: are we good to lock topic A? :+1: or :-1:?
+
+maria: :+1:
+
+jay: :+1: locking A, will prep paid targeting.
+
+ops-bot: Reminder: rehearsal room reserved Thu 09:00 PT.
+
+elena: thanks team — I'll share the draft landing page and email copy in this thread when ready.

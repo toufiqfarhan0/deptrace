@@ -1,0 +1,40 @@
+devex
+
+nina: heads-up — our sampleapp tokens started failing for a handful of new users after a key rotation this morning. getting 401s in the JS and python SDKs
+
+sam: thanks, nina. are they using env vars or passing keys directly?
+
+nina: env vars. they followed README which says REDWOOD_API_KEY but our CLI docs use REDWOOD_KEY and some sample apps still have REDWOOD_TOKEN. super confusing.
+
+eli: ugh, env var parity bug again. SDKs should accept a common set and deprecate others with warnings. current fallback list is different per SDK.
+
+maria: customers are hitting this on first run — onboarding ticket opened by Acme. can we make a quick patch in sampleapp and docs?
+
+sam: I can put a tiny change in both SDKs: accept these names (in order): REDWOOD_API_KEY, REDWOOD_KEY, REDWOOD_TOKEN and emit a single-line deprecation warning when using KEY or TOKEN. also add explicit example in README.
+
+nina: perfect. can we also surface a better error when a rotated key is used — current 401 is just "unauthorized" with no hint about rotation or org/project scoping.
+
+eli: we can include this on the SDK side: when 401 from /v1/authorize include guidance like "possible causes: key rotation, project-scoped key, or wrong env var name". small change in error mapping.
+
+sam: will do. quick patch:
+```js
+// fallback resolution order
+const key = process.env.REDWOOD_API_KEY || process.env.REDWOOD_KEY || process.env.REDWOOD_TOKEN;
+if (!key) throw new Error('No API key found. Set REDWOOD_API_KEY.');
+```
+
+sam: and add server-side metric to tag 401s as rotation-suspected when the key format matches old-prefix but fails auth.
+
+maria: can we add a blurb in the onboarding checklist for support engineers: "if 401 after rotation, check env var name, check project scoping, reissue key with org scope"? saves a ticket back-and-forth.
+
+nina: yes please. also, can we add a tiny CLI helper to rehydrate env for local dev after rotation? something like `rw auth show --env` prints export lines.
+
+eli: good idea. I'll open a PR for the SDK parity + improved 401 text. sam, wanna own sampleapp + README updates?
+
+sam: yep. will create PRs for js/pysdk + sampleapp + support checklist. tagging @cred-bot to post rotation audit for Acme.
+
+cred-bot: rotation-log: key rotate by ops@acme at 2024-11-02T09:12:34Z; old_key_prefix=rw_abc123; new_key_prefix=rw_def456; affected_clients=3
+
+maria: thx. please reference PRs in the support ticket and ping me when deployed so I can update the customer.
+
+nina: thanks all — small changes but should cut onboarding friction a lot. :thumbsup:

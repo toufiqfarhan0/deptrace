@@ -1,0 +1,21 @@
+1787654322
+
+Jordan (PM): Quick async mid‑Q pulse for Shipline Falcon: short updates on shipped/slipped/deps. Please drop updates by EOD. TL;DR: rollout pushed ~1 week pending DB migration.
+Alex (Eng): Shipped: streaming proxy perf fixes (PR #4321) merged + canary started. :party:
+Priya (Eng): Slipped: local caching work blocked by storage team — migration tickets unblocked? Owning: @Tom will follow up. PR #4399 WIP, ETA ~3 days.
+Tom (Platform): Unblocked storage migration — infra put hotfix in. Created INF-778. I'll confirm migration window tomorrow 10–11am PST.
+Maya (Product): Clarify ownership: who owns rollback plan if canary regresses? @Alex?
+Alex (Eng): I'll own rollback. Rollback plan: revert to v3.1 + disable GADB cache. Docs: https://confluence/shipline/rollback (internal).
+Sam (Eng): CR ping for PR #4399 — needs 1 more backend review. @Priya assigning @Lina for second pass.
+Lina (Eng): Taking it now. ETA review done by 4pm.
+Jordan (PM): Dependency: analytics event schema change must land before GA. Owning: @Maya to coordinate with analytics.
+Maya (Product): Looping analytics: @Rae-analytics can you confirm schema timeline?
+Rae-analytics: Schema ready; will deploy with next release (canary ok). Posting spec in GH issue #555.
+Alex (Eng): Extra ask: perf regression on 95p tail — enable debug traces for 2h? Need telemetry.
+eng-oncall-bot: eng-oncall: Temporary debug traces enabled on canary for 2h as requested by Alex. Trace IDs: t-9f3b.
+Priya (Eng): Update: PR #4399 ready after @Lina review. I'll coordinate canary rollout after merge.
+Jordan (PM): Next steps: 1) Lina review + merge; 2) Tom migration window; 3) analytics schema deploy; 4) canary ramp. Owners: Lina/Alex/Tom/Maya. Call out any slips here.
+Tom (Platform): If migration runs long we shift ramp +24h. Will update INF-778 with status.
+Maya (Product): Thanks — I'll post condensed status to #exec after EOD unless new blockers appear.
+Sam (Eng): :thumbsup: nothing else from infra side.
+Rae-analytics: :white_check_mark: Spec posted to GH issue #555, linking here: https://github.com/org/repo/issues/555

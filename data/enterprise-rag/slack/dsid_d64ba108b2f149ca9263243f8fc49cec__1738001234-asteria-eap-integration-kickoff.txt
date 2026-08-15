@@ -1,0 +1,37 @@
+partnerships
+
+Jordan P.: Heads up — kicking off the Asteria EAP integration. NDA signed yesterday, partner wants a short-run benchmark + telemetry hookup and a cloud marketplace listing draft. Need to align on scope and owners. Can we do a quick ops checklist and tentative timeline?
+Maria S.: SGTM. Do we know which models they'll want us to test (sizes / quant types)? Also need clarity on telemetry endpoints.
+Sam T.: We'll run 7B/1.4B and a 70B smoke if infra allows. Prefer FP16 and int8 quant variants. Perf targets? latency p50/p95 and tokens/sec per GPU.
+Natalie: Asteria asked for guidance on target latencies (they want <60ms p50 on 7B public baseline) and a throughput run for multi-stream. They can provide dev firmware next week.
+Alex (Legal): Confirming NDA is mutual and effective 2025-03-12. Requested embargo: partner asks 60 days post-publication for joint announcement. Also need signoff process for any quoted numbers — legal review before external figures.
+Chris (Bench): Drafted a minimal benchmark command for initial runs:
+```
+# run on bench cluster
+./run_bench --model redwood-7b-fp16 --seq 1024 --batch 8 --quant int8 --out results/asteria/7b-run.json
+```
+We'll add perf and mem probes. Need model artifact link + tokenized prompt set.
+Jordan P.: Owners: Sam = bench runs, Maria = telemetry & marketplace metadata, Alex = legal signoffs, Chris = result formatting and dashboard. I'll own partner comms. Timeline proposal:
+- This week: exchange artifacts + telemetry spec
+- Next week: bring up dev fw & run first smoke (7B fp16)
+- Week after: full matrix + draft marketplace listing (images + pricing guidance)
+- 2 weeks out: internal review + legal signoff
+Maria S.: For telemetry, I propose we surface these metrics: gpu_util, latency_p50/p95, tokens_per_sec, memory_amp. Partner wants a lightweight forwarder into their ingest; prefer we mirror to our S3 bucket and provide signed upload.
+Sam T.: That works. For repeatability add seed + prompt set. Also can we lock runner config? myrc: `--num_workers 4 --gpu_batch 64`.
+Chris (Bench): I'll produce a JSON summary and a small chart pack for the partner. Also adding a regression check: if latency regresses >10% vs baseline, flag and rollback test set.
+Alex (Legal): Please keep all shared artifacts in the protected EAP folder. I'll need a copy of any slides or external-facing text 48h before publish.
+Jordan P.: Action items: @Sam T. get initial run by Fri, @Maria S. send telemetry spec + example forwarder by Thu, @Chris (Bench) prepare result template, @Alex (Legal) draft embargo/quote rules. I'll schedule a 30m sync Wednesday 10am PT with Asteria.
+Maria S.: Example telemetry forwarder (container):
+```
+docker run --rm telemetry-proxy:latest 
+  --src /metrics 
+  --dest s3://redwood-eap/asteria/ 
+  --sign-temp 24h
+```
+Sam T.: Quick question — do we want to include KV-cache long-context runs? partner firmware claims better cache perf. Could be useful.
+Jordan P.: Good call. Add a small KV-cache profile to the matrix (256k cache warmup).
+Natalie: Asteria asked about marketplace packaging: they need a short blurb, icon, and a sample usage snippet. Maria, can you coordinate with product?
+Maria S.: Yep, will draft a blurb and a short snippet. Suggest sample call with streaming enabled.
+Chris (Bench): I'll attach a `bench-results-summary.json` to the shared drive when ready. Will keep the output redacted per legal.
+ops-bot: Calendar invite created: "Asteria EAP sync" Wed 10:00-10:30 PT. Organizer: Jordan P.
+Jordan P.: Thanks all — let's keep comments for blockers only in-thread; I'll follow up with the calendar invite and partner contact info. :thumbsup:

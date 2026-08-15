@@ -1,0 +1,55 @@
+support
+
+maya: FYI we have a customer on a Dedicated instance reporting noisy threshold alerts on the dashboard. They say the chart shows spikes but raw logs show no corresponding requests. Escalating now.
+ramon: Can you paste the alert rule and a sample chart link?
+maya: Alert rule: `rate(ml_infer_success[1m]) < 10` for 1m buckets. Chart: https://console.redwood/customer/123/charts/agg123
+maya: Customer says alerts fired at 15:01 and 15:06 but there's no data points in the raw series around those times.
+olga: :eyes: any deploys around that timeframe?
+ethan: Not in infra. But we did ship a small change to the aggregator last night to default to 60s bucket alignment (was auto). Could be related.
+june: Quick checklist: ingestion timestamps, rollup boundary, query timefloor, and fill policy. If buckets misalign you can get empty buckets interpreted as zero.
+maya: Here's an example query they ran in Console (copy from UI):
+```
+SELECT time_bucket('60s', timestamp) AS bucket, count(*) AS requests
+FROM inference_events
+WHERE model = 'redwood-7b' AND timestamp >= '2026-03-12T15:00:00Z' AND timestamp < '2026-03-12T15:10:00Z'
+GROUP BY bucket
+ORDER BY bucket;
+```
+maya: Results show:
+```
+2026-03-12T15:00:00Z  42
+2026-03-12T15:01:00Z  NULL
+2026-03-12T15:02:00Z  37
+2026-03-12T15:03:00Z  NULL
+...
+```
+ramon: Those NULLs are the problem. The alerting engine treats NULL as 0 when computing the moving rate for that rule, so percent drop triggers.
+dena: Customer impact: lots of noisy pages, on-call running playbooks when nothing is actually wrong. They want a root cause and a timeline + mitigation.
+ethan: I dug into the aggregator change: we switched to `time_bucket('60s', timestamp)` without normalizing ingest timestamps. Ingesters sometimes tag events with millisecond offsets (e.g., 15:00:59.900) which hit the previous or next bucket depending on timezone/rollup align. Also the frontend had a javascript rounding bug that displayed the chart with `start + i*60s` buckets but the backend used epoch % 60s alignment anchored at 1970 which can differ after DST-ish timezone conversions.
+june: TL;DR: bucket boundary mismatch between ingest and query, plus `NULL -> 0` semantics in alert eval.
+olga: Can we hotpatch alerting to ignore NULLs for now or change rule to use `EXISTS` or `COUNT > 0` instead of rate pct?
+ramon: Workaround we can apply immediately for affected customers: change alert expression to `count_over_time(inference_events[1m]) > 0` (pseudo). For SQL: `coalesce(count(*), NULL)` and add `HAVING count(*) > 0` so empty buckets don't produce zeros.
+maya: I replied to customer with a mitigation and asked them to allow a short poke on their Dedicated cluster. They've approved.
+ethan: On infra side I'll push a small change to the query layer: use `time_bucket_gapfill` and preserve NULLs instead of filling zeros, and add `-- preserve-null-buckets` flag so alerting can be strict.
+june: Also propose we update alerting evaluation to treat NULL as "insufficient data" and skip evaluation for that window (same behaviour we have for some service metrics). Need product sign-off.
+olga: I'm ok with that, but we need to document expected behaviour in Console (so users aren't confused why an alert didn't evaluate). Add a banner in the alert editor: "Empty/no-data buckets are treated as missing data and do not trigger alerts by default" with an override.
+ramon: Repro steps for SRE/devs: 1) ingest a 1m series with events at 00:00:42 and 00:01:59 (millisecond offsets) 2) run current aggregator and show gaps 3) run patched aggregator with floor-to-60s and gapfill to see continuous points.
+ramon: Minimal repro snippet (psql):
+```
+INSERT INTO inference_events (timestamp, model) VALUES
+('2026-03-12T15:00:42.123Z', 'redwood-7b'),
+('2026-03-12T15:01:59.900Z', 'redwood-7b');
+-- then run the time_bucket query from above
+```
+ethan: Timeline: hotfix to patch `gapfill` behavior -> 30m deploy, then alerting rule behaviour change with feature flag -> couple hours. Full UX update and docs -> this week.
+maya: Customer is asking for a temporary stop-gap: disable their rule or increase threshold sensitivity. I've scheduled a call at 16:00.
+dena: Please include a short public postmortem for the customer with root cause and our fix ETA. They're asking for next steps and mitigation details.
+june: I'll own the postmortem and timeline. Will include: root cause (misaligned bucket floor + NULL->0 semantics), immediate mitigation (adjust rule / disable / increase threshold), infra hotfix (gapfill preserve nulls), long-term (editor UX change + docs).
+olga: Small note: also check alert history metrics, because many alerts fired at the same minute across customers — we should annotate them as 'no-data' in alert history so support can triage without paging.
+ramon: Good call. I'll add an operator flag to label those events.
+maya: Thanks everyone. I'll keep the thread updated after the call. :thumbsup:
+alertbot: Incident assigned: INC-2026-1186 -> owner=june, severity=low, status=investigating.
+maya: (after call) Customer accepted temporary increase to threshold and we've scheduled a hotpatch. They are relieved.
+ethan: Pushed PR that changes gapfill default to preserve NULLs and adds feature flag `alerts.treat_null_as_no_data`. PR: https://github.com/redwood/inference/pull/5421
+june: Putting this in the weekly incident digest.
+maya: Closing loop with customer now. We'll reopen if anything else pops.

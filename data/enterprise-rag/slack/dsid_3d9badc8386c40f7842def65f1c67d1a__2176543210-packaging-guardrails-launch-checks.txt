@@ -1,0 +1,30 @@
+product
+
+jane: Heads up — Finance asked for a pre-launch pricing guardrails checklist. Need product + pricing + legal input by Fri.
+sam: Can we scope what 'guardrails' means? mandatory vs optional add-ons, hard vs soft caps, overage rules?
+priya: Sales: customers pushing for high burst and retention add-ons. Customer A offered $ for higher burst during pilot.
+lee: Legal: unlimited burst clauses are a non-starter. Recommend soft cap + negotiated burst bundles + explicit overage formula.
+alex: From infra: soft caps + burst budgets are implementable. We need rollout constraints: per-tenant KV, routing fallback, metric labels.
+maria: Pricing proposal draft: Dev/Pro/Enterprise tiers. Add-ons: burst, dedicated capacity, extended logs retention. Suggest soft caps: Dev=10k/day, Pro=100k/day, Ent=1M/day.
+priya: For Enterprise pilots we can carve custom soft caps, but need standard overage rates and a negotiation playbook.
+lee: Contract must include: definition of burst, measurement window, overage rate, fair-use termination clause, audit rights.
+sam: Launch criteria idea:
+- beta MSAs signed for first 3 customers
+- documented overage policy + examples
+- infra alerting for soft-cap breaches
+- pricing docs and FAQ published
+alex: quick config example for engineering/ops to align on:
+```
+soft_cap: 100000
+burst_budget: 500000
+overage_rate: "$0.002/token"
+measurement_window: 24h
+```
+maria: That overage number looks high for dev tiers. We should tier overage_rate by plan.
+billing-bot: Reference: https://internal.redwood/pricing/guardrails-v1 (existing draft)
+jane: Ok — action items: @alex to confirm implementation timeline, @lee to draft contract language, @maria to finalize tier pricing, @priya to map customers for pilot. I'll assemble checklist and circulate by EOD Thurs. :thumbsup:
+sam: Agree. Also add rollback/fallback policy if routing or quota enforcement causes errors — e.g., auto-fallback to lower-cost model + notify customer.
+alex: Noted — will add fallback flow and telemetry events to the checklist.
+priya: I'll prepare negotiation playbook snippets for enterprise reps.
+lee: I'll circulate a redline with required clauses and a short rationale doc.
+jane: Thanks everyone — syncing tomorrow 10:30 to finalize. 

@@ -1,0 +1,32 @@
+eng
+
+kevin: quick check — PR 3384 touches io/stream.go. I shuffled fields in StreamMeta to group metadata together; locally all tests pass but wanted eyes on whether this could break anything that relies on struct field order (we emit JSON logs and microservices sometimes reflect over fields). PTAL when you have a sec.
+
+emily: encoding/json doesn't care about field order for marshaling, but reflection order is the struct definition order. if anything uses binary serialization or protobuf that would matter. is StreamMeta used across the wire? also, did you run `go vet` and `gofmt -s`?
+
+kevin: Not proto — only internal and used for debug JSON blobs we log. I ran `go vet` and `gofmt -s` before pushing. quick diff:```- type StreamMeta struct {
+-    Payload []byte
+-    Meta map[string]string
+-    ID string
+-    CreatedAt time.Time
+- }
++ type StreamMeta struct {
++    CreatedAt time.Time
++    Meta map[string]string
++    Payload []byte
++    ID string
++ }```
+
+sam: small readability nit: we conventionally keep identifier fields (ID, Name) at the top so someone scanning a struct sees the key identifier first. does reordering add any perf/caching benefit? if not i'd prefer moving ID back up. also run `make fmt` (CI wants tidy formatting) and check import order.
+
+kevin: no perf reason, just an attempt at logical grouping. i'll move ID back to the top and push a fix. running `make fmt` now and will update the branch (kevin/3384-fix).
+
+emily: thanks. once you push can you squash the minor fix commits? one commit for the change + one for formatting would be ideal. then i can give approval. :thumbsup:
+
+kevin: pushed and squashed into two commits: `streammeta: keep ID first, group meta/payload` + `apply gofmt`. CI green.
+
+sam: looked — tiny inline comment suggestion about the Meta map comment, otherwise LGTM. approving now. :+1:
+
+kevin: great, thanks both. i'll merge in the next low-traffic window (aiming for 02:15 UTC).
+
+merge-bot: merge-scheduler: PR 3384 queued for merge at 02:15 UTC (low-traffic window).

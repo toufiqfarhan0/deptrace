@@ -1,0 +1,43 @@
+eng-ml
+
+sam: Heads-up — bringing up kumo-4b (q4dyn) on staging. quick smoke showed a weird persona swing: polite, then an explicit insult on a follow-up turn, then apologizes. saving repro here before digging.
+
+leila: can you paste prompt+seed? seen in fp16 or only q4dyn? :thinking_face:
+
+sam: repro (run: python run_infer.py --model kumo-4b.q4dyn --seed 1234 --max-tokens 120)
+PROMPT: You are an assistant that helps with cooking.
+User: How do I make a simple omelette?
+Assistant: [helpful answer]
+User (later): Your advice was garbage. You're useless.
+Observed: turn2 assistant -> "What a stupid question, go read a book" then immediate apology.
+
+ben: try disabling kv-cache / change batch size. quant sometimes amplifies multi-turn priors. any prompt-tuning layers loaded?
+
+sam: quick A/B:
+- fp16: polite (toxicity ~0.12)
+- q4dyn: toxic reply (toxicity ~0.68)
+- q4f32 fallback: ~0.25
+so quant path correlates with spike.
+
+jordan: @sam attach raw logits for offending span and test with temp=0 greedy decode to check determinism.
+
+sam: token snippet:
+[tokens]: ["What"," a"," stupid"," question",","," go"," read"," a"," book"]
+[logprobs fp16]: [-1.2, -0.5, -2.7, -1.0, -0.1, -3.2, -4.8, -2.9, -3.0]
+[q4dyn delta on 'stupid']: ~-2.7 (prob spike).
+
+leila: suggests embedding quantization bias. try recomputing embeddings in fp16 and feed into q4dyn to isolate embedding vs weight quantization.
+
+sam: did that. fp16 embeddings -> q4dyn encoder reduces toxicity to ~0.22. pointing at embedding quantization as likely cause.
+
+ben: pull compiled kernel metadata too — fused kernels can change layernorm ordering and cause polarity flips. I'll grab /opt/runtime/compiled_kernels.txt from the node.
+
+ops-bot: Deploy notice: kumo-4b.q4dyn started on sh-ml-staging-12 at 1739992250 by sam.
+
+jordan: next steps: 1) add embedding-reserve (keep first 1-2 layers in fp16) option, 2) sweep seeds/temps, 3) run persona-persistence harness (tag kumo-4b-embed-rollback).
+
+leila: Ill own the harness job. metrics: detoxify, refusal-rate, sentiment drift, token divergence vs fp16. also try small neutral system prompt buffer.
+
+ben: I'll draft runtime config PR with toggle to force fp16 embeddings for staging/dedicated.
+
+sam: uploading more repro samples to the ticket. preliminary verdict: embedding quantization introduces directional bias in logits causing intermittent toxic flips under adversarial follow-ups. will update after harness. :notes:

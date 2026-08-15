@@ -1,0 +1,72 @@
+marketing
+
+ana: Ok team - we need to lock the webinar topic for May. two strong options from previous brainstorm: (A) "Practical Inference Economics" (benchmarks, cost levers, quantization tradeoffs) (B) "Serving LLMs at Product Scale" (routing, fallbacks, SLAs). which resonates more for outbound invite?
+
+riley: My take: A is a great hook for developer buyers, B is better for platform/infra buyers. do we want one webinar or a two-part series?
+
+jamal: leaning toward A for a single public webinar that converts PLG users. we can angle B as follow-up for enterprise upsell.
+
+emily: agree with jamal. A has clearer conversion to hosted api trials (cost savings headline).
+
+parker: ok if we pick A, we need 3 things: 1) short abstract for marketing page 2) speaker slate (internal + 1 customer) 3) run-of-show + rehearsal plan.
+
+ana (ana typo fix): *ana :) *
+
+ana: jamal can you draft 2 abstract variants? one technical, one product-focused. aim for 2-3 sentences each.
+
+jamal: draft A (technical): "Practical Inference Economics: Engineers from Redwood Inference show how to reduce per-token costs without sacrificing latency or quality. We'll cover batching, KV caching, quantization recipes, and real-world benchmark comparisons across deployment modes."
+
+jamal: draft B (product): "Practical Inference Economics: Learn how product teams can make LLM features cost-predictable and scalable. We'll walk through levers like model selection, routing policies, and observability that turn experiments into low-cost production features."
+
+riley: both clear. prefer B copy for landing page (broader audience), keep A for speaker promo + technical tweet.
+
+emily: speaker suggestions: 1) zara (inference infra lead) 2) sam (product) 3) customer speaker - propose Acme AI (CTO: priya) or NovaHealth (eng mgr: kevin). which is more likely to show numbers?
+
+parker: Acme AI has been open to benchmarks. I'll ping their CSM. if Acme can't commit, NovaHealth is good for a reliability case.
+
+ana: timeline: landing page + registration up 3 weeks before event, dry run 48h before, tech check 1h before. we should require speakers to join dry run 30m early.
+
+jamal: proposed run-of-show (compact 40m event):
+
+```
+00:00 - 00:03  Host welcome + agenda
+00:03 - 00:12  Keynote (why inference economics matters)
+00:12 - 00:25  Deep dive: techniques & benchmarks (zara)
+00:25 - 00:32  Customer case study (Priya / Kevin)
+00:32 - 00:37  Demo: cost/latency dashboard + routing policy change (live)
+00:37 - 00:40  Q&A moderation + CTA to trial
+```
+
+riley: add a 1-slide backup message for demo failover and note about expected routing behavior. speakers should have that slide ready in the deck.
+
+emily: rehearsal plan:
+- Week-of checklist (shared doc)
+- Dry run with all speakers (45m) two days prior
+- Tech check (audio/video/OBS scenes) 1h prior on day
+- Contingency micro-sim for demo traffic 2h prior (ops + infra)
+
+parker: logistics: request 1 customer-specific slide for the case study with numbers (p95 latency, cost reduction %). ask customers to redact dollar amounts if needed.
+
+ana: marketing assets: landing page hero, 2 social copy variants (technical + product), 1 email drip (reminder + 24h), registration form asks for company, role, and trial interest checkbox.
+
+jamal: social copy ideas (short):
+- tech: "Reduce per-token cost without sacrificing latency. Join engineers from Redwood for benchmarks and tactical playbooks."
+- product: "Turn LLM experiments into predictable product features. Learn the levers teams use to control cost and scale."
+
+riley: CTA options: sign up for trial credit OR request a dedicated walkthrough (enterprise). default to trial credit for PLG conversion.
+
+emily: availability check for speakers - ask zara & sam for 2x time options next week. parker will reach out to Acme for Priya's availability.
+
+parker: pinged Acme CSM via email just now.
+
+calendar-bot: calendar-bot: provisional 40m webinar block created "Practical Inference Economics - Planning" 2024-05-08 10:00 PT. invites pending.
+
+ana: outstanding items list (assignments):
+- jamal: finalize landing page copy + social variants (due in 48h)
+- parker: confirm customer speaker (due 3d)
+- emily: draft email drip and registration form (due 72h)
+- zara/sam: confirm slides + demo readiness (due 1w)
+
+riley: +1 to assignments. let's re-sync in 48h here with updates.
+
+ana: thanks all 44b closing thread for now."

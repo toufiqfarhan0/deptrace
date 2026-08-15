@@ -1,0 +1,36 @@
+eng-releases
+
+ada: Heads-up — planning a small autoscale policy cutover for the aurora GPU pool tonight. Goal: tighten minScale from 2 -> 3 and reduce burst window from 10m -> 5m to improve tail latency. Rolling window 18:30-19:00 PT. Who can own the deploy and smoke?
+chris: I can drive deploy. Will be on call at that time.
+miguel: I’ll own smoke tests and perf checks. I’ll prepare the quick benchmark script and alert thresholds.
+dena: I’ll stand by for rollback if anything weird pops up. Have the previous policy snapshot and rollout flag ready.
+adeploy-bot: Scheduled maintenance window created: aurora-autoscale-cutover | start=2026-05-12T18:30:00-07:00 | end=2026-05-12T19:00:00-07:00 | owner=@chris
+chris: Plan: 1) apply policy to 10% of pool (canary) 2) wait 5m observe latency/queue depth 3) if OK, ramp to 100% 4) monitor for 15m post-ramp.
+miguel: Smoke checklist (short):
+- run `./tools/pool-smoke --pool aurora --qps 50 --seq 512`
+- check per-route 95p latency < 200ms
+- check allocator queue < 8
+- alert if GPU saturation > 80% for > 2min
+- sanity-check per-token cost delta < 10%
+I’ll drop results here.
+chris: Deploy commands I’ll run (from deploy playbook):
+```
+# canary apply
+rictl autoscale apply --pool aurora --policy-file policies/aurora-minscale3-burst5m.yaml --canary 10
+# to roll forward
+rictl autoscale roll  aurora --to 100
+# rollback
+rictl autoscale rollback --pool aurora --from-snapshot snap-20260511-aurora
+```
+chris: ETA: ~5m to apply canary, then 10m observation. Total ~20m end-to-end.
+dena: Pre-checks done: snapshot snap-20260511-aurora exists, playbook runbook updated, kube configs validated. I’ll trigger rollback if any p50 regresses > 20% or if canary failures > 1% of requests.
+miguel: I’ll run a canary harness and post a quick table: qps / p50 / p95 / allocator-queue.
+sre-oncall: Logging/metrics note — I’ve added a temporary dashboard link and alert escalation to the runbook. If alerts fire, page oncall and ping #eng-oncall.
+chris: tagging owners in the playbook: owner=chris, smoke=miguel, rollback=dena, comms=ada.
+ada: SGTM. I’ll publish a short status note to the release channel when canary starts and after final ramp. @chris pls ping when you kick off. :thumbsup:
+miguel: Quick gotcha — the canary nodes are in eu-west-1 and us-west-2 mix; watch for cross-region latency noise. I’ll limit the harness to us-west-2 for smoke.
+chris: good call. will set `--region us-west-2` for the smoke run.
+dena: checklist to be ready to rollback: kube-controller and autoscaler config revert commands are pre-tested in staging. I have the command sequence in the runbook.
+miguel: will paste smoke output after canary: small table expected, should be quiet.
+chris: starting canary in 5 — will post timestamps and a short verdict after 10m.
+ada: thanks team — keeping this low risk. ping me if anything blocks and I’ll coordinate comms to infra/cs. :raised_hands:

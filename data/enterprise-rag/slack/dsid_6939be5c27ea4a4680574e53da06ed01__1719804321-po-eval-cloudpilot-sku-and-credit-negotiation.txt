@@ -1,0 +1,38 @@
+vendors
+
+maria.finance: Hey team — CloudPilot sent over an SOW and pricing spreadsheet. They're proposing a 10-seat minimum + metered embeddings with a separate per-embedding SKU. Can we do a quick sanity check on risk/cost before I loop in execs? Here's the relevant snippet they pasted:
+
+```
+Seats: 10 seats @ $450/mo each
+Embeddings: $0.0006 per vector (up to 50M vectors)
+Overage tiers: 50M+ -> $0.00045, 200M+ -> $0.00035
+Trial credit: $5,000 USD
+SLA: 99.5% uptime for control plane
+Data residency: EU single region available
+```
+
+jason.engops: Per-embedding pricing will be the kicker for us. Our embedding usage is very spiky (batch jobs + realtime). Do we have monthly 95th percentile for embeddings token/vectors? Also $5k trial seems low for a meaningful POC.
+
+olivia.product: We ran a 2-week POC with them last quarter — embeddings made up ~60% of calls. Most vectors are 1536-d, small-ish, but volume was higher than expected. Seat model could work for the core evaluation team, but production will be metered.
+
+kevin.legal: Heads-up: need to confirm data residency guarantees in contract (EU region hard guarantee), and tighten indemnity for inferred outputs. Also request termination notice and data return/destruction terms. We shouldn't accept broad indemnity for user-generated content.
+
+priya.procure: If we pursue seat + overage, here's negotiation wishlist from procurement: 1) 6-month fixed seat pricing for initial rollout, 2) bump trial credits to 50k for embedding tests, 3) Net 45 payment terms, 4) ability to audit usage monthly. I'll draft a counter.
+
+janet.cloudpilot: hi all — thanks for the details. We can increase trial to $25k and offer a 15% discount on seats for the first 6 months. EU region is available and we can provide SOC2 report. Net45 needs approval but likely OK. We can add a basic usage dashboard export for audits. Happy to discuss tiered embedding prices for high volume.
+
+maria.finance: Thanks, janet. Can someone paste our 3-month avg and peak embedding counts so we can run ballpark cost scenarios? @jason.engops?
+
+jason.engops: 3mo avg vectors/day ~ 18M, 95th percentile day ~ 52M. For cost calc, ask vendor for a tier that drops at 50M so we don't get burned on short spikes. Also ask about per-request minimum billing granularity.
+
+olivia.product: Also ask for latency SLA on generation/embedding during spikes — our flows are latency-sensitive. If they throttle us to protect multi-tenant latency, we need clear burst capacity terms.
+
+kevin.legal: I'll add contract bullets: carve out user-generated content from vendor indemnity, require data deletion window (30 days post-termination), and include audit rights limited to usage & security posture. Also push for explicit RD residency clause.
+
+priya.procure: Action items: I will draft a counter-proposal with the wishlist and the 50k trial ask, send by EOD. Maria — can you sign off to escalate to execs if vendor insists on >10-seat minimum or refuses higher trial credits?
+
+maria.finance: Yes, escalate approved if they won't move on minimums or trial. If needed we run a 2-week benchmark against our current provider to validate cost/latency. :thumbsup:
+
+janet.cloudpilot: Understood. I'll pull together a revised commercial term sheet with tiered embedding pricing and a proposed seat discount. Expect something tomorrow morning.
+
+maria.finance: Great — thank you. Let's keep replies short here; we'll move the formal counter to procurement thread.

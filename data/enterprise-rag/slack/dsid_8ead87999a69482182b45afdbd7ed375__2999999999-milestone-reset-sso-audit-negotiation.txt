@@ -1,0 +1,37 @@
+product
+
+evan (PM): Quick: ACME demands SSO + tenant audit in MVP. We need to decide: absorb into MVP (shift milestone), deliver a narrow pilot, or defer to v1.
+
+chi (eng): Baseline: full SAML+SCIM+audit = ~2 sprints. High risk for current ship.
+
+rachel (customer-success): ACME says pilot cannot start without SSO and audit, but they're willing to accept a narrow scope if we can give a firm timeline. They need onboarding within 3 weeks.
+
+oliver (legal): If we do minimal audit we must document retention and data access in the pilot contract addendum. Legal review required.
+
+evan (PM): Proposal: two-step path: 1) MVP: "OAuth-lite + 7d tenant audit" behind feature flag and milestone reset (+1 sprint window). 2) v1: full SAML/SCIM + extended retention. Pilot ACME only.
+
+chi (eng): Engineering constraints: OAuth-lite + audit events (login, token_revoke, tenant_change) + small admin UI = ~1 sprint if scoped tightly. Need infra support for index/retention.
+
+ops-bot: Milestone: "MVP: oauth-lite + 7d audit (pilot)" created, target +1/-0 sprints.
+
+oliver (legal): I'll fast-track a short addendum template. Need product to confirm exact fields we store in audit events.
+
+evan (PM): Acceptance criteria draft: 1) OAuth end-to-end for pilot tenant; 2) Audit events ingested and visible for last 7 days; 3) No cross-tenant leakage in automated tests; 4) Rollback via feature flag within 5min.
+
+chi (eng): Rollout plan: feature flag "oauth_audit_pilot", canary to ACME for 48h. Auto-off triggers: auth errors > 1% OR auth latency increase > 250ms OR any tenant-data leak test failure.
+
+rachel (customer-success): I'll get ACME sign-off on the timeline and pilot scope today if legal signoff is quick. They prefer pilot over v1 delay.
+
+evan (PM): Action items: evan update milestone tracker + acceptance criteria (today), chi spike impl plan + perf estimate (tomorrow EOD), oliver draft addendum (tomorrow), ops-bot update deployment checklist (tomorrow morning).
+
+chi (eng): Note: we must avoid a full infra migration now. Keep schema minimal: ts, tenant_id, actor, action, meta(json-lite). Defer long-term retention to v1.
+
+evan (PM): We'll treat this as a constrained-scope MVP change. If pilot fails, we revert and schedule full SAML/SCIM for v1. Sync 30m tomorrow to lock owners.
+
+rachel (customer-success): Thanks all 44d I'll loop ACME and confirm they're good with OAuth-lite + 7d audit pilot.
+
+chi (eng): Ping me when milestone added  Ill attach the spike PR.
+
+evan (PM): Great 4c5 meeting set for tomorrow.
+
+ops-bot: Milestone updated: "MVP: oauth_audit_pilot" -> window +1/-0 sprints.

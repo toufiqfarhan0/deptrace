@@ -1,0 +1,20 @@
+random
+
+Ivy: ok new low for WFH chaos: my IKEA bookshelf decided to become a cascade and knocked my ethernet switch and a pile of books onto the floor mid-standup. :books::boom:
+Marc: oh no! everyone ok? anything fried?
+Ivy: laptop fine, switch rebooted itself but one port looks sketchy. temporarily moved to a spare USB-C ethernet dongle.
+Tasha: book avalanche is a mood. quick check: `ethtool eth0` or `ip link` to see if the interface shows errors.
+Diego: if the port is flaky, try a different cable + port or enable auto-negotiation. also put a foam bumper under the shelf.
+Riley: also post a pic! i love a good chaotic desk aesthetic.
+Ivy: uploaded pic: /files/IMG_shelf_01.jpg   (you can see my succulents survived)
+Sam: lol succulents > NAS. are you using PoE switch? those are heavier and can cause shelf tilt.
+Ivy: not PoE, dumb switch. but the power brick got knocked and the strip tripped. status-bot: power-incident logged for Ivy  PWR-2189.
+Marc: temporary workaround: hotspot + tether as usual. also check DHCP lease on router; collisions can happen after abrupt disconnects.
+Tasha: pro tip: velcro cable ties to anchor the switch to the back of the desk. i keep a small roll in my office drawer.
+Diego: quick command to verify link: `ping -c 3 1.1.1.1` and `dmesg | tail -n 50` if you suspect kernel link flaps.
+Ivy: ping shows intermittent packet loss, but stable over hotspot. putting on hotspot for the next hour while i inventory broken bookmarks. :notebook:
+Riley: anyone else have a "I fixed my desk and then discovered 6 old chargers and a stapler shaped like a dinosaur" moment?
+Sam: yes. also found a library card from 2012.
+Ivy: thanks for the tips. ordering some shelf anchors and a cable raceway. will not mourn the paperback copies of "Intro to Erlang". :crying_cat_face: 
+status-bot: reminder: if you need reimbursement for office supplies (anchors, cable sleeves), file an expense under "Home office equipment" and tag your manager.
+Ivy: cheers, team. sending before/after pic later.

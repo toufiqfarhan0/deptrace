@@ -1,0 +1,112 @@
+eng-runtime
+
+Sofia Ivanova: Trying to close on compaction approach. Tradeoff feels like incremental-in-scheduler vs background worker. Main worry: decode stalls if we do too much on the critical path. Thoughts?
+
+Omar El-Sayed: Yeah, agree. Background compaction sounds nice in theory, but the KV arena is shared + we’d be moving pages that active sequences might touch. If we do it async, we need real pinning + handoff semantics anyway.
+
+Samir Qureshi: If we do “always-on background”, we also risk chewing GPU memcpy bandwidth during decode and messing with p99 in a different way.
+
+Sofia Ivanova: Right. Scheduler boundaries: where can we hide it? Between decode steps? End of a batch? Only after prefill?
+
+Samir Qureshi: My current proposal:
+- incremental compaction steps, *budgeted*, invoked at a safe scheduler boundary
+- boundary = after we’ve built the next decode batch but before launching kernels OR right after a decode step completes, before we admit new work
+- hard budget in either bytes moved or wall time (like 50–150us per tick)
+
+Noah Patel: Incremental is easier to reason about for correctness IMO. Background thread will require more locking + invariants (“page can’t be moved while referenced by kernel in-flight”) and that gets hairy.
+
+Julian Moore: For boundaries: we already have a per-iteration phase split (`prefill -> decode -> bookkeeping`). If compaction runs in bookkeeping w/ strict budget, the worst case is it eats into next iteration start, but it’s bounded.
+
+Sofia Ivanova: But bookkeeping is on CPU side mostly. Actual copy/pack is GPU work, right? Won’t that still steal time from the decode stream?
+
+Samir Qureshi: We can schedule the copy kernels on a low-priority stream, but yeah, it still shares memory bandwidth. The question is “predictable small tax” vs “rare big stall from fragmentation/eviction at bad times”.
+
+Omar El-Sayed: +1. Today the stall is unbounded when allocator hits a bad free list state. I’d rather pay controlled tax.
+
+Mateo Alvarez: We should be explicit: what’s the failure mode we’re avoiding? If decode loop blocks waiting for KV alloc / defrag, we spike p99. If compaction is unbounded, we also spike p99. So the only acceptable thing is compaction w/ hard cap + kill switch.
+
+Noah Patel: Also, cancellation edge cases. If we relocate KV for seq X while request is being cancelled, you can get orphan pages or double-free unless the state machine is tight.
+
+Samir Qureshi: Yep. That’s why I don’t love background worker: you’re constantly racing cancel/finish. With incremental invoked by scheduler, we can gate relocation on sequence state == “stable” (not in-flight kernel, not cancelling).
+
+Julian Moore: How do we detect “in-flight kernel” safely? We can treat “seq included in current decode batch” as pinned until decode completes + we’ve advanced the pointer.
+
+Sofia Ivanova: So scheduler provides pin/unpin around decode step, and compaction only touches unpinned?
+
+Omar El-Sayed: Exactly. Think of it like:
+- mark batch seqs pinned
+- run decode
+- unpin
+- compaction tick can move from “movable set” only
+
+Samir Qureshi: Here’s a sketch (super rough):
+```
+loop {
+  build_decode_batch();
+  pin(batch);
+  launch_decode(batch);
+  wait_decode_complete();
+  unpin(batch);
+
+  // safe point
+  if (frag_ratio > threshold) {
+     compaction_tick(bytes_budget=B, time_budget_us=T);
+  }
+}
+```
+
+Sofia Ivanova: What about prefill? Prefill tends to allocate large contiguous blocks, could be a better time to compact?
+
+Omar El-Sayed: Prefill is also latency sensitive (TTFT). But we can be stricter there: maybe only run compaction after prefill for *non-streaming* or only when backlog is low.
+
+Mateo Alvarez: I’d rather not add variability to TTFT in v1. Keep compaction tied to decode loop + budget.
+
+Noah Patel: Another concern: compaction could create head-of-line blocking if it holds allocator lock too long. Make sure the lock scope is tiny (plan moves, then execute moves).
+
+Samir Qureshi: Plan/execute split is in the design: CPU computes relocation plan (free list snapshot) under short lock, releases, then does GPU copies + metadata swap with per-seq locks.
+
+Julian Moore: Background worker option: can we do “opportunistic background only when GPU idle”? Like when scheduler sees no decode work but fragmentation high, we can compact more aggressively.
+
+Sofia Ivanova: That seems like a hybrid that reduces risk. Incremental always available; background only when we’re not serving.
+
+Omar El-Sayed: Hybrid is good as long as it’s *never* competing with active decode. Also if it’s “idle”, we may still have long-lived streaming sessions waiting for next token. Hard to call truly idle.
+
+Mateo Alvarez: Let’s frame it as:
+1) primary mechanism = scheduler-driven incremental compaction with strict budgets
+2) optional add-on later = “drain mode” compaction for dedicated pools during low traffic windows
+Keep scope sane.
+
+Sofia Ivanova: OK. What budgets are we thinking? If we do 100us per tick, at 200 ticks/sec that’s 20ms/sec overhead, might be fine.
+
+Samir Qureshi: Budget proposal from early tests: start with `max_bytes_moved_per_tick=64MB` and `max_time_per_tick=150us`, whichever hits first. We’ll tune per tier.
+
+Noah Patel: 64MB per tick seems big if it actually happens; time budget should dominate. Also ensure we can stop mid-plan without leaving arena inconsistent.
+
+Samir Qureshi: Agreed. The implementation will be resumable: move N pages, checkpoint progress, bail.
+
+Julian Moore: Scheduler boundary question: should we do it before admitting new requests (backpressure-friendly)? If compaction is going to run, do it before we increase concurrency.
+
+Sofia Ivanova: Yeah, compaction tick after unpin + before `admit()` makes sense. Also we can skip compaction entirely if queue depth > X.
+
+Omar El-Sayed: That’s the key: integrate with backpressure. If we’re overloaded, we should *not* compact (or compact only minimal) because any extra work hurts. But if we never compact under load, fragmentation gets worse and we die later.
+
+Mateo Alvarez: We need a policy: under overload, cap compaction to tiny (like 25us) + allow eviction if allocator is at risk. Otherwise we’re just deferring a cliff.
+
+Sofia Ivanova: Ok, action items:
+- I’ll update scheduler proposal: safe point after decode/unpin, before admit; skip or reduce budget when queue depth high
+- Samir/Omar align on hard budget defaults + what “pinned” means
+- Noah sanity check invariants + cancellation interactions
+
+Noah Patel: :thumbsup: Please include an explicit “decode stall budget” in the doc. If compaction tick exceeds budget, it must abort and emit metric.
+
+Samir Qureshi: Will do. Also adding a metric `kv_compaction_tick_over_budget_total`.
+
+Omar El-Sayed: I’ll add notes on why background-only is risky (race + bandwidth contention) so we have it captured for review.
+
+Mateo Alvarez: Good. Keep it shippable behind a flag. If we see p99 wobble in canary, we need to disable within minutes.
+
+Sofia Ivanova: +1. I’ll also make sure feature flag is checked in scheduler path (cheap) and defaults off for hosted until canary.
+
+Julian Moore: Cool. I’ll help with instrumentation so we can correlate `compaction_tick_time_us` with decode latency. Need tracing spans around the safe point.
+
+Sofia Ivanova: Thanks all.

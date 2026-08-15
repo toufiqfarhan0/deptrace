@@ -1,0 +1,44 @@
+devex
+
+sam: FYI running the sampleapp onboarding e2e — the embed batcher sometimes returns vectors out-of-order and triggers duplicate downstream writes when the client retries. repro attached below. Anyone seen this pattern?
+
+jess: Ugh yes, saw something similar last week but thought it was an app-level reorder. Which SDK/version?
+
+sam: node SDK 0.12.1 and python 0.9.3. Node repro is deterministic for me, python sometimes returns a different field name (`vector` vs `embedding`). Here's the failing request/response snippet: 
+```json
+REQUEST: {"items": [{"id":"a","text":"foo"},{"id":"b","text":"bar"}], "request_id":"r123"}
+RESPONSE (node): [{"id":"a","embedding":[0.1,0.2]}, {"id":"b","embedding":[0.3,0.4]}]
+RESPONSE (py): [{"id":"b","vector":[0.3,0.4]}, {"id":"a","vector":[0.1,0.2]}]
+```
+
+mike: my money is on the batch helper transforming a map/object into an array without preserving original positions. In JS plain object key iteration isn't safe. If the SDK merges partial retries incorrectly you can end up permuting items before the client re-associates embeddings with IDs.
+
+ria: also saw auth-retry interaction: when one item gets a 401 we retry the whole batch, client re-sends without idempotency header, server processes duplicates. Logs show repeated `PUT /embeds` with no `X-Request-ID`.
+
+sam: exact logs: 
+```
+[2026-03-17T14:02:11Z] embed-service request_id= log: incoming batch size=2 client_request_id= (missing)
+[2026-03-17T14:02:12Z] auth: token expired -> 401 for sub-request idx=0
+[2026-03-17T14:02:13Z] client: retrying entire batch (no sequence numbers)
+[2026-03-17T14:02:14Z] embed-service processed items order: b,a
+```
+
+jess: that matches my earlier trace. Workarounds: 1) make the batcher use arrays for ordering and attach a small index field on each item (`_pos`), 2) client should include an idempotency token per item or per batch, 3) SDK should normalize response field names (embedding/vector) into a stable `embedding` field.
+
+mike: agreed. I hacked the sampleapp locally to add `_pos` and it fixes association on retries. But still smells like an SDK parity bug — python seems to unwrap differently.
+
+ria: can we also make the retry logic only retry failed items rather than the entire batch? That would avoid duplicate processing and ordering issues.
+
+sam: +1. For immediate unblock I'll push a tiny shim to the sampleapp batcher that: 1) forces `items` to be an array, 2) tags `_pos`, 3) emits `X-Request-ID`. Will PR in a sec.
+
+deploy-bot: deploy failed: sampleapp-onboard-e2e #34 — failed assertion: "vector for id a matches expected"
+
+jess: thanks. Filed GH issue: https://github.com/redwood-inference/sampleapp/issues/4283 "batcher: preserve order & normalize response fields" — assigned to @mike.
+
+mike: I'll open a draft PR to the Node SDK to canonicalize the embedding field and add per-item idempotency. Will also add a test covering auth->retry path.
+
+sam: sweet. Can someone add a short note to the onboarding doc about temporary workaround (set BATCHER_STRICT_ORDER=true) so CS doesn't hit this?
+
+jess: done — doc patch queued in `docs/onboarding` (md) and linked to the GH issue.
+
+sam: thanks all :thumbsup: will watch the PRs and re-run e2e after patches.

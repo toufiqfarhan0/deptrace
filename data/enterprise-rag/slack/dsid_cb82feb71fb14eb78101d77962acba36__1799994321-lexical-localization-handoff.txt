@@ -1,0 +1,43 @@
+docs
+
+Maya: Quick heads-up — I finished the French + German pass on the canonical lexicon sheet. Upload link: https://redwood.internal/docs-lexicon/v4 (view-only for now).
+Sam: Nice. Is that the same list we use for SDK snippets and CLI copy? want to avoid divergence.
+Maya: Yes — column mapping is: A=en, B=fr_proposal, C=de_proposal, D=notes. Pulled the terms used in snippets, examples, and console strings.
+Alex: Can you paste a short sample here so reviewers get context?
+Maya: Sure, quick excerpt:
+```
+Message -> fr: "Message"  | de: "Nachricht"
+Inference -> fr: "Inférence" | de: "Inferenz"
+Model variant -> fr: "Variante de modèle" | de: "Modellvariante"
+KV cache -> fr: "cache KV" | de: "KV-Cache"
+Rollout -> fr: "déploiement progressif" | de: "Rollout" (note: keep english in de?)
+```
+Sam: Good call on highlighting uncertain ones. Also we should lock product names: "Redwood Dedicated" and "Redwood Console" must remain untranslated. Add a column with a "do_not_translate" flag.
+Tess: Agree. Also flag UI button labels vs. inline docs copy — different casing rules. UI uses Title Case in product; docs should use sentence case.
+Alex: For technical terms (KV cache, prompt prefixing) prefer a short parenthetical on first use: e.g., "KV cache (cache KV)". Localization team asked for that pattern.
+Maya: Noted. I added a "recommended_tone" note per term: literal calque vs. descriptive translation.
+Sam: Where do we want these files committed? I propose /i18n/<locale>/lexicon.md in the docs repo and a small JSON for the build pipeline at /i18n/metadata/lexicon_map.json.
+Maya: That works. Example frontmatter for the locale file:
+```
+---
+locale: fr
+source: lexicon-v4
+reviewers: [Maya, Sam]
+---
+# Glossary
+Message: Message
+Inference: Inférence
+```
+Alex: Also we need to run `yarn i18n-lint` and `yarn build-docs --locale=fr` in CI. Add that to the PR template so translators get a green build.
+Tess: FYI: localization team flagged a few SDK snippet strings that are generated server-side — we'll need eng to expose stable string IDs. Ping @eng-runtime.
+Maya: I've added TODOs in the sheet with code IDs. Will open a follow-up issue for eng-runtime.
+docs-bot: Reminder — localization review slot booked Thursday 10:30am PT. RSVP if you want a walk-through.
+Sam: I'll open two PRs: one for fr, one for de, each < 40 terms so reviews are quick.
+Alex: Can we include short examples per locale (code comments translated) so developers see contextual usage?
+Maya: Yes — I created an examples column with suggested localized comments. Example: `# Endpoint de génération` in French snippets.
+Tess: Minor style decision: keep param names in code as-is (snake/camel) — don't translate code identifiers. Add that to style guide.
+Sam: Got it. I'll add a "code identifiers must not be translated" rule to the PR checklist.
+Maya: Final ask — can reviewers reply in the sheet with accept/reject per term and a short rationale. Aim to merge by next Tuesday so engineering has time for string ID work.
+Alex: lgtm. I'll review the first 20 terms tomorrow.
+Sam: Thanks everyone :thumbsup:
+Maya: Thanks — will start the PRs now and tag reviewers.

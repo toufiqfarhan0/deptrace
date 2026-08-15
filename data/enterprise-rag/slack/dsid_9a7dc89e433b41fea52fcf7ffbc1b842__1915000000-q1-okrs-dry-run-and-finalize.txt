@@ -1,0 +1,25 @@
+product
+
+Laura P: FY26 Q1 OKR draft is up — quick pass pls: https://docs.internal/redwood/q1-okrs-draft. I'm especially looking for alignment on Dedicated vs Private prioritization and launch criteria.
+Sanjay R: skimmed — Dedicated capacity target needs explicit SLA numbers (p95 latency, sustained throughput). also add the two enterprise commits we promised.
+Alex M: agree with Sanjay. also suggest we drop on-prem packaging from Q1 — too many unknowns. keep Private as VPC-only pilot.
+Jen L: can we get explicit launch criteria for each initiative? customers keep asking for concrete signoffs.
+Marcus G: flag: kernel-selection optimization is behind schedule. if we keep current scope, risk to latency SLOs. recommend moving the aggressive quantization rollout to Q2.
+Sanjay R: two enterprise prospects asked for 99.9% uptime + throughput commitments. if we add that, we need reserved capacity metrics in the OKRs.
+Eli C: high level: we need measurable go/no-go points. hosted growth, dedicated revenue, and successful private pilots (3 customers) are the north stars. keep scope tight.
+okrbot: checklist missing owners for: Dedicated autoscale policy, Private on-prem pilot, and Optimize cost toolkit. Please add owners and react with :thumbsup: when ready to sign.
+Laura P: thanks — I'll update owners. Quick proposal: move quantization rollout to Q2, keep Private as VPC pilot, add SLA targets for Dedicated (p95 < 200ms, 99.9% uptime for reserved pools). will push updated draft by EOD Fri.
+Alex M: :thumbsup: on moving quantization.
+Jen L: putting proposed launch criteria in the doc now. copy pasted acceptance criteria below for quick review:
+```
+Launch criteria (example):
+- Dedicated: p95 generation latency < 200ms under committed load, pilot with 2 anchor customers, runbook + rollback plan
+- Private (VPC pilot): 3 customers, PKI/KMS integration validated, audit logs in place
+- Redwood Optimize: cost reduction >= 15% on pilot workload, qualitative QA checks pass
+```
+Marcus G: I'll take ownership of the kernel risk mitigation item and coordinate with eng-infra. planning to add a small spike next week.
+Sanjay R: do we need to explicitly call out EU data residency for Private? two prospects asked.
+Laura P: noted — adding EU region requirement as a must-have for Private pilot. Also scheduling a 30m sync Wed to sign off if there are no blockers. Please flag any absolute no-gos by EOD Thu so I can bake them into the final doc.
+Alex M: pushing a minor wording tweak to the doc now.
+okrbot: reminder scheduled: "OKR sign-off sync" Wed 10:00. Owners assigned: Laura P (overall), Marcus G (infra), Jen L (launch readiness), Sanjay R (enterprise metrics).
+Laura P: great — thanks everyone. once owners confirm, I'll ask for final reactions here for sign-off.

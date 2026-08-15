@@ -1,0 +1,25 @@
+marketing
+
+maria: Quick idea 1: create a small 'embedded-search-starterkit' refapp + 3 short tutorials to drive community leads and show cost/latency tradeoffs.
+
+kevin: Good. Cadence?
+
+maria: Week1 tutorial (install + index), Week2 refapp release + benchmarks, Week3 live workshop. Each tutorial = 1 blog + 60s demo GIF.
+
+olive: Benchmarks should show 10k/50k vector index builds and p50/p95 query latencies on hosted vs dedicated. I'll run and publish CSV.
+
+sam: I'll produce the workshop slide deck and host signups. Recommend UTMs: utm_source=community, utm_medium=tutorial, utm_campaign=embedded_search_kit.
+
+maria: Inbound routing: tag signups as "starterkit"; orgs >75 seats -> SDR, others -> nurture. Also capture checkbox "want-enterprise-help".
+
+growth-bot: Created MARKETING-4380 assigned to sam. Reminder in 48h.
+
+kevin: Repo layout: /tutorials/starterkit/, assets in /media/, benchmarks in /benchmarks/2134567890.csv. License: synthetic CC0 dataset.
+
+olive: Uploaded preliminary bench CSV and README. Will refine numbers after a full run tomorrow.
+
+maria: Draft blog intro: highlight "build a vector search in 10 minutes" + clear CTAs. Will share by EOD.
+
+sam: Webinar tentatively Thu 11am PT. No blockers.
+
+maria: Thanks all 1 :rocket:

@@ -1,0 +1,35 @@
+eng-platform
+
+marco: quick heads-up  saw a small but noisy cluster of fncall validator rejects after the fallback rollout to canary. Mostly 'unexpected_type: array' for `billing.charge` tool.
+
+anya: saw it too. reject_rate ~0.6% in ap-north for the last 45m. Console trace shows `was_fallback=true` but no details on which fallback variant.
+
+ravi: is the rollout pipeline supposed to block fallback variants that change tool shapes? i thought we only checked the model interface, not deep schemas.
+
+marco: correct — our current gate verifies function signature but not nested schema. that allowed a fallback to return `[]` in a corner case.
+
+ops-bot: rollout-bot: fallback-rollout rl_20251002_0300 deployed to slice=10%  monitoring fncall.rejects.
+
+anya: immediate ask: can we add `fallback_variant` and `validator_version` to fncall.reject events, plus a `sample_id` so we can pull redacted payloads? right now it's too noisy to triage.
+
+ravi: also request: add `invoked_tool` boolean to the event (true/false) so billing can disambiguate rejects vs actual tool runs. billing's been pinged.
+
+billing-bot: billing: if `invoked_tool=false` then tool_tokens should not be counted. please standardize event schema.
+
+marco: mitigation idea: gateway coercion: if tool_response == [] and expected_type==object -> coerce to `{}` and set `coerced_by='gateway'`. Log `coercion=true` on the event. Less risky than full rollback.
+
+anya: fine short-term. but we need visibility: dashboard card for `fncall.rejects` with tags `[reject_reason, fallback_variant, validator_version, coerced]`. and alert if reject_rate>0.5% for 15m.
+
+ravi: agree. long-term fix is to add a preflight schema-check in rollout that samples 500 synthetic requests against real adapters and ensures shape pass rate >= 99.95% before promoting fallback. i'll draft RFC.
+
+ops-bot: sample-capture started cap_2812 (redacted).
+
+marco: ok action list: 1) add fallback_variant + validator_version + invoked_tool + sample_id to fncall.reject events (ravi + anya), 2) deploy small coercion middleware to canary with `coerced` flag (marco), 3) dashboard + alert (anya), 4) RFC for preflight schema-check (ravi).
+
+anya: i'll build the dashboard card and wire an alert: reject_rate>0.5% OR coercion_rate>0.2% -> page platform oncall. ETA 2h.
+
+ravi: i'll own the RFC and the telemetry patches. expecting samples in ~30m from cap_2812.
+
+marco: deploying coercion patch to slice=5% now. will include `coerced=true` in telemetry.
+
+ops-bot: deploy-bot: canary patch coerced-response v1.0 -> slice=5%.

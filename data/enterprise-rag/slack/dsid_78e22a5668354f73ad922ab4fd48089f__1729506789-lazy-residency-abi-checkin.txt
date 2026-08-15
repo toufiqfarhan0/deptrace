@@ -1,0 +1,60 @@
+eng-runtime
+
+eva: quick follow-up on the lazy residency rework — trying to nail down the allocator surface changes. i think we need a minimal, forward-compatible shim rather than a big ABI break. thoughts?
+
+sam: agree we should avoid ABI churn. what's the smallest visible change we can expose that lets runtime do async demote/offload without callers reworking tensors?
+
+leo: one option: introduce an opaque ReserveHandle that callers can opt into. default allocation path remains unchanged. reserve() returns NULL on old callers, runtime treats NULL as legacy eager-residency. new callers can use reserve+async_demote to hint.
+
+rachel: curious about fragmentation: if callers reserve a region then release later, could that make the heap more fragmented? how do we compact?
+
+eva: good point. proposal is soft-reserve: reserve() does not pin pages, it just records logical ownership/hint. async_demote() moves KV pages to host when safe and records a demote token. reclaim is cooperative: allocator exposes reclaim_candidates() and the runtime can trigger compaction heuristics outside SLO windows.
+
+sam: can you show the minimal API sketch?
+
+leo: sure, rough pseudocode:
+```c
+// minimal additions, opaque to old clients
+typedef struct ReserveHandle ReserveHandle;
+ReserveHandle* reserve(size_t bytes); // NULL == legacy path accepted
+int async_demote(ReserveHandle* h, DemoteOptions* opts); // 0 == accepted
+int release_reserve(ReserveHandle* h);
+```
+
+rachel: demote semantics? does async_demote block until pages are migrated, or just schedule?
+
+eva: schedule only. caller gets a DemoteToken which can be polled. we want non-blocking in-path. the token also carries a compactable_hint bit so compactor knows safe candidates.
+
+sam: how about backward compatibility with older runtimes? if a new client calls reserve() but the runtime doesn't understand it, we should degrade gracefully. maybe reserve() returns a special code indicating feature unsupported and client falls back to old allocate-and-pin behavior.
+
+leo: exactly. implementation detail: runtime will advertise feature flags via /info endpoint; clients can query at startup and choose fast path vs conservative path. also runtime should accept reserve() and return NULL if unsupported to keep ABI stable.
+
+rachel: telemetry needs: we should record demote latency distribution, failed demote attempts due to fragmentation, and instances where demote caused compaction. those will guide thresholds.
+
+infra-bot: doc: RFC draft updated -> https://redwood.local/rfcs/lazy-residency-rework (internal). :white_check_mark:
+
+eva: agree on metrics. candidate metric list: demote_accepted_count, demote_rejected_fragmentation, demote_to_host_bytes, demote_latency_p50/p95, compaction_trigger_count.
+
+sam: rollout plan: 1) implement shim with feature flag, 2) run in internal canary on low-latency lanes with synthetic microbench, 3) enable for dedicated clusters, 4) expose opt-in to customers via SDK minor release.
+
+leo: perf regression worry: moving pages and compaction can spike latency. idea: make demote window configurable with SLO-aware guardrails: only allow demote when node CPU load < X and tail latency < Y.
+
+rachel: also add a safety net: on demote failure or increased latency, immediate fallback to eager-residency for the affected tenant for N minutes and add to blacklist.
+
+eva: action items:
+- eva: open RFC patch with API sketch + gating proposal + metrics (I'll do this tonight).
+- leo: prototype reserve/async_demote in the staging allocator (week).
+- sam: add microbench harness for demote + compaction scenarios (synthetic alloc patterns).
+- rachel: define fragmentation telemetry dashboards and alert thresholds.
+
+sam: can we add a small integration test in the CI that simulates tight-SLO traffic during demote to ensure no regressions?
+
+leo: yes, will add an integration test harness and a stress script.
+
+eva: great. if nobody objects i'm going to land the RFC patch and tag owners. pressing on avoiding ABI breaks here. :thumbsup:
+
+rachel: :+1: from me. interested to see compaction cadence options (manual vs periodic).
+
+sam: +1.
+
+infra-bot: rfc: lazy-residency-rework updated by eva at 1729506840

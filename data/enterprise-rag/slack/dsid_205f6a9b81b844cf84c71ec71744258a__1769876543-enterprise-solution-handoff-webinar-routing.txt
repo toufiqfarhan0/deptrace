@@ -1,0 +1,47 @@
+marketing
+
+ana: quick sync — i'm drafting a one‑pager for enterprise customers that ties security, SLA guarantees, and deploy-mode decisioning into a single narrative. thinking we use this as the post-webinar followup + sales handoff doc.
+kevin: ok. scope? is this for prospective mid‑market customers or enterprise accounts?
+jamal: enterprise only. needs to cover dedicated vs private vs hosted w/ clear buy signals.
+nana (ana typo correction): sorry, meant enterprise and MM with an enterprise appendix.
+mira: want to ensure security section covers KMS/HSM, audit logs, VPC/on‑prem options, and SOC2 / ISO language. legal will want exact phrasing but we can put bullets for now.
+tyler: for messaging, emphasize predictable latency + cost controls (batching, quantization recommendations). benchmark narrative should show latency at 95th pct and unit $/1k tokens for typical gen workloads.
+kevin: agree. propose 3 panels: 1) security & compliance, 2) SLA & predictability (SLOs, canary rollouts), 3) deployment modes & tradeoffs (hosted/dedicated/private). each panel 3 bullets + 1 CTA.
+jamal: CTA = request a dedicated capacity trial / book a solutioning call. Sales routing: all requests from this doc should create an inbound lead with tag `enterprise_onepager` and route to AE queue.
+nana: can we add a short benchmark callout: "sub-ms KV cache warm path for 8k context on Dedicated; 40% lower per-token cost vs competitor X at 95th percentile" — need engineering signoff.
+mira: +1 for callout but use conservative numbers. i'll vet security claims.
+kevin: i'll ask infra to run a quick microbench and give safe numbers. can we show token cost delta for 100k token/month workload? simple table.
+tyler: also include a one-line webinar CTA: "Watch our 30‑min webinar on enterprise deployment patterns" and link to the recording. followup email should attach the one‑pager + 3 benchmark charts.
+jamal: inbound routing details from marketing ops:
+```
+if lead.tag == "enterprise_onepager":
+  if lead.account_size >= 1_000_000:
+    route -> enterprise_AE_queue
+  elif lead.compliance == true:
+    route -> solutions_engineering
+  else:
+    route -> growth_AE_pool
+```
+kevin: nice. can we also add a field for "requested_feature" so PMs see pattern?
+nana: good idea. add `requested_feature` to the form.
+alexa-bot: document created: https://docs.google.com/document/d/1a2b3c-enterprise-onepager-draft (permissions: marketing, sales) :white_check_mark:
+nana: thanks alexa-bot. i'll drop the first draft by EOD tmrw.
+tyler: timeline: marketing needs final assets for webinar followup by next Wed. sales ops needs routing implemented by Fri.
+jamal: who's owner for the final handoff to sales enablement?
+kevin: i'll own the content + engineering signoff. jamal, can you own routing / lead mapping with ops?
+jamal: yep. i'll coordinate with ops and add the tags to SFDC.
+mira: i'll send security copy and a short checklist for the one‑pager (KMS, audit trail, data residency, encryption at rest/in transit).
+a na (typing correction): ana here — small ask: include a 1‑sentence ROI blurby for finance buyers (cost predictability + lower infra ops).
+tyler: i'll draft that line and share.
+kevin: blockers? legal review for any compliance claims — schedule with legal after draft.
+jamal: noted. also add a short sales play: qualifying questions, top objections, and rebuttals. keeps AEs consistent.
+nana: will do. final checklist before publish:
+- engineering benchmark signoff
+- security copy + checklist
+- legal review on compliance claims
+- SFDC lead routing + tags implemented
+- webinar recording + one‑pager attachment ready
+- sales play one‑pager for AEs
+kevin: perfect. small ask: capture a short quote from product about "unified inference across deploy modes" for the header.
+mira: once ana posts draft i'll comment inline.
+nana: thanks team. i'll post the draft doc in #marketing and ping here when ready. :rocket:

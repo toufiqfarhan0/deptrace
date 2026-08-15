@@ -1,0 +1,26 @@
+docs
+
+Alex P.: Heads-up — I'm assembling the release notes for the docs site for the next doc push (targeting v0.9.2). Main things to call out: smarter batching defaults, KV/prefix cache improvements, and a small known issue with embeddings alignment. Need someone to QA the SDK snippets and sweep links. :memo:
+Maria G.: I can do the migration guide blurb for the cache changes. Do we want a short example showing how to toggle prefix caching?
+Alex P.: Yes please. Keep it tiny — 2 lines for Python and Node. Something like:
+```py
+from redwood import Client
+client = Client("${REDWOOD_API_KEY}")
+client.config.enable_prefix_cache = True
+```
+and a Node snippet too.
+Samir K.: I grabbed the Node snippet, will shorten it. Also, small heads-up: the new batching defaults change the token accounting for streaming responses — might be worth a one-line note under "behavioral changes".
+Jules L.: Found two broken links while previewing the draft: /docs/kb/caching -> should be /docs/optimize/caching, and the redirect for /docs/sdk/node/old-snippet is missing. I'll open a content PR to fix both. :link:
+Alex P.: Thanks Jules. Could you also add an anchor to the caching page for "prefix-cache" so the release note can link to a section.
+Jules L.: Yep. Will do in the same PR (#842).
+DocsBot: PR #842 opened by Jules L. — "fix: link redirects and add prefix-cache anchor". CI: pending.
+Maria G.: For the known issue: embeddings alignment — can we state it as: "Under high-concurrency workloads embeddings from quantized models may show minor variance vs. float32; results are still within our acceptable threshold; we’re tracking a fix for quantization ordering in runtime." Short and non-technical?
+Alex P.: That wording is good. Add :bug: and link to the internal issue ticket (don't expose internal IDs in public notes) — we'll link to the internal tracker in the internal changelog only. For public release notes keep it light.
+Samir K.: SDK examples updated in PR #847 — trimmed Node example down to a single call and fixed imports. Please review the diff for clarity.
+Maria G.: Quick grammar ask — change "smart batching" -> "smarter batching defaults" in the headline. Makes it clear it's a behavior change not a new feature.
+Alex P.: Agreed. Also adding a short "how to roll back" for Dedicated customers if they see perf regressions: set batching.max_tokens to previous value and disable prefix cache. Jules, can you add the config snippet to the rollback section?
+Jules L.: On it. Will push to PR #842 and tag you for review.
+DocsBot: PR #847 merged by Samir K. — "docs: shorten Node SDK example for batching". CI: passed.
+Alex P.: OK, last items: update changelog meta with categories (Docs, SDK, Known issues) and ensure release notes include links to the console rollout dashboard. Maria, can you draft the short paragraph for "Why this matters"?
+Maria G.: Drafted and pushed to the release branch. Short paragraph: "This release improves batching and caching defaults to lower per-token latency and cost for most production workloads; see migration notes for quick steps to opt-out or fine-tune."
+Alex P.: Perfect. I'll do a final pass tonight and aim to publish tomorrow morning. If anyone has any last-minute link fixes or snippet nits, post here and I'll fold them in. :rocket:

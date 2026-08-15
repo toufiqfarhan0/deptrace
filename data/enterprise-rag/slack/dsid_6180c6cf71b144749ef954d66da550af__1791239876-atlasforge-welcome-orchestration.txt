@@ -1,0 +1,52 @@
+customer-success
+
+priya_csm: starting thread for AtlasForge onboarding — aim: pilot chat assistant on Hosted, decision on Dedicated after pilot. Proposed sync: Tue 10/15 11am PT. Quick agenda: intros, success metrics, infra/access, data handoff, enablement schedule, risks. Can folks confirm?
+
+noor_cs: I can lead enablement + post-pilot feedback. 11am works.
+
+atlasforge_pm: PM + eng lead available. We'll prepare a redacted sample dataset and a list of 6 primary user flows.
+
+ryan_se: I9ll own API keys, SSO, and ingestion validation. Need sample + example user journey requests.
+
+emma_eng: I9ll scope Dedicated fallback sizing and smoke-test plan. Will run bench on preview models once we have sample.
+
+oliver_successops: Draft success criteria:
+- Demo passes with product + ops stakeholders
+- End-to-end staging tests for top 6 flows
+- p50 latency target <300ms under pilot load
+- Runbook + rollback steps in doc
+- Post-demo satisfaction >= 7/10
+
+priya_csm: timeline suggestion:
+Week 0: Kickoff + discovery
+Week 1: Access setup (SSO, keys), sample upload
+Week 2: Integration + enablement session 1
+Week 3: Pilot run + feedback capture
+Week 4: Demo + go/no-go
+Week 5: Handoff to success ops
+
+atlasforge_pm: legal will need a short data-retention note before Week 1. We'll share contact in the doc.
+
+ryan_se: Also need AtlasForge to provide IP ranges for allowlist and service account for test uploads.
+
+emma_eng: For sizing I propose starting with 1 GPU-equivalent for pilot. I'll post numbers in the kickoff doc.
+
+oliver_successops: Feedback plan: 3-question pulse + 20-min follow-up with PM. I'll add template.
+
+priya_csm: Action items:
+- noor_cs: create kickoff doc + calendar invite (owner)
+- atlasforge_pm: upload sanitized sample + legal contact (owner)
+- ryan_se: SSO & ingestion checklist (owner)
+- emma_eng: Dedicated bench + smoke tests (owner)
+- oliver_successops: success criteria + survey (owner)
+- priya_csm: add risk register + schedule 30/60 health checks (owner)
+
+calendar-bot: Meeting created: Tue Oct 15 11:00am PT "AtlasForge: Redwood Welcome Sync" 1 invite sent. Link: https://meet.redwood/atlasforge-welcome
+
+noor_cs: I9ve dropped a skeleton agenda and owners list in the doc. Please add notes before the meeting.
+
+at lasforge_pm: uploading sample tonight. Will confirm legal contact and IP ranges tomorrow.
+
+ryan_se: infra note: allowlist changes require 48h lead time. Adding to invite.
+
+priya_csm: Thanks everyone. If procurement/legal windows pop up, flag here so we can adjust. See you on Tue.

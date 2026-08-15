@@ -1,0 +1,66 @@
+support
+
+maria: Hey team — incoming escalation from Acme. After the v1.2 canary (rolled ~30m ago) several of their function-calls are returning schema validation errors. Customer is seeing failures in production and marked this P1.
+
+lina-cs: Acme contacted CS — they report ~15% of requests fail with a consistent error. They attached sample payload+response. Asking for urgent rollback if this is a regression.
+
+support-bot: Incident created: INC-20260317-4483. Slack thread linked.
+
+maria: Sharing the sample request/response from their logs:
+```json
+REQUEST: {
+  "model": "redwood-4-1",
+  "input": "Generate invoice items",
+  "tools": [
+    {"name": "create_invoice", "args": {"customer_id": "C123"}}
+  ]
+}
+RESPONSE ERROR: {
+  "error": "tool_call_failed",
+  "details": "schema validation failed: field 'attachments' required but missing in args for create_invoice"
+}
+```
+
+ben: Hmm — their tool signature expects attachments: [object] optional before, but v1.2 model is generating calls without attachments and with nulls in some cases. Could be model prompting change or new schema enforcement in tool layer.
+
+ajay: Confirming: which model id did we route for their tenant? maria: they were on canary group using redwood-4-1-canary-20260317 (30% of hosts) — deploy-bot printed rollout at 1788457300.
+
+deploy-bot: rollout-event: model redwood-4-1-canary-20260317 -> canary=30% at 2026-03-17T09:15:00Z.
+
+maria: Customer says failures started at ~09:25 UTC. Error rate spike correlates with canary.
+
+ajay: Can you paste the tool schema from our tool registry for create_invoice? Need to know whether we tightened validation server-side recently.
+
+ben: grabbing registry — schema: {"name":"create_invoice","args_schema": {"customer_id": "string","items": "array","attachments": {"type":"array","items":"object"},"metadata": "object (optional)"}} (attachments required by schema). We had an earlier server change last week to make attachments required after compliance update.
+
+lina-cs: So this is likely a combo: model returned calls without attachments, and we now reject missing attachments. Acme used to rely on server filling defaults.
+
+maria: Actionable: two paths — rollback canary to previous model variant OR implement defensive server-side migration (accept missing attachments and insert empty array). Customer needs immediate mitigation. Which is faster?
+
+ajay: Short-term: rollback the canary to previous model (redwood-4-0-stable) for affected tenants. Medium-term: we should add a compatibility layer that accepts missing attachments and normalizes args.
+
+ben: Agreed — rollback is simplest right now. Who has permission to trigger canary rollback for tenant-scoped routing? @maria can we escalate to infra runbook?
+
+maria: I can request rollback via oncall. Filing runbook: runbook-id RBK-027, step 3 for model routing rollback.
+
+support-bot: Runbook RBK-027 triggered by maria at 1788459204. Action: initiate model routing rollback for tenant group.
+
+deploy-bot: routing-change: Acme-tenant pinned to redwood-4-0-stable for traffic=100% at 2026-03-17T09:26:34Z (event id e-7721).
+
+lina-cs: Acme confirmed drop in errors after ~60s. CS rep says they are back to 0.5% error rate (within baseline).
+
+ajay: Postmortem items: 1) Re-evaluate server-side schema rigidity when we roll models. 2) Add canary watch checks for 'tool_call_failure' spikes. 3) Add automated arg-normalizer middleware for common missing-but-ok fields (attachments -> []). 4) Improve canary dashboard to flag schema mismatch rate.
+
+ben: Also add a quick test in our canary harness that runs synthetic tool calls with optional fields omitted to catch these regressions.
+
+maria: For ticket closure: I'll update Acme with root cause = server-side schema change + model behavior divergence; mitigation = rollback + planned compatibility shim; ETA for permanent fix = 3 business days.
+
+lina-cs: Customer happy with rollback and ETA. Marking INC-20260317-4483 as resolved -> monitoring for 24h. :white_check_mark:
+
+maria: Thanks everyone. Filing follow-up RFC for args-normalizer and canary checks.
+
+ajay: I'll own the args-normalizer PR and the unit tests for canary harness.
+
+ben: I'll own the registry change audit to avoid accidental schema hardening during releases.
+
+support-bot: Incident INC-20260317-4483 -> status RESOLVED at 1788459301.

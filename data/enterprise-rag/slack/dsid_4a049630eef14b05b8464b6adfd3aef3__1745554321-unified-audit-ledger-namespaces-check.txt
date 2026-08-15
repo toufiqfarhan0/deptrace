@@ -1,0 +1,28 @@
+eng-security
+
+sam: quick sync request: audit event naming inconsistencies — can we align to a single pattern? @liya @adrian :eyes:
+liya: yep saw this. product uses `action_resource` while infra uses `resource.action`. causing parsing issues in SIEM
+adrian: we should standardize on `vendor.domain.resource.action.outcome.v#` maybe. example: `redwood.inference.model.deploy.success.v1`
+riley: question: customer-visible events vs internal telemetry — do we keep same names? customers get confused if internal noise shows up
+sam: proposal: two-tier scheme: canonical event name for infra (used in logs & SIEM) + alias mapping for customer-facing APIs. alias stored in schema `display_name`.
+liya: KMS/RBAC impact: actor fields must be stable — if RBAC changes rename roles, we risk losing subject continuity. Suggest include `actor_id` & `actor_type` and keep `actor_display` for human readable
+adrian: agree. also need migration plan: mapper lambda to emit both old and new names for 30 days, and a warning header. e.g., `X-Audit-Deprecated: model.deploy.v1 -> model.deploy.v2`
+riley: examples pls
+sam: ```json
+{
+  "event_name": "redwood.inference.model.deploy",
+  "event_version": "v2",
+  "actor_id": "user_1234",
+  "actor_type": "user",
+  "actor_display": "liya",
+  "resource_type": "model",
+  "resource_id": "r-09ab",
+  "outcome": "success",
+  "kms_key_id": "arn:kms:us-west-2:111:key/abcd",
+  "redacted_fields": ["actor_email"],
+  "consumer_alias": "model.deploy.success" 
+}
+```
+audit-bot: schema-lint found 2 conflicts: `model.deploy` vs `deploy.model` for 3 events. See https://go/repo/issue/4589
+liya: I'll draft a spec doc and quick PR for fmt/infra pipeline. Targeting EOW. If no objections, I'll schedule cross-team sync Thurs 10am
+adrian: :thumbsup: add me and SRE

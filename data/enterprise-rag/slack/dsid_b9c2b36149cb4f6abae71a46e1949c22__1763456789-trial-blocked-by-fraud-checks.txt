@@ -1,0 +1,56 @@
+support
+
+jess_support: FYI ticket #4521 — user can't claim free-trial credits; API returns "blocked_by_risk_checks". Zendesk: https://redwood.zendesk.com/agent/tickets/4521
+
+jess_support: Customer says they signed up with ProtonMail and were on a VPN (exit IP in DE). Customer insists it's a legit dev account.
+
+abuse-detector: auto-flag 
+```
+{
+  "user_id": "U-12345",
+  "email_domain": "protonmail.com",
+  "flags": {
+    "disposable_email": true,
+    "vpn_exit": true,
+    "ip_fraud_score": 87
+  },
+  "block_reason": "risk_checks:high_score"
+}
+```
+
+matt_risk: Saw the same. ip_fraud_score 87 and disposable_email=true triggers the trial-block rule. This is automated. Policy allows manual override after KYC/phone verification or threat assessment.
+
+oli_devex: Can we repro locally? What's the exact API response from the client? Paste the response body.
+
+jess_support: Pasted from logs: 
+```
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+{
+  "error": {"type": "trial_blocked", "reason": "risk_checks", "code": "trial.blocked_by_risk"}
+}
+```
+
+oli_devex: Repro steps I used:
+1) Sign up with protonmail test account
+2) Route traffic through a DE VPN exit
+3) POST /v1/credits/grant with payload {"account_id":"U-12345","grant_type":"trial"}
+Response: 403 + same body above. Curl: `curl -X POST https://api.redwood.ai/v1/credits/grant -H 'Authorization: Bearer <key>' -d '{"account_id":"U-12345","grant_type":"trial"}'`
+
+matt_risk: Given flags, recommended path: ask for phone number + one-time SMS verify OR do manual review. If manual grant: add entry to Abuse Overrides and set "manual_trial_grant" with reason + TTL. I can take it if support wants a one-off.
+
+taylor_sre: Admin steps (internal): Admin Console -> Compliance -> Abuse Overrides -> Add override -> user_id: U-12345 -> type: manual_trial_grant -> ttl: 7d -> note: "support: phone not provided; manual review passed". CLI: `rwd-admin override add --uid U-12345 --type manual_trial_grant --ttl 7d --note "support/manual_grant"`. Remember to monitor metrics.
+
+jess_support: Customer is wary of photo ID. They provided a phone number but prefer not to share selfie. Can we do a time-limited 7-day trial grant instead of full signup? Customer will likely convert.
+
+matt_risk: I reviewed the patterns — account looks low-risk beyond the email + VPN. I'll do the manual review and apply a 7-day override. If anything suspicious after grant, we'll suspend and refund.
+
+matt_risk: Applied override at 1763456840. Added to Abuse Overrides: {"uid":"U-12345","override":"manual_trial_grant","expires_at":1764051640,"actor":"matt_risk","note":"support: one-off 7d grant after review"}
+
+jess_support: Thanks Matt :thumbsup: Pinging customer now with confirmation and instructions. Will close ticket after 48h if no abuse.
+
+oli_devex: Quick note for SRE: monitor token usage spikes for U-12345 for next 72h (watch for >100k tokens/day).
+
+taylor_sre: Added alert: account.u-12345.token_rate > 100k/day -> paging oncall.
+
+jess_support: Customer confirmed they can now claim credits and started trial. Closing loop on ticket in 48h.

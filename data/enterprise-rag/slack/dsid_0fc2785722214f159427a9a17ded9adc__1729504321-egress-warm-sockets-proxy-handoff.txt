@@ -1,0 +1,66 @@
+eng-infra
+
+marta: Heads-up — building saw a spike of 502/connection_reset to the model-registry in eu-west-1 starting ~09:04UTC. Symptoms look like ephemeral port exhaustion on egress. Can infra take a look? :eyes:
+
+samir: seeing same in telemetry — NAT gateway dropped a bunch of flows, backend logs show many short TCP sessions in TIME_WAIT. Latency for small model pulls shot up first.
+
+kai: I grabbed a host netstat from a failing node, pasted below. Lots of TIME_WAIT and sockets stuck in FIN_WAIT1.
+```
+Proto Recv-Q Send-Q Local Address           Foreign Address         State      
+tcp        0      0 10.0.4.23:51432        3.122.45.10:443         TIME_WAIT  
+tcp        0      0 10.0.4.23:51433        3.122.45.10:443         TIME_WAIT  
+... ~58k entries ...
+```
+
+olivia: that's consistent with short-lived model artifact requests — every process pulls ~20 tiny files and closes. Combined with autoscaling we get connection churn.
+
+marta: quick mitigation idea: route model-registry traffic through a small fleet of egress proxies (keepalive pool) so we have stable source IPs and connection reuse. Also spin up a second NAT gateway in the AZ as short-term. Thoughts?
+
+samir: +1 for proxy. We can deploy a tiny sidecar (nghttpx / haproxy) with long keepalives. That will reduce ephemeral port churn on NAT. If we send multiple request streams over persistent connections to registry, NAT will allocate fewer ephemeral ports.
+
+kai: opened an infra task: increase NAT count for eu-west-1a and add an ENI-backed NAT instance in front of S3/model-registry endpoint to soak connections — low lift.
+
+olivia: also found the app HTTP client sets Connection: close for downloads in older versions — that's forcing close per file. We'll patch to enable keepalive + connection pooling in the next release. Patch will reduce_tcp_fanout by ~10x in our tests.
+
+marta: good. adding a temporary WIP playbook so oncall can run it: 
+1) deploy proxy k8s DaemonSet (single connection pool per node)
+2) add route rule for registry hostname -> proxy service (iptable redirect)
+3) scale NAT gw count up then down after steady state
+4) kick autoscaler cooldown to avoid mass scale-in for 30m
+
+samir: I'm pushing a quick canary: proxy image with keepalive_timeout=300s and max_conns=200. deploy-bot: starting canary to two nodes in eu-west-1a.
+
+deploy-bot: deploy started: canary/proxy-eu1a -> nodes (ip-10-0-145, ip-10-0-146). Logs available in /logs/proxy-canary.
+
+oncall-bot: alert throttles: NAT gateway gw-0a12 exceeded ephemeral port util 92% at 09:07UTC (see alert #EGRESS-724).
+
+kai: canary proxy logs show persistent upstream connections established to registry host 3.122.45.10:443, reusing sockets. Example upstream pool stats: active=12 idle=88 total=100.
+
+olivia: app-side patch is ready in branch keepalive-registry, running integration on staging now. When we flip apps the combination should be excellent.
+
+marta: tactical notes for oncall: if we see >85% NAT port util again, run these commands on the node where proxy is installed:
+```
+# check TIME_WAIT density
+ss -H state time-wait | wc -l
+# show established to registry
+ss -tn dst 3.122.45.10:443
+```
+
+samir: longer term proposals:
+- route high-churn model pulls through dedicated egress pool with fewer source IPs (keeps per-IP port headroom predictable)
+- introduce small connection-pinning layer in model-puller library so each worker reuses a single connection for many files
+- consider AWS Gateway Load Balancer + NLB + autoscaling NAT instances for predictable SNAT behavior
+
+kai: created ticket INFRA-3124 to track: proxy rollout, app-keepalive rollout, NAT scaling policy tweaks, and runbook updates. Assigned to infra squad.
+
+marta: immediate status: after proxy canary and scale-up of second NAT gw, 502 count dropped 87% in 15m. Leaving canary for 2h then start staged rollout. Thanks all. :tada:
+
+olivia: I'll follow with a small PR to client lib enabling connection_pooling by default for registry downloads.
+
+samir: reassigning alert to oncall for monitoring until full rollout. oncall-bot: create incident stub for postmortem.
+
+oncall-bot: incident stub created: INCIDENT-2024-EGRESS-014 (summary: NAT port starvation — model-registry churn).
+
+marta: adding note: avoid changing sysctl per-host (tcp_tw_reuse or ephemeral range) because NAT gateway uses pooled source IPs and host-level tweaks won't solve cross-host SNAT exhaustion. Focus on reducing new socket creation and consolidating source IPs.
+
+kai: agreed. closing this thread after rollout checklist completed.

@@ -1,0 +1,50 @@
+eng-releases
+
+andrew: Heads-up — planning a micro-surge canary for inference service v3.2 tomorrow 10:00 PST. Goal: validate new batching heuristic + kv-cache tweak. Need an owner for the rollout, smoke checklist, cohort selection, and rollback readiness. Proposed ramp: 1% (10m) -> 5% (15m) -> 25% (15m).
+
+liz: I can own the rollout. I’ll be on standby during the window.
+
+ben: Quick q — what exactly are we counting as a cohort? user-id hash buckets or geo?
+
+andrew: Good Q. Plan is percent of traffic (hash-based) but exclude legacy customers (flagged orgs). Geo: no cross-region shifts for this canary.
+
+caroline: @liz can you confirm smoke checks? I recommend: 1) 95th latency per-route < 350ms, 2) error rate < 0.5% (5xx + model rejections), 3) token cost delta < 5% compared to baseline.
+
+liz: Yup. I’ll run the smoke script and watch dashboards. Smoke script (local):
+```bash
+# run from infra jumpbox
+./smoke_check.sh --routes /generate,/chat --duration 5m
+```
+If any threshold trips, immediate halt and rollback.
+
+sre_oncall: Annotating monitoring hooks: grafana -> infra/cpu, infra/gpu-util, model/p99-latency, platform/error-rate. I’ll keep an eye on infra/gpu-util spikes (it can hide queuing). Alerts already picked up: infra/latency-pulse.
+
+ben: Two more things: 1) canary config is behind feature-flag redwood.canary_v3_2? 2) Do we have a pre-warm step for KV caches?
+
+andrew: 1) yes feature flag set to rollout mode. Ops will toggle percentages. 2) Pre-warm: prefer prefix warm for top 100 intents; will run warming job 20m before start.
+
+caroline: Add small battlegroup for rollback: @liz (owner), @ben (config), @sre_oncall (monitoring). Rollback procedure:
+```text
+- Pause traffic ramp (ops toggle to 0%)
+- Swap model -> previous pinned variant v3.1
+- Flush unhealthy nodes from pool
+- Re-run smoke checks on v3.1
+- Postmortem if rollback occurs
+```
+Keep the old model pinned for 60m after rollback.
+
+deploy-bot: Scheduled job created: canary-rollout-v3.2 at 2025-09-16T17:00:00Z (id: job-77321).
+
+liz: I’ll be at my desk 09:45 PST. Pre-warm starts 09:40 PST. I’ll call for the first 1% if pre-warm and smoke-green.
+
+ben: I’ll handle the cohort exclusion list and double-check the flag config. Will post the exclusion file here 30m before.
+
+andrew: Thanks all. One more ask: if we see p99 spike but no user-facing errors, are we okay to continue to next step? My preference: no — pause and investigate queueing before increasing.
+
+sre_oncall: Agreed. Any p99 increase > 25% over baseline -> hold and triage.
+
+caroline: Added a short checklist in case we need immediate rollback: observability runbook link: https://redwood.internal/runbooks/canary-rollback (useful snippets + run commands).
+
+liz: Confirmed. I’ll post live status updates in this thread during rollout and send a final summary after 1h. :thumbsup:
+
+andrew: Perfect. Thanks team — tagging @here to make sure folks know the window. 

@@ -1,0 +1,79 @@
+incidents
+
+PagerBot: :rotating_light: Alert: euc2-ingress (envoy) 5xx spike detected — 38% 5xx over 5m. Affected routes: /api/v1/generate, /chat. Avg latency up 3x. Pager: sam@redwood (oncall). Link: https://ops.redwood/alerts/2243216789
+
+Sam (oncall): I'm on it. paging @Ash Patel and @Mike - Eng SRE. Gathering initial scope — Sam will coordinate.
+
+Ash Patel: looking at ingress metrics now. grafana: requests/sec is normal, error rate concentrated on envoy upstream resets (RST).
+
+Ash Patel: running quick checks: `kubectl -n ingress get pods -o wide` shows 3 ingress-nginx pods on euc2 nodes, CPU low, but `kubectl logs` for envoy shows repeated `upstream reset` and `HTTP/1.1 502` entries.
+
+Mike - Eng SRE: checking node kernel messages, `dmesg | tail` shows: `nf_conntrack: table full, dropping packet` — looks like conntrack exhausted on some nodes.
+
+Sam (oncall): confirm conntrack. Are we seeing flapping targets in the ALB/NLB?
+
+Ash Patel: ALB target group health is fine but I see frequent TCP FIN/RESET counts. ALB -> ingress -> envoy -> pods path. Upstream pods are fine. Likely conntrack causing half-open TCPs to be dropped and envoy marking upstreams down.
+
+Mike - Eng SRE: quick mitigation suggestion: raise conntrack table, and scale ingress controllers to reduce per-node conn count. Proposed commands:
+```
+sudo sysctl -w net.netfilter.nf_conntrack_max=262144
+kubectl -n ingress scale deploy/ingress-controller --replicas=6
+```
+I'll run the sysctl on the two euc2 nodes showing saturated counters.
+
+Sam (oncall): go for it. I'll open the traffic-shift runbook in case we need to failover regionally.
+
+Yvette - Support: heads up — Support seeing 120+ customers with failures in EU region, mostly webhooks and chat endpoints. Triaging customers with SLO impact > 95%. I have the list and will start outbound notices after we have ETA.
+
+Ash Patel: ran `sudo sysctl -w net.netfilter.nf_conntrack_max=262144` on euc2-node-a,b. Conntrack entries now showing freeing up. Watching metrics.
+
+Mike - Eng SRE: scaled ingress to 6; pods scheduled across nodes. Envoy upstream reset rate dropping but still some persistent 502s — candidate explanation: ALB's connection_reuse and the ALB idle timeout (60s) causing mismatches with kube-proxy connection reuse while conntrack was full.
+
+Sam (oncall): can we toggle ALB deregistration delay / connection draining or adjust idle timeout quickly?
+
+Ash Patel: we can set ALB target group `deregistration_delay` to 30s and set `stickiness` off for a quick test. I'm updating target group config now via terraform patch.
+
+DeployBot: Deploy started for terraform/ops/alb-targets: patch-conn-drain-202403 (plan OK)
+
+Ash Patel: patch applied, ALB deregistration_delay set to 30s. Observing connection churn improved. 5xx rate down from 38% -> 6% in 12 minutes.
+
+Mike - Eng SRE: still seeing occasional spikes correlated with long-lived websocket connections being abruptly closed. I suspect kube-proxy conntrack timeouts are low. Will increase `nf_conntrack_tcp_timeout_established` temporarily to 7200.
+
+Sam (oncall): proceed. Keep me posted. If errors fall under 1% we can close pager.
+
+Mike - Eng SRE: ran `sysctl -w net.netfilter.nf_conntrack_tcp_timeout_established=7200` on euc2 nodes. Monitoring.
+
+Yvette - Support: customers with highest impact notified: "We're investigating an ingress networking incident impacting EU region. Mitigations underway; we'll update within 30m."
+
+Ash Patel: post-change update: 5xx steady at 0.9% over past 5m. Envoy upstream reset logs reduced by ~95%.
+
+Sam (oncall): good. Start countdown to close. Actions to make persistent:
+- Increase conntrack_max in the AZ autoscaling boot config
+- Add a cluster-wide daemonset later to set sysctls at boot (immutable nodes)
+- Review ALB idle timeout alignment with kube-proxy
+- Run an automated load test to validate
+
+Mike - Eng SRE: filing infra ticket with changes and referencing runbook: INFRA-4723. I'll schedule a rolling node update to bake in sysctl changes and bump ASG launch config.
+
+Yvette - Support: updating customers: "Issue mitigated; residual errors small; full postmortem forthcoming. No data loss reported. Customers with SLO impact will be contacted individually."
+
+Sam (oncall): closing pager in 30 minutes if stable. Great job everyone. :tada:
+
+Ash Patel: creating postmortem draft now and will attach logs (envoy, dmesg, conntrack counters) + action items.
+
+DeployBot: Deployment patch-conn-drain-202403 applied successfully.
+
+Sam (oncall): Official timeline summary for handoff:
+- 2243216789 Pager triggered (PagerBot)
+- 2243216902 Mitigations applied (conntrack bump + ingress scale)
+- 2243217520 ALB config tweak applied
+- 2243220500 Errors back to <1%
+- 2243220900 Pager closed (pending postmortem)
+
+Yvette - Support: I'll join the postmortem review and draft the customer-facing summary.
+
+Mike - Eng SRE: adding one more note — we'll include a long-term fix: move to IPVS mode on kube-proxy for higher connection capacity and keepalive behavior.
+
+Sam (oncall): Handoff complete. Leaving runbook and tickets in the thread. If anything flares, @sam will re-open the thread.
+
+(automated) PagerBot: Incident marked as acknowledged and resolved in PagerDuty by Sam.

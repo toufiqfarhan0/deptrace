@@ -1,0 +1,22 @@
+people-ops
+
+Jamal T.: Quick FYI — Lila K. submitted her resignation today, last day 2025-09-30. Please kick off offboarding tasks. @People Ops @IT Bot
+Lila K.: Thanks Jamal. I can do handover notes this week. Two quick benefits questions: when does my health coverage end, and will I get COBRA paperwork?
+People Ops: @Lila K. thanks for the heads-up and sorry to see you go. Health coverage active through 2025-09-30 (end of day). COBRA packet will be emailed within 7 business days after your termination date — HR sends from benefits@redwood.com. We can also walk you through enrollment options.
+Lila K.: Got it, thanks. Will PTO payout be on final paycheck?
+People Ops: Yes — unused PTO will be paid out on your final paycheck per policy. If you want PTO used before EOD let us know and we can approve quickly.
+Alex R.: From infra side — tagging @IT Bot. Need list of accounts to remove and timing for access cutover. Also confirm if we should snapshot workstation and transfer hardware to IT inventory.
+IT Bot: Received. Standard procedure: remove cloud console access at EOD last day, revoke SSO the following morning, and disable MFA. Please provide list of services: GitHub, GCloud, PagerDuty, Datadog, Slack. If any keys/tokens were issued, rotate and record revocations.
+Maya P.: Lila's main repos: repo-a, repo-b, infra-config. She's primary on onboarding flow. I can take ownership of repo-a. Jamal — do you want me to pair with Lila for a day?
+Jamal T.: Yes please — Maya pair with Lila Tue/Wed. Also assign backups for oncall runbook and client escalations.
+People Ops: We'll schedule an exit interview w/ People Ops lead. Lila — any preference for time? We have openings 2025-09-25 10:00 or 2025-09-29 14:00 PT.
+Lila K.: 09-29 14:00 PT works.
+People Ops: Noted — calendar invite sent. Also tagging offboarding playbook: https://internal.redwood.com/playbooks/offboarding (includes checklist: asset return, benefits FAQ, COBRA timeline, final payroll).
+Alex R.: For hardware — Lila will return laptop to onsite reception by EOD last day. We'll image and add to spares.
+People Ops: Action items recap:
+- People Ops: send COBRA packet + exit interview invite (assigned)
+- IT: prepare access revocation list and schedule removal (remove at EOD last day)
+- Manager (Jamal): confirm knowledge transfer sessions with Maya
+- Employee (Lila): handover notes + laptop return
+Lila K.: Thanks all. Happy to help with docs this week. Appreciate the coordination. :heart:
+Jamal T.: Thanks Lila — we'll make the transition smooth. :thumbsup:

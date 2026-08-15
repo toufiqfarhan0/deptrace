@@ -1,0 +1,48 @@
+incidents
+
+incident-bot: :rotating_light: Incident detected — SLO breach on inference API (p99 latency > 2s). Alert source: streaming endpoints /v1/stream. Possible upstream: db-gateway auth/token store timeouts. Paging @maria (oncall) @jordan (sre) @lee (ml-eng).
+
+maria (oncall): ack, I'm on it — looking at dashboards now.
+
+jordan (sre): seeing p95 ~450ms, p99 ~2.6s for streaming requests starting ~02:42 UTC. Error spike: auth-db 5xx rate up. Graph: https://grafana.company/redirect/graphs/streaming-p99
+
+lee (ml-eng): streaming stalls correlate with auth retry loops — a lot of retries to token service, backlog in local send loop. KV cache miss rate jumped ~4x.
+
+sam (platform): I traced a recent helm release for db-gateway (release/db-gateway v1.3.4) at ~02:40 UTC — connection pooling defaults look low, pool exhaustion + a feature-flag rollout likely combined.
+
+taylor (support): customers reporting intermittent streaming stalls, mostly Dedicated tenants. No data loss reported. Support has initial emails queued.
+
+maria (oncall): mitigation plan: 1) temporarily increase db-gateway connection pool and replicas; 2) enable local token-cache short-circuit; 3) route non-critical traffic to fallback lite model to reduce load. I'll coordinate.
+
+jordan (sre): I'll patch the deployment — running: `kubectl -n infra patch deploy/db-gateway -p '{"spec":{"template":{"spec":{"containers":[{"name":"db-gateway","env":[{"name":"MAX_POOL","value":"200"}]}]}}}}'` — will monitor rollout.
+
+maria (oncall): applying pool increase now.
+
+deploy-bot: Deployment db-gateway: Rolling update started (3 -> 3 replicas) — triggered by maria.
+
+deploy-bot: Deployment db-gateway rolled out successfully (3/3 updated) — 02:46:10 UTC.
+
+lee (ml-eng): I'm updating token-cache configmap TTL to 30m to reduce token fetches. Patching `token-cache-config`.
+
+sam (platform): also toggling route policy to move ephemeral/test tenants to `lite-model` for the next 20m: `routeset update --tag ephemeral --route lite-model --ttl 20m`. Doing now.
+
+maria (oncall): rolling back the recent feature-flag "user-token-cache-v2" (rolled 02:41) — doing quick rollback in flags console.
+
+```
+[2026-03-14T02:45:12Z] ERROR auth-db: connection timeout (waited=5000ms) tenant=acme
+[2026-03-14T02:45:13Z] WARN streaming: send loop stalled seq=421
+[2026-03-14T02:46:01Z] INFO db-gateway: pool connections in use=198 available=2
+```
+jordan (sre): after pool bump + TTL change: p95 -> 320ms, p99 -> 780ms. Streaming stalls down significantly but not back to baseline.
+
+taylor (support): Customer impact summary: 6 customers opened tickets reporting partial streaming stalls, 2 marked high-impact (dedicated). Notifying account teams with current status.
+
+sam (platform): confirmed feature-flag rollback completed at 02:48 UTC. No new token-fetch surge since.
+
+maria (oncall): current status: mitigated (active). Next steps: monitor metrics for 30m, collect timeline & logs for postmortem if p99 remains >1s. Handoff: I will hand this to night oncall @lee in ~45m.
+
+lee (ml-eng): ack — I'll take over the monitor and assemble logs + timeline. Will follow up with root-cause analysis if we see recurrence.
+
+maria (oncall): big thanks team :thumbsup: — closing active updates here, will post an incident summary later. Incident marked P2 -> mitigated at 02:55 UTC.
+
+incident-bot: Incident updated: severity=P2, status=mitigated, summary="db-gateway connection pool exhaustion + feature-flag surge caused auth token fetch storm leading to streaming p99 spike and stalls; mitigations: pool increase, token-cache TTL bump, feature-flag rollback, route fallback for ephemeral tenants."

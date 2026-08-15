@@ -1,0 +1,40 @@
+eng-runtime
+
+marcus: heads up — saw a ~18% latency cliff on L40S for the paged+fused flash variant when going from bsz=8 to bsz=16 at seq=1024. perf run attached but short summary below.
+
+anya: ugh, that's big. which kernel was selected? our policy should prefer fused-paged on L40S for that shape.
+
+marcus: runtime picked fused_paged_v2 for the hot path, then we see a fallback path to flash_attn_fused for some micro-batches. profiler indicates a big memcpy stall in the prefetch/copy path.
+
+sam: can you paste the flame summary and the exact env flags? also what quant/AMX/etc settings were used?
+
+marcus: quick flame summary pasted:```
+flamegraph summary:
+  memcpy: 42%
+  attn_kernel: 35%
+  kv_cache_eviction: 10%
+  other: 13%
+```
+flags: auto-kv=true, batching=continuous, kernel_policy=auto, quant=fp16.
+
+jo: that KV eviction number is suspicious for bsz=16. if eviction churn increases, we do extra host<->device copies. did you run with prefix caching enabled?
+
+marcus: yes prefix cache on. disabling it reduces p95 but obviously raises raw token work. numbers from the run: bsz=8 seq=1024 p95=42ms; bsz=16 seq=1024 p95=51ms; bsz=32 seq=1024 p95=78ms.
+
+perf-bot: test run 2965432100: env=L40S model=redwood-3b variant=fused_paged_v2 seq=1024 batch=[8,16,32] results stored in /runs/2965432100 (summary: see marcus message).
+
+anya: can we repro on A100/H100? if not, likely L40S memory or pci topology quirk.
+
+marcus: quick sanity: A100 bsz16 seq1024 p95=48ms; H100 p95=46ms. so regress is noticeably worse on L40S.
+
+sam: hypotheses: (1) fused_paged_v2 prefetch path isn't async on L40S, causing memcpy serialization; (2) kernel selection heuristics assume higher memcpy bandwidth; (3) misaligned buffer addresses triggering slow memcpy on L40S. next steps: run with memcpy_async=true, force kernel=flash_prefetch and force kernel=fused_paged_v1 to compare.
+
+marcus: kicking off forced-kernel comparisons now. adding nvidia-smi dmon to capture memcpy counters and per-GPU PCIe usage. also dumping allocator stats.
+
+jo: also add a microbench sweep across seq lengths: [512, 768, 1024, 1280, 1536] at bsz=16 to find cliff boundary. that should tell if it's seq-driven or batch-driven.
+
+marcus: agreed — starting the seq sweep jobs and tagging @infra for CI priority. will paste raw logs when done.
+
+infra-bot: queued job #4721 (priority=high) for eng-runtime. ETA ~12m :rocket:
+
+marcus: thanks — will update with numbers and the profiler traces when the runs complete :eyes:

@@ -1,0 +1,48 @@
+support
+
+maria-support: Customer (ACME) reports intermittent 401s and says they can't find any request/trace ids in their logs or our Console. They attached screenshots but no header shows an ID. Can we get a reproducible checklist to send them?
+
+liam-eng: quick checklist I use: ask for (1) endpoint path + method, (2) earliest and latest timestamps (UTC), (3) exact request headers (screenshot or raw), (4) a HAR or curl that reproduces, (5) account-id / user-id / session id if available. Also ask whether they sit behind a proxy or CDN that might strip headers.
+
+maria-support: good — they say they run through an edge proxy & mobile apps. they also say the web console doesn't show request ids for these requests. any platform-specific tips?
+
+tess-mobile: mobile tips: enable SDK verbose logging in app build or use Charles/Proxyman to capture TLS. For iOS native SDK set: `Redwood.configure(debug: true)` and look for logs containing `request_id` or `rd_request_id`. For Android call `Redwood.setLogLevel(LogLevel.DEBUG)` or check `/data/data/<packagename>/files/redwood/session.json` (if they can pull a file) — it often has `last_request_id` or `session_id`.
+
+liam-eng: web: ask them to open DevTools -> Network -> filter by `api.redwood` or `/v1/`. Click one failing request and check Request Headers and Response Headers for `x-request-id`, `x-rd-request-id`, `redwood-request-id` or `redwood-debug-token`. If they use fetch/XHR, also check for `initiator` and console logs. Note: some browsers/hardened extensions hide auth headers in exported HARs — ask them to capture full request (preserve log, include request bodies).
+
+samir-infra: proxy/CDN gotchas: many gateways (Cloudflare, Fastly, AWS ALB, or corporate proxies) can drop or rewrite custom headers. Ask customer to check ingress rules for header removal or header whitelist. If they have an API gateway, they should enable passing through `X-Request-Id` and any `redwood-*` headers. If headers are stripped, fallback is searching our logs using: time window + client IP (if they can provide), path, and account id.
+
+liam-eng: example minimal curl we ask them to try (replace placeholders):
+
+```
+curl -v -X POST https://api.redwood.ai/v1/generate \
+  -H "Authorization: Bearer <REDACTED_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-small","input":"test"}'
+```
+
+liam-eng: after that, tell them to paste the `*server response headers*` (not just body). On success/fail the response should include `x-request-id` or `redwood-request-id` we can correlate. If the response shows nothing, the header was likely stripped before reaching our edge or removed by the client.
+
+maria-support: if they can't run curl, what minimum info do we need to escalate to eng?
+
+liam-eng: minimum for escalation: UTC timestamp range (±2m) when the failure happened, endpoint path (e.g., `/v1/generate`), account-id (or project id), sample user-agent, and any local trace or SDK logs. If they can produce a debug token from Console -> Support -> Create debug bundle, include that token. We can use the token to fetch the bundle.
+
+maria-support: how do customers create a debug token?
+
+redwood-bot: To generate a debug bundle: Console -> Help & Support -> Create debug bundle. Or programmatically: `await client.createDebugToken({reason: 'support-escalation'})` (SDKs vary). Copy the returned `debug_token` and share it with support.
+
+tess-mobile: note re: HAR and mobile: HAR exports from browser are usually OK. For apps, recommend Charles/Proxyman with SSL proxying enabled. Instruct them to install our SSL cert in the device emulator or real device to capture request/response headers and bodies.
+
+samir-infra: privacy/GDPR note: ask them to redact PII but *do not* remove headers or request ids. If they must redact, ask them to replace values with placeholders but keep header keys intact.
+
+liam-eng: search tips for us: if customer can't provide ids, we can search logs by: `time window` + `path` + `account-id` + `client_ip` or `user_agent`. If they have a sample request body, we can fuzzy search. Also include `approximate token usage` or durations.
+
+maria-support: ok I'll send this short checklist to customer. Sending a TL;DR list now so they can reply quickly: 1) exact UTC timestamps, 2) endpoint + method, 3) account/project id, 4) user-id/session, 5) request headers (screenshot/raw), 6) curl/HAR or debug-token, 7) SDK logs (debug enabled), 8) confirm whether CDN/proxy sits in front.
+
+tess-mobile: one more: if headers are missing from client but present at our edge (we can confirm) they should check intermediate proxies for removal. If headers are missing both client+edge then the SDK didn't attach them — ask for SDK version and config.
+
+maria-support: thanks all — I'll update the ticket and ask ACME for the items above. :white_check_mark:
+
+liam-eng: thanks — ping me if they share timestamps and we can't find matches, I can run a deeper trace.
+
+redwood-bot: Incident cross-check: reminder to include `debug_token` when provided so the oncall can fetch the bundle (do not post tokens publicly).

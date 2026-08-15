@@ -1,0 +1,32 @@
+Alia M.: Quick idea — run a small PLG microexperiment combining a short launch post + webinar invite + 50 free credits for new signups who use a prompt template. Goal: measure 7-day activation and demo requests. Short runway (2 weeks).
+
+Alia M.: Quick idea — run a small PLG microexperiment combining a short launch post + webinar invite + 50 free credits for new signups who use a prompt template. Goal: measure 7-day activation and demo requests. Short runway (2 weeks).
+Matt S.: love it. what primary metric — activation rate or demo requests? also target cohort size?
+Alia M.: Primary = 7-day activation (first useful request + retention on day 7). Secondary = demo requests. Target ~1k new users from organic/webinar funnel.
+Jordan G.: routing thought — send webinar signups into an onboarding drip that includes a curated "starter prompts" pack. We can split test: A) credits up-front, B) credits after first successful run.
+Rachel L.: I can draft 3 launch post variants: short technical hook, benchmark narrative (latency/cost headline), and a product-first story with screenshots. CTA copy variants for AB: "Claim 50 credits" vs "Join webinar + get credits".
+Sam A.: Quick numbers: to hit 1k signups we should expect ~4k impressions on boosted post + 600 webinar RSVPs. For power calculations, assuming baseline activation 12%, we need ~800 signups per arm to detect a 4pt lift.
+Nina O.: operational checklist: webhook from form -> Segment -> marketing cohort -> Redwood Console event tag. Need tracking keys from growth before we run. Also confirm credits redemption flow in prod (expiry 14 days?).
+Alia M.: yes expiry 14 days. Jordan, can you define the onboarding drip steps (3 emails + 1 in-app prompt)? keep each 24-48h apart.
+Jordan G.: will do. Tentative drip: 0h welcome + credit claim, 24h starter prompts guide, 72h benchmark tutorial (how-to measure cost/latency), 120h invite to office hours.
+Rachel L.: posting cadence proposal: day 0 launch post, day 2 reminder (benchmark snippet), day 5 webinar reminder. I'll attach creative + short captions. :memo:
+Matt S.: analytics: Sam, please add conversion funnel to the weekly dashboard. I want token usage, first-success time, retention, demo-request conversion.
+Sam A.: adding funnels now. also will track cohort tags: glue_microcredit_v1.
+Nina O.: ops-bot: webinar scheduled for 2026-04-15T18:00Z; automated reminder 24h/1h prior.
+ops-bot: :white_check_mark: Webinar created (ID: 3892). RSVP form URL: https://events.redwood.ai/r/3892
+Rachel L.: CTA copy drafts posted in the doc: https://docs.redwood.ai/marketing/microcredit-launch (3 variants). prefer variant B for initial run.
+Matt S.: timeline check — launch post + form go live on 2026-04-01; webinar 2026-04-15; experiment window ends 2026-04-29. ok?
+Alia M.: yep. Assignments: Rachel (copy & posts), Jordan (drip & routing rules), Nina (tracking & credits), Sam (dashboard), Matt (measurement + review). I'll coordinate kickoff tomorrow 10am. :rocket:
+Rachel L.: noted. I'll upload creative by EOD today.
+Jordan G.: routing snippet (to ops):
+```json
+{
+  "rule": "route_to_onboarding",
+  "condition": "utm_campaign == 'microcredit_launch' || ref == 'webinar_3892'",
+  "actions": ["add_cohort:glue_microcredit_v1", "send_event:credit_offer_shown"]
+}
+```
+Nina O.: copying this into our infra ticket. need the final form fields so we can map traits.
+Alia M.: final Q: any compliance flags with credits? legal ok'ed small promo. keep PST users timezone-friendly for webinar.
+Matt S.: all good. Let’s keep the bench narrative tight — include a single table comparing expected token cost vs baseline. Short + scannable.
+Alia M.: perfect. Kickoff tomorrow. :party:

@@ -1,0 +1,18 @@
+docs
+
+nicole (Docs): Quick sync: partner reported inconsistent terminology across migration guides and asked for a tiny accessible SDK example. Can we align voice and glossary?
+dan (Eng): I can produce a compact JS + Python snippet returning plain_text and structured bullets for assistive tech.
+priya (Product): Product preference: use 'Redwood' for capability blurbs; use 'we' in procedural steps. Add one-line rule to style guide.
+sam (DevEx): I'll add a lightweight lint to flag 'we' on product landing pages and Title Case misuse for product modes. Low false positives.
+anya (Legal): Please avoid absolutes like "fully isolated" or "100% private." Use qualifiers: "designed to" or "intended to." I'll review glossary updates.
+nicole (Docs): Action items: 1) add style guide note under docs/style/voice.md, 2) add examples in docs/examples/accessibility.md, 3) sweep glossary for Hosted/Dedicated/Private phrasing. Volunteers?
+dan (Eng): Snippet draft (JS): ```js
+// accessible output pattern
+const r = await redwood.generate({ model: 'rw-1-large', input: 'Summarize as short bullets', format: 'json' });
+console.log(r.plain_text); // TTS / screen reader
+console.log(r.structured?.bullets || []); // keyboard nav
+```
+priya (Product): For migration guides, include a "voice note" at the top: Hosted example uses "Redwood provides X"; Private migration steps use "we recommend". Makes reviews faster.
+sam (DevEx): I'll land the lint rule and a short README so reviewers know why the rule exists.
+anya (Legal): I'll review the glossary PR. Suggested glossary phrasing for Private: "Private deployment — a mode where the customer manages network boundaries; Redwood may provide an optional control plane. Customers retain responsibility for local compliance controls."
+nicole (Docs): Timeline: PRs by Friday EOD. Dan/Sam please link snippet and linter branches into the style PR. Ping here if anything blocks review. :white_check_mark:

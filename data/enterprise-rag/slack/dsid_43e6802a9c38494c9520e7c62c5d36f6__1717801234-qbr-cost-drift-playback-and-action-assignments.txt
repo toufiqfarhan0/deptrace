@@ -1,0 +1,23 @@
+customer-success
+
+Marie L: Heads-up — QBR next Thurs. Need a compact cost-drift appendix for our top 3 onboarding customers (Raven, Solace, Nimbus). Who can own each?
+Asha K: I can take Raven. Scope?
+Marie L: Token burn trends (30/60/90), top triggers (embeds-heavy calls, long context), one slide each. Use last 30d. Keep it snackable.
+Ben T: I'll own Solace. Will pull embedding breakdown + per-call median token count.
+Jordan P: I can run a quick sim for burst+quantization scenarios. ETA EOD Wed.
+Priya S: I'll draft recommended throttles + a short enablement email snippet for accounts flagged as >30% variance.
+Marie L: Thanks. Also want a tiny sensitivity matrix: cost at QPS {25,50,100} × seq lengths {64,256,1024,2048}. Jordan, can you export numbers into CSV?
+Jordan P: Yep. Running against last 30d. Command I'm using:
+```
+python tools/cost_sim.py --account-id RAVEN --horizon 30 --qps 25,50,100 --lens 64,256,1024,2048
+```
+Asha K: Add a renewal-risk flag if month-over-month variance > 30% and spend delta > $2k. That helped us triage earlier.
+Priya S: I'll prepare the email template + a one-pager: throttle presets, when to suggest quantization, and quick ops playbook.
+Ben T: Do we want a standard credits offer if they hit the threshold (to buy time while we optimize)?
+Marie L: PMs agreed to a one-time $5k credit for first instance; legal cleared. Add slide.
+Jordan P: Sim finished — uploaded CSV to GDrive: https://drive.redwood/raven-cost-sim.csv. Key numbers: 25qps@1024 -> ~$1.8k/day (unoptimized), quantized ~35% lower.
+Marie L: Solid. Confirming owners: Raven=Asha, Solace=Ben, Sim=Jordan, Enablement=Priya. Deliverables due Wed 5pm PT so I can assemble Thu morning.
+Ben T: Need Solace embedding sample — @DataOps can you grant read to ben.t@redwood for project solace-embeds?
+DataOps Bot: access granted to ben.t@redwood for project solace-embeds.
+Priya S: I'll run a 30m dry-run Thu 9am PT to rehearse the slides and the playbook wording. Invite going out.
+Marie L: Perfect. I'll assemble the appendix slides & send a preview Thu noon. Please flag blockers ASAP. :thumbsup:

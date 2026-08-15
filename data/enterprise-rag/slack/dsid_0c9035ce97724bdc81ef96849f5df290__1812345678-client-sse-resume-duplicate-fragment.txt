@@ -1,0 +1,66 @@
+devex
+
+kate: Heads-up — noticed duplicate partial tokens after short client disconnects when using SSE resume. The client reconnects with Last-Event-ID and the first token of the resumed stream appears twice, e.g. `... tokenXYZ tokenXYZ tokenABC` :facepalm:
+
+kate: Repro steps (easy):
+1) start streaming generation (node fetch / browser SSE)
+2) force a tiny network glitch (~200ms)
+3) client reconnects and supplies Last-Event-ID header
+4) server resumes, but the first chunk after resume repeats the last partial chunk from before the glitch
+
+kate: Minimal curl repro I used: 
+```
+curl -v -H "Accept: text/event-stream" -H "Authorization: Bearer $TOKEN" 
+  "https://api.redwood.ai/v1/streams?model=small-demo" 
+# simulate pause, then reconnect with: 
+curl -v -H "Accept: text/event-stream" -H "Authorization: Bearer $TOKEN" -H "Last-Event-ID: 12345" "https://api.redwood.ai/v1/streams?model=small-demo"
+```
+
+josh: Do you have raw chunk boundaries from the client? Are we seeing duplicate bytes or duplicate logical tokens?
+
+kate: Raw SSE lines — note the `data:` fragments and the seq field in our server logs: 
+
+```
+# before glitch
+event: message
+data: {"seq":12345,"chunk":"tokenXYZ"}
+
+# after reconnect (Last-Event-ID:12345)
+event: message
+data: {"seq":12345,"chunk":"tokenXYZ"}
+event: message
+data: {"seq":12346,"chunk":"tokenABC"}
+```
+
+kate: So server is re-emitting seq 12345. The client doesn't dedupe by seq, it just concatenates chunks.
+
+aleksandr: Sounds like two contributing factors: (1) the server resumes by replaying the last committed fragment, and (2) the SDK's SSE consumer treats each `data:` as authoritative without checking the resume id/seq. If Last-Event-ID == lastSeenSeq we should drop the first event after reconnect.
+
+aleksandr: Also saw this with auth refresh in the middle of reconnect. If token refresh triggers a slightly different backend path (model-variant routing) the server might re-emit cached tail fragments. That makes simple dedupe by model+seq safer.
+
+josh: Do we emit a `id:` line in SSE with the seq? If so the client can track last seen `id:` and ignore the first event when they reconnect with the same id. If server only uses an internal seq in `data`, that's harder for generic clients.
+
+kate: Our server currently sets `id: <lastEventId>` for resume, but the first event chunk still has the same id as the last one. Browsers' EventSource spec: if you set Last-Event-ID header it tries to resume, but implementations differ on whether they emit the event that matches the id. The mismatch across browsers + our custom Node SSE parser causes inconsistent duplicates.
+
+aleksandr: Suggested SDK changes: 
+- expose `event.id` to higher-level SDK `StreamChunk` metadata
+- on reconnect, if `event.id == lastSeenId` then drop the first event chunk (configurable policy: drop|merge|emit)
+- add an optional `resume_seq` header (e.g., `Redwood-Resume-Seq`) that is an integer we atomically ack on server side so server can avoid replaying the final committed event
+
+aleksandr: Quick patch I'd propose for the node SDK: when the HTTP client reconnects set a small in-memory flag `skipNextIfSameId=true` and on first received `id` compare to `lastId`. If equal, ignore that first payload. This is low-risk and can be toggled by a param `resumeDedup=true`
+
+josh: I like adding explicit seq header in the protocol long-term. Short term the SDK-side drop is easiest. We should also add integration tests that simulate partial final tokens and reconnects.
+
+kate: Can someone file an issue with repro + logs + proposed SDK patch? I can attach the curl logs and a short mocha harness.
+
+devex-bot: Created issue #5421: "sse: duplicate fragment on resume — client should dedupe by event id" - https://github.com/redwood-inference/redwood/issues/5421 :thumbsup:
+
+kate: Thanks! I'll link the mocha harness in the issue. Also adding a note: this only shows up in combos of short glitches and chunk-boundary tokens (tokens split across fragments). Longer reconnect delays tend to avoid it because server advances seq.
+
+josh: Let's throw this into next sprint for devex SDK parity work. Add a small e2e and a toggled flag. I can own the server header change if devops agrees.
+
+aleksandr: I'll draft the SDK PR (node + browser) with the `skipNextIfSameId` behavior and a unit test.
+
+kate: Great — thanks! If we can get the toggle in today, I can validate against our flaky production traces.
+
+josh: SG. Adding action items to the issue. :rocket:

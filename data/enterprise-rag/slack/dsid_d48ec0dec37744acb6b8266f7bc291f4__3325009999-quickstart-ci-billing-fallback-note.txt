@@ -1,0 +1,25 @@
+devex
+
+lee: New hire here. Followed the Go quickstart sample and first call errors: 403 workspace_inactive. UI shows trial banner. Any quick tips?
+
+tess: Welcome! Quick checks: did you use a service account or personal API key? Which region?
+
+lee: service account key from UI, region EU. Command I ran:
+```
+curl -H \"Authorization: Bearer REDACTED\" https://api.redwood.ai/v1/generate -d '{\"input\":\"hi\"}'
+```
+response body: {"error":"workspace_inactive","detail":"billing provisioning pending"}
+
+pat: We recently tightened EU trial rules; some workspaces require a payment method even if banner says trial. There's also a short propagation window after key creation. Two separate problems.
+
+lee: Ugh. Is there a way my app can detect this and show a helpful message instead of crashing? My sample app panics and CI fails.
+
+tess: For now, detect error.error=="workspace_inactive" or HTTP 402/403 and show "Billing required or provisioning pending; check Billing page." Also add a 30s backoff retry for propagation. In Go SDK you can inspect resp.Body to get the JSON.
+
+pat: Filed RED-6101 to add a typed BillingProvisioningError across SDKs and to change quickstart to handle it gracefully. devex-bot: RED-6101 created and assigned to @tess.
+
+lee: Workaround for CI: set env REDWOOD_DEV_SKIP_BILLING_CHECK=true in ephemeral dev jobs so tests don't block while team finishes billing setup. Not for prod.
+
+tess: Good call. I'll open a tiny quickstart PR to add the detection snippet and the CI tip. Thanks for reporting!
+
+devex-bot: Note: docs PR D-1102 opened, linked to RED-6101.

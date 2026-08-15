@@ -1,0 +1,59 @@
+all-hands
+
+Michelle (Eng PM): Thanks everyone — quick follow-up from today’s all-hands runtime segment. A few folks asked for clarity on kernel priorities, batching/caching timelines, and concrete next steps. Can the runtime leads reply here so we have a single place to track?
+
+Jörg (Runtime): Yep — happy to. Short answers first: kernel-lowlat for <50ms p95, kernel-throughput for long seqs. We’re landing perf regimens this quarter and a prioritized rollout next quarter.
+
+Sam (Backend): Quick question: will KV cache eviction/ttl be per-customer? We have a partner that needs aggressive TTLs.
+
+Jörg (Runtime): Yes — plan is per-customer policies for Dedicated/Private. For Hosted we’ll expose a flag (kv_eviction_policy) with safe defaults. ETA: feature-gated beta in ~2 sprints.
+
+Lee (Infra): Re batching: current default microbatch=4 is causing tail spikes when seq ~1k on canaries. Any recommended tuning for chat endpoints?
+
+Jörg (Runtime): For chat-heavy workloads we recommend lowering microbatch and using token-based batching. Example we use in perf tests:
+
+```
+# runtime batch recommendation for chat
+batch.max_tokens=2048
+batch.max_concurrent=8
+batch.microbatch_size=2
+batch.timeout_ms=40
+```
+
+Jörg (Runtime): We’re also working on adaptive batching (runtime auto-adjusts microbatch based on p95 and inflight) — aiming for Q3 delivery.
+
+Ava (VP Eng): Can we tie routing/fallback rules to SLOs in Console? e.g., if p95>120ms auto-fallback to kernel-throughput or lower precision variant.
+
+Michelle (Eng PM): +1 — that would be huge for customer resilience.
+
+Jörg (Runtime): Yes — routing policies will support SLO-driven rules. Prod team is adding UI hooks; runtime will expose metrics and a control API. Target: initial rollout with Dedicated first, Hosted shortly after.
+
+Sam (Backend): For the Hosted flag — is there an off-by-default safety mode? We don’t want aggressive eviction to break sessions.
+
+Jörg (Runtime): Default will be conservative (keep-alive bias). Advanced policies opt-in. Docs will include migration checklist.
+
+Lee (Infra): Can perf leads publish the canary numbers that showed spikes? Want to reproduce locally.
+
+Jörg (Runtime): Will post the canary trace + perf dashboard link by EOD. Key notes: microbatch=4 + long seqs + prewarm=false was the combo that spiked.
+
+oncall-bot: Incident: perf-canary-1749 — elevated tail latency observed at 10:22 UTC. Ticket created: INF-3421.
+
+Michelle (Eng PM): Action items: 1) Jörg to publish kernel priority doc + perf artifacts (INF-3421) 2) Lee to add reproduction steps & infra config 3) Sam to validate KV TTL modes with Partner X and report back 4) Product to draft Console SLO->routing UX. Please reply with ETA.
+
+Jörg (Runtime): I’ll post the doc + traces today (ETA: 6pm PT).
+
+Lee (Infra): I’ll add repro steps and a quick runbook in the ticket by tomorrow morning.
+
+Sam (Backend): I’ll sync with Partner X and update here by EOD tomorrow.
+
+Ava (VP Eng): Thanks — can you summarize blockers if any when you post? If anything needs an exec unblock, @Ava will jump in.
+
+Michelle (Eng PM): Great — I’ll convert these into a follow-up email and link the ticket + doc. Thanks all. :thumbsup:
+
+Jörg (Runtime): Nice catch everyone. Adding a short snippet to the kernel doc about safe defaults and rollback playbook.
+
+Sam (Backend): :+1:
+
+Lee (Infra): Will run the local canary this afternoon and ping the thread with steps.
+
+Michelle (Eng PM): Closing note — please keep replies short here (we’ll move deep dives to infra/runtime threads).

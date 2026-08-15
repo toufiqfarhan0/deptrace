@@ -1,0 +1,30 @@
+incidents
+
+PagerBot: :rotating_light: [ALERT] pagerduty/critical fired for inference-serve-eu (incident 89072). Symptoms: 5xx spike + queue growth. Auto-escalation in 2m if unacked. Links: https://pd/redwood/89072 , logs: https://logs/redwood/89072
+Alex K: I got this, acked in PD. diving in now.
+Samir: Alex — any customer impact yet? any high-prio tenants on that cluster?
+Maya: watching metrics — eu inference pool token lat p50 up to 450ms, p95 1.8s, 5xx rate jumped from 0.1% to 7% over last 3min. embeddings-queue length +400. looks like KV-cache thrashing after a config push ~09:41 UTC.
+Alex K: yep saw the deploy marker at 09:41. rolling back edge config would be fastest. prepping rollback command.
+Alex K: runbook step 3: check autoscaler + backpressure. running: 
+```
+# check pods + queue depth
+kubectl -n inference get pods -l svc=inference-serve-eu
+kubectl -n inference exec deploy/queue-proxy -- curl -s localhost:9090/metrics | grep queue_length
+```
+Maya: queue-proxy shows backlog 412, backlog growth rate +28/s. autoscaler currently at 8 pods.
+Samir: If rollback is easiest do it. Which deploy? can you pin? also pinged support for any active customer tickets.
+Alex K: rolling back the feature flag for kvcache-ttl change now (will flip to previous TTL). 
+PagerBot: Note: if no ack from higher tier in 2m will escalate to Jamie (oncall).
+Alex K: rollback started. will post progress in 30s.
+Maya: telemetry: error traces show KeyError in kv-cache lookup then fallback to full recompute heavy path. that matches sustained 5xx.
+Alex K: rollback applied — reverting feature flag: `curl -XPOST https://flags.internal/api/kvcache/ttl -d '{"value":"stable"}'` (resp 200). service health pinging.
+Maya: p50 down to 120ms within 45s, p95 350ms, 5xx dropping to 0.6%. queue draining, backlog -240 in last 3m.
+Samir: nice. any customers hit failures? support reported 2 failed calls from partner-account-42, emailing them now.
+Alex K: marking incident as mitigated in PD but leaving open for checklist and postmortem. handing ownership to Jamie for followups and P0 RCA. @Jamie can you take over ownership for the post-incident items? :white_check_mark:
+Jamie (oncall): taking it. thanks for quick rollback. I'll run through post-incident checklist, confirm customer outreach, and assign RCA owners. ETA for initial RCA draft 24h.
+Maya: quick note — capture the config diff for kvcache-ttl feature toggle + the deploy marker; saving artifacts to /artifacts/incidents/89072.
+Samir: support confirmed they reached out to partner-account-42 and created ticket INC-4591. customer saw ~2 failed requests and transient latency.
+Jamie (oncall): ok. I'll create the incident channel, add stakeholders, and schedule a short triage tomorrow. tagging eng-ml + product. closing operational thread here, moving to incident doc. thanks all. (reacts :thumbsup:)
+PagerBot: Incident 89072 status changed to mitigated by Alex K. Escalation canceled.
+Alex K: thanks team, good catch Maya.
+Jamie (oncall): one more — please paste any logs or runbook gaps you hit in the incident doc; I'll own the RCA timeline.

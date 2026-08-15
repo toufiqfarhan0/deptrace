@@ -1,0 +1,12 @@
+all-hands
+
+Leah Kim: Quick live thread for any follow-ups from todays all-hands on strategy & positioning. Drop short Qs.
+Asha Patel: What's the single priority metric for this quarter? unit cost, p95, or ARR?
+Leah Kim: Tiered: 1) SLA/reliability, 2) unit-cost wins for hosted, 3) PLG growth. OKRs posted tomorrow. :white_check_mark:
+Diego Ramos: Does roadmap mean we pause new experiments to hit cost targets?
+Leah Kim: Not a pause, reprioritize. Freeze low-impact spikes; reassign cycles to Optimize & SLA work.
+Jenny Park: Sales one-pager status?
+Leah Kim: Drafting now  will share in 48h (persona blurbs + KPIs).
+Tom Nguyen: Messaging nuance: public vs sales?
+Leah Kim: Public: "production-first". Sales: private battlecard emphasizing cost/SLAs.
+allhands-bot: Slides + recording: https://redwood.slides/all-hands/1778005555

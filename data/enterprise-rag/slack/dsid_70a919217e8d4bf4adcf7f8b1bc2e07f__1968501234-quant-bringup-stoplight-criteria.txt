@@ -1,0 +1,51 @@
+eng-ml
+
+alex_liu: Quick sync — proposing a 'stoplight' gating system for new-model bring-up and quant experiments before any canary. TL;DR: green = pass all core evals + <=1% relative regression on QA/semantic + latency <=1.2x baseline; yellow = minor regressions requiring manual triage; red = fail (block canary).
+
+maria_singh: Can you list the concrete evals and pass thresholds? Which prompt sets count as 'core'?
+
+alex_liu: Core prompt sets: core_prompts_v2 (1000 samples), dialogs_smoke_100, safety_suite_v3 (250), hallucination_spotcheck_200. Pass criteria:
+- QA F1 (core_prompts_v2): >= baseline - 0.01 absolute or <=1% relative regression (whichever is stricter)
+- Semantic accuracy (dialogs_smoke_100): >= baseline - 0.02
+- Safety (safety_suite_v3): no new high-severity failures; medium failures <= baseline + 0.5%.
+- Hallucination spotcheck: model must not introduce novel named-entity hallucinations > 2%.
+- Latency: P95 <= baseline * 1.2 and median <= baseline * 1.15
+- Embeddings cosine (if applicable): avg cosine >= baseline - 0.005
+
+sam_wright: What about quantized variants? We need explicit sample-level parity for quant runs.
+
+alex_liu: For quant runs (int8, q4), require sample-level top-1 match >= 97% on core_prompts_v2 and no safety regressions. If a quant variant fails but fp16 passes, mark as 'yellow' and require follow-up (pruning kernels, retune kv-cache). If both fail => red.
+
+jia_kim: Suggested eval harness command to run everything locally:
+```bash
+# run full harness
+python -m eval_harness.run \
+  --suite core_prompts_v2,dialogs_smoke_100,safety_suite_v3,hallucination_spotcheck_200 \
+  --model /mnt/models/new-model:v1 \
+  --quant_variants none,q8,q4 \
+  --baseline-tag prod-20260201 \
+  --output results/new-model-v1.json
+```
+
+alex_liu: Add: run with `--seed 42` and enable `--sample-level-diff` for quant parity. Also collect logs `--dump-traces` for any sample with mismatch.
+
+eval-bot: quick report — smoke run on new-model:v1 (fp16) finished: core_prompts_v2 F1 delta -0.008 vs baseline, safety high-severity 0, safety medium +0.3%, latency P95 1.12x baseline. Mark: GREEN (meets stoplight).
+
+maria_singh: Nice. For canary policy, we only allow canary if green on FP16 and green or yellow on quant with manual sign-off for yellow? :+1:
+
+alex_liu: Exactly. Canary gating rules:
+- FP16 must be green to proceed
+- At least one quant variant must be green or yellow with documented mitigation plan
+- Run canary on 1% traffic for 24h with continuous eval hooks; auto-rollback if production-quality-metric delta > threshold or errors spike
+
+sam_wright: How do we automate detection of 'new high-severity failures'? Is that part of harness?
+
+jia_kim: Harness emits `safety_results.json` with severity labels. We have a CI check that fails if any new high-sev appears. I’ll add a job to compare against baseline artifact using `jq` diff.
+
+alex_liu: Action items: jia to add `--sample-level-diff` to CI (ETA EOD), sam to codify quant parity check in the gating script, maria to update onboarding doc with stoplight matrix. I'll post a short PR template for onboarding.
+
+maria_singh: ack. Thanks!
+
+sam_wright: lgtm.
+
+alex_liu: We'll follow up if any yellow/edge cases show up in the canary. :eyes:

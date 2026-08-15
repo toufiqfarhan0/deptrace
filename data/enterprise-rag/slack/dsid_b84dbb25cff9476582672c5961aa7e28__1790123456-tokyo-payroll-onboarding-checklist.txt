@@ -1,0 +1,24 @@
+people-ops
+
+Jordan Yang: Quick question@people-ops I'm moving to Tokyo permanently in ~6 weeks. Want to stay an employee on Redwood payroll if possible. Whatsteps do I need for payroll cutover, benefits, and the WFH stipend vs coworking reimbursement? Any tax/nexus concerns?
+Mei Chen: Congrats Jordan! Short answer: we can support JP payroll but thereare a few items. Need visa copy, JP address, local bank details. Also legal will check PE risk based on role activities. Do you plan to remain on US payroll or move to local?
+Jordan Yang: I have a spouse visa that allows work. Prefer local payroll if that simplifies taxes and benefits, but want to understand impacts to US 401k/medical.
+Arjun Patel: Flagging legal/tax: spouse visa with work means effectively local employment. One headcount usually low PE risk, but depends if you sign contracts or lead sales. I'll coordinate with external counsel for definitive guidance and run RSU withholding implications.
+Rachel Ortiz: Payroll vendor (GlobalPayroll) supports JP. Typical vendor onboarding 30-45 days. Required: signed local payroll addendum, copy of passport and visa, Japanese bank (Zengin) details, and residential address. If you switch to JP payroll we typically offboard US medical and 401(k). Benefits team will propose enrollment in statutory health/pension.
+Rachel Ortiz: Stipend mechanics: the regular WFH stipend is prorated monthly. Coworking reimbursement is receipt-based up to 15,000 JPY/month with manager pre-approval. Relocation allowance is a separate one-time claim; submit relocation form.
+Mei Chen: Practical checklist we use internally:
+- Jordan: provide visa/passport + JP address + bank details
+- Decide payroll model (US payroll temporarily or cutover to JP payroll)
+- People Ops: open vendor onboarding ticket (Rachel)
+- Payroll: create PR ticket and upload link (payroll-bot)
+- Legal/Tax: PE and withholding memo (Arjun)
+- Benefits: enroll/opt-out of statutory plans and discuss 401k rollover
+Jordan Yang: If I move to JP payroll mid-month, when will my first JP pay happen? Any payroll cutoff rules?
+Rachel Ortiz: If we hit vendor cutoff for the month you will be paid on US payroll for that month and cutover next month. Vendor ETA ~35 days after ticket + docs. We'll confirm exact dates once GlobalPayroll schedules your onboarding.
+Jordan Yang: Does Redwood maintain a separate relocation policy for international moves? Any extra support for visa or family?
+Mei Chen: We have a relocation guide for international moves. It covers one-time relocation allowance, temporary housing reimbursement, and a visa support checklist. We don't directly handle visa sponsorship for spouse visas but we can connect you with recommended immigration partners.
+Arjun Patel: Action item: I'll draft a short memo on PE risk + RSU taxation and post here within 48 hours.
+people-ops-bot: Created case relocate-1790123456 and linked it to payroll ticket PR-8342.
+payroll-bot: Created PR-8342 for Jordan Yang (Japan onboarding). Upload required docs here: https://payroll.internal/upload/PR-8342. Estimated vendor timeline: 30-45 days.
+Jordan Yang: Uploaded passport and visa to the link. Filled the relocate form. Thank you all.
+Mei Chen: Thanks! I'll update when PR-8342 moves to "vendor confirmed." Also please set your Slack timezone and coordinate with your manager about meeting/on-call rotation. :calendar:

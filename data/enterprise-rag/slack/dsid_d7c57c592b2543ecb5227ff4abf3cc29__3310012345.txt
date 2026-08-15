@@ -1,0 +1,43 @@
+3310012345
+
+incident-bot: :rotating_light: Pager: elevated 5xx + gateway timeouts on /v1/chat across us-east-1 -> spike started 09:42 UTC. alert=INC-2026-08
+liam: I'm on it. joining call, paging infra and cs.
+priya: looking at traces — lots of 429s coming back from quota-proxy and then nginx upstream 502/504s when requests retry too fast. p50 error budget burned.
+tom-oncall: i'm on rotation. estimated blast radius? any known customers impacted?
+emma-cs: two customers showing failed background jobs; one high-value (Cust-Delta) sending retries every 2s. they're on older SDK.
+liam: ok immediate hypothesis: tenant-level quota misconfig + aggressive client retry loop -> quota-proxy saturates, connection queue grows, backend starts returning 502s. plan: 1) apply tenant soft-block at edge for the noisy tenant 2) enable quota-proxy circuit-breaker 3) scale quota-proxy pool 4) inform customers. who can change edge policy?
+nate-infra: I can push an emergency rate-limiter at LB. will add rule to cap tenant t-77B to 75 rps and return 429 + Retry-After. pushing now, expect 15s rollout.
+priya: adding logs: quota-proxy logs show "ERR: tenant quota config lookup returned nil, falling back to unlimited" — ah, some recent config deploy removed default limit for new tenants.
+tom-oncall: that's a bad config. can we roll that config back?
+liam: roll back is risky during high load. prefer targeted mitigation first. nate, please proceed with LB rule and also add a short-term global soft-limit to prevent new tenants from creating unlimited windows.
+nate-infra: applied LB rule at 09:46 UTC (rule id: lb-3310-t77b). seeing immediate drop in requests from that tenant.
+priya: applying quick circuit-breaker in quota-proxy: set max-inflight-per-tenant=200 and fast-fail when exceeded. config change going out now.
+deploy-bot: queued config change for quota-proxy, rolling update starting, batch=30% -> ETA 2m.
+emma-cs: notified Cust-Delta and Cust-Echo. Cust-Delta says they will throttle retries on their side; awaiting confirmation.
+liam: while rolling update proceeds, reduce load on upstream model cluster by switching heavy tenants to reduced-concurrency mode. set header X-Redwood-Mode: low-concurrency for listed tenants. who can flip router flags?
+priya: I can toggle router flags. setting for t-77B and t-22C now.
+priya: quota-proxy rollout completed at 09:49 UTC. circuit-breaker active. telemetry: inflight per-tenant dropped, error rate at gateway reduced from 36% -> 11% in 3m.
+tom-oncall: good improvement. monitoring p95 latency: 2.7s -> 210ms. still seeing intermittent 502s. any residual cause?
+liam: checking Redis connection metrics for quota-proxy. pool max used = 98% pre-mitigation, now 45%. redis latency normalized. suspect origin was unlimited tenant + reconnect storms from SDK that didn't respect Retry-After.
+priya: found config diff in last week: commit 7b2c removed default_quota for new tenants due to a bug in tenant-bootstrap. creating rollback PR and tagging infra.
+ate-infra: (typo in my name) nate-infra: confirming LB rule + router flag removed most noise. keeping throttle for 30m.
+emma-cs: Cust-Delta replied: they've deployed a patch to backoff jitter and will monitor. they requested we keep them at reduced throughput until EOD.
+liam: ok we should keep the tenant cap and circuit-breaker until postmortem. also add an alert to auto-throttle any tenant that exceeds 2x their historical qps for 5m. can someone create that alert?
+priya: creating alert rule now: alert id AL-3310: tenant-spike-detect. will link to runbook to auto-throttle.
+deploy-bot: LB rule lb-3310-t77b will auto-expire in 60m unless extended.
+liam: cs, coordinate with Cust-Delta for a formal change window. emma, can you get their SDK version and last 24h traffic pattern?
+emma-cs: on it. sending details.
+tom-oncall: handoff: i'll stay until 10:30 UTC. liam take ownership of incident?
+liam: taking owner role. main actions for follow-up: 1) revert tenant-bootstrap bug (pr open) 2) add per-tenant default quotas to prevent unlimited leak 3) implement soft-circuit breakers in quota-proxy 4) add auto-throttle alert & runbook 5) customer outreach. assigning owners in post-incident doc.
+priya: adding note: add a fail-open-safe to router so that router doesn't forward unlimited requests when quota-service returns nil.
+emma-cs: Cust-Delta acknowledges workaround. Cust-Echo needs help, scheduling call in 30m.
+ate-infra: I've also added a conservative connection pool cap in nginx upstream to avoid long tail blocking. config: `proxy_next_upstream_timeout=5s` and `keepalive_requests=50`.
+liam: nice. rolling back the problematic commit will be tracked in the postmortem; do not revert runtime hotfixes until we confirm stability.
+priya: telemetry shows gateway 5xx at 1.8% over last 5m. p95 latency 190ms. Good.
+deploy-bot: incident INC-2026-08 created by liam. severity S2. channel #incident-3310012345.
+liam: wrapping immediate mitigation: keep LB cap for t-77B for 1h, keep circuit-breaker config, enable auto-throttle alert, schedule postmortem.
+emma-cs: will keep customers informed and send final note when we lift mitigations.
+tom-oncall: leaving rotation notes in pager duty: handed to liam.
+priya: final note: root cause = absent default quota in tenant bootstrap + aggressive client retries -> quota-proxy overwhelmed -> upstream 502s. follow-ups: config fix + safer defaults + observability (per-tenant QPS heatmap).
+incident-bot: Incident INC-2026-08 mitigated at 09:57 UTC. added mitigation tag: edge-throttle + quota-circuit-breaker + router-flags.
+liam: thanks all. filing the postmortem draft now and assigning owners for remediation tasks. will mark this thread resolved after postmortem created. :thumbsup:

@@ -1,0 +1,62 @@
+eng-infra
+
+mira: Kicking off security baseline for eu-gpu2 cluster bring-up. Primary asks: IAM least-privilege templates, secrets rotation/KMS/HSM integration, mandatory policy checks, and a quick handoff checklist. tagging @sec and @ops for review.
+
+sam: +1. I can own IAM roles and service accounts. Will draft role templates with explicit conditions (srcVPC, tag-based). ETA EOD.
+
+leo: For KMS/HSM, ops needs the envelope encryption flow documented — customer keys in CloudKMS with HSM-backed keys. Also need rotation window and dead-man switch for key compromise.
+
+emma: Agree. Also: we should gate cluster provisioning with an automated preflight that verifies KMS key exists and has correct IAM bindings. If missing, fail the pipeline.
+
+jack: Pushing a minimal IAM policy snippet for the GPU autoscaler service account. Please review for excess perms: 
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Effect": "Allow", "Action": ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"], "Resource": "arn:cloudkms:eu:proj:locations/global/keyRings/eu-gpu2/cryptoKeys/cluster-key"},
+    {"Effect": "Allow", "Action": ["compute.instances.list", "compute.instances.get"], "Resource": "*"}
+  ]
+}
+```
+We should scope compute actions further but need to enumerate instance tags first.
+
+mira: Good start. Scope compute IAM to resource-level with tags once we have naming. Also add condition restricting KMS usage to the cluster's service account.
+
+sec-bot: AUTO-CHECK: KMS key "eu-gpu2/cluster-key" exists, keyPolicy includes project admins and ops-sa, keyProtectionLevel=HSM. Last rotation: 45 days ago.
+
+sam: For secrets, propose using sealed secrets -> store in Vault with transit KMS. Only the infra-sa and kube-controller can unwrap. Add a rotation cron: monthly for ephemeral creds, 90 days for long-lived certs.
+
+leo: Network policy note: control-plane subnets must be isolated from prod-data subnets. Add egress deny for nodes to S3 endpoints except via VPC endpoint proxy. Cost note: VPC endpoints add ~$150/mo but lower cross-region egress.
+
+emma: Handoff checklist (quick draft):
+- IAM templates committed to repo (infra/iam/eu-gpu2)
+- KMS key provisioned with HSM and rotation policy
+- Vault mount and transit configured + access policies
+- Preflight script present and wired into pipeline
+- Network ACLs/NAT/endpoint config validated
+- Cost guardrail alerts: spending threshold + autoscale caps
+- Oncall + escalation contact documented
+
+jack: Adding a quick preflight script snippet for the pipeline (bash):
+```bash
+#!/usr/bin/env bash
+set -e
+# check KMS
+gcloud kms keys describe cluster-key --location=global --keyring=eu-gpu2 || { echo "missing KMS key"; exit 1; }
+# check IAM binding
+gcloud kms keys get-iam-policy cluster-key --location=global --keyring=eu-gpu2 | grep infra-sa@project || { echo "incorrect kms binding"; exit 2; }
+# check Vault mount
+vault read sys/mounts | grep kv || { echo "vault kv not mounted"; exit 3; }
+```
+
+mira: Nice. Next steps: sam will open PR with IAM templates, jack will add preflight to infra-ci, leo will coordinate KMS/HSM provisioning with cloud team, emma will update the handoff doc and cost thresholds.
+
+talia: I'll sync with security for the review and run a short threat-model focused on key compromise scenarios. Expect review comments by tomorrow noon.
+
+mira: Great. If anyone hits blockers, drop them here. Otherwise aim to have the PRs and preflight green before we request the region quota. :thumbsup:
+
+sam: FYI — quick cost question: GPU node pools will default to 8xA100. We should cap max nodes to 40 initially and enable autoscale cooldown to avoid runaway costs.
+
+emma: Put the cap in the cluster spec and add an alert for >70% spend of monthly budget. I'll create that alert.
+
+mira: Thanks team. I'll bundle the checklist into the runbook and request the org-approvers for final signoff.

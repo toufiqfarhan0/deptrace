@@ -1,0 +1,37 @@
+eng-releases
+
+maya: FYI alert from telemetry 126: sudden ingress 5xx burst in eu-west-1. Deploybot auto-paused the 11:30 slot. Can we confirm hold and triage plan?
+
+deploy-bot: [automated] deploybot paused release slot 2026-03-02T11:30Z due to service.edge 5xx rate > threshold. Paused window: 11:30-12:00. Reason: spike detected on ingress-proxy behind LB.
+
+jen: Confirming hold. Suggest we mark the slot as DO_NOT_REQUEUE and create a new tentative slot later today. Also propose pinning canary to 2026-03-01 stable tag (v3.0.1).
+
+carlos: I see a correlation with the latest runtime `fast-path` kernel param turned on in yesterday's runtime rollout. Edge pods show increased queue drops when workers hit 85% CPU. If we disable `fast-path` on canaries we should see error-rate drop.
+
+maya: ops check - can we quickly flip the param on canaries only?
+
+infra-oncall: I can patch the runtime config on canaries now: `kubectl patch cm runtime-config -n edge -p '{"data":{"fast-path":"off"}}'` then restart pods with `kubectl rollout restart ds/edge-runtime`. Doing it now, ETA ~10m. I'll keep alarms open.
+
+jen: I'll run the pin: `releasectl pin --slot 11:30 --version v3.0.1 --note "incident hold - ingress 5xx"` + add tag `do-not-requeue`.
+
+maya: Customer comms draft sitting in #ops-comm: short blurb and link to status page. Keeping it minimal: "We've paused scheduled releases in EU-West due to elevated 5xx errors. Engineers are investigating and a rolling rollback is in progress."
+
+carlos: Patch applied to canaries. Runtime restarted. Early signals: 5xx rate down ~40% on canaries within 4m. Still watching aggregate.
+
+deploy-bot: New tentative slot created: 2026-03-02T15:30Z (staggered 3m cadence). Backfill rules: only security fixes, emergency hotfixes, and minor doc-only changes allowed. Original slot 11:30 flagged DO_NOT_REQUEUE.
+
+infra-oncall: No new infra alerts; CPU normalized on canaries. If stable for 20m we can clear the hold.
+
+jen: Adding release note: `releasectl note --slot 11:30 --append "Paused: ingress 5xx spike; pinned to v3.0.1; runtime fast-path disabled on canaries"`
+
+maya: Owners recap: jen = pin & release note; carlos = runtime param rollback & monitor; infra-oncall = infra watches & restart; maya = customer comms + status updates. Reconvene in 20m.
+
+carlos: Opening follow-up link to traces and a minimal how-to to revert fully if needed. Posting in thread.
+
+maya: After 20m watch, no new alarms. Agree to keep slot paused but allow a controlled canary at proposed 15:30 with 3m stagger. I'll update the release calendar and notify the release schedulers.
+
+jen: Reminding teams: add an entry to the changelog to avoid accidental requeue and include the incident ticket id in the notes.
+
+infra-oncall: Leaving monitoring hooks for 2 hours. Will escalate to network infra if 5xx resurges.
+
+maya: Thanks everyone. If anything changes ping here and we'll escalate.

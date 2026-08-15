@@ -1,0 +1,45 @@
+finance
+
+Maya: Heads-up — planning a split-rate experiment starting next Wed. We need a brief holdback (blackout) for 2 hours during pricing cutover to capture clean baselines. Who's on invoices + tenant mapping? Link to proposed price sheet: https://docs.redwood.ai/pricing/split-rate-2026.csv
+
+Ryan: I can own invoice recon during the window. Will coordinate with billing team. What's exact window?
+
+Maya: 2026-04-08 02:00-04:00 UTC. We want no billing reruns during that time. Also need vendor rate sync (Stripe/Partner). @Lex can you confirm partner writes?
+
+Lex: Confirmed, will pause partner webhooks for 2 hours. I'll tag vendor_ops. Also will snapshot current ratecard: /sheets/pricecard_v3.csv
+
+Sarah: Need to ensure grandfathering tags are preserved for existing cohorts — otherwise customers see price jumps. I have a quick script to validate tags. Run this before and after: 
+```bash
+python tools/validate_grandfathering.py --cohort-file cohorts/legacy_cohorts.csv
+```
+
+billing-bot: Scheduled outage window created: outage-1961234567, notifications queued to customers in tiered-billing. ETA emails set to 24h and 1h before.
+
+Maya: Great. Ryan, can you capture sample invoices for baseline? We need ~1k invoices across cohorts and usage buckets.
+
+Ryan: Yes. Will run export: 
+```sql
+SELECT invoice_id, customer_id, tier, total_tokens FROM invoices
+WHERE created_at BETWEEN '2026-03-01' AND '2026-03-31' LIMIT 1000;
+```
+Will post CSV to /shared/pricing-experiments/1961234567/baseline.csv
+
+Lex: I'll stop webhooks at 01:55 UTC and resume at 04:05 UTC. + I'll set a fallback to avoid missed payments: `retry_policy: immediate-queue`.
+
+Maya: Any vendor permissions needed? @Olivia?
+
+Olivia: On it — added partner-ops@vendors to the vendor sync doc and granted temp API keys for the window. Please don't hardcode keys, use vault path: secret/vendors/split_rate/1961234567
+
+Sarah: After experiment, run the tag-check and then a sample billing replay dry-run in staging. I'll coordinate with eng-sre for replay infra.
+
+Maya: Thanks. Quick checklist: 
+- [x] outage scheduled
+- [x] vendor keys provisioned
+- [ ] baseline CSV collected (Ryan)
+- [ ] grandfathering validation pre/post (Sarah)
+- [ ] webhook pause/resume (Lex)
+- [ ] customer comms sent (ops)
+
+Ryan: I'll update when baseline CSV is uploaded. :thumbsup:
+
+Maya: Sweet. Ping in here if anything blocks.

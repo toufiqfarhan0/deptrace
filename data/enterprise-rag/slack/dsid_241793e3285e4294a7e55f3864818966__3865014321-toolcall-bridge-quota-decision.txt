@@ -1,0 +1,30 @@
+eng-platform
+
+maria: Heads up — we saw a 4x spike in toolcall schema rejects for the legacy adapter in eu-west-1 starting ~10:40 UTC. A lot of outputs are arrays where our adapters expect objects. Breaking a few product flows. Anyone seen this?
+kevin: saw the spike, looks like the adapter bump from last night treats multi-output as arrays. quick repro locally.
+anya: on the model side we changed the sampler to emit lists when multiple intents are present. we tested in staging but missed adapter mapping to object shape.
+maria: short-term mitigation options: route to a permissive variant OR add a coercion shim at the gateway. need to weigh quota/billing impact and telemetry.
+jon: product note — some customers hit 429s because quota scoring counts permissive route as full toolcall. If we route to a bridge, should we bill differently?
+kevin: billing is by route_id today. we can create a special route `toolcall-bridge` with a separate quota bucket (cheaper) and a flag so finance can reconcile.
+maria: proposal: routing policy checks header `x-compat: legacy` -> route to `toolcall-bridge`. bridge does soft-validate: try to coerce an array -> object when possible, otherwise return a structured reject. telemetry must tag `bridge=true` so we can filter.
+anya: model-side fix (emit object for single-output) is preferable but slower. bridge buys us time. also want small eval set to measure quality regression.
+kevin: config sketch: 
+```
+routing:
+  - match: header['x-compat']=='legacy'
+    route: toolcall-bridge
+    quota_bucket: bridge_low
+    tags: ["bridge:true"]
+```
+maria: console UX needs a toggle "Enable legacy bridge" at model+customer level, canary controls, and panels for: `bridge_rate`, `bridge_success_rate`, `bridge_rejects`, `bridge_latency`, `bridge_cost_delta`. Also a quick rollback button.
+jon: add billing side changes: new metric `bridge_invocations` and a reconciliation table for finance. update public pricing docs after we stabilize.
+telemetry-bot: alert created: `toolcall.bridge.reject_rate > 0.05 for 15m` -> pager: #eng-platform-pager
+kevin: we should also capture 1% of raw bridge payloads (PII-redaction in pipeline) to debug coercion failures.
+anya: will add an eval prompt set targeted at coercion failures so we can surface quality regressions vs baseline.
+maria: rollout plan: 1) enable bridge in eu-west-1 canary (5% internal), 2) monitor `bridge_success_rate`, latency, and errors for 2h, 3) expand with per-account toggle, 4) rollback triggers: revert rate > 2% or latency +30ms on p95.
+jon: UX note — console should show "bridge active" badge and allow per-account overrides + one-click rollback. send copy for the toggle tooltip.
+kevin: i'll open a small PR for gateway shim + route config, assign to myself. ETA ~3h for a patch and canary deploy.
+maria: @anya can you add eval + sampling config? @jon please draft console copy. i'll run the canary and monitor.
+deploy-bot: deploy started: sha=abc123 -> gateway/bridge v1 -> eu-west-1-canary
+telemetry-bot: metrics ingested: toolcall.bridge.invocations=237, bridge_success=192, bridge_rejects=45, bridge_p95_latency_ms=74
+maria: initial numbers look reasonable. keeping this thread synced for rollout notes — ping here on any regressions. :thumbsup:

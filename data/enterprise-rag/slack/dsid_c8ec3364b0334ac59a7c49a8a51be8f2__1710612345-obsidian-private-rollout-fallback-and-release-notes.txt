@@ -1,0 +1,61 @@
+eng-releases
+
+maya: Heads-up — planning the Obsidian (private) customer rollout for this Friday 10:00 UTC. Need final signoff on version pin, canary, and fallback policy.
+
+raj: I'd like to pin to 1.4.2-rc1 (perf-run-8 looked good). Is that the agreed candidate?
+
+maya: Yes, pin = 1.4.2-rc1. Fallback = 1.3.9 (current prod). Canary 5% -> 50% heuristic.
+
+deploy-bot: deploy-bot created rollout job obsidian-private-rollout-171061 for customer obsidian-inc. Scheduled start: Fri 10:00 UTC. Canary: 5% for 15m, health-checks: latency P95, error-rate, memory. Auto-increase to 50% if all green.
+
+elaine: Please paste release notes & highlight any compatibility changes for their SSO + private network.
+
+maya: Release notes (short):
+
+``` 
+- Version: 1.4.2-rc1 (pinned for obsidian-inc)
+- Fallback: 1.3.9 (auto-switch on rollback)
+- Key changes: KV cache efficiency improvements (reduces tail latency), GPU kernel selection fix for long context, small auth token rotation change (no client impact expected)
+- API compatibility: no breaking changes. Minor header added: X-Request-Route (backwards compatible)
+- Known risk: transient mem usage bump on >1k concurrent sessions observed in perf-run-6 (mitigated in rc1 but monitor)
+```
+
+maya: Rollout policy (config snippet):
+
+```
+pin_version: 1.4.2-rc1
+canary: 5% for 15m
+if healthy -> increase to 50% over 10m
+auto_rollback_on: error_rate > 5% OR latency_p95 increase > 40% vs baseline
+fallback_version: 1.3.9
+contact_oncall: ops-sre
+change_window: Fri 10:00-13:00 UTC
+```
+
+raj: Will we need a tenant-side config change? I checked their config and they accept X-Request-Route header. No changes expected.
+
+ops-sre: Quick notes from SRE: set mem alert at +30% above baseline for the canary slice, and enable auto-rollback at 5% error rate. We'll keep a watch channel during the window. Approving rollout as long as alerts are in place.
+
+maya: Updated deploy config with mem alert and auto-rollback threshold. Added ops-sre as paging contact.
+
+deploy-bot: deploy-bot recorded approval from ops-sre. Rollout job obsidian-private-rollout-171061 is READY.
+
+simon: LGTM from product. I pinged the customer success lead to confirm the maintenance window with the customer.
+
+elaine: Two asks for post-rollout: 1) perf snapshot (P50/P95/P99), 2) quick sanity check list that CS can use (login, basic inference endpoints).
+
+maya: Will attach perf snapshot and sanity checklist to the job run notes after canary.
+
+raj: One more — please pin the model weights checksum in the release notes (so we can validate hot-swaps).
+
+maya: Added checksum SHA256: abcdef1234567890... to the notes.
+
+ops-sre: Approve. :thumbsup: We'll be monitoring in #obsidian-watch during the window. If anything spikes, we'll trigger rollback to 1.3.9.
+
+maya: Thanks — proceeding with final prep. If no objections before 09:30 UTC, we start the rollout at 10:00.
+
+simon: No objections. :thumbsup:
+
+deploy-bot: deploy-bot scheduled job start at 1710621600 (Fri 10:00 UTC). Notifications will post in #obsidian-watch and #eng-oncall.
+
+maya: Closing thread — good to go.

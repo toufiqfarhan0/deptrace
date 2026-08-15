@@ -1,0 +1,38 @@
+docs
+
+alex: Heads-up — opened a migration guide PR that needs a reviewer and the docs-preview is acting flaky. PR: https://github.com/redwood-inference/docs/pull/842. Can someone take a quick pass + rerun preview if it flakes?
+
+jamal: I can do a quick glance now but I’m OOO after 11:30 PT. If it’s small I can merge before I head out. +1 to pairing.
+
+sophia: I can pick it up after lunch (~1pm PT). If preview fails, it’s usually the link-checker or an image path.
+
+selena: I’ll triage the broken links now — saw similar break with static assets under /static/migration last week.
+
+infra-ci: preview failed — link-checker reported 3 broken links:
+```
+ERROR: /migration/upgrade.md: image not found: /static/migration/diagram-v2.png
+ERROR: /migration/snippets.md: broken anchor #example-usage
+ERROR: /sdk/snippets.md: http 404 to https://old-cdn.company.com/snippet-xyz.js
+```
+
+alex: OK thanks. If it’s just asset paths we can fix the paths in the PR. Please don’t bypass preview (`--no-preview`) — prefer re-run after fixes. @selena can you push a quick path fix?
+
+selena: pushed a tiny commit updating paths + bumped the sample version. Re-running preview now with `/run docs-preview`.
+
+infra-ci: Re-run queued by selena. Starting docs-preview...
+
+infra-ci: docs-preview succeeded :white_check_mark: — link-checker clean, build green.
+
+sophia: Nice. I’ll do a content sweep in ~30m. If nothing else changes I’ll approve.
+
+jamal: If sophia approves I’ll merge before I head out. Otherwise ping me and I’ll do it later today.
+
+alex: Plan: sophia approves, jamal merges pre-OOO, selena monitors post-merge link alerts. Thanks everyone :tada:
+
+selena: On it, will keep an eye on the link-checker alerts and file a follow-up if anything flares up.
+
+sophia: Approved and left a tiny nit (stylistic) — not blocking.
+
+jamal: Merged — thanks all. :shipit:
+
+alex: Awesome, closing the loop.

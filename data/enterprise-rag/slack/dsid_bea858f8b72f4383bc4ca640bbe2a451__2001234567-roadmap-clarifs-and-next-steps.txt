@@ -1,0 +1,39 @@
+all-hands
+
+maya: Thanks for coming today Quick post-AH notes + action handoff. Recording and editable notes: https://docs.redwood.ai/all-hands/2026-03-roadmap.
+
+maya: Short list (reply with :white_check_mark: when you take one):
+- Public roadmap bullet edits (clarify Dedicated vs Hosted differences) -> @rohit
+- Example burst pricing scenarios for sales -> @claire
+- ETA + checklist for Private GA -> @tony
+- Dev-examples for model migration (fp16 -> int8) -> @devex
+
+rohit: I'll update roadmap bullets to explicitly call out feature parity vs infra knobs. ETA: tomorrow noon.
+
+claire: For burst pricing examples, I'll add two scenarios (small startup, mid-market). Will include a short spreadsheet. ETA Thurs.
+
+tony: I'll own Private GA ETA. Creating INF-4800 and will include compliance checklist + rollout milestones. Pinging legal.
+
+devex: I'll draft a short migration notebook + commands and post a gist. Need a perf baseline to compare.
+
+ops-bot: recording-bot: uploaded 00:51:03 -> https://internal.redwood/rec/2001234567.mp4
+
+maya: Important comms phrasing for customers: use "consistent developer experience" to describe API/console parity; avoid implying identical infra controls. Please use exact wording in external docs.
+
+rohit: noted 44d adding that line to the roadmap doc.
+
+claire: quick Q 4a1 should pricing examples show committed vs on-demand?
+
+maya: Yes, include both and show a short delta table.
+
+tony: INF-4800 created: https://jira.redwood.ai/browse/INF-4800 4c1 assigned to infra, ETA next Tue for first pass.
+
+devex: I'll post the gist later today: sample command `./bench.sh --model redwood-13b --precision int8 --seq 512 --batch 1`. Will note synthetic vs real traffic caveats.
+
+maya: If you referenced slide numbers during Q&A that need extra context, drop slide# + 1-line here and I'll append to the public notes.
+
+rohit: slide 10 4dd add note clarifying SLA credit triggers.
+
+claire: slide 18 4c4 add an example cost calc for burst traffic.
+
+maya: thanks all. Please post a one-line acceptance and react :white_check_mark: so I can move items into tickets and close this thread.

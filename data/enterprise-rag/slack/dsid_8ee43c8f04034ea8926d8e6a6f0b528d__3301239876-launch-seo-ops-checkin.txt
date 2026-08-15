@@ -1,0 +1,36 @@
+marketing
+
+Ravi Shah: Quick sync for tomorrow's leadflow post + webinar landing. Need a tight SEO ops checklist: canonical decisions, internal links from docs & partners, redirect fallbacks for old promos, and JSON-LD for the webinar + FAQ. Can we do async? @Lena @Priya
+
+Lena Ortiz: Yes. I'll run a focused crawl and surface any orphaned or low-link pages that should point to /product/leadflow.
+
+Priya Patel: For schema: Event JSON-LD on the webinar landing, WebPage + BreadcrumbList on the blog post, and an FAQPage block with 3 Qs. I'll create the snippet and drop it into /docs/seo/snippets.
+
+Tom Becker: Redirect note: legacy campaign paths include /promo/leadmay and some partner UTM variants. Plan: edge stripping of utm_* followed by 301 -> /product/leadflow. For rollout, do 302 in staging for smoke, then flip to 301.
+
+Lena Ortiz: Initial crawl results: top referrers to use for internal links: /docs/getting-started, /integrations, /partners/overview, /support/rules, and /blog. I'll add anchor suggestions in the sheet.
+
+Ravi Shah: Keyword priority: primary = "inbound lead routing" (exact H1), secondary = "lead routing", long-tail target = "automated inbound lead routing for SaaS". Use exact primary in H1, natural variants elsewhere.
+
+Priya Patel: Minimal JSON-LD example for Event (placeholder dates):
+{"@context":"https://schema.org","@type":"Event","name":"Leadflow webinar","startDate":"2026-06-01T17:00:00-07:00","location":{"@type":"VirtualLocation","url":"https://redwood.ai/webinar/leadflow"},"offers":{"@type":"Offer","url":"https://redwood.ai/register/leadflow"},"organizer":{"@type":"Organization","name":"Redwood Inference"}}
+
+Also will include FAQ Qs: registration steps, integrations, cancelling.
+
+Tom Becker: Nginx snippet for quick patch (staging 302):
+rewrite ^/promo/leadmay/?$ /product/leadflow? redirect;
+# later convert to permanent 301 once validated
+
+Lena Ortiz: Small UX/SEO ask: ensure canonical link rel points to /product/leadflow on any campaign clones, and ensure CDN doesn't cache query variants as separate objects.
+
+Priya Patel: I'll A/B the FAQ block (collapsed vs inline) for 10 days postlaunch and monitor rich result presence in Search Console.
+
+Ravi Shah: Owners: Lena = internal links sheet + crawl, Tom = redirects + CDN headers, Priya = JSON-LD + SERP monitoring. Aim to merge PRs by EOD for a midnight deploy.
+
+Tom Becker: I'll push redirect PR to staging in ~30m and run smoke tests.
+
+Lena Ortiz: Sheet updated with anchors. Quick list: "set up inbound lead routing" (docs), "lead routing integrations" (integrations page), "partner leadflow" (partners page).
+
+Priya Patel: Snippets saved and linked in the PR. Monitoring tags added.
+
+Ravi Shah: Perfect. Postlaunch checks at +2h and +24h. Ping #marketing-ops for urgent issues. Closing thread.

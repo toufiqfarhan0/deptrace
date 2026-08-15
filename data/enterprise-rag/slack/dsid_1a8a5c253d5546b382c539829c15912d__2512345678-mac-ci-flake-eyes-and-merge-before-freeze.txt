@@ -1,0 +1,39 @@
+eng-releases
+
+Alex: Quick heads-up — PR #14560 is failing CI intermittently but passes locally. Need to land before Wed midnight maintenance window (2am UTC Thursday). Can @Maya and @Jordan give quick eyes + approve? If approvals are in, we can rerun CI and aim to merge before the freeze.
+
+Jordan: Which jobs are flaking?
+
+Alex: Mostly the integration matrix and a flaky macos-11 test. Last failing lines:
+```
+FAIL tests/integration/test_serving_matrix.py::test_autoscale -- AssertionError: expected 200 but got 503
+TimeoutError: macos-runner timed out after 10m
+```
+
+CI-bot: Build #872 failed — macos-11 (run_tests) failed. Logs: https://ci.redwood.ai/builds/872
+
+Maya: I'll take a look now. If I can approve I can trigger a rebuild. ETA ~15m.
+
+Sam: Reminder — there's a deploy-freeze window starting Thu 03:00 UTC. If this needs a rebase it should be done before 02:00 UTC. Otherwise we risk manual rollback during freeze.
+
+Alex: Thanks. No rebase expected unless we hit the flaky infra; rebase window is 01:45-02:15 UTC if needed.
+
+Jordan: On it, running the job locally replicates the timeout. Might be infra. @CI-bot can you retry just the macos job for pr/14560?
+
+CI-bot: Retry queued for macos-11 job on PR #14560. Command used: `/ci retry --job macos-11 --pr 14560`
+
+Maya: Left a few tiny review comments (nits). Approving now — :thumbsup:
+
+Maya: approved
+
+Jordan: Quick fix LGTM, approving. +1 from me.
+
+CI-bot: Build #873 succeeded — all checks passed. Merge ready. https://ci.redwood.ai/builds/873 :tada:
+
+Alex: Thanks all — merging now and will monitor prod metrics. If anything odd, I'll rollback and ping here.
+
+Sam: Noted. Thanks for the quick turnaround.
+
+Alex: landed and tagged v1.14560. Patch release scheduled for 07:30 UTC.
+
+Maya: Nice work everyone.

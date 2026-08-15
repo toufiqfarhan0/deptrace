@@ -1,0 +1,49 @@
+2112345678-burst-header-backcompat-checkin.json
+
+Sarah Nguyen: Heads-up — I'm about to merge the per-route burst meters change (PR #4821). Before I do a quick check: we want to start emitting two optional 429 response headers (burst remaining + burst limit) and a tiny structured field in the 429 JSON body (`quota_bucket` + `burst_remaining`). Any strong objections re: backward compatibility for clients that parse 429s?
+
+Jordan Patel: Most HTTP clients ignore unknown headers, so headers are usually safe. The bigger risk is changing the 429 body shape — some internal SDKs parse the body. Are we keeping Retry-After as-is?
+
+Maya Li: Agreed keep Retry-After canonical. Opt for optional headers only. Suggested header names and an example response for reviewers: 
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 12
+X-Redwood-Burst-Remaining: 0
+X-Redwood-Burst-Limit: 100
+Content-Type: application/json
+
+{
+  "error": "rate_limited",
+  "quota_bucket": "ingest.default",
+  "burst_remaining": 0
+}
+```
+
+Make `quota_bucket` + `burst_remaining` optional and document that SDKs should fallback to headers or Retry-After.
+
+deploy-bot: Deployed change to staging (canary=0.5%) at 2112346700 :white_check_mark: — headers emitted behind feature flag `emit_burst_headers`.
+
+Sahil Rao: Strong +1 to keeping the body optional. Note: some customers have proxies that rewrite headers. We should never rely solely on headers for contractual behavior. Also recommend `meta_version` in the body when we introduce structured fields so clients can detect shape changes.
+
+Liza Gomez: I can add integration tests asserting: unknown headers don't break existing parsers, body is optional, and SDKs fallback to Retry-After. I'll also add a small contract snippet to the docs. Plan: tests + docs in a follow-up commit.
+
+Sarah Nguyen: Thanks. Quick checklist before merge: 
+- PR reviewed and approved (Jordan)
+- integration tests in CI (Liza)
+- feature flag enabled for staged rollout (ops)
+- short note in API change log (docs)
+
+Who wants to own the rollout plan? Thinking: canary 1% -> 10% -> 50% -> 100% over ~24h if no errors. @Jordan can you review the PR today? @Liza can you own the tests and docs?
+
+Jordan Patel: I'll review within 2 hours. Quick nit: prefer `quota_bucket` (fully qualified) and `burst_remaining` as you had — avoid generic `bucket`. Also let's namespace headers with `X-Redwood-` to avoid collisions.
+
+Liza Gomez: :thumbsup: I'll rename in the PR, add tests, and add a small JSON schema for the optional 429 body with `meta_version` defaulting to "1". I'll also add a CI gate that fails if the emitted body contains non-optional required fields.
+
+Sarah Nguyen: :eyes: Great — I'll hold the merge until Jordan + CI green. If both pass, I'll flip the feature flag to canary 1% and start the rollout plan. Will post rollout updates here.
+
+Jordan Patel: One more thing — please ping the SDK teams so they can opt in to read `quota_bucket` if they want to. I'll add a short note in #devex.
+
+Liza Gomez: Will do. Also adding a tiny acceptance test to the JS and Python SDKs to demonstrate safe parsing.
+
+Sarah Nguyen: Thanks all. If anything blocks you ping me or drop a quick voice note. :hand:

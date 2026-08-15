@@ -1,0 +1,43 @@
+announcements
+
+Fiona (Product): Quick internal: Edge response caching + per-route streaming quotas are GA on Hosted API. Rolling now; full global rollout expected in ~4 hours. Please read ops notes and docs links below. :tada:
+
+Kai (Eng): Nice. What do callers need to change?
+
+Fiona (Product): Two user-facing items: 1) optional header X-Redwood-Cache: enable|bypass to control response caching at edge; 2) route-level streaming_quota_ms to limit sustained streaming time per request. Defaults are off and 120000 ms. Backwards compatible; existing calls unchanged.
+
+Marta (SRE): Rollout plan? Canary region and metrics to watch?
+
+Fiona (Product): Canary in us-west-2 for 20m, then staged ramp. Watch edge.cache_hit_rate, stream.quota_exceeded_count, and tail_latency_95. Alert if quota_exceeded_count spikes >1% of traffic for 10m.
+
+DeployBot: deploy started: hosted-edge v2.1 -> canary(us-west-2) at 1887654500. Logs: https://deploys.internal/redwood/hosted-edge/2.1
+
+Kai (Eng): Runtime note: cache keys include model+prompt_hash+route; we honor Cache-Control from downstream and support TTL overrides via route config. Streaming quota enforcement emits event stream.quota_exceeded with request-id.
+
+SupportBot: New error 4810 = quota_exceeded_streaming. Recommend retry with smaller prompt or request pagination.
+
+Leo (Docs): I'll add samples and migration notes. Need a short curl showing bypass header and example SDK snippet. ETA about 90m.
+
+Fiona (Product): Example curl (bypass cache):
+```
+curl https://api.redwood.ai/v1/stream/generate \
+  -H "Authorization: Bearer $REDWOOD_KEY" \
+  -H "X-Redwood-Cache: bypass" \
+  -d '{"model":"mosaic-2b","prompt":"Summarize"}'
+```
+
+Marta (SRE): I'll add dashboards for edge.cache_hit_rate, stream.quota_exceeded_count, and an alert mapping for 4810. Also adding a short playbook to suggest pagination or lower concurrency.
+
+DeployBot: canary completed: hosted-edge v2.1 -> us-west-2 OK (1887655200). Next region staged ramp in +15m.
+
+Leo (Docs): Draft published: https://internal.redwood/docs/edge-cache-streaming-quota with examples and cost notes.
+
+Fiona (Product): Thanks team. React with :thumbsup: when tasks are done. We'll monitor metrics and post any regressions to #incidents.
+
+Kai (Eng): :thumbsup:
+
+Marta (SRE): :thumbsup:
+
+Leo (Docs): :thumbsup:
+
+Fiona (Product): Rollout complete across regions at 1887655560. If you see customer-impacting issues, ping @oncall or me immediately.

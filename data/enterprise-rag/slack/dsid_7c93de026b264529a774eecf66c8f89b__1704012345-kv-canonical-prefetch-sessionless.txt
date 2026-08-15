@@ -1,0 +1,31 @@
+eng-runtime
+
+samir: Heads-up — noticed a steady stream of cache misses from short prefix reuse across requests. Example: user prompts that share the same template but have per-request salts end up as unique KV keys.
+elaine: Can you paste an example key?
+samir: sure: `kv:tenant:prompt_v1:prefix_hash:request_salt` — the `request_salt` is often a timestamp/uuid we add when sessionless routing happens. That kills reuse. :facepalm: 
+dylan: Oof. Is that coming from the session binding layer or the client SDK?
+samir: sessionless routing added the salt to avoid collisions with sticky sessions. But we didn't canonicalize when prefix length << whole prompt. Result: fragmentation.
+lia: I instrumented prefetch hit rates — when the salt is present, prefix hit rate drops from ~82% to ~9% for the same logical prompt. Logs attached to perf-bench (see sample).
+perf-bench: small profiling snapshot (p99 latency down when hits increase):
+```
+before: kv_hits=9%, p50=22ms, p99=145ms, mem_kv=4.9GB
+after(normalize): kv_hits=79%, p50=18ms, p99=102ms, mem_kv=3.7GB
+```
+elaine: Nice numbers. What's the proposed fix?
+samir: Two parts: 1) canonicalize keys for prefix segments — strip volatile salts and normalize whitespace + placeholder tokens; 2) introduce a sessionless-prefetch hint in request metadata so runtime can map to existing prefix caches (no forced session creation).
+dylan: For key canonicalization, can we show pseudo?
+samir: sure:
+```
+func canonical_kv_key(tenant, prompt):
+  prefix = extract_prefix(prompt, N=128)
+  prefix = normalize_whitespace(lower(prefix))
+  prefix = replace_dynamic_tokens(prefix) # timestamps, uuids -> <VAR>
+  return f"kv:{tenant}:pfx_v2:{sha256(prefix)}"
+```
+lia: Replacing dynamic tokens will be tricky but doable — we already have regexes for UUIDs/timestamps used in evals.
+ops-bot: deploy-plan created: `canary=kvmapping-normalize, rollout=5% -> 25% -> 100% over 48h` :rocket: 
+dylan: Any memory/regression concerns? The canonical keys will increase deduped cache entries but decrease total unique entries. We should watch long-context memory growth — if we start reusing deeper key prefixes, KV pages may remain resident longer.
+samir: Agreed — plan includes eviction-policy tweak: keep LRU per-tenant + age-based compaction for entries not accessed in 72h. Also add a telemetry counter: "kv_reuse_stickiness" and a gauge for resident_pages_by_prefix_depth.
+elaine: Can we A/B with a metric: tokens_per_kv_page and p99_tail? If tokens_per_kv_page goes up and p99 down, it's a win.
+perf-bench: Running synthetic workload on canary cluster now, will post numbers in ~2h.
+samir: TL;DR — avoid per-request salts in keys, canonicalize prefix keys, add sessionless prefetch hint, watch resident pages and add compaction. Rolling out canary today. :thumbsup:

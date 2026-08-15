@@ -1,0 +1,23 @@
+new-hires
+
+Alex P.: hey team, first day — quick Q: i have the sandbox key from the welcome email. how do i get a hosted/dev API key for longer streaming tests and any tips to avoid 429s?
+
+Maya: welcome! :tada: Hosted keys are created in Console -> API Keys. sandbox is the email one with limited credits; hosted keys are billable. if the UI button is missing ping #eng-platform for perms.
+
+InfraBot: Note: creating hosted keys records an audit log entry.
+
+Sam: 429s during streaming usually mean concurrency or token-rate limits. Best practices: reuse one persistent stream/socket, add exponential backoff + jitter on 429s, and track tokens/min client-side.
+
+Alex P.: is there a CLI I can script to create keys from my linux box?
+
+Maya: we have an internal helper `rci-cli`. example:
+```
+redwood keys create --type hosted --name "alex-dev"
+```
+It needs SSO; if you hit 403, file a request in #eng-platform and they'll help.
+
+Alex P.: sandbox seems too strict for multi-hour sweeps. can i request a temporary dev bump?
+
+eng-platform: yes. post in #eng-platform with: project name, billing owner, exact UTC start/end, peak tokens/min, expected concurrency. temporary grants typically 24-72h and reviewed within one business day.
+
+Alex P.: thanks all — i'll post the request and include billing owner.

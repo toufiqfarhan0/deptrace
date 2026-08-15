@@ -1,0 +1,34 @@
+slack/product/1711113333-finledger-visibility-compact-mvp-handoff.json
+
+Ava (PM): FinLedger emailed a concrete ask: shareable console view for their teams showing per-model daily cost, error clusters with examples, and lightweight trace hooks to correlate requests with billing. They want something they can point auditors at. Can we scope a shipable Q2 MVP?
+Liam (Platform): Quick thoughts: we can add a model_id label to spans and emit a small cost tag on request completion. Accurate per-token cost needs enrichment from billing pipeline - that's nontrivial.
+Sana (Eng-SRE): Must call out safety: traces need automated redaction and retention defaults (30d). Also sampling rate must be tunable per-customer; aim for default 1% to keep overhead low.
+Noah (Data): For an initial cost tile we can do daily aggregates by model_id using existing usage events, but it will be approximate until we join to finalized billing records. Expect a 1-week ETA to build the join job.
+Olivia (DevEx): UX asks: 1) single shareable URL for the view 2) CSV export for cost rows 3) quick link to open sample traces in trace viewer. I can mock this in 1-2 days if backend endpoints exist.
+Ava (PM): Proposal: MVP-slim = (A) span tags: model_id + route; (B) dashboard: daily cost tile (approx), latency p50/p95, error rate; filter by model_id; (C) error analytics card: grouped by error message fingerprint + 5 sample traces; (D) export CSV skeleton; (E) opt-in deeper PII redaction for auditors; (F) canary rollout gating for 48h.
+Liam (Platform): Implementation estimate: tagging + emit hook = 2 dev-days per runtime (we have 2 critical runtimes), cost API + aggregator = 5 days, export + endpoints = 2 days, dashboard wiring = 2 days, canary infra + alerts = 2 days. Total ~15 dev-days.
+Sana (Eng-SRE): We should reduce sampling impact: default 0.5% with ability to bump to 5% for customers with opt-in. Canary alerting: create a metric compare (canary_v baseline) and page if error_rate_ratio > 1.8 for 30m.
+Noah (Data): If we need shorter ETA, ship a mocked-cost tile that uses provisional usage counts and add a note: "Estimated cost — final billing may differ." This cuts data work to 1 day.
+Olivia (DevEx): If backend provides filter + sample traces endpoint I'll do the UI in 2 days. CSV schema: date, model_id, route, estimated_cost_usd, request_count, error_count. Happy to share example schema.
+deploy-bot: Deploy window scheduled: staging - tomorrow 02:00; production - next Wednesday 03:00.
+Ava (PM): Decision: MVP-lite approved for Q2 sprint window with these cuts to meet timeline: 1) Mocked cost tile with transparent note 2) 3 sample traces per error fingerprint (not 5) 3) initial rollout to one runtime Canary (expand later) 4) default sampling 0.5% and opt-in higher sampling. Acceptance criteria checklist below.
+Sana (Eng-SRE): +1 for safety constraints. I'll draft retention and redaction defaults and add them to the ticket.
+Liam (Platform): +1. I'll allocate eng time and break into tasks: TAG-171, COST-172 (mock), DASH-173, EXPORT-174, CANARY-175.
+Noah (Data): I'll prototype the billing-join roadmap in the ticket so we don't lose track of full accuracy work.
+Olivia (DevEx): I'll upload UI mock and CSV sample and attach to the ticket by EOD.
+Ava (PM): Acceptance checklist to close before full rollout flip:
+- span tags: model_id + route present for instrumented requests
+- dashboard: estimated cost tile + latency p50/p95 + error rate, filterable by model_id
+- error analytics: grouped errors + 3 sample traces per fingerprint
+- CSV: matches agreed schema and downloads for selected timeframe
+- privacy: default redaction + opt-in deep scrub implemented for FinLedger
+- canary: single runtime rollout, 48h observation window, alerting configured
+- perf: overhead on p99 <= 3% verified in staging
+- docs: console help + runbook + customer handoff note
+
+Ava (PM): If no objections by EOD we lock this and schedule the tasks. :calendar:
+Liam (Platform): +1
+Sana (Eng-SRE): +1
+Noah (Data): +1
+Olivia (DevEx): +1
+Ava (PM): Thanks all — creating ticket and handoff notes now.

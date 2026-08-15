@@ -1,0 +1,40 @@
+eng-infra
+
+Alex: Heads-up — during the SJC1 bring-up with quantized 4-bit runtime we saw a p95 spike when batch_size >= 8 after the new driver. Anyone else seeing the same?
+Priya: Yep, I observed a +40ms p95 increase on long-seq workloads. Baseline (batch 4) looks fine.
+Jon: What driver + CUDA?
+Alex: Driver 535.89, CUDA 12.2, runtime build q4-2026a. Kernel shim shows nvlink flaps intermittently in dmesg.
+Emily: Can you paste the perf command you ran?
+Alex: Sure — ran the usual benchmark: 
+```
+./bench/perf_run.sh --model gpt-medium --seq 1024 --batch 8 --quant 4 --iters 200 --mode streaming
+```
+Priya: Got logs attached from the run (truncated): 
+```
+[INFO] warmup done
+[WARN] nvlink peer reset detected 3x
+[METRIC] p50=8.9ms p95=72.4ms p99=120.1ms
+[INFO] kvcache hits=0.17
+```
+Jon: nvlink resets are suspicious. Which kernel+driver combo are the nodes on? Need `uname -a` + `nvidia-smi -q` output.
+Alex: Nodes on kernel 6.5.12-rt, nvidia driver 535.89-0. Logs show `nvidia-mig-manager` restarts sometimes.
+infra-bot: deploy-check: cluster/sjc1/gpu-pool-2 - health=degraded; ticket=INF-4721
+Sam: I ran a microbench across batch sizes earlier — I can paste a csv, but quick notes: p95 climbs as batch hits 6-8 for quant4, but not for fp16. Suggests quant path kernel interaction.
+Priya: Could be kernel module mismatch with cudnn/torch kernels. Try forcing kernel module recompile: 
+```
+sudo dkms remove -m nvidia -v 535.89 --all || true
+sudo dkms install -m nvidia -v 535.89
+systemctl restart nvidia-persistenced
+```
+Jon: Also check PCIe link speeds and NVLink bandwidth during run: `watch -n1 nvidia-smi dmon -s u` and `cat /sys/class/infiniband/*/ports/*/speed` (for IB if present).
+Emily: I spun up a control node and ran single-GPU single-batch tests: quant4 p95 stable. I suspect cross-GPU NVLink flows when batch>4 create a driver contention.
+Alex: Re-ran with `--no-kvcache` and delta improved ~15ms p95. That points at KV cache path and memory movement.
+Sam: For handoff, we should validate three things before marking pool green: 1) kernel-module stability under sustained throughput 2) NVLink reset elimination 3) perf baseline across batch sizes 1..16.
+Priya: I'll schedule an overnight soak with telemetry/trace (tracing flags + perf counters). Add `--trace=memcopy,kvcache` and upload to s3: `s3://redwood-sjc1/soak/2132223333/`
+Alex: Doing soak now. If soak passes, we will revert driver to 535.84 (previous known-good) and re-run to see delta.
+Jon: If reverting fixes it, open a compatibility bug for 535.89 with driver vendor and request change log. Also file kernel regression with our kernel build team.
+infra-bot: ticket INF-4721 updated: assigned=Jon, priority=high, labels=[nvlink,quant4,soak]
+Emily: Note on costs — extended soak with batch=8 doubles GPU-hours vs smoke. We should limit concurrent soak jobs to 6 nodes to cap cost. Posting recommendation in ticket.
+Sam: After soak finishes, I'll run the nightly baseline script that diffs p95 across regions and create a perf digest.
+Priya: One more quick check — run microbench with `TORCH_NVFUSER_DISABLE=1` to exclude nvfuser-generated kernels. If that drops p95 we know JIT fusion path interacts badly.
+Alex: Great call. Kicking that off. Will post results in thread and then handoff to oncall for final validation+green check. :thumbsup:

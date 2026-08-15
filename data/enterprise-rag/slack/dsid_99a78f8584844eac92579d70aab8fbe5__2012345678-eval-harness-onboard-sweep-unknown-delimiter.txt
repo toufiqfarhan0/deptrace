@@ -1,0 +1,51 @@
+eng-ml
+
+Priya: heads up — onboarding cypress-7b into eval harness and a handful of chat-format benchmarks are failing tokenization checks. low-key suspicious about a delimiter.
+Mike: which delimiter? saw a similar hiccup last week with the relay dataset.
+Priya: it's the triple-dash '---' we use in some chat templates. when runner is quantized the tokenizer splits it weirdly. float runs look fine.
+Anna: can you paste an example input and the tokenized output? small sample is enough.
+Priya: sure — sample prompt below:
+```
+User: Hi, please summarize the following.
+---
+Context: The patient had a fever and cough.
+---
+Assistant: Sure, summary:
+```
+And tokenized (quant-runner):
+```
+['User', ':', 'ĠHi', ',', 'Ġplease', 'Ġsummar', 'ize', 'Ġthe', 'Ġfollowing', '.', 'Ġ', '-', '-', '-', 'ĠContext', ':', ...]
+```
+Mike: ugh that looks like the triple-dash got split into three separate '-' tokens instead of a single sentinel. that breaks chat-template boundary matching in the harness.
+Sam: do we treat '---' as a sentinel anywhere? I thought our canonical sentinel is '<|endofchunk|>' for some datasets.
+Priya: most templates use '---' in community data; we added a small compatibility shim but looks like quantized tokenizer uses an older merges file which doesn't include the sentinel as a single BPE unit.
+ci-bot: CI run #9876 for cypress-7b-onboard started — https://ci.redwood.ai/9876 — runner: quantized, config: eval-sweep/chat-v2
+Mike: quick mitigation: we can either (A) add '---' to additional_special_tokens in tokenizer config, or (B) update merges to include the triple-dash as a single token. (A) is faster.
+Anna: (A) sounds fine for immediate unblock, but we should have a test to catch regression when merges diverge across builds.
+Priya: agreed. Mike — can you try the patch to tokenizer.json and re-run the failing evals? if green we'll patch CI.
+Mike: on it. applying patch:
+```
+# tokenizer.json
+"additional_special_tokens": ["---", "<|endofchunk|>"]
+```
+Mike: patched on branch fix/tokenizer-sentinel — pushing tests now.
+ci-bot: CI job 9877 queued for mike/fix/tokenizer-sentinel — runner: native-float
+Mike: update: native-float run is green, quant-runner still failing. diving into merges file differences now.
+Priya: timeline note — if quant artifacts are built with older vocabulary/merges, the same patch won't help unless we rebuild quant artifacts with the updated tokenizer.
+Sam: can we change eval-harness to canonicalize delimiters before tokenization as a temporary guard? e.g., replace '\n---\n' -> '\n<|endofchunk|>\n' pre-tokenize.
+Anna: yes that'd be a handy normalization step in the harness. less brittle than relying on underlying merges being identical across bundles.
+Mike: tried canonicalize approach locally: added a small preprocessor in eval-runner that substitutes '---' -> '<|endofchunk|>' and the quant-runner passes now. I'll open a PR for the harness preprocessor + unit test.
+Priya: perfect — please also add an integration test: roundtrip delimiter -> tokens -> detokenize equals original sentinel, across both float and quant runners.
+Mike: PR opened: https://github.com/redwood-inference/eval-harness/pull/451 — includes tokenizer patch + harness preprocessor + tests.
+Sam: nice. Can we also add a dashboard metric that spikes when we see tokenization-sentinel mismatches so infra gets alerted, e.g., 'eval.tokenizer.sentinel_mismatch.count'?
+Anna: good idea — adding a microcounter in harness where we detect the mismatch and emit metric. I'll wire it to the eval dashboard.
+Priya: filing a follow-up task to ensure quant build process consumes the repo tokenizer artifacts and to add a CI gate: quant artifacts must pass the sanitizer which verifies sentinel tokens. ticket: INF-2143.
+Mike: summary in case someone picks this up later:
+- root cause: quant artifacts built with older merges -> '---' split into three tokens.
+- short-term: harness preprocessor canonicalizes delimiters before tokenization (PR #451).
+- medium-term: update quant build to include latest tokenizer merges and add sentinel roundtrip tests in quant CI.
+- monitoring: add sentinel_mismatch metric and dashboard alert.
+Priya: thanks everyone — scheduling a small canary run later today. Marking this thread for follow-ups.
+Sam: :thumbsup:
+ci-bot: CI job 9877 passed for mike/fix/tokenizer-sentinel — all tests green.
+Priya: awesome, closing the loop — will follow up once canary finishes.

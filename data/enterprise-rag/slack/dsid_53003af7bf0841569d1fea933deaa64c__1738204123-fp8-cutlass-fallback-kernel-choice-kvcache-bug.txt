@@ -1,0 +1,32 @@
+eng-runtime
+
+eli: Heads-up — seeing ~25% p99 latency bump on FP8 path after calibration flag enabled on Hopper nodes. Rolling back if we don’t have root cause by EOD.
+mira: Which benchmark and batch size? any trace link?
+perf-bot: perf-bot: perf trace uploaded: https://perf.internal/runs/4721 (nvtx flamegraph + kernel timelines)
+chen: Repro steps: chat-bench, seq_len=512, batch=8, prefix-KV enabled. KV hit rate low and runtime falls back to CUTLASS INT8 path for some matmuls.
+oscar: Confirming — fallback triggered by kernel selector? CUTLASS slower than Triton FP8 usually, right?
+eli: Yes. Selector currently switches to CUTLASS INT8 when calibrated scale > 0.97. Calibration on Hopper produced scales ~0.98 so we hit CUTLASS. On Ampere we stayed on Triton FP8.
+mira: Where’s that threshold? I remember a config file in runtime/quant.
+chen: It’s in runtime/quant/selector.cc — lines that check scale thresholds and arch overrides. Quick grep: `if (scale > 0.97) return Kernel::CUTLASS_INT8;`
+eli: Perf deltas from nvprof: `triton_fp8_matmul` ~0.7ms, `matmul_cutlass_int8` ~1.2ms for same shapes. Also see extra memcpy noise from KV shard aggregator.
+chen: nvprof snippet:
+```
+# MatMul timings
+triton_fp8_matmul  0.70ms
+matmul_cutlass_int8 1.23ms
+memcpy H2D/D2H 0.15ms (KV shard merge)
+```
+oscar: Quick mitigations: 1) relax threshold 0.97->1.05 2) prefer triton for seq>256 3) arch-specific override preferring triton on Hopper. Thoughts?
+mira: Patch 1 easy but could affect quality. We should run AB calibration check on eval set before changing threshold.
+eli: Agreed. Also found another angle — one of the hopper images lacked `-DTRITON_USE_TENSOR_CORE=ON` in build flags, which prevents the fast Triton kernel. If that’s the case, rebuilding images could fix without selector changes.
+chen: I reproduced that: the image hash for hopper-prod had missing build flag. Rebuilding now and kicking CI. Profiling command I used:
+```
+nsys profile --output=run1 --trace=cuda,nvtx -- python -m bench.chat --batch 8 --seq 512
+```
+mira: Starting A/B on branch `perf/fp8-selector-tune` against dedicated hopper cluster (10 canary machines). Running full eval (100 prompts) + quality checks. ETA ~90m.
+perf-bot: perf-bot: CI run started: https://ci/internal/12345
+eli: If A/B shows no quality degradation, we can bump threshold and add explicit arch override: `if (arch >= HOPPER) prefer_triton = true` and ship as a canary.
+oscar: Also add KV-cache stress test in rollout: skewed prefix distribution to exercise shard merges.
+chen: Created PR and image rebuild job: PR #3142 (selector threshold + guard + test). Assigning @mira @eli for review.
+mira: LGTM to review after CI. If rebuild fixes, we may revert selector change and only roll image fix.
+eli: OK — holding rollback. Thanks everyone. :pray:

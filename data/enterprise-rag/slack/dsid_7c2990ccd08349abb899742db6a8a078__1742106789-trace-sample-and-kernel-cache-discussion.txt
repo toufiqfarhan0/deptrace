@@ -1,0 +1,61 @@
+eng-runtime
+
+alex_shaw: Quick share — I ran nsys traces on the 2.2.0 runtime yesterday and I’m seeing long compile stalls during warmup that line up with kernel-selection. p99 for short prompts doubled in one run. Anyone else?
+
+maria_garcia: saw similar on staging yesterday. attaching a tiny timeline snippet below. looks like responsible time is a single compile op that takes ~80ms and blocks the pipeline.
+
+maria_garcia: ```
+# nsys timeline (condensed)
+Time(ms)  Event                     Duration(ms)
+1220      triton::matmul_fwd         4.1
+1225      triton::compile            82.7  <-- hotspot
+1308      triton::matmul_fwd         3.8
+```
+
+cj_lee: interesting — is that the first time we hit that kernel for the model shape? could be Triton compilation fallback when a kernel variant isn't in cache. did you capture kernel cache metrics?
+
+maria_garcia: yes, I pulled the runtime logs. we log kernel_cache_lookup and compile times. snippet:
+
+maria_garcia: ```
+[kernel_cache] lookup key=matmul_fwd_m128x64 miss
+[kernel_compile] compiled_ms=82.7 key=matmul_fwd_m128x64
+[kernel_cache] insert key=matmul_fwd_m128x64
+```
+
+sasha_k: that pattern matches what we saw when batching heuristics produced a new seq_len x batch combo and the kernel selector chose a variant not present in the cache. two notes: (1) our kernel cache TTL is small on dev, and (2) async compilation path might be disabled in that build.
+
+alex_shaw: good call on async compile — I think the build used the sync fallback because of a previous crash with async kernels. that would explain the block. what's the fastest mitigation? bump cache size or re-enable async?
+
+cj_lee: short term: increase kernel cache soft limit and extend eviction window (prevents churn). medium: enable background compile + priority queueing so the first request returns a slower fallback but doesn't block. long term: pre-warm commonly seen kernel variants during model load.
+
+maria_garcia: I tried pre-warm on a local run — forced the selector to compile top N candidates on load. initial warmup took ~300ms total but steady-state p50 unaffected and p99 improved because requests never experienced the 80ms compile. logs: 
+
+maria_garcia: ```
+prewarm: compiled_keys=18 total_ms=312
+request: p50=11ms p95=34ms p99=58ms (vs) baseline p99=142ms
+```
+
+alex_shaw: can you paste the nsys file location? I want to correlate with perfetto traces (to see kernel overlap and CUDA stream blocking).
+
+perf-bot: nsys run archived -> s3://redwood-perf/nsys/1742106789.nsys3 (:white_check_mark:)
+
+cj_lee: thanks. when you load into Nsight, look at the CUDA stream timeline — if compile calls are on the main stream, everything halts. we should confirm compile work is scheduled on a dedicated stream.
+
+sasha_k: also worth checking KV cache interactions — if KV cache fill happens concurrently and produces new shapes, that can change kernel selection mid-warmup. maria, did you see any KV cache refill spikes?
+
+maria_garcia: slight KV churn in early seconds: 
+
+maria_garcia: ```
+[kv_cache] miss_count=12 fill_ms=2.1 avg_seq=24
+[kv_cache] hit_count=1849
+```
+
+alex_shaw: ok — action items: (1) sasha to experiment with increasing kernel_cache size + eviction window on staging, (2) cj to prototype async background compile with low-priority threads, (3) maria to upload perfetto capture and run combined view. I'll open a small RFC for the prewarm option with toggle per-model.
+
+sasha_k: I can run a quick A/B on staging later today. I suspect a simple cache config change will cut p99 warmup spikes by ~50%.
+
+cj_lee: for the RFC add numbers on compile CPU work vs GPU blocking. if compile time is CPU heavy we can offload to a compile pool machine and stream compiled blobs back into the node to avoid runtime JITs.
+
+maria_garcia: uploaded perfetto: https://perfetto.link/view?uri=redwood/1742106789 (contains combined cuda + cpu counters).
+
+alex_shaw: perfect. thanks all. keeping this thread for updates. if someone gets a repro script, paste it here and I'll run a multi-model soak to measure unit economics of prewarming. :thumbsup:

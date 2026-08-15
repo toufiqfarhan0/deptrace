@@ -1,0 +1,28 @@
+support
+
+Sofia (Support): Hey @Priya, saw your ticket about a brief flood of 429s during your nightly backfill. Can you drop the root request-id / headers if you have them?
+Priya (Customer): sure — happened ~2025-11-03T02:13Z for ~90s while we were doing a 200-concurrency batch backfill (512 token inputs). Lots of 429s with Retry-After: 3. Request-Id: r-abc123
+QuotaBot: [automated] account=acme-inc action=burst_cushion_drain remaining=0 window=60s timestamp=2025-11-03T02:13:27Z
+Aman (SRE): That matches what we'd expect when smoothing + fractional refill interact with a high-concurrency backfill. The smoothing cushion refills in fractional increments (per-minute tick), so a sudden large drain can leave cushion=0 for up to the next tick.
+Joel (Platform): also note batching changes token throughput — fewer, bigger requests can still spike token rate vs the smoothing window even if aggregate per-minute looks ok.
+Sofia (Support): Priya — can you paste one of the failed response headers? that helps confirm the exact reason code.
+Priya (Customer): pasted: 
+HTTP/1.1 429 Too Many Requests
+Retry-After: 3
+X-RateLimit-Reason: transient_smoothing_cushion_empty
+X-Request-Id: r-abc123
+Sofia (Support): perfect, that X-RateLimit-Reason is the important bit.
+Aman (SRE): TL;DR root cause: short-lived high concurrency drained the smoothing cushion faster than fractional refill could replace it. The system then returned 429s until the next refill tick. This is by-design to keep tail latency predictable.
+Joel (Platform): Repro recipe for us: run 200 concurrent requests at your typical token-size for 2 minutes against the same route. You should see cushion drain and 429s in ~30–90s window.
+Sofia (Support): Short-term customer workarounds: 1) stagger requests (wave concurrency down), 2) add jitter/backoff honoring Retry-After, 3) reduce tokens-per-request if possible, 4) request a temporary per-route quota bump or move heavy backfills to dedicated capacity.
+Priya (Customer): Any sample backoff you recommend?
+Sofia (Support): start simple: exponential backoff with jitter, base=200ms, max=5s; respect Retry-After when present. Example pseudo-curl handling: 
+```
+# send
+curl -i -X POST https://api.redwood.ai/v1/generate -H "Authorization: Bearer $KEY" -d '{"input":"..."}'
+# if 429 read Retry-After header and sleep(Retry-After + jitter)
+```
+Aman (SRE): For longer-term fixes we can: (a) expose fractional smoothing cushion in the Console (visibility), (b) allow per-customer tuning of smoothing window or cushion size for scheduled heavy jobs, or (c) recommend migrating scheduled backfills to a Dedicated plan where you get predictable capacity. I'm filing an internal follow-up.
+Joel (Platform): I'll open a doc with the PMs to discuss tunables + Console visibility.
+Priya (Customer): Thanks — we'll implement jitter+stagger for tonight's run and ping if we still see 429s. Appreciate the quick triage :pray:
+Sofia (Support): thanks @Priya — please attach logs if anything persists. marking this thread for follow-up with Platform/SRE. :thumbsup:

@@ -1,0 +1,37 @@
+eng-platform
+
+morgan: Quick heads-up — AB test 'feature-x-ui' canary looks off. Dashboard shows ~70/30 A/B for the last 6h instead of the expected ~50/50. Flagging because the metric delta is small and I'm worried SRM violation.
+vikram: Yikes. Any raw counts or bucketing reports? Could be a client-side bucketing change or a routing rule.
+morgan: Pasting the raw event counts we pulled (by variant):
+```sql
+SELECT variant, COUNT(*) as cnt, SUM(success::int) as conversions
+FROM experiment_events
+WHERE experiment_id = 'fx-ui-2026' AND ts >= now() - interval '6 hours'
+GROUP BY variant;
+```
+Result: A: 278,912 requests, conversions 5,621; B: 120,334 requests, conversions 2,428.
+claire: That is a big SRM tilt. What's the traffic source breakdown (mobile/web/region)?
+morgan: Quick breakdown by device: web ~80% of A, mobile ~70% of B. Region looks ~balanced across EU/NA.
+jia: If bucketing is uniform, that suggests a routing/policy issue (route_by_device?). Any recent deploys to the routing service or changes to routing policies? @deploy-bot any deploys?
+deploy-bot: [deploy] service=router v=3.12.1 deployed to prod @ 2026-03-15T02:14Z — initiated by samira
+samira: I pushed a small change to route-by-weight to support device-aware weights two nights ago. I thought it was behind a flag but maybe not. Re-checking now.
+vikram: If device-aware weighting defaulted to true, that could explain web getting overweighted into variant A. We should not trust p-values until SRM is resolved.
+claire: Agree. Also check SDK client config for a change in bucketing salt or hashing algorithm. That would cause a permanent rebalance.
+morgan: I ran the client config diff; no salt change. Router change is the prime suspect. samira, can you confirm whether the policy gate was flipped?
+samira: Confirmed — I shipped the flag but forgot to gate rule evaluation in the policy engine; the new rule was active for all traffic for ~7.5h starting at ~2026-03-14T22:30Z. My bad.
+ops-bot: [alert] SRM_check failed for experiment fx-ui-2026 at 2026-03-15T05:40Z — observed split 69.8/30.2 (expected 50/50)
+jia: OK. Two paths: 1) Pause/rollback and restart a fresh run (clean data), or 2) continue but treat the current window as contaminated and run reweighted (post-stratification) analysis. Each has trade-offs.
+vikram: What's the minimum additional sample size to recover power if we ignore those 7.5h and resume? We can compute using observed baseline conversion ~2.0%. If effect size is small (0.2%), we might need >200k per arm.
+claire: Also check whether the contamination is correlated with the metric (device correlates with conversion?). If device is a strong confounder, reweighting might still be biased.
+morgan: Device conversion: web conv rate 2.3%, mobile 1.6% in this dataset. So there's correlation.
+samira: Proposal: 1) mark the contaminated window and exclude it from primary analysis; 2) extend the experiment until we reach the pre-specified sample count per-arm (originally 300k each) OR run a Bayesian sequential analysis with prior matching baseline; 3) add a temporary strict guard in router to enforce exact 50/50 by global bucketing for next 48h; 4) run subgroup checks (device, region) and post-stratified reanalysis.
+jia: I prefer stopping and restarting only if we can't guarantee retroactive correction. Given device confounding, reweighting might not fully recover causal balance. But extending and enforcing strict global bucketing will let us collect clean data.
+vikram: Operationally, we should also surface this to the console rollout UX: show a warning when policy changes impact active experiments. We had a near miss.
+claire: For the statistical end-criteria: if we extend, we should freeze the analysis plan (no peeking) and use the original alpha. Or switch to a preapproved sequential method (alpha spending) and document it.
+morgan: TL;DR: action items I propose — (A) mark 22:30–06:00 UTC as contaminated and exclude from current analysis; (B) enforce strict 50/50 router gating now, via emergency policy toggle; (C) extend experiment 48 hours (or until each arm has 300k clean samples); (D) run both a frequentist reweighted check and a Bayesian sequential analysis and compare; (E) add console warning for policy-impact on active experiments. Anyone opposed?
+samira: I'm on it — toggling the policy gate now and will post status.
+deploy-bot: [action] policy-toggle service=router gate=exact_50_50 enacted by samira @ 2026-03-15T05:52Z
+morgan: Thanks. I'll update the experiments runbook and notify analytics to hold off on publishing results until we run the reanalysis.
+jia: Also please snapshot the raw event logs and store them in the experiments bucket with a retention tag `contaminated-window` so downstream analysts know.
+vikram: OK let's reconvene after 48h or earlier if we get enough clean samples. Adding a follow-up reminder: @morgan can you create a Jira to track the reanalysis and UX warning?
+morgan: Yep — creating the ticket now and will ping this thread with the link. Thanks everyone :thumbsup:

@@ -1,0 +1,27 @@
+incidents
+
+ria: Postmortem follow-up for the authz incident. Short checklist: token parsing fix, perms ownership, audit gap alert, secrets sync reconciler. Need owners + due epochs.
+
+omar: I'll take token parsing and tests -> 48h. Will pin jwt lib and add explicit int(exp) coercion.
+
+katie: I'll own perms ownership registry and weekly diff -> 5d. Will produce CSV and PR.
+
+ops: Secrets reconciler + healthcheck -> 72h. Rolling reconcile only.
+
+ria: Audit gap alert + backfill dry-run -> owner @katie -> 48h.
+
+omar: :thumbsup: I accept 1 Due: 2025178834 (48h).
+
+katie: :thumbsup: I accept 1 Due: 2025457634 (5d).
+
+ops: :thumbsup: I accept 1 Due: 2025468434 (72h).
+
+ria: Security-bot, please schedule T-24h reminders for owners.
+
+sec-bot: Reminders scheduled: T-24h and T-4h. Weekly digest for tag "authz" enabled. :robot_face:
+
+omar: I'll include failing payload sample in PR.
+
+katie: I'll add the role CSV to the tracker and enable soft-block on high-priv role changes without owner.
+
+ria: Closing thread; will reopen if blockers.

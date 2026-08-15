@@ -1,0 +1,65 @@
+eng-releases
+
+maria: FYI rolling v2.14.0 to prod in the 09:30 PT change window. deploy-bot just reported a security gating alert on the SBOM for the web-worker image. Need quick triage and a decision: pin, rollback, or exception.
+
+ash: can you paste the alert?
+
+maria: deploy-bot snip below 
+```
+deploy-bot: vuln-scan: package 'left-pad'@1.2.3 (transitive) flagged CVE-2025-9999 severity: moderate
+sbom: provenance mismatch for base-image 'redwood/base:202410' (digest differs from catalog)
+policy: requires either pinning or approval for transitive moderate CVE
+```
+
+kevin: left-pad? lol. but transitive CVE + provenance mismatch is annoying. If we pin at the resolved digest and rebuild the image does that fix the provenance check?
+
+deploy-bot: Rebuild + pin will clear the SBOM provenance check if new image digest matches recorded provenance. Automated canary will re-evaluate post-build.
+
+ash: timeline? change window ends 10:00 PT, so ~30m. We can attempt a rebuild and pin, but it might take ~15–25m to build, test, and push.
+
+ops-oncall: heads up — if we push a rebuild now, it may still hit the 10:00 cutoff for out-of-window changes. Need a change-window exception if it goes past.
+
+sarah-legal: quick note: CVE is moderate but transitive license is not the issue — legal wants notification if we accept a temporary exemption. I can sign off if security approves compensating controls.
+
+maria: what are compensating controls we can commit to immediately?
+
+kevin: options: (A) pin the transitive dep via the lockfile and rebuild image, (B) rollback the release and open a patch PR, (C) request emergency exception with scope limited to canary and auto-revert if new telemetry spikes errors.
+
+ash: (A) is fastest. We'll update `package-lock.json` and rebuild container. Command: 
+```bash
+npm ci && npm audit fix --package-lock-only && docker build -t registry.redwood.dev/web-worker:staged-1971234567 . && docker push registry.redwood.dev/web-worker:staged-1971234567
+```
+
+security-bot: Policy check: transitive moderate CVEs require one of: pin+rebuild OR CISO exception. Evidence must be attached to the release ticket.
+
+maria: I'm 👍 on pin+rebuild. But ops needs a change-window exception if we miss 10:00. ops-oncall can you request?
+
+ops-oncall: Requesting emergency change window extension +30m now. Filing ticket CG-1971 and paging Claire.
+
+claire (CISO): I saw the page. Approve temporary exception for this deployment if the following are met: (1) pin the transitive dep and attach diff, (2) add feature-flag gating so change can be rolled back quickly, (3) monitor error rate and abort canary on >2x baseline.
+
+maria: will do all three. Kevin and Ash will handle the pin/rebuild + add a FF toggle. Sarah, can you handle the legal notification for the exception?
+
+sarah-legal: On it — emailing infra-compliance@redwood with the decision and linking CG-1971.
+
+kevin: pinned left-pad@1.2.3 in lockfile and rebuilt. pushed staged image `registry.redwood.dev/web-worker:staged-1971234567`. Diff attached to ticket: `git show --name-only 9f3a2d`
+
+maria: I updated release notes (link: https://confluence.redwood.dev/releases/v2.14.0) to reflect temporary mitigation and planned follow-up to replace base image.
+
+security-bot: Exception granted by CISO (claire) at 1971235820. Condition: auto-abort canary on error spike >2x and open follow-up to remove temporary pin within 7 days.
+
+deploy-bot: Canary start triggered for registry.redwood.dev/web-worker:staged-1971234567. Canary ID: cb-1971. Monitoring enabled.
+
+ops-oncall: extension approved until 10:30 PT. Noted on CG-1971.
+
+ash: monitoring looks clean so far — 5m in, latency and error rate within baseline.
+
+maria: proceeding with gradually expanding canary according to rollout plan. Will keep this thread updated and close after stable.
+
+kevin: follow-up todo created: INFSEC-2315 to upgrade base-image and remove temporary pin.
+
+sarah-legal: mailed compliance note and attached CISO approval.
+
+maria: thanks everyone. we avoided rollback and have a documented exception + mitigation. :thumbsup:
+
+deploy-bot: Canary cb-1971 reached 50% traffic at 1971236222. No abort conditions met.

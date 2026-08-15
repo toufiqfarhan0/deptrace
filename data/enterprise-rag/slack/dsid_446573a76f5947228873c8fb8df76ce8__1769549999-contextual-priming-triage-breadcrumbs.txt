@@ -1,0 +1,26 @@
+eng-ml
+
+Maya Patel: Ran bring-up of v2-ranker on the sampled holdout this morning. Quick summary: NDCG@10 +2.1% vs baseline, but MRR@5 dropped ~5%. Not sure if this is dataset or formatting related. Anyone seen this pattern?
+Suresh Iyer: hmm that's odd — do we have the exact cohort breakdown? head vs tail?
+Maya Patel: head (top queries) NDCG up, tail shows NDCG flat. MRR drop concentrated in short queries (len<=5). Stats: baseline MRR@5=0.412, v2=0.391. full eval logs attached in the notebook.
+Olivia Chen: short queries often sensitive to priming/priming-window. Did we change candidate truncation or priming order in the new preproc?
+Maya Patel: we switched from doc-first to candidate-first concat for priming (small change to reduce tokens). Could that reorder influence tie-breaking and top-1 picks?
+Kai Morris: yes—if we moved the anchor position it can change model calibration on short context. Also check embedding normalization — I think v2 uses L2-normalize at scoring stage (baseline didn't).
+Suresh Iyer: action: can we reproduce with fixed pipeline? run the same model weights but swap preprocessing between baseline and v2.
+Maya Patel: doing that now. Running two jobs: (1) v2 weights + baseline preproc; (2) baseline weights + v2 preproc. Expect to isolate whether weights or formatting caused MRR dip.
+ReproBot: Job queued: repro-job-1769550001. ETA ~ 12m. Command: ```./run_eval --model v2 --preproc baseline --cohort shortqueries --out /tmp/repro1.log```
+Olivia Chen: also try forcing topk candidate sorting to stable-sort by id to rule out nondeterministic shuffles. Might be subtle.
+Kai Morris: another angle — quantization? Did we test v2 quantized vs fp16? some quantization PTQ settings can compress score magnitudes and affect MRR even if NDCG ok.
+Maya Patel: v2 run was float32 on eval cluster. But serving will use int8 PTQ later. Good point to run int8 local sim to see sign.
+Suresh Iyer: for short queries add a diagnostic: show top3 candidate texts for failures where baseline hits but v2 misses. small diff analysis often reveals priming/stopword interactions.
+Maya Patel: got a quick diff sample: baseline top1 often a short FAQ sentence, v2 top1 is a longer passage that still has high ndcg rank but lower exact-match position -> explains MRR drop. Posting a short snippet: ```baseline_top1: 'Password reset steps' v2_top1: '...full paragraph about account management...'```
+Olivia Chen: that aligns with priming-window hypothesis — longer candidate gets chosen because the model uses more context in v2. For product, MRR (firstclick) matters more. We should prefer weight or preproc that recovers first hit.
+Kai Morris: proposed experiments: A) revert to doc-first priming for short queries only; B) re-calibrate scorer logits (rescale) for short queries; C) small canary A/B with 5% traffic.
+Maya Patel: plan: run repro jobs, then run experiment A locally. If repro shows preproc is culprit, roll back candidate concat change for short-query cohort and run a canary. I'll open a canary plan doc and tag security/ops.
+Suresh Iyer: add eval metrics: per-query-length p95 latency and token cost — we don't want regression there.
+Maya Patel: noted. Will also generate patch to scoreboard to report first-click lift and top1 overlap.
+ReproBot: Job update: repro-job-1769550001 completed (exit 0). Logs: /tmp/repro1.log. Summary: v2 weights + baseline preproc MRR = 0.410 (recovered). baseline weights + v2 preproc MRR = 0.389 (still down).
+Maya Patel: results indicate preproc change caused MRR drop. Next step: revert priming order for short queries and run canary.
+Olivia Chen: nice detective work :tada:. Can we add a small unit test in the eval harness to assert top1 overlap >= 0.95 for short stable queries?
+Kai Morris: yes add it behind a flag so it doesn't break on new models.
+Maya Patel: will push the small fix and schedule 5% canary tomorrow. I'll drop notes in the release checklist. Thanks all.

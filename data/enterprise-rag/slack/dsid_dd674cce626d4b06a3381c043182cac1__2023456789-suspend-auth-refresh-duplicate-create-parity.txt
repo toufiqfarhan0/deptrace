@@ -1,0 +1,54 @@
+devex
+
+rita: Noticed a weird parity bug between our Java and Kotlin SDKs: suspend Retrofit endpoints sometimes trigger a second request when 401->refresh flow runs concurrently. Repro fairly small.
+
+omar: interesting. so suspend functions + CallAdapter vs returning Call behave differently? can you paste the flow?
+
+rita: simplified sequence:
+1) client calls suspendService.create(…) (Retrofit suspend adapter)
+2) server returns 401, AuthInterceptor triggers token refresh via synchronous Retrofit call (we used retrofit.create for auth)
+3) original suspend continuation resumes and RetryInterceptor replays request -> server sees two creates.
+
+jin: wow. is the refresh call using the same OkHttpClient instance? that can cause interceptor recursion or blocking.
+
+rita: yes same client. code excerpt:
+```kotlin
+class AuthInterceptor: Interceptor {
+  override fun intercept(chain: Interceptor.Chain): Response {
+    val req = chain.request()
+    val resp = chain.proceed(req)
+    if (resp.code == 401) {
+      // sync refresh using retrofit auth service
+      val newToken = authService.refresh().execute().body()?.token
+      return chain.proceed(req.newBuilder().header("Authorization", "Bearer $newToken").build())
+    }
+    return resp
+  }
+}
+```
+
+qa-kai: so you're doing a blocking refresh inside the interceptor. If the refresh code triggers the same interceptors (auth) it could deadlock or cause duplicate upstream calls depending on dispatcher. Also Retrofit's suspend adapter wraps calls differently and may re-enqueue.
+
+omar: short-term mitigation: isolate auth requests on a separate OkHttpClient with no auth interceptor, and mark refresh calls as synchronous low-level. Also prefer to use token refresh outside of interceptors: let 401 bubble and let a centralized retry manager handle refresh+retry.
+
+jin: also check that you don't call call.clone() after the refresh — clone makes an independent call that won't inherit any cancellation; with suspend adapters cancellation is wired to the original call lifecycle. If you call clone() blindly you can duplicate.
+
+rita: good points. I think cause is threefold: 1) using same client for refresh 2) refresh done synchronously in interceptor 3) suspend adapter semantics cause the original continuation to re-run the request path.
+
+release-man: FYI, we should treat this as a release-blocker if it can duplicate create operations in production. What is the scope? any customers hit it?
+
+rita: one customer reported duplicate orders when a refresh coincided with slow network. I can repro locally by adding artificial delay to refresh endpoint and running parallel requests.
+
+ci-bot: created issue: SDK-4182 "Duplicate POSTs when auth refresh runs in interceptor with suspend Retrofit" and queued a CI job.
+
+omar: propose fixes: 1) use separate client for auth refresh 2) don't refresh inside interceptor, instead return 401 and let outer layer handle atomic refresh + retry 3) add idempotency-key default for non-idempotent endpoints in sample app.
+
+rita: I'll prototype separate auth client and move refresh out of interceptor. Also add a regression test that runs suspend endpoints with simulated 401+delay and asserts single server-side event.
+
+qa-kai: I'll run emulator stress with 1000 iterations once PR lands. Also add a tiny sample that demonstrates both Java (Call) and Kotlin (suspend) paths to ensure parity.
+
+jin: tiny note: document this in migration guide — Kotlin suspend adapter users may need to be careful with interceptor-based refresh patterns.
+
+rita: thanks everyone. opening PR with changes + test links in thread.
+
+release-man: please include a clear changelog entry and recommended immediate mitigation for customers (set Idempotency-Key or pin SDK version). :rocket:

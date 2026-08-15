@@ -1,0 +1,34 @@
+incidents
+
+Lina (Support): AcmeCorp reporting widespread 504s/timeouts ~2026-03-17 10:22 UTC. >45% requests failing from hosted-us-west-2. Ticket #12345. sample: "504 Gateway Timeout: request timed out after 60s"
+Sanjay (Oncall): looking now. grafana shows request_queue_depth spiked to ~2800 on hydra-ingress-02 at 10:21. latency p95 shot to 12s. https://grafana.redwood/d/ingress/queue
+ops-bot: ALERT: request_queue_depth > 2000 (us-west-2) for 5m. alert_id=aqd-2026-03-17-1021
+Cody (Eng): Could be continuous-batching backlog + thinpool exhaustion. Any KV-cache evictions or batcher stalls?
+Maya (SRE): running quick checks on batcher and kvcache. command: `kubectl -n hosted logs ingress-batcher-02 | tail -n 200`
+Maya (SRE): log snippet:
+```
+ingress-batcher-02 10:20:58 [INFO] enqueue request id=abc123 size=48KB
+ingress-batcher-02 10:21:01 [WARN] batch_wait exceeded 120ms, holding 128 requests
+ingress-batcher-02 10:21:02 [ERROR] kv-cache lock timeout after 300ms
+ingress-batcher-02 10:21:05 [ERROR] dequeue failed: upstream timeout
+```
+Raj (CSM): Customer says they started 30 concurrent streams from a cron job but no code change. repro steps they gave: send concurrent POSTs with 3-5s intervals.
+Lina (Support): repro curl (minimal):
+```
+curl -X POST https://api.redwood-hosted.com/v1/generate -H "Authorization: Bearer <key>" -d '{"model":"rw-large","input":"short prompt"}' -H "Content-Type: application/json" --parallel --max-connections 30
+```
+Cody (Eng): sounds like a retry spiral: client retries w/o jitter => queue depth fills => gateway starts 504s when batcher threads blocked. Need gateway logs and trace ids to confirm. Also check auth/billing rejects during rotation.
+Maya (SRE): grepping gateway logs shows many 429 then 504 for same tenant around 10:22, plus intermittent 401s ~10:23 for token rotate events. 401s are a side effect but not primary cause.
+Sanjay (Oncall): mitigation applied: scaled ingress-batcher replicas 3 -> 8 and scaled hydra-ingress-02. deploy-bot: triggered scale at 10:24 UTC.
+deploy-bot: scale operation: ingress-batcher replicas from 3 to 8 initiated by Sanjay (Oncall)
+Lina (Support): pushed temporary per-tenant rate limit for AcmeCorp to 200rps and asked them to throttle retries. customer confirmed they turned down client concurrency.
+Cody (Eng): root cause hypothesis: thinpool bucket too small + continuous batching waiting up to 120ms while KV cache lock (during key rotation) stalls batcher threads. That lets queue accumulate; clients retry aggressively -> retry storm. Fix plan: reduce max batch wait to 60ms, add backpressure at gateway when queue_depth > 1500, and patch kv rotation to avoid long lock hold.
+Maya (SRE): created ENG ticket ENG-2456 for kv-rotation race and batcher-wait tuning. Follow-ups: add playbook step to scale batchers and apply tenant-specific rate limits.
+Raj (CSM): AcmeCorp reports error rate down to ~2% after scaling + rate-limit, latency p95 back to ~900ms. They want postmortem.
+Cody (Eng): short-term PR to change batch_wait from 120ms -> 60ms and add metric for `batcher_blocked_by_kv_lock`. will circulate for review.
+Sanjay (Oncall): summary mitigation pinned in incident channel: 1) scale batchers 2) tenant rate-limit 3) collect traces for affected trace ids 4) ENG-2456 follow-up. :thumbsup:
+Lina (Support): closing customer-facing update: "We mitigated the issue by scaling capacity and applying temporary rate limits; our engineering team is rolling a patch to reduce batch wait and fix a KV rotation race."
+ops-bot: INCIDENT RESOLVED: queue depth returned to normal at 10:28 UTC.
+Maya (SRE): follow-ups: add unit test for kv rotation lock, add canary for batch_wait change, update runbook with explicit steps to scale and apply tenant limits.
+Cody (Eng): will deploy hotfix to staging for validation.
+Lina (Support): AcmeCorp will wait for postmortem. thanks everyone.

@@ -1,0 +1,91 @@
+eng-platform
+
+ana: quick idea — can we add a "routing_reason" column to the keys dashboard so support/devs can see why requests got routed to a fallback model/region? e.g. quota_exhausted, model_unavailable, latency_threshold, cold_start
+
+devon: +1. currently we only show final model and latency, which makes debugging opaque.
+
+mira: curious what we'd populate for KV-cache hits vs batching delays. do we want a tiny enum or freeform string?
+
+sam: enum is easier for metrics/alerts. we can standardize set: [primary_routed, fallback_model, fallback_region, quota_throttle, rate_limited, backend_error, cold_start, cache_miss, cache_hit, batched_delay]
+
+jules: please avoid long strings. +1 enum, and include optional detail field for human-readable context (e.g., "quota:projectX reached 95%")
+
+ana: @mira good q — maybe we record both: routing_reason (enum) + routing_meta (short string). routing_meta limited to 256 chars.
+
+mira: sounds good. what about privacy/PII in routing_meta? need analyzer to strip keys/org ids or only include opaque ids.
+
+sam: enforce only project short id or hashed org id. no raw customer identifiers. add sanitizer in authz middleware.
+
+devon: implementation plan: auth layer (where we resolve key -> project) can emit routing code before the routing decision PRs it to router. router returns final reason. then telemetry pipeline enriches logs and dashboard consumes them.
+
+jules: dashboard UX: allow filtering by routing_reason, and ability to pivot by key/project and see recent sample traces. also add small explainer tooltip for each enum.
+
+ana: rollout plan idea: start with internal flag that pipes routing_reason into structured logs for 10% of traffic (canary). then wire to dashboards with sampling.
+
+devon: +1. we should also keep a high-cardinality sample store (trace id list) for support to pull 5-10 recent requests for a given key so they can inspect full trace.
+
+mira: telemetry cost concern: adding fields increases log size. consider kafka topic compressed and only send routing_meta for sampled traffic. enums are cheap.
+
+sam: agreed. plan: enums always emitted (cheap), routing_meta emitted at 1% sampling by default, overridable for support mode.
+
+jules: how do we link this with quota dashboards? one useful view would be "quota-related fallbacks" that shows which projects cause most fallback_model events.
+
+ana: yes — map routing_reason=quota_throttle to quota metric and surface top offenders. also emit quota_source: [project_quota, org_quota, global_quota] as enum.
+
+devon: security note: when showing routing_reason on keys listing in console, only show to users with project access; hide for org-level viewers if the key belongs to other projects.
+
+mira: also consider retention: store routing_reason for 90 days for alerts, but purge routing_meta after 30 days unless flagged for investigation.
+
+sam: ops question: do we want to allow per-key override to opt-in to richer metadata for debugging (customer requests)? must be gated and logged.
+
+jules: yes, but require explicit consent and audit log entry. add a console checkbox: "Enable detailed routing metadata (audited)" — default off.
+
+ana: code snippet for log emit prototype:
+```
+// in auth middleware
+ctx.key_id = key.id
+emitMetric("request.start", {key: key.id, project: project.id})
+// after routing decision
+emitLog("request.route", {key: key.id, routing_reason: "fallback_model", routing_meta: "quantized-variant-unavailable", model: "redwood-3b-q"})
+```
+
+mira: looks good. add a hashed_key in logs so support can match without exposing actual key string.
+
+devon: operational play: add alert when fallback_model % > 1% for production keys in last 5m. route to eng-oncall + infra.
+
+jules: UX: small inline "why" pill next to model in console listing that opens modal with recent reasons and suggestion (e.g., "increase quota, pin model version, enable dedupe cache").
+
+sam: question on migration: legacy logs have different field names. we should write a migration adapter in the pipeline to canonicalize old_field -> routing_reason.
+
+ana: good catch. add mapping table in ETL.
+
+deploy-bot: deploy queued: feature/authz-routing-reasons -> canary group 10% at 2026-03-21T10:00Z
+
+mira: can we add a short demo for support next week? show how to use filters and pull sample traces.
+
+ana: I'll prepare a short walkthrough and a sample query for LogQL and dashboard filters.
+
+devon: I'll open a PR for the enum and telemetry contract, assign to @mira for sanitization review.
+
+jules: assign UX tickets after PR lands. thanks all. :thumbsup:
+
+sam: +1. will draft alert rules and sampling knobs.
+
+ana: action items summary:
+- devon: PR with enum + TE telemetry contract (due 2d)
+- mira: sanitization + demo prep (due 4d)
+- sam: alert rules + sampling defaults (due 3d)
+- jules: dashboard mockups after PR (dependent)
+- ana: coordinate canary and support walkthrough
+
+ana: cool — closing this thread unless objections.
+
+mira: none from me.
+
+devon: fine.
+
+jules: go ahead.
+
+sam: no objections.
+
+deploy-bot: canary started: feature/authz-routing-reasons (10% traffic)

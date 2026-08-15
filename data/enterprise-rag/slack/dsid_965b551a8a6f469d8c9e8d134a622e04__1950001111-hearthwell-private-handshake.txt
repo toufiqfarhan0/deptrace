@@ -1,0 +1,20 @@
+eng-infra
+
+Sami: Heads up — need to schedule Hearthwell Private deployment review (VPC + KMS + canary). Who's available Wed or Thu? Prefer morning PT. Agenda: preflight checklist, network test results, KMS/HSM key import, canary plan, rollback plan. Any other items? @Julian @Devon @Maria
+Julian: Wed 10am PT works for me. Thu morning is tight. Can we do 10–11 PT? :calendar:
+Devon: I can do Wed 10–11. I'll bring network test summary. Also, need confirmation on customer IP ranges and BGP routes.
+Maria: Wed 10 is fine. I'll bring the Dedicated capacity estimates and burst policy. FYI Hearthwell asked about SLA and maintenance windows.
+Oncall-Bot: Reminder: maintenance window overlap check passed for 2025-03-12 00:00-06:00 UTC.
+Kevin: Copy — prepping runbook docs. Adding a short checklist we should confirm during call:
+```
+- confirm VPC peering
+- KMS key accessible from nodes
+- model variants pinned
+- canary = 5% traffic for 2h
+- fallback to hosted model
+```
+Sami: Perfect. I'll send calendar invite for Wed 10am PT / 17:00 UTC. Draft agenda in calendar. Thread for pre-reads: https://redwood.internal/runbooks/hearthwell-deploy
+Julian: Quick ask: can someone run `curl -s https://ci.redwood/internal/net-tests/hearthwell | jq` and paste a summary? Want latency and packet-loss numbers.
+Devon: On it — pasting summary: `avg_latency_ms: 12.3, p50: 11.9, p95: 28.4, packet_loss: 0.0%`
+Maria: I uploaded capacity spreadsheet to the invite. TL;DR: 2x p4d equiv for canary, bump to 6x for full prod. Costs estimated in sheet.
+Sami: Thanks — see you Wed. If anything blocks, ping here. :thumbsup:

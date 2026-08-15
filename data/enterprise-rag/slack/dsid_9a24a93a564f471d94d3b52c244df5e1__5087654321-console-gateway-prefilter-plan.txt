@@ -1,0 +1,19 @@
+eng-platform
+
+maria: Drafting a lightweight RBAC prefilter to run in the console query gateway. Goal: reject obvious denies before expensive fanout and KV/cache allocation to improve p95 for dashboard panels.
+
+ashok: What checks live in gateway?
+
+maria: Only cheap deterministic checks: token->tenant mapping, token scopes, tenant rate-buckets, static deny lists. No attribute/resource enrichment.
+
+samir: Important: be conservative on stale data -> default DENY unless tenant explicitly in permissive canary.
+
+maria: Delivery: push protobuf deltas from control plane + 30s reconcile. Local per-process cache with small TTL and LRU evictions. Admin API to invalidate tenant rules immediately.
+
+lee: Batching note: only intra-tenant batching by default; no cross-tenant multiplexing unless opt-in.
+
+maria: Metrics: prefilter_evals, prefilter_denies, prefilter_misses, rbac_sync_lag_seconds, rbac_version_gap. Audit minimal denial events for 7d.
+
+jen: Rollout: feature-gated -> log-only canary -> conservative deny canary -> widen by % with kill-switch. Add perf scenario `console.prefilter.fanout_reject` to perf lab.
+
+ops-bot: reminder: add feature flag to spreadsheet before canary.

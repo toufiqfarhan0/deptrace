@@ -1,0 +1,68 @@
+eng-runtime
+
+maya: Heads up — seeing a regression in multi-GPU runs after the recent runtime change. Comm/compute overlap looks broken when CUDA graphs are replayed.
+
+eli: Oh no. Any traces?
+
+maya: Pasted a small nsys excerpt below — you can see all-reduce kernels waiting until after graph replay finishes launching, causing a host-side stall. Timeline shows a big gap at graph_launch -> allreduce_start.
+
+maya: ```
+# nsys top activities (simplified)
+[graph_launch] 0.00 - 0.12s   // cudaGraphLaunch -> host sync point
+[host_wait]    0.12 - 0.14s   // unexpected CPU-side wait
+[allreduce]    0.14 - 0.26s   // NCCL allreduce runs entirely after graph region
+[compute_k1]   0.26 - 0.40s
+```
+
+atsuko: Hunch: capture + prefetch uses external streams for KV cache loads. If graph replay rebinds streams or we reuse graphs that captured stream indices, cudaStreamWaitEvent ordering could serialize kernels onto the implicit default stream.
+
+eli: That matches what I see. On 8xA100 TP config, end-to-end allreduce latency jumped from ~18ms to ~115ms post-change. Weird part: kernel selection also changed — fallback to a different reduce kernel (less parallel) during replay.
+
+jordan: Repro command? env?
+
+maya: Quick repro:
+```bash
+export REDWOOD_RUNTIME_TRACE=1
+export REDWOOD_KV_PREFETCH=1
+# run the tp/inference harness with small batch to force frequent graph replay
+python run_tp_infer.py --model gptx --micro-batch 1 --seq 512 --devices 8
+```
+
+maya: Observed perf regression only when: graph caching enabled AND KV prefetch enabled AND batch sizes < 4. If any one of those off, overlap is fine.
+
+eli: So it's an interaction: small batches -> many graph captures/replays. Graphs captured while prefetching used external streams; on replay, stream handles change and we end up falling back to host synchronization.
+
+atsuko: Could be the graph capture recorded stream semantics (external stream events). When replaying, if we don't reattach the same event handles, cudaStreamWaitEvent becomes a host-side sync? There are subtle rules with graph-external-event interop.
+
+eli: Also saw kernel selection logs: runtime switched from optimized fused-allreduce kernel to a generic allreduce path during replay. Maybe the kernel selector queries properties that are invalid inside replay context and falls back.
+
+maya: I dumped runtime logs:
+```
+[2026-03-16T12:01:23Z] kernel_selector: chosen=allreduce_fused_fp16, heur_score=0.92
+[2026-03-16T12:01:23Z] graph_replay: using_cached_graph id=0x7f9...
+[2026-03-16T12:01:23Z] kernel_selector: fallback=allreduce_generic_fp16 reason=invalid_stream_context
+```
+
+jordan: Possible short-term mitigations: 1) disable graph caching for workloads with KV prefetch; 2) force external streams to be ephemeral and ensure events are recreated correctly before replay; 3) add a heuristic to avoid capturing graphs when micro-batch < threshold.
+
+maya: Can someone try 1) disabling graph cache? I can run A/B.
+
+eli: Trying now. Patch: set REDWOOD_GRAPH_CACHE=0. Running same harness…
+
+perf-bot: Attached flame link: https://perf.internal/trace/2037776000/graph-replay-flame
+
+eli: With graph cache off, allreduce time back to ~20ms and overlap restored. So caching is the trigger.
+
+atsuko: Good find. We need to decide long-term: ensure graph capture records stream/event semantics portably, or do not include external-stream-based KV prefetch steps inside captures.
+
+maya: I'll open an issue with a short reproducible test and label as P0 perf regression. Assigning to eng-runtime and eng-ml.
+
+jordan: I'll draft a temporary opt-out in the daemon that disables graph caching when KV_PREFETCH enabled + micro-batch < 4; can ship quickly.
+
+eli: Also adding a debug metric to trace kernel_selector fallback reasons into the console so ops can see when a replay causes fallback.
+
+maya: TL;DR: regression is a graph-cache x KV-prefetch x small-batch interaction causing stream/event mis-binding during replay -> host synchronization and kernel fallback. Short-term: disable graph caching for that mode. Medium-term: fix capture/replay semantics or change batching heuristics. :thumbsup:
+
+jordan: Will follow up with PR and a short runbook.
+
+perf-bot: Jira created: RINF-1127

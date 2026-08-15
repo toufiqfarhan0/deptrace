@@ -1,0 +1,21 @@
+all-hands
+
+Sam (PM): quick follow-up from today's all-hands. Can leadership give a short north-star and one sentence for how to position versus the cloud providers?
+
+Mina (CEO): North-star for next 6 months: make inference dependable and cost-transparent for developers. One-liner vs clouds: were the inference platform that gives you measurable SLOs and cost controls, not just an endpoint.
+
+Chris (GTM): Practically, should sales start with Hosted trials or push Dedicated?
+
+Mina (CEO): Start with Hosted to prove value and latency. Use Hosted benchmarks to justify Dedicated for customers needing SLAs or isolation.
+
+Owen (Head of Product): Product action: publish a 1-pager perf snapshot and a Hosted->Dedicated migration checklist. Target: 2 weeks.
+
+Leila (Eng Lead): Engineering asks: prioritize autoscale that respects 99p SLO, tenant KV-controls, and safer rollouts.
+
+Mina (CEO): Agreed. Owen, Leila: please form a working group and track acceptance criteria.
+
+notes-bot: Reminder set for #product in 48h to post perf snapshot draft.
+
+Sam (PM): I'll collect action items on the board. Reply here to join working group.
+
+Mina (CEO): Thanks all — we'll check status next all-hands. :rocket:

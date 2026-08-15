@@ -1,0 +1,36 @@
+partnerships
+
+Maya Patel: Heads-up 10: final ops check for Redwood + CloudScale + AtlasEdge webinar next Wed 10am PT. Main open items: international mic sweep slots, attendee-kit SKU decision (sticker pack vs IoT token), customs/HS codes for APAC shipments, livestream ownership, and infra access for local demo fallback. Need quick yes/no on hardware tokens by EOD so fulfillment can quote.
+Samir Gupta: I'll run the speaker confirmations. Confirmed speakers: Samir (moderation + roadmap), Leo (architecture + dev demo), Priya (CloudScale use-cases), Marco (AtlasEdge hardware brief). Ask: can Leo limit the live inference run to 1 long prompt + short interactive session? keeps flakiness down.
+Ashley Rivera: On kits: two options
+- Option A: light kit (sticker, postcard, notebook) - cheap, easy international
+- Option B: token (mini devboard) - higher cost, customs paperwork, possible serial numbers
+Need headcount by Mon. Fulfillment timelines: US 5 business days, EU 10bd, APAC 14bd. For HW tokens we need customs forms + HS code (8471.80). PatchShip quoted 7-10 business days processing.
+Priya Rao: If we go token route, CloudScale legal needs a simple liability waiver copy for attendees who accept hardware. Also we prefer Redwood to host the stream for metrics.
+Leo Chen: Demo ops note: plan A is Redwood Dedicated (remote), plan B is AtlasEdge local fallback. Ops checklist for fallback:
+- Pre-register AtlasEdge IPs with our firewall team
+- Provide per-demo API key with limited scope
+- Small docker bundle v1.2.3 (sha256:abc123...)
+- Local recording script and upload hook to S3 (encrypted)
+I'll push the docker artifact to the shared drive tonight.
+Vince Park: Accessibility check: captions enabled, include ASL interpreter request field on registration? Might add costs but good to offer. Also request slides 48h prior and enforce speaker recording consent on form.
+Maya Patel: Good call on consent checkbox. Ashley pls add "recording permission" as required field on registration. Also add a single canonical slide folder (drive link) and ask speakers to update.
+Samir Gupta: Mic sweep schedule proposal:
+- Tue 5:00pm PT (EU/APAC sweep 1) - covers EU mornings/APAC nights
+- Tue 8:00pm PT (APAC-friendly slot)
+- Wed 8:30am PT (final check for NA)
+I'll DM each speaker with their slot and a Zoom link for the check.
+Ashley Rivera: Customs notes: for APAC shipments we need commercial invoice and HS code 8471.80 for devboards. If we ship stickers only, mark as "promotional goods" value <$10 to avoid VAT duties. I'll draft the packing list and customs template.
+Marco Duarte: AtlasEdge logistics: for local fallback we can loan 2 dev units. Need shipping address for cross-border loan and estimated arrival 10 days before. Also confirm whether units stay with attendees after event or return to AtlasEdge.
+Maya Patel: Prefer loan return to AtlasEdge. Please mark that in ops doc. Also: who owns the livestream? I'd like Redwood to run it (metrics + embed), CloudScale and AtlasEdge as co-hosts. Any objections?
+Priya Rao: CloudScale okay with Redwood stream. We'll publish a co-branded post-event asset.
+Vince Park: Backup recordings: primary cloud stream + local Leo recording + CloudScale recording. Also set retention policy (90 days public, archive 1yr internal).
+partners-bot: Reminder: add co-hosts CloudScale and AtlasEdge and attach event ops doc.
+calendar-bot: Event scheduled: "Scaling inference: Redwood x CloudScale x AtlasEdge" Wed 10:00am PT. Invites: Maya, Samir, Leo, Priya, Marco, Ashley.
+Samir Gupta: Action items:
+- Samir: finalize speaker times + mic sweep invites
+- Ashley: get PatchShip quote for both SKUs, draft customs template, headcount by Mon
+- Leo: upload docker bundle + local-record script, provide IP list
+- Marco: confirm loaner dev unit serials + return workflow
+- Priya: legal waive template for HW tokens
+Maya Patel: One more  put any legal-sensitive notes in the ops doc under RED flag. Reconvene Tue 9am PT for full tech run-through. :thumbsup:

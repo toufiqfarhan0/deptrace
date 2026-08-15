@@ -1,0 +1,13 @@
+design
+
+Anna L: Quick UX check — export button in trace panel reads 'Export'. Propose 'Export traces' + format selector in modal (JSON/CSV). Thoughts?
+Devin R: +1 to explicit label. Also set initial focus to format selector when modal opens (current focus lands on close button).
+Micah P: Make 'Copy' on stack traces copy plain text (support pastes into tickets). Currently it copies HTML.
+Liz C: Use 'Trace ID' label instead of 'Correlation ID' — users search for trace id. Tooltip: 'Unique identifier for this request/trace'.
+a11y-bot: Modal must trap focus, return focus to trigger after close, aria-live="polite" on success toast, dropdown with aria-label and arrow-key nav, tooltip via aria-describedby.
+Devin R: Example toast: <div role="status" aria-live="polite">Export complete — 42 traces. <a href="/downloads/trace.json">Download</a></div>
+Anna L: Toolbar placement? Support uses Export a lot — prefer visible toolbar item next to Share with small chevron and a tiny pill showing last-used format.
+Micah P: If pill shown, ensure contrast and focus ring; server should set content-disposition for downloads. I'll sanitize copied stacks (strip zero-width chars).
+Anna L: Owners: Anna — update Figma & copy; Devin — modal focus & aria-live; Micah — headers & sanitize; Liz — final copy review; a11y-bot — verify ARIA. Target: EOD Wed.
+Liz C: Short note in spec: prefer 'Trace ID' not 'Correlation ID'.
+Anna L: Thanks all — will create tasks and link PRs when opened.

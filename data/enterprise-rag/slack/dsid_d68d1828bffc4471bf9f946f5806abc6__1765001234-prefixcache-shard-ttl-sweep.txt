@@ -1,0 +1,69 @@
+eng-runtime
+
+lina: quick summary — experimented with lower prefix-cache TTL + re-sharding to fight OOMs on infer-prod. results mixed, posting numbers and configs.
+
+ajay: pls paste the config + before/after metrics.
+
+maria: great, can we also see allocator traces? fragmentation is often the hidden culprit.
+
+lina: sure — config we pushed (prod) below:
+```json
+{
+  "kv_cache": {
+    "ttl_seconds": 900,              // lowered from 3600 to free up memory
+    "shard_count": 64,              // was 128
+    "max_bytes_per_shard": 1800000000, // ~1.8GB per shard
+    "eviction": "lru",
+    "background_sweep_sec": 60
+  },
+  "allocator": {
+    "pooled_small_alloc": true,
+    "small_alloc_threshold": 16384,
+    "workspace_reuse": true
+  }
+}
+```
+
+lina: perf numbers (avg over 6h windows):
+- before: cache hit-rate 72%, avg GPU mem usage per node 24.1GB, OOMs ~5/hr, p95 latency 310ms
+- after:  hit-rate 59%, avg GPU mem 17.9GB, OOMs ~0.2/hr, p95 latency 335ms (\u2191 ~8%), overall tail p99 improved due to fewer swaps
+
+tom: so we traded hit-rate for deterministic footprint and far fewer OOMs. that's good for SLA. Did you see an increase in request CPU/GPU ops from cache misses?
+
+lina: yes — per-request token-cost up ~6-9% from extra autoregressions when cache misses occur. but the scheduler had been killing/resubmitting OOM jobs which inflated p99 much more.
+
+rahul: couple ideas: reduce shard_count less aggressively (e.g., 96) to balance pointer overhead vs contention; also try adaptive TTL based on prefix popularity (hot prefixes TTL=6h, cold=15m).
+
+ajay: agree on adaptive TTL. Implementation idea: maintain per-shard LFU counters and extend TTL for top 5% keys. low-cost to compute in background.
+
+maria: allocator notes from traces: we saw many ~64KB transient buffers allocated per decode step. enabling pooled_small_alloc + workspace reuse dropped allocator sys fragmentation by ~30%. add the following to reduce OOM spikes:
+```yaml
+allocator:
+  bump_threshold_fraction: 0.2   # only expand big workspace when >20% free
+  max_workspace_pages: 256
+  pooled_small_alloc: true
+```
+
+lina: infra-bot rolled the change: infra-bot: deploy cache-tuning v2 to infer-prod-3 (1765001200) :rocket:
+
+infra-bot: deployment complete for infer-prod-3 at 1765001224, no immediate errors.
+
+tom: monitoring dashboards show memory fragmentation metric dropping after pooled alloc enabled, nice. Can we add a sentinel that routes long-prefix (>4096 tokens) requests to a dedicated pool with larger per-GPU max_cache_bytes? They are the big hitters.
+
+lina: we tried a quick experiment: route long-prefix to nodes with shard_count=32 and max_bytes_per_shard=4GB. results: hit-rate for those requests jumped to ~85% and p95 for them dropped by 60ms, but that reduces overall capacity for short requests.
+
+ajay: Another lever: opportunistic prefetch for top-100 prefixes in each model. On miss, schedule an async prefetch to warm cache if prefix appears in recent history. This trades some background bandwidth for higher eventual hit-rates.
+
+maria: warning: prefetch must respect privacy (don't retain private prefixes beyond TTL) and not blow memory budget. keep prefetch budget limited to e.g., 5% of max_cache_bytes.
+
+lina: next steps we agreed on in sync:
+- test adaptive TTL (hot/cold buckets) on a canary fleet for 48h (rahul + ajay)
+- try shard_count 96 and measure contention/lock cost (tom)
+- add per-request routing for long-prefix to dedicated pool + run perf/cost sim (maria)
+- add LFU counters and prefetch prototype with strict memory cap (lina)
+
+rahul: I'll own the canary rollout, will post telemetry after 24h and 48h.
+
+ajay: also add a small regression test to catch perf bump when cache hit-rate changes — i.e., baseline a small prompt set and assert p95 not worse than X% without OOMs.
+
+lina: thanks all — this thread captures the tuning path. will update with canary results. :thumbsup:

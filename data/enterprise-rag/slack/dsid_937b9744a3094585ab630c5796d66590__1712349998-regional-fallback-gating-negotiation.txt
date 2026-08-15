@@ -1,0 +1,89 @@
+product
+
+maria: Quick sync — we need a concrete rollout plan for the new regional fallback behavior (per-tenant) that kicks in when the preferred model variant in a region is overloaded. This came up from two EU customers asking for stronger SLAs + deterministic fallback to a quantized variant.
+
+sam: +1. want to confirm constraints: this affects Hosted + Dedicated + Private? My infra notes say Private needs an opt-in toggle because customers manage KMS and network.
+
+maria: Correct. Scope: Hosted (default), Dedicated (auto), Private (opt-in via console). We need consistent API and observability.
+
+li: Important: SLOs for rollback/trips. Propose telemetry gates: p95 latency delta <= 25ms, error rate increase <= 0.5pp, model-quality regression <= 2% on prompt eval set. If any gate fails we auto-roll back to previous variant.
+
+jordan: For customer asks, we need tenant-level control to opt-out of auto-fallback and a manual override. Solutions eng will need a toggle in console and a note in onboarding docs.
+
+sam: Infra constraints: Dedicated pools can support gradual ramping but autoscaler config needs a warmup. Suggest rollout phases: 1% -> 5% -> 20% -> 100% over ~48h with health checks between phases. For region ramp we should do region-by-region to avoid cross-region capacity spikes.
+
+maria: Sounds good. Can we encode the rollout as a flag + rollout manifest so PMs can schedule and SRE can monitor? Example config: 
+```
+flag: regional_fallback_v1
+scope: hosted,dedicated,private_optin
+regions: [eu-west-1, eu-central-1]
+phases:
+  - pct: 1
+    duration: 2h
+  - pct: 5
+    duration: 6h
+  - pct: 20
+    duration: 16h
+  - pct: 100
+    duration: 24h
+telemetry_gates:
+  latency_p95_delta_ms: 25
+  error_rate_percent_points: 0.5
+  eval_quality_delta_percent: 2
+on_fail: rollback
+```
+
+li: Addendum: for Dedicated we should include a second safety gate: capacity_utilization < 85% per-pool, otherwise skip phase and throttle.
+
+jordan: Customer-facing: we need a short doc describing fallback behavior (what changes, expected latency/cost delta, how to opt-out). Also provide suggested phrasing for Customer Success.
+
+maria: Launch acceptance criteria (draft):
+- Feature flag exists and controlled via Console + API.
+- Canary workflow automated and telemetry gates wired into Console dashboard.
+- Rollout manifest support in infra + playbook.
+- Community of 2 pilot tenants (one Hosted, one Dedicated) have signed off on regressions.
+- Docs + opt-out path live.
+
+sam: Operational checklist:
+- Preflight: run a smoke canary in eu-west-1 (shadow traffic for 4h) :eyes:
+- Phase automation: scripts to advance/rollback with a single command (ops-runbook).
+- Alerting: page if error_rate > 0.5pp OR p95 latency > baseline + 50ms for >5m.
+
+li: Add monitoring items:
+- Per-tenant p50/p95/p99 latency, error-rate, token-cost delta, eval-quality snapshots.
+- A/B evaluation harness: run a small synthetic suite every rollout phase and store diffs.
+
+jordan: For Private deployments: suggestion from legal/security: require explicit customer consent to enable auto-fallback because it may involve contacting alternate model binaries. That consent must be logged.
+
+maria: Decision points we still need to resolve:
+1) Exact phase durations (accepting Sam's draft but want prod to be more conservative for first GA tenant).
+2) How to show per-tenant rollback reason in Console (li can you prototype?).
+3) Pilot tenants — Jordan to nominate two by EOD Friday.
+
+sam: I'll prototype phase automation and provide a CLI: `redwood rollout advance --id <manifest> --phase 2` and a `--dry-run`. Will link repo PR later today.
+
+li: I'll sketch a Console card that lists active rollouts with a hover showing last failing gate + metric snapshots. Prototype by Tues.
+
+jordan: I'll ping two pilot customers and confirm consent flow.
+
+maria: Risks called out: cost spike for quantized fallback in some workloads (token cache miss patterns), potential quality regressions for long-context prompts. We'll gate GA on pilot signoff and a cost delta < 25% for pilot workloads.
+
+deploy-bot: automated-check: config schema lint OK for `regional_fallback_v1` (checksum: abc123) :white_check_mark:
+
+maria: Action items:
+- sam: PR for automation + runbook (today).
+- li: Console card + per-tenant failure details prototype (Tue).
+- jordan: Pilot tenants and consent confirmation (Fri EOD).
+- maria: Draft rollout manifest and publish canary playbook (tomorrow).
+
+jordan: ack. I'll also prepare a one-pager for CS to use when they talk to pilots.
+
+maria: If no objections I'll schedule the kickoff meeting for Monday 10am and tag Eng+SRE+CS. :thumbsup:
+
+sam: OK from infra side.
+
+li: OK from SRE.
+
+jordan: OK from solutions eng.
+
+maria: thanks everyone — we'll iterate on the manifest and ping back with links. :rocket:

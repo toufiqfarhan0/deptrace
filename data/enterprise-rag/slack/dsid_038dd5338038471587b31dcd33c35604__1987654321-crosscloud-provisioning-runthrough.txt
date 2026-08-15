@@ -1,0 +1,41 @@
+eng-infra
+
+Maria C: Heads-up — new org 'acme-ai' spinning up. Need cross-cloud quota prep before handoff. Target regions: GCP us-west2, GCP eu-west1, AWS eu-central-1, Azure westeurope. Primary asks: A100 capacity, ENI/IP limits, subnet sizing, and billing/tags.
+Dan L: Can you paste the instance SKUs + counts and whether they prefer spot/ondemand?
+Maria C: Initial ask: GCP: 4 x a2-highgpu-1g (A100) in us-west2; AWS: 8 x p4d.24xlarge in eu-central-1 (start as on-demand, later convert to reserved); Azure: 4 x NCas_T4_v3 equivalents in westeurope. Need GPUs available at launch.
+Kevin S: For GCP we need GPU quota, regional CPU quota, and in-use external IP quota if they expose endpoints. Also service account for driver install + OS Login perms. I'll draft the support text.
+Ashley P: Tagging rules: apply org tags team:acme-ai, env:prod, cost-center:acme-42. Link billing account to project and enable billing export to BigQuery. Also ensure KMS key created in required regions.
+Kevin S: Draft for GCP support ticket (copy paste):
+```
+Project: projects/acme-ai-prod
+Region: us-west2
+Request: Increase GPUs (A100) quota by 4 in region us-west2.
+Reason: Prod inference fleet for Redwood customer PoC, needs sustained A100 capacity.
+Contact: maria.c@redwood.com, infra-oncall@redwood.com
+```
+Note: GCP often needs a screenshot of current quotas + billing enabled.
+Dan L: AWS step (I will submit): use Service Quotas API for EC2 GPGPU quota and vCPU based soft limits. Example: 
+```bash
+aws service-quotas request-service-quota-increase --service-code ec2 --quota-code L-... --desired-value 8 --region eu-central-1
+```
+Also check ENI and security group rules per ENI limit for p4d.24xlarge.
+Maria C: Networking gotcha: subnet /28s in the test VPC caused pod scheduling failures for us last time. Need to ensure /22 minimum per availability zone for initial scale.
+Kevin S: Also raise NAT gateway and Cloud NAT connection quotas if they will egress heavy model downloads. For AWS, request additional Elastic IPs if NAT instances used.
+Ashley P: Checklist items before greenlight:
+- Billing enabled + budget alert (finance notified)
+- Org tags applied and inherited by project
+- Quota requests submitted to each cloud + support ticket IDs
+- IAM groups: infra-admin, infra-readonly, devops-service-sa with limited roles
+- KMS keys created and rotation policy set
+- Network subnets sized per AZ (min /22)
+- Cost forecast doc attached to ticket
+
+Kevin S: I'll take GCP and Azure quota requests. Dan, you'll take AWS. Maria will confirm cost and final counts.
+infra-bot: Created cloud support ticket INC-31245 for GCP quota request: https://support.google.com/cloud/INC-31245 (add screenshots in replies)
+Dan L: FYI — AWS sometimes requires contact with account manager for p4d increases; I'll loop AM if service-quotas gets denied.
+Ashley P: Finance note — need temporary pre-approval for up to $15k for first month while we validate performance/cost; I'll ping finance.
+Maria C: Plan: dry-run provisioning on Tue 09:30 PT. Will invite infra, solutions eng, and finance. Will update thread with all support IDs.
+Kevin S: Added runbook reference: https://redwood-internal/runbooks/cross-cloud-provisioning (check sections 3 & 4 for quota templates)
+Maria C: thanks all — tagging follow-up: please include 'contact:oncall-infra' in ticket metadata per infra policy.
+infra-bot: Reminder sent: add contact:oncall-infra tag to INC-31245.
+Maria C: last update before tickets filed — I'll post all support IDs here when done.

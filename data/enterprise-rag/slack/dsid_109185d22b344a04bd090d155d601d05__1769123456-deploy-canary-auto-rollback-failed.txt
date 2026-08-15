@@ -1,0 +1,43 @@
+incidents
+
+Maria: heads-up, canary rollout v2.14 -> seeing a surge of 502s on /v1/generate, started right after canary flip to model-quantized. error-rate ~9% at 10% traffic :rotating_light:
+Oncall Bot: paging oncall@infra - severity: high - error rate threshold breached for route /v1/generate
+AJ: taking this - what do we know about the canary? autoscaled to 2 pods?
+Maria: yes, 2 pods in us-west, 10% traffic via smart-router. earlier runs looked fine in staging. no infra alarms besides the 502s.
+Samir: jumping in. can you paste a snippet of logs?
+Maria: here's a quick tail, same timeframe across both pods:
+```
+2026-03-14T10:12:03Z pod-quant-1 ERROR http: upstream read timeout
+2026-03-14T10:12:05Z pod-quant-2 ERROR model-serving: kv-cache miss + OOM? alloc failed
+2026-03-14T10:12:06Z pod-quant-1 WARN runtime: fallback to float32 path
+```
+AJ: hmm looks like memory pressure / kernel path causing 502s. Did the canary get the new quantization profile?
+Maria: yes, deploy config included the quant-profile flag. but the canary runtime logs show it fell back to float path; then some OOMs.
+Ops Bot: automated-rollback attempted at 10:15:14 but failed: missing rollout label on ReplicaSet -> skip
+AJ: that's bad — automated rollback didn't run because controller didn't match labels. manual rollback needed.
+Samir: I'll do manual rollback to previous revision (v2.13) and re-route traffic to baseline. performing now.
+Samir: command I'm running:
+```
+kubectl -n inference rollout undo deployment/model-service --to-revision=3
+kubectl -n inference patch svc model-service -p '{"spec":{"selector":{"version":"v2.13"}}}'
+```
+Samir: done. pods terminating, old pods coming up.
+Emily: I'll start smoke checks and verify synthetic traffic. give me 5 for warmup.
+AJ: also flip feature flag kill-switch to stop routing new users to quantized model while we sort this out.
+Maria: feature flag name is `enable_quant_canary`. ops toggle command: `/ops feature-toggle disable enable_quant_canary --reason "canary 502s"`
+AJ: running that. /ops feature-toggle disable enable_quant_canary --reason "canary 502s"
+Ops Bot: feature-toggle disabled: enable_quant_canary by AJ - reason: canary 502s
+Emily: synthetic requests look clean now: 200/200 success, 95th latency back to baseline. checking metrics dashboard -> error-rate dropping to <0.5% over last 3m.
+AJ: good. customers impacted? Maria any reports?
+Maria: engineering SRE page shows elevated user-facing errors for a 12-minute window, estimated ~1.2k failed requests total, mostly retryable. no major account-level incidents reported yet.
+Samir: I'll leave the deployment pinned to v2.13 and hold off reintroducing quantized variant until we repro locally and add guard rails.
+AJ: create a follow-up ticket for root cause + controller label bug. we need the automated rollback to be reliable.
+Maria: created ticket INF-3321 with initial notes and logs, assigning to eng-runtime. link: https://redwood.atlassian.net/browse/INF-3321
+Emily: handing off monitoring to night oncall (Samir) — summary: manual rollback completed, feature flag disabled, customer impact ~1.2k failed requests over 12m, automated rollback misfired due to missing label on ReplicaSet, follow-up ticket created.
+Samir: ack, I'll keep an eye til 04:00 PDT. will post updates to this thread if anything changes. :thumbsup:
+Oncall Bot: incident status -> mitigated (manual rollback + feature-flag kill-switch applied). please file postmortem if incident severity >= high.
+Maria: thanks team. postmortem started, I'll add timelines and decision points.
+AJ: nice triage. small action items: (1) fix label matcher in rollback controller, (2) add pre-deploy smoke for quant profile, (3) add OOM budget guard or circuit to avoid 502 cascade.
+Samir: noted. will follow up in INF-3321 and link PRs.
+Emily: closing monitoring loop, will validate SLOs tomorrow morning and add evasion tests to canary pipeline.
+Maria: closing thread for now — reach me if anything spikes back up.

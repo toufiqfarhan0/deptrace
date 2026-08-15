@@ -1,0 +1,30 @@
+eng-runtime
+
+jana: FYI CI microbench on PR #18777 failed the kv_cache_hit microbench — tail latency up ~12% vs baseline, threshold diff triggered. perf-bot posted diffs.
+perf-bot: SUMMARY: pr=18777 test=kv_cache_hit microbench metric=tail_latency p50=8.2ms p95=19.7ms baseline_p95=17.6ms diff=+12.1% threshold=+5% (FAIL). Full diff: https://ci.internal/reports/18777/kv_cache_hit
+noah: ugh, 12% at p95 is pretty noisy but above our +5% threshold. any obvious culprits from the perf artifacts?
+bryce: I pushed the kernel-autoselect heuristic change in that PR (commit abc123). It changed kernel scoring for concat+quant kernels which touched the batch path. I ran a quick local repro and saw similar p95 bump when kv cache hit rate falls below ~35%.
+jana: can you paste the perf trace / flamegraph from your repro? helps to see whether it's scheduler waiting or kernel hot loop.
+bryce: here — reproduced with bench harness: docker run ... && ./bench --profile=flame
+
+# flamegraph extract
+samples: kernel_concat_loop + scheduler_spin
+hotspots:
+ - runtime::batch_coalesce (38%)
+ - kernels::matmul_quant (22%)
+ - runtime::kv_lookup (14%)
+
+bryce: looks like the change nudged more requests down the slowpath where the batch coalescer stays waiting for suffix tokens -> increases tail.
+noah: that matches the CI diff: batcher wait time metric increased. Might be interaction with seq_len sampler distribution in CI shadow runs.
+perf-bot: Additional artifact: heatmap of seqlen vs kernel-choice: https://ci.internal/artifacts/18777/seqlen-kernel-heatmap.png
+perf-bot: Notable: 20% of traces got routed to concat path where the new kernel score prefers a slightly higher throughput kernel but requires larger coalescing window.
+ops-oncall: This is a rollout blocker for dedicated rollout today — we should either revert or gate that heuristic behind a flag. Any low-risk mitigation?
+bryce: I can push a quick revert PR (18788) to roll back the kernel-autoselect tweak. Alternatively I can add a runtime flag to prefer low-latency kernel at low-kv-hit. Revert is faster.
+jana: revert + rerun CI microbench please. If revert fails to repro, we'll need a targeted canary for the heuristic with metric gating.
+ci-bot: Re-run queued: PR 18788 (revert-of-18777) started. Job: microbench/kv_cache_hit (runner-7)
+ci-bot: Job result: microbench/kv_cache_hit (PR 18788) — p95=17.5ms baseline_p95=17.6ms diff=-0.6% (PASS)
+noah: nice, revert fixes it. let's merge revert and then rework heuristic behind a config with unit tests covering batcher wait time.
+bryce: agreed — I'll open follow-up PR with flag + unit test harness that injects low kv-hit scenarios. apologies for the rollout noise.
+jana: notes for postmortem: add microbench scenario with mixed kv-hit rates (20-60%) so this interaction doesn't regress silently. also add a perf unittest that asserts batcher_wait_time delta < 5% on small synthetic traces.
+ops-oncall: merging revert now. tagging release lead to hold dedicated rollout until new PR lands. :+1:
+ci-bot: PR 18788 merged by jana. Pipeline: full microbench sweep scheduled (6h).

@@ -1,0 +1,35 @@
+design
+
+Maria Chen: Quick follow-up from the console sync — trying to settle on the utility bar icon sizing + table row density before the release. Thoughts?
+Samir Patel: I pushed a quick demo in the playground. Utility icons feel a touch heavy at 20px. 18px looked tighter. :thinking_face:
+Vivian Lee: Agreed 18px is nicer visually, but we need to confirm hit target for touch. If we drop to 18px, ensure 44px tap area remains.
+Kevin O'Neal: +1 to keeping 44px tap. We can keep visual icon at 18px and keep padding. That keeps compactness without hurting accessibility.
+Maria Chen: Yep — so visual 18px, tappable area 44px. Can someone share exact token values we should use?
+Olivia Ramos: Proposed tokens: 
+```
+--icon-size-utility: 18px;
+--icon-hit-area: 44px;
+--utility-gap: 8px;
+```
+Samir Patel: Looks good. One nit: the utility bar is right above compressed tables — when the bar uses 8px gap, table header feels cramped. Can we bump row-spacing token?
+Vivian Lee: What about using a separate token for table density that can be applied to compact dashboards: `--table-row-compact-gap: 6px` and default `--table-row-gap: 12px`?
+Kevin O'Neal: I like separate tokens. That way product can opt into compact tables without changing utility spacing.
+Maria Chen: Implementation question: do we cascade table density from container, or require explicit class on table?
+Olivia Ramos: Prefer explicit class `table--compact` so we don't accidentally change all tables when the surrounding surface is compact. Easier for rollout and A/B.
+Samir Patel: Agree. Also, tiny copy tweak on the table empty state: current message "No items found" feels blunt. Suggest "No results yet — try adjusting filters."
+Vivian Lee: +1 for friendlier copy. UX research showed people respond better to guidance.
+Kevin O'Neal: Accessibility check: ensure contrast on utility icon hover state still meets AA when background is our pale surface. I'll run the contrast tests once Samir lands CSS.
+Maria Chen: Action items: Samir update tokens & demo (18px icon, 44px hit), add `table--compact` styles with `--table-row-compact-gap: 6px`, Olivia update empty-state copy, Kevin do contrast audit. I'll track in the PR description. :memo:
+design-bot: New file created: `design/tokens/utility-bar.yml` (preview)
+Samir Patel: Quick snippet I'll add to the stylesheet: 
+```
+.icon-utility { width: 18px; height: 18px; }
+.icon-utility__hit { padding: calc((44px - 18px)/2); }
+.table--compact tr { --row-gap: 6px; }
+```
+Olivia Ramos: I'll update the copy in the i18n keys too: `table.emptyState.message=No results yet — try adjusting filters.`
+Vivian Lee: One more micro-ux ask: when utility dropdown is open, table row hover should be dimmed to avoid visual competition. Can we lower hover opacity to 0.85 in that state?
+Maria Chen: Good call. Samir can you add a `surface--overlaying` modifier?
+Samir Patel: Yep — will add `.surface--overlaying .table tr:hover { opacity: 0.85; }` in the PR.
+Kevin O'Neal: I'll review the PR later today and run the contrast checks. :white_check_mark:
+Maria Chen: Thanks team! If we land this today we can ship in the next patch. :rocket:

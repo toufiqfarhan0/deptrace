@@ -1,0 +1,76 @@
+eng-runtime
+
+li: Quick readout from today's kernel-fit + token-slot calibration across A10/T4/L4/A100/H100. Ran the standard perf script with kernel-selector v2 + kv-cache enabled. High level: kernel-v2 gives big throughput wins on H100/A100 but exposes KV-frag p99 regressions for short-seq traffic. Proposed per-card token-slot ceilings and a short-window fallback path below.
+
+anya: Nice. Can you paste the raw numbers from the profiler? p50/p95/p99 and tokens/s?
+
+li: Sure — pasted results from a 30m run (mixed workload: 50% chat seq=64, 30% completion seq=512, 20% streaming seq=2048):
+```
+H100 (kernel-v2, kv-on): tokens/s=1.8M, p50=12ms, p95=48ms, p99=210ms (KV-frag spikes on chat 64)
+A100 (kernel-v2): tokens/s=1.05M, p50=18ms, p95=72ms, p99=150ms
+A10 (kernel-v1 fallback for short): tokens/s=420k, p50=35ms, p95=120ms, p99=320ms
+L4 (kernel-v2): tokens/s=510k, p50=28ms, p95=98ms, p99=260ms
+T4 (kernel-v1 default): tokens/s=300k, p50=45ms, p95=170ms, p99=480ms
+```
+
+li: KV-cache fragmentation note: when kernel-v2 packs large batches we often evict many small KV entries; chat 64 requests see cold KV thrash and p99 jumps. Root cause looks like slice packing + larger max_tokens_per_batch.
+
+sam: Could we set a short-seq path that forces smaller max_tokens_per_batch or different kernel? e.g., if seq<=128 choose kernel-v1 and cap tokens-per-batch to X.
+
+li: Exactly my thinking. Proposed ceilings (initial canary):
+```
+Per-GPU token-slot ceilings (tokens-per-batch):
+- H100: 24576
+- A100: 16384
+- A10: 8192
+- L4: 6144
+- T4: 4096
+Additional: short-seq override -> max_tokens_per_batch = min(ceil, 4096) for seq<=128
+Batch formation window: 6ms default, T4 special = 8ms (to avoid excessive packing)
+```
+
+mohit: For T4 increasing window feels right given lower throughput — but watch tail latency. Also recommend lowering continuous-batching target occupancy to 0.7 on A10/T4 to reduce KV-frag.
+
+anya: Do we have an automated rollout plan? Canary size? Metrics to watch?
+
+li: Canary plan: roll to 5% of traffic on dedicated pools for 24h. Metrics: tokens/s, per-route p99, KV-cache eviction rate, kernel-switch rate, CPU svc time. Alert triggers: p99 increase >10% on chat routes OR KV-eviction-rate > baseline*2.
+
+sasha: I can own the canary tomorrow. Will instrument extra tracing for KV hits/misses and record slot formation distribution. Will also dump kernel-selection histogram every 5 minutes.
+
+perf-bot: Automated test run (canary-smoke) completed: all checks passed except a small KV-eviction uptick on H100 under synthetic chat load. Details: KV-evictions +1.9x vs baseline, p99 +12% on chat-64 when kernel-v2 forced max ceil.
+
+sam: Hmm perf-bot shows borderline p99. Maybe we should apply the short-seq override more aggressively on H100 (seq<=256)? That would preserve throughput on long sequences but avoid chat regressions.
+
+li: Good call. Updated canary config: for H100 short-seq threshold = 256, cap short path tokens-per-batch = 4096. Keep A100 threshold = 128 for now. Also enable kernel soft-fallback: if after packing predicted kv-eviction > threshold, fall back to kernel-v1 for that slice.
+
+mohit: Remind me the prediction heuristic? It uses expected slice count * avg_kv_entry_size, right?
+
+li: Yes — heuristic: predicted_kv_pressure = (batch_tokens / avg_entry_tokens) * estimated_active_keys_per_route. If > 0.75 * kv_capacity, mark fragile and prefer smaller packing. We need to tune avg_entry_tokens per model; I left conservative defaults.
+
+anya: Where are we storing these per-model avg_entry values? Repo /infra/kv-profiles?
+
+li: Yup. PR incoming to update Llama-2 and Code models. Will attach numbers in the PR.
+
+sasha: Canary will run 24h starting 09:00 UTC. I'll post dashboards and the kernel-selection hist every hour.
+
+perf-bot: Canary started at 1718005200. Live metrics link: https://perf.redwood.internal/canary/1718004321
+
+sam: If the canary looks good after 24h, rollout plan? 5% -> 25% -> 75% over 48h with automated rollback on triggers above.
+
+li: Agreed. Action items:
+- li: open PR with per-model avg_entry_tokens and updated kernel-selector fallback logic (ETA today)
+- sasha: run canary + collect traces (starts 09:00 UTC)
+- mohit: tune occupancy targets for A10/T4 to 0.7 and add to canary config
+- anya: add query-level alert on KV-eviction-rate and p99 regressions
+
+anya: :thumbsup:
+
+sam: Thanks — this addresses both throughput and tail risk. Small ask: capture a 5-min heap/CPU flame during high p99 for postmortem if it trips.
+
+li: will do. Posting PR link when ready.
+
+sasha: I'll post the first hourly dump in ~30m.
+
+perf-bot: Canary hourly dump uploaded: https://perf.redwood.internal/canary/1718004321/hourly-1.zip
+
+li: Closing thread for now; will update with PR + canary outcome. If anyone sees anomalies ping here or DM.

@@ -1,0 +1,62 @@
+customer-success
+
+zoe-cs: FYI customer FinSight reporting 403s for embeddings + rerank after SSO key rotation. they say it worked yesterday, failed after rotation. attaching logs they pasted.
+
+finsight-eng: We rotated our SSO service account key at 01:14 UTC and immediately started seeing 403s for the bulk-rerank job. Single-gen calls still succeed. Error: "insufficient_scope: missing rerank permission" in batch worker logs.
+
+maria-cs: Thanks — can you paste the exact Authorization header (redact token body) and the payload from the new token? also which SDK/version?
+
+finsight-eng: Using our internal svc-token-generator v0.9.1; header looks like `Authorization: Bearer <redacted>`; we extracted JWT payload (base64 decoded) and see "\"scp\":\"inference embeddings` (truncated) — the string ends mid-word.
+
+sam-platform: that's interesting — truncated scope claim. could be a newline or length wrap introduced when the token was emitted. any chance your token generator is writing the JWT to a multiline env var or inserting line breaks?
+
+ben-ml: short repro I asked them to run:
+```
+curl -i -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"input":"test"}' \
+  https://api.redwood.example/v1/embeddings
+```
+response: 403 {"error":"insufficient_scope","message":"missing embeddings permission on token"}
+
+maria-cs: can you paste the JWT payload you decoded (redact sub/iss)? put in triple backticks.
+
+finsight-eng: pasted:
+```
+{
+  "sub":"svcacct:finsight-prod",
+  "scp":"inference embeddings reran
+",
+  "iat":1700000000
+}
+```
+(note the stray `\n` inside the scp string).
+
+sam-platform: aha — that newline will cause our authz parser to stop reading the claim value when run through our claim-normalizer (we trim at first control char as a safety). previous tokens didn't have the newline so they matched. looks like the generator appended a newline when writing the JSON payload.
+
+ben-ml: why does generation-only still work? embeddings and rerank checks require explicit scopes; generation endpoint only needs `inference` which is present, so gen calls succeed. embeddings/rerank check for exact token substring and the newline breaks it.
+
+zoe-cs: customer says their token generator is a small python utility that writes the JWT payload by doing `json.dumps(claims) + "\n"` then piping to jwk tool. they thought the newline harmless.
+
+sam-platform: root cause summary: newline char appended to scp claim value during token emit -> our claim-normalizer treats control chars as terminators -> downstream scope checks see truncated token -> missing embeddings/rerank -> 403.
+
+infra-bot: Incident created: INC-2026-1102 (priority P2) — assigned to sam-platform.
+
+sam-platform: mitigation options for customer: 1) regenerate token without trailing newline (quick) 2) our auth layer can be relaxed to strip control chars before substring match (needs patch) 3) add tolerant parser that splits on whitespace and compares tokens (safer long-term).
+
+finsight-eng: we can regenerate immediately. doing that now.
+
+finsight-eng: Regenerated token and retried — embeddings and rerank both succeed now. thanks.
+
+maria-cs: Can we add a short KB note to CS with repro and suggested client fix (strip trailing newlines from token payloads) and add a platform ticket to make authz resilient?
+
+sam-platform: yes. created platform ticket: PLAT-9163 "authz: tolerate control characters in scp claim parsing" and added reproduction steps + minimal test harness.
+
+ben-ml: repro steps I saved in PLAT-9163:
+1) create JWT payload with "\"scp\":\"inference embeddings rerank\n\"" (note newline inside string)
+2) sign token and call /v1/embeddings -> expect 403 insufficient_scope
+3) remove newline and call -> expect 200
+
+maria-cs: shipping KB note to /docs/internal/cs-triage later today. add link to INC-2026-1102 and PLAT-9163.
+
+zoe-cs: closing thread for now — customer resolved by regen; platform will follow up with patch. :white_check_mark:

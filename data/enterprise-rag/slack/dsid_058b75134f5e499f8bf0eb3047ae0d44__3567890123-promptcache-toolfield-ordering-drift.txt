@@ -1,0 +1,31 @@
+eng-runtime
+
+alice: FYI - noticed a ~6% drop in prefix cache hit rate after last night's runtime rollout (kernel v2.4 -> v2.5). Affected endpoints are high-QPS chat routes. Profile attached in the ticket but wanted the team to see here.
+
+ben: Oof. Do we know if this is a kernel scheduling change or keying mismatch? Any diffs in tokenizer/version or sysprompt flow? :eyes:
+
+carol: We did push tokenizer v3.1 for a few models yesterday (minor whitespace normalization). That can flip keys for any prompt-normalization scheme that preserves raw spacing. Also we changed the toolcall JSON serializer to use default json.dumps which doesn't sort keys.
+
+alice: Confirmed two hits in the trace: 1) tokenization produced different token sequences for identical user strings w/ extra trailing spaces, 2) toolcall arg ordering changed so key string differs. Example keys from span: 
+```
+# old key (stable-sort + keep-trailing-space)
+{"prompt":"Hello world ","toolcall":"search","args":"{\"q\":\"x\",\"lang\":\"en\"}"}
+# new key (strip-trailing + unsorted args)
+{"prompt":"Hello world","toolcall":"search","args":"{\"lang\":\"en\",\"q\":\"x\"}"}
+```
+
+dan: Also saw a tiny system-prompt formatting change in the canary config - we removed a trailing newline in the assistant system prompt. That would change any key if system prompt is included verbatim.
+
+ben: Two quick levers: (a) normalize prompt/systemprompt by trimming trailing whitespace and collapsing multiple spaces, (b) canonicalize tool/function call args (json.dumps(args, sort_keys=True)). We should also bake tokenizer_version into the cache key so tokenizer upgrades are explicit.
+
+carol: Agreed. Proposal: cache key components = [model_id, kernel_hash, tokenizer_version, normalized_system_prompt, normalized_user_prompt, tool_signature + sorted_args]. Put tokenizer_version as opt-in for canaries to avoid churn.
+
+alice: For rollout plan: 1) patch keying logic to normalize whitespace + sort tool args (small PR), 2) add tokenizer_version to key but default to current version for stable cohorts, 3) run warmup/backfill for top-200 prefixes before flipping canary. Also implement a compatibility fallback: on miss try alternate keys (pre-normalized) for 100ms budget.
+
+ben: Warmup command I used locally: `./tools/prefetch --cohort=top200 --parallel=8 --dry-run` . For backfill we can run with --commit and throttle to avoid load spikes.
+
+carol: I'll open the PR for canonicalization + tokenizer pinning. Will include unit tests showing `json.dumps(..., sort_keys=True)` vs not.
+
+dan: QA will run canary and verify hit-rate telemetry over 24h. If we still see >2% regression revert and roll forward incremental fixes.
+
+deploy-bot: deploy queued: canary/runtime-key-normalize -> infra-canary-3 (ETA ~10m) :rocket:

@@ -1,0 +1,52 @@
+devex
+
+maria: Hey @aj @sasha — hitting strange 429s in the sampleapp pagination flow when the client-side adaptive limiter is enabled. Repro: iterate pages until cursor null, then immediately start a new request set. After ~3 pages we see bursts of 429s even though limiter shows available tokens.
+
+maria: Key oddity: limiter.window_available jumps negative for one tick then recovers. Seems like an offset/refund misapplied when last page returns zero items.
+
+maria: logs:
+```
+[2026-03-22T14:01:05Z] limiter: alloc id=abc-1 size=5 -> avail=0
+[2026-03-22T14:01:05Z] http: 200 GET /v1/embeds cursor=abc123 items=0
+[2026-03-22T14:01:05Z] limiter: refund id=abc-1 size=5 reason=empty_page -> avail=5
+[2026-03-22T14:01:05Z] limiter: alloc id=abc-2 size=5 -> avail=0
+[2026-03-22T14:01:06Z] http: 429 POST /v1/completions
+```
+
+aj: Is this only in Python SDK or also happening in Go/JS?
+
+sasha: Saw something similar once in onboarding e2e with Go SDK. Thought it was sampleapp loop, but could be refund vs alloc race.
+
+tom: I'll add more instrumentation to the limiter to log alloc_id, refund_id, and cursor value. Can you paste the limiter config?
+
+maria: config we used:
+```yaml
+adaptive_limiter:
+  max_tokens: 50
+  refill_rate_per_sec: 10
+  burst_capacity: 100
+  consider_inflight: true
+  refund_on_empty_page: true
+```
+
+sasha: refund_on_empty_page=true looks suspect. If client refunds before a server ack or before the cursor state is settled, you can double-refund when a retry happens.
+
+aj: Quick repro attempt: set refund_on_empty_page=false and run the stress harness.
+
+maria: Re-ran with refund_on_empty_page=false — ran ~3k paginated requests, no 429s. Points to refunds being the trigger. Also observed limiter.internal_offset not being updated when cursor changed from non-empty -> empty and then new fetch started immediately.
+
+rate-limiter-bot: Note: deploy rollout for adaptive-limiter v2 started 2026-03-22T16:00Z to subset=devex.
+
+tom: Another angle: potential SDK parity bug — Go uses integer math for token accounting, Python uses floats then round -> floor, small drift might interact badly with refund toggles. Worth adding cross-SDK unit test.
+
+sasha: I'll open a ticket and add an e2e test for the edgecase: empty page + immediate re-request + refund enabled. Also adding metrics: limiter.alloc_id, limiter.refund_reason, limiter.cursor_hash.
+
+maria: Also noticed sampleapp's pagination loop uses `while (cursor) fetch(cursor)` and sometimes sets cursor = null vs empty string. That subtle difference changes how the SDK emits the 'done' event and can trigger an immediate new job in the pool. We should normalize.
+
+aj: Good call — add a note to onboarding docs: "When using refund_on_empty_page=true, only enable with server-side confirmation or stable cursor semantics."
+
+maria: PR for docs + sampleapp fix incoming.
+
+devex-bot: Created issue DEVEX-1087: "Adaptive limiter refund race when page returns empty" assigned to sasha, priority=P2.
+
+maria: :thumbsup:

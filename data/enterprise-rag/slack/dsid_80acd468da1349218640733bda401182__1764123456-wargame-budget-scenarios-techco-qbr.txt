@@ -1,0 +1,41 @@
+customer-success
+
+nina_csm: Heads up — prepping budget scenarios for TechCo QBR next Tue. Finance asked for three spend scenarios by Monday. I put a draft in the sheet: https://company.sheets/TechCo-QBR-scenarios
+
+aj_dev: quick Q — where are the heavy token hits coming from? embeddings, chat flows, or batch jobs?
+
+maria_cs: mostly embeddings from a recent search index rebuild + a spike in nightly batch inference for analytics. ran a 30-day sample and attached numbers in the sheet.
+
+oliver_finops: can we present (1) baseline, (2) 2x feature rollout, (3) throttle + quantize fallback? i'll need per-route cost deltas to show CFO. putting a draft table in the sheet now.
+
+nina_csm: SG. Maria, can you add a per-route breakdown and flag any expected burst windows (e.g., migration, promo)? also capture enablement asks and timing.
+
+maria_cs: added breakdown. top offenders: search-emb (55%), content-gen chat (25%), rerank jobs (10%), misc (10%). added notes about the migration bump next month.
+
+aj_dev: couple quick wins to call out: reduce embedding dim for legacy docs to 768 (saves ~30% cost for that route), enable prefix caching for common prompts, and consider async rerank batching.
+
+nina_csm: :thumbsup: Olly, can you draft a one-slide summary with the three scenarios + recommended mitigations? I'll own the QBR talking points.
+
+oliver_finops: draft in progress. numbers are rough — propose a review 10am PT tomorrow. Also created a budget alert threshold for TechCo so CS + Eng get notified when we hit 90%.
+
+cost-ops-bot: Alert created: TechCo monthly threshold = $18,000. Notifications -> #customer-success. Escalation -> @nina_csm, @aj_dev after 90%.
+
+maria_cs: extra note: customer is asking to opt-in to temporary burst tolerance until renewal — flag this as a renewal risk (they expect no throttling).
+
+aj_dev: if they opt-in, we can route non-critical requests to lower-cost region + serve quantized model variants for heavy loads. need ops signoff.
+
+nina_csm: Action items: Maria add per-route growth assumptions + flag migration bump (due EOD today). Olly finalize slide + numbers (tomorrow 8am). Aj review routing playbook for optional burst handling (tomorrow 10am). I'll prep QBR script and customer-facing cost transparency bullet. tagging @product for headroom policy discussion if needed.
+
+oliver_finops: ack. I'll also add a 'recommended guardrail' slide (auto-throttle threshold + rollback plan).
+
+maria_cs: done — sheet updated and I left a comment about customer-provided data migration on May 3 that will bump nightly jobs.
+
+aj_dev: paste config snippet we can show as a quick opt-in/off for their ops team:
+
+```
+# disable full index nightly
+CRON_DISABLED=true
+BATCH_REBUILD_MODE=incremental
+```
+
+nina_csm: :sparkles: thanks team. last ask: capture customer feedback on cost transparency — i'll propose they opt into a weekly digest email and confirm whether they want proactive throttle alerts.

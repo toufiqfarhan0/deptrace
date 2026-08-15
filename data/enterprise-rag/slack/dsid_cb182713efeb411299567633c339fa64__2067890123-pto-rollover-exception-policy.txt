@@ -1,0 +1,15 @@
+people-ops
+
+Nia (People Ops): Quick update: PTO rollover exceptions for employees impacted by critical launches this quarter. Read pls. :sparkles:
+Nia (People Ops): TL;DR: employees who worked during scheduled PTO because of critical company launches can request a PTO rollover exception for up to 5 days. Submit by end of next month.
+Nia (People Ops): Who qualifies: employees whose manager certifies they were required to work during approved PTO dates due to a documented launch or incident. Managers must attach the project/incident ID.
+Omar: Does this apply to part-timers and contractors?
+Nia (People Ops): Applies only to full-time employees and FT-equivalents on payroll. Contractors are not eligible but managers can request discretionary time off.
+Sophie: What's the process?
+Nia (People Ops): 1) Employee files "PTO Rollover Exception" form: https://redwood-internal/hr/pto-rollover. 2) Manager verifies and attaches launch/incident ID. 3) People Ops approves and Payroll schedules rollover. Payroll Bot will confirm.
+Payroll Bot: Auto-note: Approved rollovers will show as ROLLOVER_EXCEPTION on the next pay cycle; use expense code PTO_EXC for tracking.
+Dev Team Lead: Will we get guidance about documenting incidents? We often have internal deploy IDs rather than public incident numbers.
+Nia (People Ops): Internal deploy IDs are fine; include sprint/launch name and approximate hours worked. We'll reach out with a short template.
+Sophie: Deadline reminder?
+Nia (People Ops): Submit requests by 11:59pm PT on April 30th. Late requests may be considered for exceptional circumstances but not guaranteed.
+Nia (People Ops): Thanks — reach out if you need the manager verification template or want us to run a drop-in. End.

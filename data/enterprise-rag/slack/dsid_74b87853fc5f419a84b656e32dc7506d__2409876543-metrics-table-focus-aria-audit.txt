@@ -1,0 +1,36 @@
+design
+
+ela (Design): Quick accessibility sweep on the Metrics dashboard — keyboard focus outline for table cells in compact mode is almost invisible and SR reads an extra "row" label when you open inline actions. Can we triage?
+
+tom (Frontend): Thanks! Likely two separate issues: CSS focus is a 1px border that collides with cell divider, and the inline action uses aria-live to announce state and also toggles aria-expanded which duplicates SR messages.
+
+ela (Design): Screenshot attached. Expected: a distinct, theme-safe focus indicator (not blending with borders) and single clear SR announcement when actions open.
+
+sam (A11y): Notes: 1) For focus use either an outline with offset or a >=3px visible stroke to avoid blending. 2) For SR announcements, remove unnecessary live regions; prefer explicit `aria-expanded` plus `role="dialog"` or `menu` semantics with `aria-labelledby`. 3) If we must animate, keep interactive nodes in DOM while animating so tab order doesn't break.
+
+nora (QA): I can reproduce on Mac+Safari and Win+Chrome. When I open actions and then press Tab, VoiceOver sometimes reads "row" then the action label, so looks duplicated. I recorded a short screencap.
+
+tom (Frontend): Quick CSS patch proposal (light + dark):
+```
+.table-cell:focus { outline: 3px solid rgba(0,0,0,0.12); outline-offset: 2px; }
+@media (prefers-contrast: more) { .table-cell:focus { outline-width: 4px; } }
+```
+And JS: stop using aria-live for the actions container; set `aria-expanded` on the trigger and manage `aria-controls`. Also keep menu node mounted with `data-closing` until transitionend.
+
+ela (Design): Neutral outline works for the quick fix. Let's avoid brand color here so it doesn't conflict with selection states.
+
+sam (A11y): Also add `prefers-reduced-motion` support for the action panel and ensure we set focus to first interactive element when panel opens. Add tests for Shift+Tab behavior.
+
+nora (QA): I'll add a Cypress test: tab into table, open inline actions, assert SR announces single message and focus lands in panel; test both themes and high-contrast.
+
+tom (Frontend): I'll open PR 1711 with the CSS + JS changes and include screenshots and test results. Tagging @ela and @sam for review.
+
+release-bot: staging deploy scheduled 19:00 UTC for PR 1711
+
+ela (Design): Decision for patch: implement 3px neutral outline for focus, remove live region from actions, keep nodes mounted during animation, and add reduced-motion + prefers-contrast tweaks. Follow-up: revisit visual language for focus in compact tables.
+
+sam (A11y): :thumbsup: please add a short release note and update the accessibility checklist entry for inline-actions.
+
+nora (QA): Marking P2; will run full SR smoke on staging once deployed.
+
+tom (Frontend): PR created and linked in the thread, will update after CI.

@@ -1,0 +1,43 @@
+eng-infra
+
+sana: Heads-up: after the L7 firewall tightening in eu-central this morning, a handful of GPU nodes failed HSM handshake during bootstrap. Kubelet reports decrypt errors and nodes never register. Anyone on-call seeing the same?
+
+felix: seeing 5 failed boots over last 10m, all from the same AZ. HSM endpoint 10.12.99.5:443 returns `TLS handshake failure` in the keystore-proxy logs.
+
+dina: that IP is the regional HSM fronting NAT. Was there a rule that blocks 10.12.0.0/16 -> controlplane? The L7 change rolled at 08:12.
+
+sana: change was the L7 default-deny for app:privnet-ingress to enforce authz. It had a short allowlist but looks like we missed the keystore-proxy service CIDR.
+
+felix: minimal repro from affected node: ```
+Mar 23 08:25:12 keystore-proxy[1]: dial tcp 10.12.99.5:443: tls: handshake failure
+Mar 23 08:25:12 keystore-proxy[1]: POST /decrypt -> 502 -> downstream TLS error
+Mar 23 08:25:12 kubelet: node join failed: decrypt error
+```
+
+sre-oncall: impact: ~6 GPUs not joining across two racks, capacity shortfall ~12 vGPU minutes. Marking SEV-3. Suggests quick mitigation: add temporary L7 exception or route via natpool.
+
+dina: can we add an exception for keystore-proxy -> HSM IP:443 for eu-central only? Ops-bot, create CR with auto-expire 2h and attach playbook.
+
+ops-bot: Created CR-2026-087: "eu-central L7 allow: keystore-proxy -> 10.12.99.5:443 (temp)". Approvers: @dina, @sana. Auto-expire: 2h. Runbook attached. :white_check_mark:
+
+sana: adding to runbook: verify HSM cert chain, check NAT conntrack, validate auditship counts (we've been dropping some audit events when TLS fails).
+
+felix: note: audit-bot reporting a spike in `keystore.decrypt` errors -> audit queue backlog increased. That caused audit exporter to retry and briefly spike egress to the SIEM. We should consider any cost/retention implications.
+
+audit-bot: alert: keystore.decrypt.errors increased 430% in eu-central between 08:12-08:22. Estimated extra events: ~1.9k.
+
+sre-oncall: temporary exception applied. Nodes are reattempting join. Two have succeeded so far. Monitoring for 5m.
+
+dina: longer-term we need a safer deploy process for L7 changes: 1) preflight to validate allowlist for controlplane and keystore endpoints per region; 2) staging rollout on single AZ; 3) health-check hook that auto-rolls back if node-join latency > 2x baseline.
+
+sana: agree. Also add a post-deploy audit query to ensure `keystore.decrypt` error rate stays near-zero.
+
+felix: cost note: the retry storm added ~1.2 GB egress and 2k audit events to SIEM; rough extra ingest cost for that window ~ $18. We'll add exact numbers to postmortem.
+
+audit-bot: CR-2026-087 approved by dina and sana. Auto-expire set for 2h.
+
+sre-oncall: closing SEV-3 iff no regression in next 15m. Please file postmortem ticket and link to change and audit query.
+
+dina: opened PM-2026-412 postmortem. Actions: preflight script (P0), L7 deploy checklist (P1), update runbook (P1).
+
+sana: thanks all. Lesson: keystore/HSM endpoints must be on the L7 allowlist for any region-level firewall tightening. Will follow up on preflight script design. :thumbsup:

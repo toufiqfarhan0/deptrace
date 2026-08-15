@@ -1,0 +1,77 @@
+eng-platform
+
+maya: Quick UX / API question — we need a console surface for SLO-weighted routing (latency + availability per tier) + model-variant fallback. thinking: show live weight, hard CB state, and a one-click canary override. what minimal fields do we expose in the UI and in the internal policy API?
+
+sam: Agree on live weight + CB. For API we need policy_id, tiers, target_latency_ms, availability_pct, cb_thresholds (error_rate, p99_lat), fallback_chain (ordered model variants). keep it flat.
+
+jordan: Telemetry note: we must emit decider decisions at sampling rate 1% by default + full logs for incidents. fields: request_id, customer_tier, chosen_node, chosen_model_variant, decision_reason, latency_ms, upstream_status.
+
+priya: UX constraints: customers expect simple toggles. show: current SLO attainment (green/yellow/red), recent CB activations (count), and last fallback used. canary override should auto-expire.
+
+alex: Implementation gotcha: model variants have different perf profiles; weighted routing needs to translate SLO slack into routing weight. Suggest a simple algorithm: weight = base_priority * min(1, SLO_margin / observed_p99_ms). But edgecases when observed_p99 is 0 or missing.
+
+maya: Good — need to agree on circuit-breaker semantics. Two flavors: protective CB (trips to protect infra) vs customer-facing CB (degrades to cheaper variant). How encode both?
+
+sam: Two-tier CB -> infra_cb (node/region availability) and variant_cb (per-customer, per-model). Policy DSL example:
+
+```yaml
+policy_id: slo-weighted-1
+tiers:
+  - name: enterprise
+    target_latency_ms: 120
+    target_availability_pct: 99.95
+    base_priority: 100
+    cb_thresholds:
+      infra_cb: {error_rate_pct: 1.0, p99_ms: 1000}
+      variant_cb: {error_rate_pct: 0.5, p99_ms: 300}
+    fallback_chain:
+      - model: redwood-7b-q4
+      - model: redwood-7b-q4f
+      - model: redwood-7b-int8
+```
+
+sam: The idea is infra_cb trips region-wide routing to fallback region/model; variant_cb only affects customer's assignment to variant.
+
+jordan: Observability: need out-of-band alerts when infra_cb fires >=3x in 1m across >5% of customers. Also store samples of decision traces for 1h at 100% when CB active.
+
+priya: On console, show the policy with a compact summary (targets + last CB time) and an expansion for raw DSL. Allow editing the thresholds inline but require policy version bump.
+
+alex: API debate: should we accept wildcard fallback ("any-compatible") or explicit list? wildcard easier but risky. prefer explicit ordered list for predictability.
+
+maya: Agree explicit. Also need quotas interaction: if a high-tier customer hits committed throughput, we still honor latency SLO but might need to route to dedicated capacity or throttle. How reflect that to users?
+
+sam: Expose a decision_code enum in telemetry: {OK, FALLOUT_FALLBACK, INFRA_CB, VARIANT_CB, QUOTA_THROTTLE, ROUTED_TO_DEDICATED}. Helps postmortems.
+
+jordan: Add sample event:
+```json
+{
+  "request_id":"r_01",
+  "customer":"acme-corp",
+  "tier":"enterprise",
+  "decision":"VARIANT_CB",
+  "chosen_model":"redwood-7b-q4f",
+  "latency_ms":132,
+  "reason":"p99 exceeded"
+}
+```
+
+maya: One more: circuit-breaker tuning defaults — we should ship conservative defaults per tier (enterprise tighter, free looser). Keep a rollout plan: 10% -> 30% -> 100% with metric guardrails.
+
+priya: UX rollout: surface a rollout slider with current % and expected latency/cost delta estimate. show rollback button.
+
+alex: For the internal API: PATCH /policies/:id should accept delta patch and return new version id. Console does optimistic locking.
+
+sam: Implementation checklist:
+- policy model + schema
+- decision engine simulation endpoint (score incoming mix)
+- telemetry spec + sampling
+- console compact + raw editor + rollout control
+- audit log + versioning
+
+maya: Can someone prototype a decision simulation endpoint this week? simple input: traffic mix (percent per seq len / model usage) -> output expected p99 and fallback rate.
+
+alex: I can stub it. will push a toy sim to /internal/sim in a PR.
+
+ops-bot: Reminder: incident runbook updated for CB blasts. https://internal/redwood/runbooks/cb-blast :thumbsup:
+
+maya: Thanks. Action items: alex PR for sim, sam schema draft, jordan telemetry spec, priya console wireframes. followup sync Fri 11am. :calendar:

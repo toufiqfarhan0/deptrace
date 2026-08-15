@@ -1,0 +1,69 @@
+eng-runtime
+
+avi: Heads-up — saw repeated OOMs on canary during peak batching after the kernel-selection change. repro with kv-prefill=1.1GB + workspace_max=0.6GB.
+
+maria: ugh. stack or logs? was that the 'fast-kernel' build we rolled this morning? :thinking: 
+
+avi: yep fast-kernel. short excerpt: 
+```
+AllocError: failed to reserve 640MB workspace (available shards: 512MB)
+KVCache: prefill_bytes=1125899906842624 decode_bytes_peak=240000000, frag_ratio=0.42
+WorkspaceRecycler: total_reused=3 total_allocs=12
+```
+
+simon: frag_ratio 0.42 is high for that host. sounds like allocator fragmentation + big prefill spikes. did we ever cap per-request prefill?
+
+jen: we have per-request soft cap at 128MB but prefill is global per-model and can exceed it if batching allows. that explains why decode-phase blows past the soft cap.
+
+maria: could be the workspace recycler not reusing large buffers due to mismatch in bucket sizes after kernel change. I pushed telemetry that dumps bucket histogram.
+
+perf-bot: nightly-regression: p99 latency +2.7% on canary after kernel-select v2. Metric: generate_text.p99 increased from 312ms -> 320ms.
+
+avi: @simon @maria can we try forcing buffer-binning-mode=legacy on the failing hosts to see if reuse improves?
+
+simon: yes. also let's try lowering kv-prefill to 600MB and enabling per-request hard cap of 256MB to see tradeoffs between prefill hit-rate and OOMs.
+
+jen: quick A/B plan:
+- A: binning=legacy + kv-prefill=600MB + request_cap=256MB
+- B: binning=new + kv-prefill=600MB + request_cap=256MB
+- C: binning=new + kv-prefill=1.1GB + request_cap=128MB (stress)
+I can run canary shards on each.
+
+maria: add profiler traces (alloc-sizes, free-sizes, bucket-misses) and kernel selection debug tags. want to see if the fast kernel increases peak workspace demand (e.g., bigger temp GEMM buffers).
+
+avi: ran A for 30m: no OOMs, prefill-hit-rate dropped ~18% but tail latencies within SLO. recycler reuse count x3 higher. logs: 
+```
+RecyclerHistogram: [0:213, 64KB:48, 256KB:12, 1MB:6, 8MB:1]
+PrefillHitRate: 0.62 -> 0.50
+DecodePeakWorkspace: 420MB -> 270MB
+```
+
+maria: ran B for 30m: intermittent OOM at 18m on one shard, frag_ratio ~0.39 but bucket-misses for 1MB buckets up 2x. reuse count lower.
+
+simon: hypothesis: the fast kernel increases temporary allocation shapes that sit between our existing bucket sizes, so recycler can't match and ends up allocating fresh buffers -> fragmentation.
+
+jen: C (stress) produced OOMs quickly, confirms earlier repro. perf-bot also flagged p99 spike on C.
+
+avi: immediate mitigation: enforce request-level hard cap 256MB and conservative kv-prefill 600MB for the canary cohort; revert kernel-select change for broader rollout.
+
+maria: medium-term: add intermediate bucket sizes (512KB, 2MB) and tune recycler coalescing policy to fold small frees into larger reusable slabs. also consider prefix/KV decode scheduling to avoid concurrent worst-case prefill + decode peaks.
+
+simon: also worth adding a "prefill-reservation" handshake: pre-allocate a shrinkable reservation per request that can be reclaimed by high-priority decode ops. would buy us headroom without lowering hit-rate too much.
+
+jen: action items: 
+- jen: roll canary mitigation (caps + prefills)  — in flight
+- maria: add bucket histogram telemetry + enable intermediate buckets on canary hosts
+- simon: prototype prefill-reservation mechanism (design doc)
+- avi: monitor p99 and OOMs, post logs to thread
+
+ci-bot: deploy job #rwd-canary-214 started by jen (kv-cap-mitigation).
+
+avi: noted improvement after mitigation: OOMs stopped, p99 back to baseline, prefill-hit-rate at 0.52. we'll hold rollout until simon design is reviewed.
+
+maria: I'll open a perf/regression ticket to track kernel-select impact and link profiler traces. putting numbers and histograms in the ticket.
+
+simon: thanks. long-term we should add an offline simulator to predict fragmentation for allocator configs given expected allocation shape distributions (from traces).
+
+avi: agreed. leaving an ephemeral note: any quick experiments with quantization/kernel paths that change scratch sizes should include a run that collects recycler histograms. it would've saved us a day. :grimacing:
+
+jen: good catch everyone. I'll keep the canary pinned and post the deploy result once CI finishes. :thumbsup:

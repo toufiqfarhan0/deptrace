@@ -1,0 +1,26 @@
+incidents
+
+sarah.cs: +1 from Acme support — their Dedicated pool in us-west-2 is returning intermittent 503s and their billing shows duplicated token usage. Happening since ~08:12 UTC. They say requests fail, client retries, and they see 2x charges.
+ops-oncall: assigning. Can you paste allocator/placement logs and any autoscaler events?
+devon: quick glance at allocator logs: seeing repeated allocate failures: 'no_capacity: GPU_STOCKOUT' then an automatic fallback to hosted. Hosted gateway then returns 401 for the same request which causes client to retry. Log snippet:
+```
+allocator: allocate_request req=abc123 model=redwood-1
+error: no_capacity GPU_STOCKOUT region=us-west-2
+fallback: route_to=hosted-us-west2
+hosted_gateway: auth=FAIL invalid_token
+```
+kiran: that 401 is interesting — tracer shows token was minted by dedicated CA (dedicated-ca-v2) after key rotation. Hosted auth service doesn't yet accept dedicated-ca-v2 tokens, so when fallback happens the hosted gateway rejects and client logic retries, generating duplicate meter events.
+marco: also seeing node-level instability in the reserved pool. gpu-node-17 shows repeated OOM and pod evictions, autoscaler sees the pressure and scales down then back up -> oscillation. snippet from kube-events: `Evicted pod/worker-abc due to OOMKilled`, `HorizontalPodAutoscaler: scaling to 0 -> 3 -> 1`.
+tina: proposed mitigations: 1) patch hosted gateway to accept legacy/dedicated-ca-v2 tokens for a short window (6h) so fallbacks don't 401, 2) increase autoscaler min for us-west2-reserved to 2 for 1h to prevent down-to-zero oscillation, 3) cordon gpu-node-17 and drain noisy tenant pods to isolate. Also ask client to enable exponential backoff on retries (throttle retries).
+sarah.cs: customer requests timeline + credit. They claim duplicate token consumption between 08:12-08:28 (UTC). Can billing pull meter IDs? Ticketing: CS-4832.
+billing: we can issue a one-time credit pending exact meter IDs and token counts. We need a list of meter event IDs and the time window.
+devon: repro steps I used locally to reproduce eviction/oscillation: run a heavy concurrency loop against the dedicated endpoint with concurrent=40. '~12m to first eviction'. Example command we ran from a stress VM:
+```
+for i in {1..2000}; do curl -s -X POST -H "Authorization: Bearer $TOKEN" -d '{"prompt":"x"}' https://dedicated.us-west-2.redwood/v1/generate & done
+```
+ops-oncall: I've applied temporary mitigations: patched gateway to accept legacy token signatures for 4h, cordoned gpu-node-17, set pool us-west2-reserved min_replicas=2 (suspend aggressive scale-down). Monitoring for 30m.
+kiran: next steps for engineering: add token-federation mapping so hosted can validate dedicated-signed tokens, and add an explicit fallback handshake so we don't double-meter on failed auths. Also add autoscaler hysteresis to prevent 0->N oscillations when noisy tenants evict pods.
+sarah.cs: I'll update Acme, open CS-4832 with notes, and request billing credit estimate. Marking P1 — customer impact.
+marco: saving the allocator and node logs to /mnt/incident/2512345678/ for postmortem.
+billing: please flag when you have meter IDs; we'll start the credit review.
+sarah.cs: thanks all — tagging follow-ups: @kiran for token federation, @devon for repro/playbook, @ops-oncall for mitigation verification. :warning: :thumbsup:

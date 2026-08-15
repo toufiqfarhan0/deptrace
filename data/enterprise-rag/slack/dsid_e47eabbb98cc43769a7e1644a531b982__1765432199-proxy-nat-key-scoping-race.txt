@@ -1,0 +1,68 @@
+support
+
+alex: Hey—customer hitting lots of 429s intermittently. They use an API key in a proxy (kong) that NATs to 3 egress IPs. They say quota dashboard shows project-level limits fine but requests are being rate-limited as if org-level quota applied. Can we check scoping rules?
+
+maria: Thanks — can you paste the example request headers + timestamp of a failing request? Any repro steps? :eyes:
+
+alex: here's a sample header from their logs (sanitized):
+
+    Authorization: Bearer pk_live_xxx
+    X-Forwarded-For: 10.0.0.5
+    Host: api.redwood.example
+
+and the backend saw src IP 54.210.33.12. Timestamp 2026-01-11T18:02:31Z. They claim some requests show quota path = org, others = project.
+
+sre-jordan: Noted. Typical precedence: if a valid API key is present and parsed, we scope to that key/project. If no key, fallback to IP-based rules. But proxies that mutate/remove auth or rotate keys can cause misclassification.
+
+eng-ryan: Adding details — our auth pipeline evaluates in this order: 1) Authorization header -> API key lookup 2) API key metadata (project/org) 3) Rate-limit decision (per-key, per-project, per-org) 4) If no key found, fallback to IP. Edge-case: if auth lookup times out, we mark as "unknown" and apply org-level protective limits. That can cause surprise 429s.
+
+alex: Customer says their kong plugin strips Authorization for a health check route and then injects a different header for routing. Could that flip classification mid-burst?
+
+eng-ryan: Yes — if some requests arrive without Authorization we will attribute to IP. If other requests have the key, they go to project quota. Interleaved requests from same client hitting different scoping paths will show mixed behavior.
+
+maria: Can you repro quickly with curl against our staging auth endpoint? Maybe simulate NAT egress. Here's a quick reproducer: 
+
+    # simulate key present
+    curl -i -H "Authorization: Bearer pk_test_REPL" https://api.staging.redwood/v1/generate
+
+    # simulate stripped key + X-Forwarded-For preserved
+    curl -i -H "X-Forwarded-For: 34.210.1.2" https://api.staging.redwood/v1/generate
+
+eng-ryan: Also try with a slow auth DB to simulate lookup timeouts: set LOCAL_AUTH_DELAY_MS=2000 in the test container; we mark lookups >1s as partial failure and apply org fallback. That reproduces the "appears org-scoped" case.
+
+sre-jordan: I pulled logs for the timestamp alex gave. We see a 500 from the auth service at 18:02:30 for that node, then the next 15s of requests were classified as unknown -> org fallback. Excerpt: 
+
+    [18:02:30.112] auth: lookup pk_live_xxx -> ERROR: timeout
+    [18:02:30.113] rate-engine: classify request -> fallback=org-protect
+    [18:02:30.121] response -> 429 quota_exceeded org_overall_rate
+
+maria: Customer also says billing shows tokens consumed under project; their invoices look fine but the live quota enforcement is being conservative. That matches org fallback applying enforcement but billing recording still using eventual reconciliation which attributes to project once auth recovers. That discrepancy is confusing for them.
+
+alex: Oof. They want a mitigation ASAP — ideally avoid org fallback while auth is flakey.
+
+eng-ryan: Short-term mitigation options: 1) Have the proxy always forward Authorization header unmodified 2) If proxy cannot, set a consistent X-Client-ID header and configure us to prefer that header for scoping via a trusted-proxy mapping 3) Increase auth service capacity / reduce lookup latency 4) Adjust fallback policy to treat timeouts as "retry auth" not immediate org fallback (requires runtime change).
+
+maria: I've asked customer to enable header forwarding and to send raw failing request IDs. Also asked for NAT IPs list so we can pin per-key quotas to those IPs as temporary override.
+
+support-bot: Ticket #SR-2026-412 created and linked to this thread. Escalating to eng-runtime.
+
+eng-ryan: For eng, here's a minimal repro script to run from any machine behind a NAT (replace pk and target):
+
+    for i in {1..200}; do 
+      if (( i % 10 == 0 )); then
+        # simulate stripped key
+        curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 34.210.1.2" https://api.staging.redwood/v1/health
+      else
+        curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer pk_test_REPL" https://api.staging.redwood/v1/health
+      fi
+    done
+
+eng-ryan: With a slowed auth service you should see a burst where status flips to 429 and logs show fallback path.
+
+sre-jordan: Short-term prod mitigation we can push: tweak rate-engine to prefer per-key if key present in same TCP connection even if auth delayed (best-effort local cache). I'll open a PR to enable a local ephemeral cache for key->project lookups for 30s TTL. That should reduce org fallbacks during transient auth blips.
+
+maria: I'll tell customer the plan: forward auth header + we'll enable temporary NAT-IP pinning and SRE will enable the ephemeral local cache. ETA for cache PR?
+
+sre-jordan: I'll aim for a canary rollout within 48h. If we see any regressions we'll rollback.
+
+alex: Thanks all — customer updated ticket saying they can forward headers but want the cache change too. Please keep thread updated. :thumbsup:

@@ -1,0 +1,30 @@
+announcements
+
+Eli (CEO): Quick leadership check-in for the next 7 days — short bullets.
+- Wins: Dedicated GA onboarding hit 99.2% success rate in EU region; customer feedback shows 2x faster latency in tail cases. :tada:
+- Near-term focus: (1) finish Dedicated autoscaler safeguards, (2) lock the Q2 cost target, (3) finalize Private deployment SOC doc.
+- Ask of the org: highlight any rollout safety concerns by EOD Tue. If you expect customer impact, flag with #urgent.
+
+Maya (VP Product): Product notes — rolling out model catalog UI changes on Wed can reduce mis-routings. Small risk: legacy aliasing could send traffic to older quantized variants for a short window. I'll coordinate a canary and a quick rollback runbook.
+
+Jonas (VP Eng): Eng follow-up — autoscaler has a new cooldown tweak. We've run load tests: 95th p99 tail stable but p999 spikes remain when many small requests arrive at once. Plan: deploy continuous batching improvement + KV cache tweak tomorrow night. We'll monitor traces in Console.
+
+Priya (Head of Ops): Ops/incident summary — yesterday's brief outage (Routed queue lag) lasted ~18m for a subset of Dedicated pools. Root cause: transient NFS latency on a metrics exporter. Impact: internal metrics delayed, customer requests retried successfully. Postmortem draft will be shared by EOD Monday. Immediate change: disable metrics exporter retries and add local buffering.
+
+Sam (CFO): Quick finance note — Q2 commit vs plan shows run-rate trending +4% vs target due to burst GPU usage. Ops, please confirm if any non-blocking burst capacity was triggered last week so we can isolate billing. If there are expected spikes (sales-driven launches), FYI my team needs 48h heads-up for committed capacity adjustments.
+
+Eli (CEO): Two policy asks — (A) all customer-facing launch comms must include expected latency/cost delta for the first 72h; (B) any private deployment security exceptions need written signoff from Security and Legal before release. These are immediate.
+
+Maya (VP Product): Noted re: launch comms. We'll add a short template to Confluence and a checkbox in the release form.
+
+Jonas (VP Eng): For security exceptions, we have a lightweight SLA signoff flow ready. Will link to the form in #eng-security.
+
+Priya (Head of Ops): Canary plan for the model catalog UI will include a rollback hysteresis and an automatic fallback to the previous routing policy if error rate > 1.5% for 5m. I'll coordinate on-call and comms.
+
+Sam (CFO): Thanks — finance will approve short-term capacity if product expects revenue proof points. Please loop me on final commit numbers.
+
+deploy-bot: Scheduled deploy: autoscaler-cooldown-fix -> prod at 2026-03-25T02:00Z. Notified: @Jonas, @Priya. Logs location: https://console.internal/deploys/1979991234
+
+Eli (CEO): Closing — overall we are in a good spot: product momentum + higher-than-expected utilization. Prioritization: safety (canaries, runbooks) > cost optimization > small UX polish. Callouts: anyone who needs leadership help to unblock, ping me directly. :sparkles:
+
+(End of thread)

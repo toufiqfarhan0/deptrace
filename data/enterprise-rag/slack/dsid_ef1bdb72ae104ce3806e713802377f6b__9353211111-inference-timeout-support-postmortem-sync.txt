@@ -1,0 +1,40 @@
+incidents
+
+sophie: FYI opening this thread for a quick postmortem sync — multiple customers reported 5xx/timeouts hitting hosted inference in eu-west ~02:15 UTC.
+ops-bot: Incident created: INC-2026-0935 — alerts triggered: gateway_5xx_rate, inference_qps_drop. :rotating_light:
+raj: I saw the spike in gateway 504s and immediate queue growth on the Batcher. Investigating processes.
+mia: Support: customers A, C, D reported timeouts and API retries. All on schema v1 and large batch size.
+kate: Metrics: p50 latency up 3x, p95 spiked to ~12s. KV cache misses rose ~40% around same time.
+ben: Any config change/deploys around that window?
+raj: No deploys in eu-west at 02:10-02:20 per deploy-bot. I'm tailing logs now.
+raj: quick log dump:
+```
+2026-03-17T02:14:42Z gateway: upstream error: 504 gateway_timeout
+2026-03-17T02:14:43Z runtime: batcher queue length 480 -> processing lag 120s
+2026-03-17T02:14:44Z model-worker: kvcache_miss 0.42
+2026-03-17T02:14:48Z auth-proxy: token-refresh-retry 503 -> falling back
+```
+mia: Repro steps collected from customer A:
+- POST /v1/generate with batch_size=64
+- stream disabled
+- multiple concurrent clients (3) with short timeouts (5s)
+mia: They hit p50 ~7s then 504 on client side.
+kate: Looks like simultaneous high batch sizes + cold KV cache + auth-proxy retry flaps -> overload on tail latency.
+ellie: Billing bot: a few customers had burst billing spikes, might correlate but not causation.
+ben: Short-term mitigation idea: enforce soft cap on batch_size for hosted endpoints, auto-fallback to smaller variant when queue depth > 200.
+raj: Agreed. Also flip on prefix-KV warm-up for high-traffic endpoints and increase model-worker concurrency by 15% for eu-west pool.
+sophie: Can someone own short-term mitigations? Need rollouts + customer comms.
+ben: I'll own mitigation rollout (ben). Plan: config change to cap batch_size=32, enable warmup, scale concurrency + apply circuit-breaker tweak. ETA 20m.
+mia: I'll draft customer messages and attach repro steps + temporary recommendation to increase client timeout to 20s.
+incident-bot: Postmortem checklist created: link: https://internal.redwood/postmortems/9353211111 — add findings and timeline.
+raj: Post-run notes: we saw auth-proxy token refresh retries increase before queue growth — follow-up: increase token refresh cache TTL & circuit backoff in auth-proxy.
+kate: Action items summary:
+- ben: deploy batch_size cap + warmup & concurrency scale in eu-west (done by 02:36 UTC)
+- raj: auth-proxy TTL & backoff investigation + PR (owner: raj) — due EOD
+- mia: customer comms + recommended client timeout doc (owner: mia) — send within 1h
+- ellie: check billing spikes correlation, flag customers for credits if needed (owner: ellie) — due EOD
+- ops: add alert for kvcache_miss rate > 20% sustained (owner: kate) — due tomorrow
+sophie: Great. Please update the checklist and add small retrospective notes. We'll do a 30m follow-up tomorrow 09:00 UTC to validate actions and finalize postmortem.
+ben: Mitigations applied, visible drop in queue length and 5xx count trending down. Will monitor.
+mia: Customer A acknowledged and increased timeout, reports fewer failures. :thumbsup:
+sophie: Thanks all. I'll consolidate into the postmortem doc and assign owners there. Close this thread when PRs & comms are complete.

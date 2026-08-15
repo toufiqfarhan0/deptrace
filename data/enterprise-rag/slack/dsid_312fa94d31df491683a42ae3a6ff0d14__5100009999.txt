@@ -1,0 +1,59 @@
+incidents
+
+incident-bot: :rotating_light: Alert PD-2378 fired — SLO: inference-api eu-west-1 p99 latency breach (current burn 4.8x). Metric: p99=3.4s, p95=0.9s. Related errors: elevated 504s from sidecar. Link: https://grafana.redwood.internal/d/abcd/inference-slo?orgId=1
+
+pagerduty: New incident PD-2378 — inferred priority P1. Notified: oncall-rotation.
+
+Maria Lopez: Ack. I'm awake, will join.
+
+Devon Chen: Oncall - I'm pulling metrics now. Looks like a tail spike on hot-path GPUs — KV cache thrash on a subset of backends.
+
+Samir Patel: Seeing the same in traces — high token compute for a small % of requests (long context). Could be bursty customer workload + few heavy prompts.
+
+Priya Rao: Customer impact: support flagged multiple customers experiencing slow responses and occasional timeouts. No major data loss.
+
+Maria Lopez: Quick plan: 1) Acknowledge PD (done), 2) Mitigate traffic to fallback region and lower burst batch sizes, 3) Roll a temporary soft limit on input length for queued requests, 4) Monitor p99.
+
+Devon Chen: Running query to identify pods:``` 
+# check top backends by p99
+SELECT instance, p99_latency FROM backend_metrics WHERE region='eu-west-1' AND service='inference-api' ORDER BY p99_latency DESC LIMIT 10;
+```
+
+Devon Chen: Top offenders are node-gpu-32a and node-gpu-33b (eviction counts high). Also seeing NVTX warnings in logs.
+
+Samir Patel: I'll patch the routing rule to divert 30% of traffic to eu-central-1 canary and enable fallback model variant (lighter quantized) for 20% of sessions.
+
+Priya Rao: Noted. I'm updating the incident doc with customer list and opening a CS ticket for highest impact customers.
+
+Maria Lopez: Maria -> executing rollout:``` 
+# reroute 30% to eu-central-1
+redwood route update inference-api --from-region eu-west-1 --to-region eu-central-1 --pct 30
+# enable model fallback
+redwood models rollout inference-model:v2-quant --region eu-west-1 --pct 20
+```
+
+incident-bot: PagerDuty PD-2378 acknowledged by Maria Lopez.
+
+Devon Chen: After reroute and fallback, p99 dropped from 3.4s -> 1.7s within 3 minutes. p95 stable at 0.85s. Error rate 504s down 60%.
+
+Samir Patel: Observed KV cache hit rate improved after shifting some traffic and reducing batch window. Memory pressure on node-gpu-32a reduced.
+
+Priya Rao: CS update: informed 3 customers (cust-alpha, cust-gamma, cust-theta) — all seeing improvement, some still reporting intermittent slowness.
+
+Maria Lopez: Next steps: keep reroute in place, increase fallback to 30% if regression, prepare to spin up two extra dedicated GPUs if p99 rises again.
+
+Devon Chen: I'll schedule a hotfix to adjust the batcher hysteresis and increase KV cache capacity on affected nodes. ETA 25m.
+
+oncall-rotation: Handing off to next oncall in 30m. Maria staying as incident lead for now.
+
+Samir Patel: Quick commands/links in case someone needs to run checks: Grafana: https://grafana.redwood.internal/d/abcd/inference-slo, Traces: https://jaeger.redwood.internal/search?service=inference-api, Runbook: https://confluence.redwood.internal/display/ops/Inference+Latency+Runbook
+
+Maria Lopez: Checkpoint: 00:12 since page fired — p99=1.6s, p95=0.8s, 504s trending down. I'm going to keep this open until stable for 1 hour. If it stays good, we'll close and do a post-incident action item to root cause the long-context-heavy requests and adjust autoscaler heuristics.
+
+Devon Chen: Agreed. Logging the tentative RCA: bursty long-context prompts + K/V cache thrash on specific nodes -> edge-case scheduling + memory fragmentation.
+
+Priya Rao: I'll prepare customer comms draft for the impacted customers and share in #customer-success for approval.
+
+incident-bot: Incident PD-2378: paging cleared — metrics returned to within SLO thresholds. Closed by Maria Lopez.
+
+Maria Lopez: Closing the thread. Follow-ups: (1) postmortem, (2) add auto-fallback policy to reduce impact, (3) tune batcher hysteresis. Thanks all. :heart:

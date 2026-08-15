@@ -1,0 +1,41 @@
+eng-infra
+
+sre-oncall: FYI — our request to increase A100/P4d quota in us-west-2 is blocked by the cloud vendor. They flagged a bank name discrepancy on the account during verification and paused quota changes. ticket: https://redwood.atlassian.net/browse/INF-1122
+
+billing-bot: Automated notice: business verification outcome: FAIL. Reason: bank account holder name does not match registered business name. Next steps: upload corrected bank statement or update registered entity name. Case #AWSSUP-987654 :warning:
+
+matt: Can someone paste the exact fields they flagged? is it the IBAN holder name or merchant legal name?
+
+irene: They called out the ACH/IBAN holder name. Our payment profile shows "Redwood Inference Inc" but the bank statement we uploaded reads "Redwood Inference, LLC". Also they want a gov ID or incorporation doc matching the payment name.
+
+sam: How urgent is this for customer-facing capacity? Which queues are impacted?
+
+sre-oncall: We have a canary fleet rollout that needs 6x A100s tomorrow for load testing. If we don't get quota we'll have to delay the canary and there's downstream release risk.
+
+ops-east: Quick note — fallback region eu-west-1 has spare capacity but cross-region networking for the canary depends on a new peering config that security needs to approve. Not a drop-in.
+
+matt: Ok. Two parallel paths: 1) fix verification (finance uploads corrected docs) 2) attempt fallback to eu-west-1 and request temporary peering exemption. Which should we prioritize?
+
+irene: I'll re-upload a bank statement with exact registered name and the articles of incorporation that show the legal name. ETA 45m. :hourglass_flowing_sand:
+
+billing-bot: Action logged: document upload initiated by irene at 1842754350. Support case updated.
+
+legal: If the bank name differs due to older paperwork we can provide an official name-change affidavit. I can prepare a short notarized letter if support asks for proof of continuity.
+
+matt: Also pinged cloud account manager (sam) to escalate the case for priority review once docs are in. Sam, can you nudge them to expedite quota while we provide docs?
+
+sam: On it. I'll escalate to AM and ask for a 24h review window. Will report back in this thread once they confirm.
+
+sre-oncall: Thanks. If we don't get a greenlight in 3 hours we'll trigger the fallback plan and schedule the canary a day later.
+
+ops-east: FYI cost note — running P4d in eu-west-1 for the test will be ~12% more on instance-hours but saves us the release delay. Keep that in mind when we reconcile.
+
+matt: Noted. Please add cost delta to the INF-1122 ticket.
+
+irene: Uploaded incorp + corrected bank stmt. Link to upload: https://payments.internal.redwood/doc/INF-1122/upload.
+
+billing-bot: Support update: documents received. Status changed to PENDING_REVIEW. Estimated review time: 1-2 business days unless escalated.
+
+sam: AM confirms they can prioritize if we request manual review. I've sent the escalation email.
+
+sre-oncall: Great — keep thread updated. If review hits >3h without progress we'll start fallback ops. :eyes:

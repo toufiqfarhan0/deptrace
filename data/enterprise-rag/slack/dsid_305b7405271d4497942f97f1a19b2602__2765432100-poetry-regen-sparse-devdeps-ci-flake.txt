@@ -1,0 +1,27 @@
+eng-infra
+
+maria: heads-up — main is red after I ran `poetry lock` to pick up the new cryptography build. macos-latest job fails during install with a wheel metadata error. not sure if it's a lock regen issue or a transitive pin from dev-deps.
+kevin: ack. which job exactly? can you paste the failing pip output?
+maria: job: macos-python3.11 / integration-tests. snippet:
+```
+ERROR: Package 'cymodule' requires a different 'Requires-Python' than the environment
+ERROR: Failed building wheel for cymodule
+```
+seems like cymodule wheel on macos was built for py3.10 and our constraint pulled it in transitively.
+yara: did `poetry lock` change the cymodule version or just the resolver ordering? a quick `git diff` of poetry.lock should show.
+maria: diff shows cymodule bumped from 1.4.2 -> 1.5.0 and a new transitive `packaging-backport` entry. not obvious why it breaks only macos though.
+alex: could be a universal wheel artifact missing py3.11 tag. try reproducing in a macos container or with `pip download cymodule==1.5.0 --platform macosx_11_0_x86_64` to see available wheels.
+jen: for triage: 1) rerun macos job to rule out transient infra, 2) try a lockfile bisect: check `poetry lock` at previous commit and run CI; if that passes, bisect to find the lock regenerator change.
+ci-bot: @maria restarted the macos-python3.11 job (build 4821). status: queued.
+maria: rerun came back red, same error.
+kevin: ok please do a local reproduce: `python -m venv .venv && .venv/bin/pip install -U pip setuptools wheel && .venv/bin/pip install -r <(poetry export -f requirements.txt --dev --without-hashes)` — that should mirror CI installer.
+maria: did that and hit the same cymodule wheel metadata error. I also tried `pip install cymodule==1.4.2` and it works (wheel available), 1.5.0 raises metadata mismatch.
+yara: sounds like cymodule 1.5.0 release omitted py3.11 wheel. for immediate unblock, we can pin cymodule==1.4.2 in pyproject.dev-dependencies or add a constraint in `constraints.txt` used by CI. longer term, ask the package owner to upload proper wheel or vendor the small binary as universal wheel.
+alex: alternative: force `poetry lock --no-update` to keep previous resolution. but that loses the other updates. better to add a temporary compatibility pin just in dev-deps.
+jen: who can open a tiny PR to add the pin + a CI skip note? I can if no objections.
+maria: please do — I'll include the lockfile regen and a note in the PR describing the cymodule wheel issue and link to the failing CI build.
+kevin: when opening PR, include the bisect info and the commands you ran so we don't lose the diagnostic info. also add a short test in CI to detect platform-specific wheel availability going forward (maybe a step that `pip wheel cymodule==<version>` for our supported platforms).
+maria: thanks — created PR #5291 with cymodule pinned to 1.4.2 in dev constraints and updated lockfile. CI green on rerun now.
+jen: great, will merge once tests finish and then follow up with packaging team to track upstream fix.
+alex: optional: add a short Eval or smoke job that runs `pip download` for a few binary deps across linux/macos to catch regressions earlier.
+maria: noted. thanks everyone :thumbsup:

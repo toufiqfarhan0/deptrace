@@ -1,0 +1,33 @@
+eng-runtime
+
+morgan: FYI I'm seeing a small but reproducible p50 regression on the KV-heavy workload after the kernel-selection change. Repro script: short microbench with batch=8 and seq=1024.
+ashwin: ugh, which path? kv eviction or batching add?
+morgan: seems related to KV cache miss path + new fused-gemm kernel fallback. Hotspot around 40-50ms per request. Going to capture an nsys run now.
+ashwin: cool. capture flags I'd try: --trace=cuda,nvtx,osrt and sampling enabled. keep duration small (10-20s) to avoid huge files.
+morgan: here is the exact command I ran (saved output to /tmp/nsys-kvprobe.qdrep):
+```
+nsys profile --output /tmp/nsys-kvprobe \
+  --trace=cuda,nvtx,osrt \
+  --sample=cpu --sample-frequency=1000 \
+  --capture-range=cudaApi:launch:start-cudaApi:launch:end \
+  --duration=18s \
+  --force true \
+  --target-processes all \
+  --verbosity=warning \
+  -- python bench_kv.py --batch 8 --seq 1024 --iters 200
+```
+lina: couple questions: 1) are you using KV prefix caching enabled? 2) what quant/FFT kernels are in play?
+morgan: prefix cache on. Model is quant8, we fall back to fp16 fused-gemm for long sequences. suspect kernel selection chooses a slower cuBLAS path on miss.
+nick: when you run the trace, please also capture a short perfetto flame or export timeline from qdrep with `nsys export` so we can look at kernel timeline + OSRT gaps.
+morgan: exported a minimal timeline: `/tmp/nsys-kvprobe.timeline.json` from the run. Observations: long gaps where host thread waits ~10-20ms between kernels, NVTX regions align with cache lookup / eviction.
+ashwin: that sounds like CPU-side stalls. Could be lock contention in KV map or blocking syscalls. Did you sample libc or sched?
+morgan: sampling shows high time in `std::unordered_map::find` and our `kv_evict()` path. I also see kernel launch latencies spiking when concurrency is high.
+lina: try sampling wall-clock with a shorter sample-window and larger sampling frequency to reduce aliasing. Also use `--offline-sampling=false`? (depending on nsys version)
+nick: another pattern: if you set `--trace=nvtx,osrt` you get clearer OSRT queuing + timeline for kernel submission. For kernel-level hotspots, export the kernel table and look at the top-by-duration.
+ashwin: also check `--capture-range=nvtx:kv_lookup_start:nvtx:kv_lookup_end` to focus capture only during the KV hit/miss window. reduces noise and file size.
+morgan: good tip. I re-ran with capture-range limited to the eviction window and got a 6MB qdrep instead of 1.2GB. Much easier to open.
+ci-bot: deploy-notify: perf-benchmark/kv_workload completed with status: unstable (p50 +12% over baseline).
+morgan: posting this so SE/bench owners know: small regression, root cause probable kv_evict lock and kernel fallback. Next steps: ashwin to try lock-free kv lookup, lina to test kernel selection heuristics (force fused-gemm path), I'll re-run capture with `--sample-frequency=2000` and post exported CSV.
+ashwin: I'll prototype a lock-free read path today. If we can avoid the eviction path at high QPS we might restore p50.
+lina: I'll also try forcing quantized kernel with `--prefer-kernel fused_quant` in the runtime config and run the same nsight capture to compare.
+morgan: thanks all. attaching the exported CSV (top kernels by runtime) and a short timeline screenshot in the thread (uploaded). Will follow up with a condensed perf summary and a test PR. :eyes:

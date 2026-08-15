@@ -1,0 +1,39 @@
+eng-ml
+
+Anya: Quick heads-up — brought patchwork-v1 into staging (float -> int4 per-tensor) and ran the usual recall@k smoke. Seeing a sharp drop for short queries (len <= 8 tokens) on recall@1. Anyone else noticed short-query sensitivity with int4?
+Mike: Can you paste the numbers?
+Anya: Sure — small snapshot from the eval run:
+```
+N=5k queries (mixed lengths)
+Recall@1 overall: float=0.842 -> int4=0.835 (-0.7)
+Recall@1 short queries (<=8): float=0.792 -> int4=0.671 (-12.1)
+Silhouette (HDBSCAN) overall: float=0.21 -> int4=0.18
+Silhouette short: float=0.14 -> int4=0.02
+```
+Anya: Weird that long queries are fine, it's concentrated in the short tail.
+embed-bot: eval-job started: job_id=6721, dataset=wiki-shorttail, metrics=[recall@1,recall@5,silhouette], runner=staging-cluster-a
+Jordan: Short-tail collapse smells like normalization / quantization bias. Are we L2-normalizing before nearest-neighbor? cosine vs dot?
+Anya: We normalize floats at end (L2), then cast to int4 path which also runs a per-vector scale/shift. I double-checked code: normalization happens before quant path.
+Sophia: Could be per-tensor vs per-channel scale — per-tensor int4 can crush small-variance dims that matter for short queries. Try per-channel quant or changing clip range.
+Mike: Can you run nearest-neighbor distance distributions for short vs long queries? sample command: `python tools/knn_dists.py --model patchwork-v1 --quant int4 --k 10 --split short,long`
+Anya: Running that now. Also toggled per-channel int4 (experimental flag) to compare.
+embed-bot: eval-job update: job_id=6721 status=partial, step=knn-dists, ETA~2m
+Anya: Quick dist stats (median nearest dist):
+- short float med=0.32, short int4 per-tensor med=0.58, short int4 per-channel med=0.34
+- long float med=0.28, long int4 per-tensor med=0.29
+Anya: So per-channel fixes distance shift almost entirely.
+Jordan: That aligns — per-tensor quant introducing scale collapse for vectors with low variance across dims (short queries). Per-channel preserves per-dim sensitivity.
+Mike: Any effect on overall latency / memory for per-channel int4?
+Sophia: Small perf hit (~3-5% slower) but way better quality. Also check cosine vs dot before knn — if you accidentally use raw dot on un-normalized quant vectors you'll see weird rank flips.
+Anya: Confirmed we use cosine on the downstream search but a fallback path used `dense_index.search_dot` in a regression test. Investigating whether test used wrong index.
+Anya: For reproducibility, here's the eval command I ran:
+```
+python eval_recall.py --model patchwork-v1 --quant per-tensor-int4 --dataset wiki-shorttail --k 1,5 --normalize true --output /tmp/patchwork_eval.json
+```
+Jordan: Try swapping `--quant per-channel-int4` and re-run. Also run a quick check with 16-bit quant (int8 or fp16) to isolate whether it's the low-bitwidth or scale scheme.
+Anya: Did both: per-channel-int4 brings short recall back to 0.78 (close to float). fp16/int8 both fine.
+Mike: Sounds like we should avoid per-tensor int4 for this model on production. Propose canary: stage per-channel-int4, do A/B on 5% traffic, monitor recall@1 short-tail and p99 latency.
+Sophia: Agreed. Also add a unit that verifies nearest-neighbor distance shift > 0.2 triggers a manual check.
+Anya: Will open a rollout PR and a follow-up eval script to auto-compare per-tensor vs per-channel.
+embed-bot: eval-job complete: job_id=6721 status=success, artifacts=/artifacts/6721/, note=per-channel restored short-query metrics
+Anya: Thanks all — PR incoming. :thumbsup:

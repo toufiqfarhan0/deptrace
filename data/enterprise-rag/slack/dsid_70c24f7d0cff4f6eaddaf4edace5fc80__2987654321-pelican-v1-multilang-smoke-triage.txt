@@ -1,0 +1,31 @@
+eng-ml
+
+sumi: Heads-up — Pelican v1 onboard sweep failing locale checks. Quick note: Korean honorifics sometimes drop suffix spacing; Arabic shows mirrored punctuation around quotes. BLEU delta ~9% on our small locale slice.
+jorge: Yikes. Any tiny repros we can paste here?
+sumi: Pasting two short repros.
+
+```
+input (ko): 저희는 학교에 갔습니다요.
+gold (en): We went to school.
+pred (en): We went to schoolyo
+```
+
+```
+input (ar): 1237 قال: "هل وصلت الرسالة؟"
+gold (en): 123 said: "Did the message arrive?"
+pred (en): 123 said: "Did the message arrive?"
+(note: in pred the Arabic quotes ended up mirrored after the closing punctuation in some runs)
+```
+
+mei: The ko example looks like token boundary shift: suffix '요' merged onto previous token so decoder emits it raw. Could be pre-tokenizer normalization or training tokenization mismatch.
+rahim: For ar, sounds like bidi/mirroring issue. Did preprocessing strip Arabic presentation forms or directional marks?
+jorge: Was this seen only on quantized runs or also fp16?
+sumi: Both. q5 shows more frequent merges; fp16 still has occasional bracket/quote mirroring. Seems like two separate problems but maybe same root (tokenization/normalization).
+ops-bot: eval-runner-1501: pelican-v1 multilingual quick-sweep (n=1500) 10 flagged samples (regression threshold 5%). Full report: s3://rwd-evals/pelican/v1/2987654321/report.json
+mei: I pulled tokenizer outputs: training used byte-level pretokenizer + NO unicode normalization. Onboard runtime had NFC normalization + collapse-zwj enabled by default. That will change token splits on Hangul syllable-plus-suffix combos and remove some zero-width markers in Arabic.
+rahim: Removing ZWJ can flip visual joining forms but shouldn't reorder punctuation; however if directional control chars are stripped, the rendering order for mirrored quotes can flip on roundtrip.
+jorge: Action plan: 1) run a 300-sample canary with onboard tokenizer switched to training parity (disable NFC and collapse-zwj), 2) enable kv-cache alignment traces to catch prefix length diffs, 3) run q5 and fp16 side-by-side to see amplification.
+mei: I'll add a tiny unit test for Korean suffix separation (ensure '요' is separate token) and an Arabic bidi preservation test (quotes and parentheses keep original logical order).
+sumi: I'll kick off the canary and link results. If parity fixes most cases we should make tokenizer config explicit in onboarding checklist. Tagging @mei @rahim. :thumbsup:
+rahim: Also propose per-locale BLEU monitoring (ko/ar/zh) with a lower alert threshold (2%) for onboard bring-ups.
+sumi: Agreed. I'll add that to the eval-runner config. Will report back when canary finishes.

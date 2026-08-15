@@ -1,0 +1,39 @@
+eng-ml
+
+Anika Patel: FYI — during the q4b-int4 bringup yesterday I noticed the microgolden span-extraction pass rate dropped from ~94% to ~82% for one prompt slice. looks like many near-duplicates with slight span-offsets are tripping labeler agreement.
+Raj Chen: ugh. do we have examples? can you paste a couple?
+Anika Patel: pasted two quick examples below (anonymized):
+Anika Patel: - Input A: 'Find the safety-relevant span...' -> Label: 'safety-relevant' (tokens 15-18)
+Anika Patel: - Input B: 'Find the safety relevant span...' -> Label: 'safety relevant' (tokens 15-17)
+Anika Patel: these are semantically identical but token offsets differ and our golden matcher is strict.
+Marta Gomez: that matches a class of issues I flagged last quarter — span-normalization/dedup not catching small tokenization shifts. could explain labeler disagreement.
+Han Li: can we run the dedupe pipeline with span-aware hashing? I have a small script that computes normalized span fingerprints.
+Han Li: run: ```bash
+python infra/dedupe/span_fingerprint.py 
+  --input s3://redwood-curation/promptset/span-extract/working.jsonl 
+  --out s3://redwood-curation/promptset/span-extract/deduped.jsonl 
+  --sim-thresh 0.85
+```
+Raj Chen: nice. what's the expected reduction?
+Han Li: ballpark 12-18% duplicates in that slice, depending on threshold. higher threshold -> fewer merges.
+LabelBot: labeler-queue: +120 span-extraction tasks added to queue (priority: medium) :clipboard:
+Marta Gomez: proposal: (1) run span_fingerprint at 0.85, (2) regenerate microgolden (sample 600 stratified by source), (3) run local quant smoke w/ q4b-int4 + q6b-int8 variants, (4) compare pairwise F1/offset mismatch stats.
+Anika Patel: +1 to that plan. If dedupe reduces near-duplicate noise, we should see labeler agreement and golden pass rate recover.
+DevEx Bot: samplers noticed high overlap in recently imported shard. Recommend temporary ingest-sample hold for that namespace until dedupe completes.
+Raj Chen: timeline? can someone run dedupe and push new golden?
+Oncall Nick: I can take this — will run the dedupe job now and kick off a microgolden refresh. estimating ~3h for dedupe + 1h for microgolden generation, then 2h for local quant smoke runs. aiming to finish today EOD.
+Marta Gomez: for the quant smoke, can we include the OP-specific longctx variant? past regressions were longctx-only.
+Han Li: I'll add longctx variant to the run matrix. also recommend collecting these metrics: tokenized-span-shift-rate, span-fingerprint-collision, labeler-agreement-before/after.
+Anika Patel: perfect. please post results here when done. if pass rate still low after dedupe we should open a quality regression ticket and block the q4b-int4 rollout for that workload. :warning:
+Raj Chen: thanks all — tagging @eng-ml for visibility. :eyes:
+Oncall Nick: started dedupe job (job id: dedupe-5412345678). will post progress logs.
+Han Li: thanks — ping me if you want the script tweaked (I can relax tokenization normalization).
+Anika Patel: thanks team! appreciate the fast turnaround. :pray:
+Oncall Nick: dedupe finished — reduced slice from 4,120 -> 3,610 examples (~12.4%). pushed deduped file to s3 and kicked microgolden refresh.
+DevEx Bot: microgolden refresh started (run_id: mg-5412345678).
+Marta Gomez: once smoke completes, let's compare span-offset-distribution plots. I can make a quick notebook.
+Oncall Nick: quant smoke finished: q4b-int4 local F1=0.915, q6b-int8 F1=0.913 on refreshed microgolden. span-offset-mismatch dropped from 7.8% -> 1.9%.
+Anika Patel: that's a big win. looks like dedupe fixed the noise. I'll mark this as resolved for the bringup but keep the microgolden snapshot linked in the regression corpus.
+Marta Gomez: will upload offset plots + notebook to the curation board.
+Raj Chen: filing a short postmortem note in case this recurs (dedupe threshold too aggressive / ingestion overlap).
+Anika Patel: done. thanks everyone. closing thread. :tada:

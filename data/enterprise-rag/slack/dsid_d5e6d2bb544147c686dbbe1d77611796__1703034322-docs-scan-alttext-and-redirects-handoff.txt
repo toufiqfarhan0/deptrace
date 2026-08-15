@@ -1,0 +1,43 @@
+docs
+
+ana: quick heads-up 1: our nightly docs scan flagged ~6 issues: 3 images missing alt text, 2 external redirect warnings, and one sample snippet using an old CLI flag. can anyone pick a small fix or two this afternoon? :coffee:
+
+jon: i9ll take the image alt text. do we have a list of the files?
+
+ana: (typo: ana) pasted the portion from the CI report into the ticket:
+```
+- guides/deploy/overview.md -> image: /assets/deploy/diagram-2.png (missing alt)
+- guides/onboarding/first-steps.md -> image: /assets/onboard/welcome.png (missing alt)
+- kb/embeddings/usage.md -> image: /assets/embeds/flow.png (missing alt)
+- runtime/networking.md -> external: https://old-monitoring.example.com -> redirect to new URL
+- runbooks/incident-template.md -> external: https://docs.example.com/old-path -> 301 warn
+- examples/cli/quickstart.md -> snippet uses `redwood-cli --legacy-flag` (deprecated)
+```
+
+ravi: i9ll pick the redirects and update runbooks/incident-template to point at the canonical pages. can someone confirm the canonical monitoring URL?
+
+lee: canonical monitoring is https://monitoring.redwood.ai/dashboard. ravi, ping me in the PR and i9ll confirm links. also suggest we add a small check to ensure external links are https and not internal-redirecting domains.
+
+jon: grabbing the images now. quick note: please include descriptive alt text (1-2 short phrases) not just filename. i9ll push a PR for the three image files.
+
+ana: thanks. small housekeeping: when you update files, please add `editor: <your-handle>` in frontmatter so the docs dashboard credits changes and the nightly scan can include contact info.
+
+ravi: done. opening PR #322 with redirect fixes and updating the incident template to the new canonical doc. cc @lee for final link verification.
+
+jon: opened PR #323 for alt text + one-liner caption on deploy/overview. also added a tiny unit test that asserts image files have non-empty alt in frontmatter. snippet:
+```yaml
+- test: image-alt-check
+  command: node scripts/check-alt.js
+```
+
+ana: great. about the deprecated CLI flag in examples/cli/quickstart.md 1, can someone replace with the new `--fast-path` usage? i think product changed the flag last quarter.
+
+lee: i can update the snippet to show `redwood-cli --fast-path`. also will add a parenthetical note "replaced legacy flag Q2 2025" for context.
+
+docs-bot: Docs scan (nightly) created issue #1789 with 6 findings. Reminder: to opt-out of automated checks on a PR add `doc-ignore-checks: true` to frontmatter and explain why in the PR description.
+
+jon: nice. after #323 merges, can we run a full link-scan in the staging site? i want to confirm the external redirects are resolved.
+
+ravi: yep, will trigger `npm run docs:link-scan -- --env=staging` after merge. will post results here.
+
+ana: thanks everyone. if you9re short on time, prioritize the runbook redirect first (incident flow). otherwise small PRs for alt text are fine and low-risk to merge. :white_check_mark:

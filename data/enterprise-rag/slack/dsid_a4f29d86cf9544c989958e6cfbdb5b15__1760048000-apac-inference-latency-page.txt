@@ -1,0 +1,45 @@
+incidents
+
+incident-bot: ALERT: Elevated p95 latency detected for inference-apac (ap-northeast-1). Severity P2. Error rate steady but tail latency spiking ~700ms p95 for text-generation endpoints. Paging @oncall-ryan :rotating_light:
+oncall-ryan: Ack, I’m on it. Starting quick triage — checking autoscaler, queue length, and recent rollouts.
+eng-ops: I’m seeing a correlated bump in KV cache misses and GPU queue depth right after the `model-quant-v2` rollout at 10:03 UTC.
+oncall-ryan: Noted. Running quick queries:```sh
+# check recent rollout history
+kubectl -n inference rollout history deploy/inference-canary
+
+# tail the prometheus query for p95
+curl -s "https://metrics.internal/api/v1/query?query=histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket{region=\"ap-northeast-1\"}[2m])) by (le))"
+```
+eng-ops: Also seeing increased `kv_cache_miss_rate` for that model: `kv_cache_miss_rate{model=\"model-quant-v2\"}` jumped from 2% -> 35% after rollout.
+product-ana: Could be a quantization cache path regression. If rollback is quick we can limit customer exposure. Recommend rollback on the canary subset first.
+oncall-ryan: Rolling back canary to `model-quant-v1` on 2 pods now. Command:```sh
+# rollback canary
+kubectl -n inference set image deploy/inference-canary inference=model-quant-v1:stable
+```
+incident-bot: SYSTEM: Rollback triggered by oncall-ryan at 1760048145.
+support-luis: Heads-up — dedicated customers in APAC have been pinged internally. If this persists for >30m we should send a brief customer notification. Draft below: "We are investigating increased response times for inference in ap-northeast-1. Engineers have rolled back a recent model rollout as a mitigation. We continue to monitor and will provide updates in 30 minutes. No data loss is suspected."
+eng-ops: Rollback completed on canary. Observability shows KV miss rate dropping back to ~3% within two minutes. GPU queue depth reduced.
+oncall-ryan: Good sign. p95 trending down: 700ms -> 310ms after rollback. Continuing to monitor for full rollouts.
+product-ana: Proposed status page update (short): "Degraded performance in ap-northeast-1 for text generation endpoints. Mitigation: rolled back recent model variant on canary. Impact: elevated tail latency; most requests unaffected. ETA next update: 30 minutes."
+sre-kate: I’ll take overnight watch. Handoff summary: rollback on canary -> KV cache path suspected regression in model-quant-v2 -> metrics improving -> monitor p50/p95 and error rate -> escalate if p95 > 400ms for 15+ minutes or errors >1%.
+oncall-ryan: Handoff accepted. Key runbook pointers: `runbooks/latency-tail` and `scripts/clear-kv-cache.sh` (use with care).
+sre-kate: Copy. I’ll set an automated alert:```yaml
+alert: APAC_Inference_Tail_Latency
+expr: histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket{region=\"ap-northeast-1\"}[5m])) by (le)) > 0.4
+for: 15m
+labels:
+  severity: page
+```
+support-luis: Drafting customer-facing note for customers on SLAs: "We've observed short-lived increased latency in ap-northeast-1 beginning at 10:02 UTC tied to a model rollout. Engineers performed a rollback to mitigate. We'll follow up with a technical summary and remediation timeline if you request it." Recommend sending only if p95 does not recover below 350ms in 30 minutes.
+incident-bot: NOTE: status page update queued: "Degraded performance (ap-northeast-1) — mitigation in progress (canary rollback). Next update in 30 minutes or on recovery."
+eng-ops: Suggest adding postmortem owner now while fresh: owner = @oncall-ryan, backup = @sre-kate. Root cause hypothesis: regression in KV cache serialization under quantized execution path.
+product-ana: Agreed. Also add an action item to add a synthetic test that exercises KV cache miss patterns at scale for quantized models.
+sre-kate: Monitoring: p95 now at 220ms, p50 stable at 90ms, error rate unchanged. I’ll keep the page update to 'under monitoring' and move to 'resolved' when p95 < 300ms for 20m.
+oncall-ryan: Nice work team. Emoji reaction :thumbsup:. I’m marking incident P2->P3 as mitigated in the tracker and will stitch notes into the incident ticket.
+product-ana: Customer message ready if needed, and we have a technical follow-up draft for the postmortem.
+sre-kate: Closing notes for handoff: monitor 3 dashboards (latency, kv_cache_miss_rate, gpu_queue_depth), watch for re-deploys of `model-quant-v2` (block auto-rollouts until postmortem).
+incident-bot: INCIDENT RESOLVED: p95 latency returned to baseline; mitigation successful. Logged timeline and actions. Ticket assigned to oncall-ryan for postmortem.
+eng-ops: Recommend follow-up: revert auto-deploy for quant models and run extended load test before reintroducing `model-quant-v2`.
+support-luis: If we do send a customer update, final suggested wording: "Update: We rolled back a model variant to mitigate increased inference latency in ap-northeast-1. Performance has returned to normal. We will share a technical summary once the root cause is confirmed."
+product-ana: I’ll coordinate the postmortem and tag stakeholders. Thanks all.
+sre-kate: Taking on overnight watch — will @-notify if regression reappears.

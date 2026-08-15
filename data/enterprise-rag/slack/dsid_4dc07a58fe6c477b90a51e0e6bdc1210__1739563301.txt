@@ -1,0 +1,68 @@
+support
+
+Miguel Santos: Hey folks — got a Dedicated customer asking what the burst denial reason codes mean. They’re seeing intermittent `429` + a `burst_denial_reason` in the response headers (and in the Console panel). What’s the best way for Support to explain these in plain terms + what actions to take? Also, do we have something linkable (runbook / docs) we can send?
+
+SupportBot: :ticket: Linked customer case: SUP-28503 ("429s when burst cap reached")
+
+Sean Gallagher: +1 we should give Support a crisp mapping + “what you should do next”. We also need to be careful to not imply burst is guaranteed capacity.
+
+Peter Holtz: The short version: burst is opportunistic + guarded. Denials happen for a few distinct reasons, and the customer action differs.
+
+Kira Thompson: I can write the customer-facing blurb, but I need the canonical list + recommended retry guidance. @Benji Okafor can you paste the current codes we’ve standardized on?
+
+Benji Okafor: Yep. Current denial reasons (what customer sees) are:
+- `BURST_CAP_REACHED`: tenant hit configured burst cap (their max extra concurrency/GPU-seconds above baseline). This is “you used up your allowed burst headroom right now”.
+- `POOL_SATURATED`: burst pool for that region/hw class is at/near capacity (can’t safely admit more burst without impacting others).
+- `FLEET_SAFETY_CIRCUIT_OPEN`: global/fleet safety cap tripped (protecting non-burst SLOs). Temporary, usually resolves when load drops.
+- `COOLDOWN_ACTIVE`: tenant is in cooldown window (anti-thrashing + fairness). Deny until cooldown expires.
+- `PRIORITY_DEFERRED`: admitted other higher-priority burst traffic first (tiering + fairness). Typically transient.
+- `BURST_DISABLED_BY_POLICY`: burst disabled for tenant/route/model (feature flag, allowlist, or policy gate).
+- `CONFIG_INVALID`: tenant config is missing/invalid (rare; generally a control-plane misconfig).
+- `TELEMETRY_UNCERTAIN`: we can’t confidently determine safe capacity due to telemetry lag/partial outage, so we fail closed.
+
+Benji Okafor: Not all tenants will see all of these; most common in the wild are `BURST_CAP_REACHED` and `POOL_SATURATED`.
+
+Miguel Santos: Super helpful. How do we want Support to phrase `POOL_SATURATED` without making it sound like our platform is “out of GPUs” broadly?
+
+Peter Holtz: Suggestion:
+- “Burst uses a shared Redwood-managed burst pool in your region/hardware class. During peak demand, the pool can be fully utilized. When that happens, we deny additional burst requests to protect performance for all tenants (including your baseline).”
+
+Sean Gallagher: + explicitly: baseline dedicated capacity is still protected; burst is “best effort within guardrails”.
+
+Kira Thompson: For retries: are we recommending immediate retry on all denials? Or only some?
+
+Rafael Mendes: For Support guidance:
+- `BURST_CAP_REACHED`: retrying won’t help until usage falls below cap / window resets. Recommend: reduce concurrency, schedule batch job differently, or request higher cap via CSM.
+- `POOL_SATURATED`, `PRIORITY_DEFERRED`: retry *can* work. Use exponential backoff + jitter; don’t hot-loop.
+- `FLEET_SAFETY_CIRCUIT_OPEN`: retry after backoff; if persistent > X mins, open Support escalation (SRE oncall) because it indicates neighbor impact risk.
+- `COOLDOWN_ACTIVE`: retry after a short delay; cooldown is usually on the order of minutes (Support can check the dashboard panel).
+- `TELEMETRY_UNCERTAIN`: retry after backoff; if it persists, treat as incident (telemetry pipeline / admission controller health).
+
+Rafael Mendes: We have a runbook draft that covers “how to interpret denial reasons” + “what to check in dashboards”: https://confluence.redwood.internal/eng-sre/runbooks/burst-pool-overload-mitigation-runbook (still WIP, but good enough for internal Support).
+
+Miguel Santos: Nice. Do we have something customer-visible yet?
+
+Kira Thompson: Not a public doc yet; I can add a short section to the Dedicated burst guide once PR-928 is merged. For now, Support can paraphrase + we can share a snippet if needed.
+
+Sean Gallagher: For now please avoid linking internal confluence to customers. Instead: provide a short explanation + offer to review their burst config + suggest backoff behavior.
+
+Benji Okafor: Also: if customer asks “why did I get 429 instead of queueing?” — our semantics are immediate deny (no queue) once guardrails say no. Queueing is intentionally out of scope for v1 to avoid tail-latency blowups.
+
+Miguel Santos: Got it. Any quick checklist Support can follow when customer says “denials higher than expected”?
+
+Peter Holtz: Internal checklist:
+1) Confirm their baseline vs burst cap (`burst_max_ratio`, per-tenant cap) in control plane.
+2) Check burst pool saturation dashboard for their region/hw.
+3) Check `FLEET_SAFETY_CIRCUIT_OPEN` events + any SLO regression gate alerts.
+4) If `TELEMETRY_UNCERTAIN` spikes, check admission controller + telemetry lag panels.
+
+Rafael Mendes: + if they’re hitting `BURST_CAP_REACHED` constantly, it’s often a client-side concurrency spike / retries amplifying load. Recommend: cap parallelism + use idempotency keys to avoid double work.
+
+Kira Thompson: Draft customer-facing phrasing (Support can copy/paste):
+“Burst capacity provides temporary throughput above your reserved baseline when shared burst pool capacity is available. If a request is denied with a burst denial reason code, it means one of the guardrails is preventing additional burst to protect performance and fairness. Your reserved baseline capacity remains unchanged. For saturation-related denials, retry with exponential backoff + jitter; for cap-related denials, reduce concurrency or work with us to adjust limits.”
+
+Miguel Santos: Perfect. I’ll respond to the customer with the mapping for the two codes they saw (`POOL_SATURATED`, `BURST_CAP_REACHED`) and include the retry guidance. I’ll also link the internal runbook in the case notes for future.
+
+Sean Gallagher: :thumbsup: Please ping if you see `FLEET_SAFETY_CIRCUIT_OPEN` in a customer case — we want to know ASAP.
+
+Benji Okafor: I’ll add a short “Support glossary” section to the denial reason codes ticket so it stays canonical. :writing_hand:

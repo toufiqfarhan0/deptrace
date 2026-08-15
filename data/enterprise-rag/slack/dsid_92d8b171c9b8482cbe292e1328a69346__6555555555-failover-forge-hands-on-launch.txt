@@ -1,0 +1,62 @@
+marketing
+
+zoe: Quick pitch: 'Failover Forge: a hands-on webinar for building demo-grade fallbacks and launch-ready messaging'. Goal: show a concise playbook (metrics, knobs, failover recipe) + a live mini-failover. Target date: June 9. Draft abstract below — feedback welcome.
+
+zoe: Draft abstract: In 40 minutes we walk through a repeatable playbook for demo reliability: measure the right signals, apply practical knobs (batching/cache/quantize), and implement a fallback routing recipe that keeps customer demos alive. Includes a short live failover and a follow-up one-pager you can reuse. Audience: infra/ML/platform engineers and product leads.
+
+michael: strong. keep slides <=10 and make the failover the memorable moment.
+
+tara: I can run the live mini-failover and provide a prebuilt container. free Jun 2-8 mornings PT. Need a pinned image tag and an IP allowlist.
+
+oliver: Ill prepare the benchmark slide + one slide showing the cost/latency tradeoff for 3 knobs. want to use p50/p95 and cost per 1k tokens.
+
+zoe: speaker plan: intro + playbook (zoe), benchmarks (oliver), live failover (tara). michael you host/QA?
+
+michael: happy to host and run a 45s poll after benchmarks: "Where would you invest first? (batching/cache/quant)". also will prep 3 seed Qs. :white_check_mark:
+
+oliver: run-of-show (compact):
+```
+00:00 - Welcome + outcomes (zoe) 3m
+03:00 - Playbook & decision table (zoe) 7m
+10:00 - Benchmarks + rules of thumb (oliver) 8m
+18:00 - Poll (michael) 1m
+19:00 - Live mini-failover demo (tara) 12m
+31:00 - Postmortem & cost delta (oliver) 4m
+35:00 - How to copy this in your stack (zoe) 5m
+40:00 - Q&A (panel) 10m
+```
+
+zoe: rehearsal plan: tech dry run Jun 4 9am PT, full dress Jun 7 11am PT. Can everyone confirm?
+
+tara: Jun 4 confirmed for tech. Jun 7 tentative but likely OK.
+
+oliver: confirm both. will post sample numbers by EOD Fri.
+
+michael: I'll create invites and the gating checklist doc. ops-scheduler, can you reserve staging?
+
+ops-scheduler: Staging reservation: 2026-06-04 09:00 PT for 90 minutes. Reminder 24h prior.
+
+zoe: quick preflight checklist (short):
+- slides uploaded + speaker notes
+- pinned demo image + sha
+- staging URL + telemetry dashboard
+- fallback routing policy (code snippet) ready
+- backup video of demo steps
+
+michael: marketing copy idea (short):
+H1: "Failover Forge: make your LLM demos resilient and launch-ready"
+Subhead: "A practical playbook, real metrics, and a live failover you can copy."
+CTA: "Claim your seat" + single form field: "Main demo constraint".
+
+tara: recommend including a short follow-up one-pager with code + checklist as part of the thank-you email.
+eoe: owners: slides/zoe, benchmarks/oliver, demo/tara, host/michael. michael will send invites and poll setup by EOD.
+
+zoe: thanks team  I'll draft registration copy and the one-pager outline this afternoon. tagging follow-ups: @oliver for numbers, @tara for demo tag & allowlist, @michael for invites.
+
+oliver: posting dashboard snippet later today (p50/p95, tokens/sec, cost/1k).
+
+tara: demo prompts (short): "TL;DR spec in 2 bullets", "Condense email to 1 line", "Given traces, suggest top 2 fixes". drive link: https://rwd.infer/failover-forge-cases
+
+michael: great. Ill build the poll and seed Qs in the webinar tool and share invites.
+
+zoe: perfect  closing note: keep copy engineer-first and include a one-line 'how we measured' in the followup. I'll circulate rehearsal checklist tomorrow. :hammer_and_wrench:

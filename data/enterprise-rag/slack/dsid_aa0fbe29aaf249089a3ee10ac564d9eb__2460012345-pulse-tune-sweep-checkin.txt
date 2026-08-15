@@ -1,0 +1,42 @@
+eng-runtime
+
+Olivia: Quick pulse — want to run a short throughput sweep focused on max_tokens and windowing today. Goal: measure tail-latency/throughput for combos of max_tokens=[512,1024,2048] and batch caps=[8,16,32]. 30m per config is fine. Can someone pick this up? Need: perf artifacts (flamegraphs/KV hit rates), loadgen configs, and raw logs. Ping me when you start.
+
+Raj: I can take this. Plan: run on dev-gpu-8 (isolation) — will exercise continuous-windowing and adaptive pacing. I'll run a smoke then full pass. Quick question: do we want to pin model to v2.3-quant or use v2.4-fp16? v2.3-quant for cost baseline.
+
+Olivia: v2.3-quant is fine for baseline. If time, repeat for v2.4-fp16 for tail comparison.
+
+Raj: K, starting with quant. Command I'll use:
+```bash
+./loadgen --target=dev-gpu-8 --rq=100000 --concurrency=256 --max_tokens=1024 --batch_cap=16 --window_ms=40 --outdir=s3://redwood-perf/pulse-sweep/2460012345/
+```
+
+Raj: smoke run looks good — no OOMs, warmup steady. ETA full pass ~35m. :thumbsup: 
+
+Sasha: Upload path for artifacts? Where should I pull traces and run regression checks? Also we'll want deterministic prompt set (promptset/pulse-50.json?)
+
+Olivia: Use s3 path above, and confirm prompt set pulse-50.json. For regression, compare against baseline in s3://redwood-perf/baselines/v2.3-20260101/
+
+Marco: Heads-up — running a heavier pass on that dev cluster may bump minor jobs. If you see increased error rates, hit the circuit on the job group. I'll monitor.
+
+CI-bot: Nightly loadgen sanity (master) finished: 2026-03-16 03:12 UTC — 0 failures.
+
+Raj: Full pass finished. Uploading artifacts now. Quick summary: throughput 1.8k tok/s at max_tokens=1024/batch_cap=16, p99 latency 210ms. Notable KV cache miss spike during warmup (see logs). Raw log snippet:
+```
+[2026-03-16T10:12:34Z] WARN kvcache: miss_rate=0.22 warmup=true
+[2026-03-16T10:15:01Z] INFO serving: tokens/s=1820 p99=210ms
+```
+
+Sasha: Got artifacts and started diff against baseline. Early note: p99 regressed by ~18ms vs baseline for 1024/16 config. Will run replay with pinned seed to confirm. 
+
+Olivia: Thanks — can you capture the config used and the header of the perf report? Also attach the loadgen command and commit hash.
+
+Raj: Pushed report metadata to s3 + perf-dashboard link: https://perf.redwood.internal/d/flows/pulse-sweep?orgId=1&from=2460012345
+
+Marco: Observability looked ok. No cascading failures. If QA sees regression consistent across seeds, let's open a small investigation PR targeting window_pacing heuristic.
+
+Sasha: Replay complete — regression reproduced. Captured flamegraphs and KV traces in s3. I'll open an issue with steps and assign to Raj.
+
+Olivia: Perfect. Thanks team. Raj, once issue is up can you triage and propose a mitigation (tuning or fallback to smaller batch cap)? Let's sync tomorrow 10:30am PT if needed.
+
+Raj: Will do. Filing issue now. Thanks everyone.

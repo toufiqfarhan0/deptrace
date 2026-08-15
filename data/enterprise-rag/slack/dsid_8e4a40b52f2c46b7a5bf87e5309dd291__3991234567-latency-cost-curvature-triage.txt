@@ -1,0 +1,31 @@
+eng-ml
+
+Ana: Quick micro-audit on KiteLake-12B int8 candidate — seeing nonlinear latency vs cost as seq len grows. small tests attached.
+Mike: can you paste the bench numbers?
+Ana: gist of the run: `./bench --model=kitelake-12b --quant=int8 --bs=1 --seq=128/256/512`
+```
+seq=128: p95=42ms cost=0.0012
+seq=256: p95=78ms cost=0.0019
+seq=512: p95=240ms cost=0.0045
+```
+Yoko: 240ms at 512 looks like KV cache misses or fragmentation — are we forcing cache flush anywhere? any regen or context-window switching? :thinking:
+Mike: ran quick A/B: kv cache OFF -> p95 520ms (worse). kv ON but cold -> 360ms. after priming (1 warm request) -> 180ms. logs show many small RPCs and a few schedule preemptions.
+Ravi: on top of latency, I also see quality drift for long outputs. long-form summarization rouge drops ~3.4 pts vs fp16 baseline when seq > 400. could be quantization-induced tokenization sensitivity.
+Priya: Operationally we should consider hybrid routing: int8 for short responses (<=256) and fp16 for >256. Need unit-econ numbers to justify.
+Ana: quick econ back-of-envelope: int8 token cost ~0.6x fp16 at seq=128, but as seq increases the overhead (tails + RPCs) pushes effective cost towards parity and sometimes worse.
+Mike: proposed routing config (draft):
+```
+routing:
+  - condition: seq_len <= 256
+    model: kitelake-12b-int8
+  - condition: seq_len > 256
+    model: kitelake-12b-fp16
+  - fallback: kitelake-6b-int6
+```
+Priya: add a quality gate: only route to int8 when quality_score(slice="summarize-long") >= 0.92. If score dips, route traffic to fp16 automatically.
+Yoko: ops note: mixed fleet causes autoscaler jitter; recommend reserving a small pool of fp16 capacity to avoid cold-start tails when traffic flips. Also look at batching thresholds — continuous batching seems to be breaking into many small batches for long seq.
+Mike: will instrument per-request metadata: seq_len, cache_primer, batch_size, rpc_count. that should help correlate cost spikes.
+DeployBot: bench-run-3991234567 completed — artifacts: https://internal/snapshots/3991234567 (logs + perf traces)
+Ana: action items: 1) Mike run 10k-sample econ sim using real traffic distribution and produce cost curve per-seq-bin (owner: Mike), 2) Yoko prototype cache-priming script and test effect on p95 for seq 512+ (owner: Yoko), 3) Ravi produce quality-delta memo per evaluation slice and recommended gating thresholds (owner: Ravi).
+Priya: I will draft the routing PR and include metric guards and a rollback playbook.
+Ana: thanks all, let's reconvene after the sim results. :thumbsup:

@@ -1,0 +1,77 @@
+support
+
+mike_acme: Hey @jess_support — running into a weird issue with the batch /rerank endpoint. We send 3 queries in one request but the returned scores don't line up with the candidate sets. Some queries get candidate scores that belong to other queries. No HTTP error, just bad rankings. Repro payload below and request-id: req_0acb12f3.
+
+mike_acme: (payload snippet)
+```json
+{
+  "queries": ["q1 text", "q2 text", "q3 text"],
+  "candidates": [
+    ["c1_q1", "c2_q1"],
+    ["c1_q2", "c2_q2", "c3_q2"],
+    ["c1_q3"]
+  ],
+  "top_k": 3
+}
+```
+
+mike_acme: Response shows a flat scores array of length 6, and we see q1 got 3 scores, q2 got 2, q3 got 1 — clearly misaligned. We're on SDK v0.9.2 and calling POST https://api.redwood.ai/v1/rerank/batch. Latency was normal ~120ms.
+
+jess_support: Thanks — sorry for the hit. Can you paste the exact full response (redact PII) and the request-id header that came back? Also which SDK/language?
+
+mike_acme: Full response (redacted):
+```json
+{
+  "request_id": "req_0acb12f3",
+  "scores": [0.87, 0.54, 0.12, 0.95, 0.67, 0.44],
+  "candidates_flat": ["c1_q1","c2_q1","c1_q2","c2_q2","c3_q2","c1_q3"]
+}
+```
+
+mike_acme: Note we expected scores grouped per query: [2,3,1] lengths. Instead looks like it flattened and then we can't map properly.
+
+jess_support: Copying in @ara_ml and @eng-runtime to triage. Two quick checks: (1) did you pass any optional field like "flat_candidates" or "candidate_offsets"? (2) did you send the request using our JS SDK or raw HTTP? Some earlier SDK versions had a bug around multi-query payload serialization.
+
+mike_acme: We used the JS SDK. Quick check: package.json shows "@redwood/inference": "0.9.2". No candidate_offsets in our code. Example call:
+```js
+client.rerank.batch({ queries, candidates, top_k: 3 })
+```
+
+ara_ml: Thanks, looking. Off the bat: older client versions serialized nested candidate arrays as a single-level list and added an offsets array server-side — but it relied on receiving the right metadata header. If the SDK omitted offsets we might end up flattening but lacking the offsets mapping. Can you share raw request bytes (curl or HAR)?
+
+mike_acme: I grabbed a HAR entry: request body is exactly the JSON I pasted originally (candidates as arrays). The request header included: "x-sdk-version: 0.9.2" and "content-type: application/json". No offsets header.
+
+eng-runtime: FYI I pulled logs for req_0acb12f3. Server accepted payload and went through rerank pipeline: it logs candidate_count_total=6, queries=3, offsets_header_present=false. The pipeline then calls flattenCandidates() and expects offsets array in the incoming metadata; if missing, the runtime attempts to infer offsets by dividing equally — that's the bug, it sometimes infers wrong partitioning when candidate counts vary.
+
+eng-runtime: Stack trace snippet in logs: 
+```
+runtime/rerank/flatten.go:42 inferOffsetsFromCandidates()
+runtime/rerank/handler.go:118 handleBatchRerank()
+```
+eng-runtime: Looks like SDK change in 0.9.x removed sending "x-candidate-offsets" header. Server fallback logic is brittle. We'll need a short-term workaround and a fix.
+
+jess_support: For workaround can you reorder to send each query as its own request? I know it's not ideal for volume but should preserve correctness until patched. Also can you downgrade to SDK 0.8.7 if that's feasible? That version guaranteed offsets header.
+
+mike_acme: Downgrade might be tough. Rewriting to sequential calls will cost us. Any chance you can provide a compatible header we can add client-side (we can set custom headers)?
+
+ara_ml: Yes — as immediate mitigation you can add a header "x-candidate-offsets" with a JSON array of per-query lengths, e.g. for your request: "[2,3,1]". That will bypass inference logic. Try sending using raw fetch with header override and confirm mapping.
+
+mike_acme: Ok trying now...
+
+mike_acme: Sent same body + header "x-candidate-offsets: [2,3,1]" — response looks correct now, scores map to queries properly. Thanks!
+
+jess_support: Great — that confirms server fallback was the cause. Action items: (1) eng-runtime to patch fallback to compute offsets deterministically by scanning nested arrays counts rather than equal-split inference; (2) SDK team to reintroduce offsets header in 0.9.x or document header workaround.
+
+eng-runtime: Assigning ENG-6543. I'll open a PR to change inferOffsetsFromCandidates to explicit-length scan and add unit tests for varied lengths. ETA EOD tomorrow.
+
+ara_ml: Also adding an integration test for batch rerank where candidate counts vary per query. Will include in regression suite.
+
+deploy_bot: deploy queued: merge/eng-runtime/patch-infer-offsets -> staging at 1769971500, rolling deploy started.
+
+eng-runtime: Deployed to staging. Verified with Mike's HAR payload — mapping now correct. Plan to promote to prod after a 2h soak.
+
+mike_acme: Verified production request too — mapping fixed for our tests. We'll remove header workaround after you confirm prod roll. Thanks for the fast turnaround. :tada:
+
+jess_support: Closing as "fix verified by customer". If anything else pops up ping this thread or open a new ticket. 
+
+mike_acme: Appreciated — will reopen if we see regressions.

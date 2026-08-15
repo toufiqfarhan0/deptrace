@@ -1,0 +1,29 @@
+customer-success
+
+Alex: quick note — three customers (OnboardA, FinchHealth, Boxly) flagged the same onboarding friction today: feature discovery + unclear next steps in the console. repeating ask: make it easier to find "model routing" and per-route billing docs.
+Maria: ugh saw that too. one of them said they abandoned the trial because they couldn't map billing to routes.
+Sam: can you drop sample quotes? helps product prioritize.
+Alex: from OnboardA: \"We couldn't tell which route consumed the tokens so estimates were useless. We stopped testing routing rules.\"
+Janet: FinchHealth asked for a short checklist during onboarding — "where to set route weights, how to preview cost impact, and webhook examples for alerts".
+Sam: ok. I think this is medium-severity but high-frequency for new accounts. propose a lightweight capture card + priority rubric.
+Maria: agree. also noticed multiple PMs want a single 'getting started' flow for dedicated accounts vs hosted. fragmentation is confusing.
+Janet: here's a capture template I used before — paste into tickets: ```
+- Customer: <company>
+- Persona: (SRE / PM / Data eng)
+- Onboard step: (signup / first deploy / cost review)
+- Symptom: short quote
+- Impact: (blocked / delayed / workarounds)
+- Ask: (docs / UI change / example)
+- Suggested priority: P2 if blocks trial, P3 otherwise
+```
+Alex: can we add a field for "suggested internal owner" (CS / Docs / Product) so things don't stall?
+Sam: yes. I'll take ownership of initial triage for next 2 days. I'll tag in product if P2.
+Maria: for short-term wins, what about a one-pager that maps console locations -> billing signals? I can draft.
+Janet: and I'll collate all quotes + attach the onboarding session recordings.
+ProductBot: ticket created: PROD-4821 — "Onboarding: unclear route billing and discovery" (assigned Sam). Link: https://redwood.example/issue/PROD-4821 :thumbsup:
+Sam: thanks. next steps: Maria drafts the one-pager by EOD Wednesday, Janet uploads recordings, Alex will sync with PMs in Thursday standup.
+Alex: noted. also let's add a quick in-console banner for new accounts linking to the checklist (short dev/design ask).
+Maria: can we add an initial cost-preview mockup? 2 slides, simple. I'll include in the draft.
+Janet: ping me when draft is ready, I'll prepare the customer comms.
+Sam: thanks team — friendly reminder to paste any more quotes into the ticket. I'll reopen triage thread after review.
+Alex: closing loop here. appreciate the quick swimlane. :rocket:

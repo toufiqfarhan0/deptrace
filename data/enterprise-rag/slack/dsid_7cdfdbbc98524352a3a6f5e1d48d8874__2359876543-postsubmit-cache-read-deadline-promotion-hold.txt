@@ -1,0 +1,40 @@
+eng-releases
+
+maria: Quick heads-up — postsubmit is failing on the remote cache read. Blocking promotions.
+chris: +1 seeing it in my run too. Step 'restore_cache' errors out with deadline.
+jen: Deploybot just refused the canary promotion: missing artifact for release-tag v1.12.4
+deploybot: promotion halted: artifact not found for sha=abcd1234 (required by canary rule)
+sam: I kicked a manual rerun of the postsubmit job, it fails almost immediately
+maria: Logs snippet from the runner:
+```
+2026-03-20T14:01:12Z restore_cache: connecting to remote-cache.redwood.internal:443
+2026-03-20T14:01:15Z restore_cache: rpc error: code = DeadlineExceeded desc = context deadline exceeded
+2026-03-20T14:01:15Z build: upstream artifact fetch failed, aborting
+```
+chris: Looks like a transient RPC deadline. Could be the cache front-end flapping or network egress policy. :thinking:
+ci-runner: we've seen 5/8 restores fail in the last 10m; rate escalated after a deploy 13m ago
+jen: We can't promote without that artifact. Options: wait + retry, promote previous artifact (pin), or manual force-promote bypassing deploybot (not ideal)
+maria: Given the release window, I'd prefer pinning to previous artifact and follow-up investigation. Who can verify the previous artifact passes canary smoke?
+sam: I can run the smoke suite on v1.12.3 now, give me 10m
+chris: I'll open a short incident with eng-infra to check cache front-end and LB. tagging @infra oncall
+jen: If smoke looks good, we can update the promotion config to pin to v1.12.3 and re-run promotion. Need a small change (release-config) and manual promote.
+maria: Sounds good. Sam, report back. Chris, please coordinate infra. If infra says cache healthy in 15m, we'll try another postsubmit run instead of pinning.
+sam: smoke results: v1.12.3 smoke passes (all checks green). :white_check_mark:
+chris: infra says there was a brief upstream TLS handshake stall; fixed backend pod and restarted cache-proxy. Monitoring shows restores dropping back to ~1% fail
+jen: Given smoke pass and reduced failure rate, do we want to re-run the postsubmit or just pin and promote? Maria?
+maria: Re-run postsubmit once first. If it still fails, we'll pin and promote. Also add a short note in release notes: "promotion delayed due to remote-cache instability; promoted v1.12.3 instead of v1.12.4" if we pin.
+deploybot: manual promote: request requires approver snippet. @jen please run `deploybot promote --tag v1.12.3 --env canary --reason "postsubmit cache failures"`
+jen: running the promote command now. Output:
+```
+$ deploybot promote --tag v1.12.3 --env canary --reason "postsubmit cache failures"
+Promote queued. waiting for approvals...
+Approvals: 1/1 (jen)
+Promotion started. canary rollouts 10->50% over 30m.
+```
+maria: Thanks team. Action items:
+- chris: follow up on cache root cause and add mitigation (retry/backoff) (owner)
+- sam: validate canary for 30m, report regressions (owner)
+- jen: update release notes with delay and pinned artifact (owner)
+- infra: postmortem if this recurs
+chris: noted. I'll also add a temporary CI-side workaround to extend restore timeout to 90s while we triage. Will open PR.
+maria: ok, let's re-open if anything else flares. :eyes:

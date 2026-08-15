@@ -1,0 +1,36 @@
+eng-runtime
+
+nina: quick handoff — private node (dc3-stg-priv-01) started flakiness after kernel 5.15.128 bump. tail latency spikes on 2nd half of long-run qps. can someone run a quick smoke + perf sampling? need flamegraph + iostat.
+
+ashok: on it. i'll run a 5m `wrk` pass + `perf record`. ping me if you want the sample params.
+
+lindsay: what's the exact kernel and that node's cpufreq governor? last time cpufreq scaling caused jitter.
+
+nina: kernel: 5.15.128-rt1, cpufreq: ondemand. please lock ondemand -> performance for the test if possible.
+
+deploy-bot: release/2026.03.11 deployed to dc3-stg-priv (service: runtime-private) :rocket:
+
+ashok: running now. command:
+```
+ssh root@dc3-stg-priv-01 'sudo cpufreq-set -g performance; sudo systemctl restart networkd; sudo -i bash -c "perf record -F 99 -a -g -- sleep 300"'
+```
+
+ashok: also running `wrk -t4 -c200 -d300s https://dc3-stg-priv-01:8443/generate` to hit the path that regressed.
+
+teo: FYI I pulled the previous flamegraph from artifacts (s3://redwood-dev/runs/2026-03-02/priv-node-flame.svg) for baseline.
+
+ashok: uploaded new artifacts: s3://redwood-dev/runs/1977654321/dc3-priv-smoke/{perf.data,flame.svg,iostat.txt}
+
+mike: nice — can someone paste the top hotspot lines? small snippet is fine.
+
+ashok: top stacks show heavy time in `open_file` syscall and `nvme_rd_completion`. suspect IO bursts. iostat shows avg await spike to ~12ms during peaks.
+
+lindsay: could be NVMe firmware or driver idling policy. try disabling write cache for the disk or repro with `fio` to isolate.
+
+nina: created junit ticket INF-1248 and attached links. thanks everyone. can we run a short fio to isolate before raising infra? putting this on the agenda for tomorrow retro.
+
+teo: +1. propose we also run same tests on one dedicated node in private-dedicated pool to check routing differences.
+
+mike: noted, will coordinate dedicated node run and post results.
+
+nina: great. if no blockers i'll close this smokewatch. thanks :thumbsup:

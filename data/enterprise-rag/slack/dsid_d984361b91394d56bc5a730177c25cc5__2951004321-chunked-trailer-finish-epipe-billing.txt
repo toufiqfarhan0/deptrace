@@ -1,0 +1,54 @@
+support
+
+sara: customer 4321 reports streaming dropped mid-chunk; they say tokens stopped and curl shows partial chunk, they were billed and got 502.
+
+matt: can you grab the request id and time? need logs to repro.
+
+sara: rid=01GZTWQ9HAZ timestamp=2026-03-12T14:23:08Z. attaching curl snippet customer used.
+
+lina: I pulled proxy. upstream returned 200 and closed normally, then gateway tried to write last chunk and hit EPIPE/broken pipe. gateway logged 502 write failure.
+
+sara: customer says client saw "connection reset by peer" and that server closed socket.
+
+matt: likely client closed while we were streaming final bytes. our billing pipeline currently treats any gateway 5xx as provider_error which will bill the customer. that's bad.
+
+lina: log excerpt:
+```
+2026-03-12T14:23:08.123Z gateway INFO rid=01GZTWQ9HAZ write_chunk failed: EPIPE
+2026-03-12T14:23:08.124Z gateway ERROR rid=01GZTWQ9HAZ outcome=502 reason="write failure"
+2026-03-12T14:23:08.124Z gateway METRIC request_outcome=5xx label=provider_error
+```
+
+sara: customer wants a credit and confirmation this won't count against quota.
+
+matt: proposal: classifier change - if we see EPIPE/ECONNRESET on write AND upstream_final_status is 2xx, mark outcome as client_aborted (non-billable). Also increment `client_aborted_count` metric.
+
+lina: edgecases: proxy retries or partial upstream failures could complicate this. we must be sure upstream final status is authoritative.
+
+sara: can we backfill to find other mislabels? customer wants quick resolution.
+
+matt: plan: hotfix classifier today (canary us-west), add unit + e2e tests for chunked EOF race, then run 72h backfill. if mislabels > threshold, auto-propose credits.
+
+lina: classifier pseudo:
+```
+if write_err in [EPIPE,ECONNRESET] and upstream_final_status in [200,204,206]:
+    outcome = "client_aborted"
+else:
+    outcome = "provider_error"
+```
+
+sara: I'll log a billing ticket and tell customer we'll follow up by EOD with provisional credit if confirmed.
+
+ops-bot: created task INF-4923 and assigned to matt,lina,sara
+
+matt: pushing PR, will canary at 16:00 UTC. add temporary dashboard showing `client_aborted` and recent write_errors.
+
+lina: also adding `tcp_last_state` to logs so we can distinguish client FIN vs server reset.
+
+sara: thanks. please post canary results here and CSV from backfill before issuing credits.
+
+matt: noted. if backfill shows >500 events, escalate billing for automated credit run.
+
+lina: acceptance: no regression on successful streams, client_aborted metric increases on canary, backfill CSV with per-customer counts.
+
+sara: closing loop for now. will update customer thread in Zendesk when we have canary metrics.

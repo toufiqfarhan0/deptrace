@@ -1,0 +1,61 @@
+eng-runtime
+
+alex: quick follow-up from last night's KV OOM on prod-23. want to lock owners, timelines, and minimal rollout plans. root signals: slab fragmentation + sticky residency under burst writes with long sequences.
+
+jamie: i'll own profiling and GC-knob experiments. plan: collect heap snapshots on 3 hot shards, capture jemalloc stats, and run the reproducer. aim to have initial artifacts in 72h.
+
+ravi: i'll own limits & eviction policy. proposal: soft_limit at 85% residency, graduated eviction with age bias, and canary incremental eviction enabled. will test on canary tomorrow.
+
+meera: i can take fragmentation mitigation and compaction scheduling. suggestion: background slab compactor during low-qps windows + tune allocation arenas. need ~5 days to prototype.
+
+sre-bot: deploy event: canary/kv-canary-4 -> prod-candidate at 2026-03-24T02:15Z (auto-rollout paused).
+
+alex: ops checklist for each owner: 1) attach reproducible profile to ticket 2) perf regression test (latency, p95) 3) rollout + rollback criteria 4) update telemetry (residency, frag_ratio, GC pauses).
+
+jamie: profiling commands i'll run:
+```
+# heap + jemalloc stats
+pkill -USR1 $(pidof runtime) && curl -s http://metrics/heapdump > /tmp/heap-$(date +%s).pb
+cat /proc/$(pidof runtime)/status; mallctl stats
+```
+will upload outputs to ticket.
+
+ravi: eviction tuning: set `kv.residency.soft_limit=0.85`, `kv.eviction.age_bias=0.3`, `evict_incremental=true` for canary. rollback if p99 latency > +20%.
+
+meera: frag metric to add: "frag_ratio_v2" = useful_allocated_bytes / total_committed_bytes. alert if >0.35 for 30m. will add dashboard panel + synthetic test that writes long sequences.
+
+alex: do we need a temporary throttle on large prefix writes? that helped in the last incident.
+
+jamie: yes — suggest `ingest.prefix_write_rate_limit=500/s` on canary. i'll coordinate with raven for test data.
+
+ravi: canary schedule: start 2026-03-24T03:00Z at 10% traffic, observe 6h, bump to 30% if stable. i'll own rollback playbook.
+
+meera: compaction prototype: batch 4 shards/node, window 02:00-05:00 local, will post config and cron in RF-4394.
+
+alex: main risks: compaction CPU spike -> ensure CPU headroom on canary; eviction interactions with hot prefixes; regression in embedding pipeline. tag teams.
+
+jamie: blocker: need jemalloc symbolized traces (cc infra-ops). pinged infra for SAR.
+
+ravi: i'll post canary config and rollback steps to #release-war-room before kick.
+
+meera: target to add frag_ratio_v2 panel and synthetic by 2026-03-25 EOD.
+
+alex: owners/timelines recap: jamie — profiling & GC knobs (72h initial), ravi — limits & canary (canary start 03/24), meera — fragmentation & compaction (5d prototype). next check-in 2026-03-26 15:00 UTC in this thread. update tickets when created. :thumbsup:
+
+sre-bot: reminder set for 2026-03-26T15:00Z (check-in).
+
+jamie: created RF-4392 and uploaded first heap dump: https://redwood.atlassian.net/browse/RF-4392
+
+ravi: created RF-4393 for eviction/canary config. linking.
+
+meera: created RF-4394 for compaction prototype and attached config diff.
+
+alex: leaving owners to post short status updates here daily until full remediation shipped.
+
+jamie: day1: heap snapshots show repeated large allocations in arena 2; running jemalloc purge tests, no perf regression yet.
+
+ravi: day1: canary live at 10%, p95 steady; eviction churn up slightly. monitoring.
+
+meera: day1: compactor prototype executed, CPU +8% during window, frag down ~12% on test shard.
+
+alex: solid — keep updates concise. we'll consolidate into the postmortem follow-up doc and aim to close RF-4392/3/4 when rolled.

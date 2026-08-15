@@ -1,0 +1,22 @@
+new-hires
+
+maya: hi all, day 1 :wave: quick question: where do i post onboarding stuff? laptop delivery tracking, badge request, pics of my desk setup? also how do i turn on the onboarding reminders?
+ben: welcome! :tada: short map -> hardware tracking & photos: #new-hires (keep pics in-thread), badge/access: #people-ops (or @sarah), workspace/desks: #facilities, setup/ssh/questions: #eng-ops. For quick 1:1 ask the person via DM.
+maya: awesome, thanks. bot opt-in?
+devex-bot: Hey maya — enable automated reminders with `/onboard subscribe` or visit https://intranet.redwood/setup and toggle "Onboarding bot". Use `/onboard set freq daily` to change cadence. (automated reply)
+leo: etiquette tip: use threads for troubleshooting so the channel stays tidy and searchable. Avoid @channel unless it's a policy/urgent org note. Use :thumbsup: to ack.
+sarah: badge flow: fill https://forms.redwood/badge (choose "new hire") and include office location + manager. Processing usually within 24-48h. For same-day access DM me and put "urgent" in the form.
+maya: got it. if my laptop fails imaging where do i post?
+ben: post in #eng-infra with a short template so folks can help fast:
+```
+- device serial: XXXX-XXXX
+- model: MacBook Pro / Dell XPS
+- error (copy/paste): 
+- steps tried: reflash, different USB, tried another port
+- timezone / availability for swap: 
+```
+Attach a photo of any error screens. Tag @eng-oncall if it's blocking your onboarding.
+maya: perfect, copying template now. thanks! :pray:
+ben: also add your manager and onboarding buddy to the thread so they can follow up. if you want the bot reminders in DMs, run `/onboard subscribe --dm`
+leo: small note: if you post credentials or screenshots with tokens, redact them before posting. We frequently scrub in channels but best to avoid posting secrets at all.
+maya: noted. thanks everyone for the fast help :smile:

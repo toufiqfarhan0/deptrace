@@ -1,0 +1,29 @@
+eng-security
+
+emma: Heads-up: We're deprecating long-lived GKE service account keys across all clusters. Deadline: 2024-07-15 UTC. Please migrate to Workload Identity (recommended) or short-lived keys via KMS. Full runbook: https://internal.redwood/security/gke-sa-deprecation :loudspeaker:
+priya: To confirm — this affects prod, staging, and sandbox?
+emma: Yes. Prod, staging, and sandbox. There is a limited exception process documented if you absolutely cannot migrate.
+sam: Quick Q — will CI runners that currently mount key files be broken? What's the recommended pattern?
+emma: Yes, runners using checked-in key JSONs will break. Recommended: 1) switch CI to Workload Identity Federation or 2) use short-lived SA keys minted by a guarded KMS workflow. Avoid committing key files anywhere.
+maria: I can run a repo scan for key files and environment variables and post a report.
+sec-bot: Automated scan summary: 12 repos with direct SA key artifacts, 7 pipelines using mounted key files. Link: https://scans.internal/reports/scan-2024-06-08
+priya: Migration plan proposal: 1) Security publishes per-team inventory by 2024-06-12. 2) Teams pick an owner and migrate CI by 2024-07-01. 3) Security revokes legacy keys 2024-07-16. I'll publish a timeline and owners sheet tonight.
+emma: Migration example (Workload Identity binding):
+```
+# bind k8s service account to GCP SA
+gcloud iam service-accounts add-iam-policy-binding sa@project.iam.gserviceaccount.com \
+  --role roles/iam.workloadIdentityUser \
+  --member "serviceAccount:PROJECT.svc.id.goog[namespace/k8s-sa]"
+```
+Also sample CI snippet for short-lived token exchange will be in the runbook.
+sam: If a team needs help migrating CI, is there SE/Oncall support?
+emma: Yes. Open a ticket in #eng-security-help and tag "gke-sa-migration". We'll triage and pair with teams, prioritizing prod.
+maria: I'll upload CSV of affected repos and pipeline owners by EOD and ping owners directly.
+alex: Do node pools or workloads require restarts?
+priya: No node pool restarts required; changes are at the identity binding/CI level. Some deployments may need pod restarts to pick up new service account tokens.
+sec-oncall: Enforcement note: after 2024-07-16 automated revocation will run nightly. Any remaining legacy keys will be disabled and owners will get alerts. Plan accordingly.
+emma: Action items summary: 1) Review runbook. 2) Owners migrate before 2024-07-01. 3) Confirm in sheet and ack in this thread. Please ack with :white_check_mark: when you have an owner.
+sam: :white_check_mark:
+maria: :white_check_mark:
+priya: :white_check_mark:
+emma: Thanks everyone — I'll post the runbook and the per-team inventory in this thread when ready. Ping me if you hit blockers.

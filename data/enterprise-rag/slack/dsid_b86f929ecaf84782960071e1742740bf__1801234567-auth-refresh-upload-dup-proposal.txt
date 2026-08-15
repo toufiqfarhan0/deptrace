@@ -1,0 +1,34 @@
+devex
+
+Nina Park: Observed duplicate side-effects in sampleapp during long uploads when token refresh overlaps a 429. Repro in staging with short TTLs.
+
+Omar Khalid: Which SDK/version? Node or Python?
+
+Nina Park: Node v1.5.2. Endpoint is /v1/files/append. Logs: 
+
+Nina Park: ```
+[2026-10-05T11:04:10Z] upload=u-77 chunk=12 auth=near-expire -> refresh start
+[2026-10-05T11:04:10Z] refresh complete tok=t-new
+[2026-10-05T11:04:10Z] server returns 429 for in-flight chunk -> sdk retries after backoff
+[2026-10-05T11:04:12Z] retry sent without any replay headers -> duplicate chunk applied
+```
+
+Rae Chen: Streaming append makes idempotency awkward. Proposal: client opt-in `safe_replay` that adds `x-rw-chunk-nonce` per upload and preserves chunk_seq; server dedupes on (upload_id, chunk_seq, nonce) for short window.
+
+Omar Khalid: Also tighten jitter range to [0.6,1.4] default and expose config. Current wide jitter causes retry storms.
+
+Nina Park: I can prototype `safe_replay` in sampleapp and add an e2e forcing TTL=3s to trigger the race. Will include small LRU client cache for recent request hashes.
+
+Rae Chen: Server contract for eng-runtime: keep nonces in an in-memory sharded map for N=60s, return 409 with {"replayed":true} for duplicates. Emit metrics: replay.duplicate_count, replay.cache_hit_rate.
+
+infra-bot: Note: storing keys on hot paths needs O(1) ops and sharding. Consider ring-buffered per-route cache.
+
+Omar Khalid: Opt-in default to avoid perf regressions. Add telemetry events: replay_attempt, replay_dedupe_hit, replay_dedupe_miss.
+
+qa-bot: CI started for sampleapp/pr-634 with safe_replay tests. :running:
+
+Nina Park: Short-term mitigation: increase staging token TTL to avoid mid-request refresh. I'll open PR for prototype + README note.
+
+Omar Khalid: Thanks. When you post the PR please include a perf microbenchmark for the in-client LRU (<0.5ms avg) and a brief note in SDK changelog.
+
+Nina Park: Will do.

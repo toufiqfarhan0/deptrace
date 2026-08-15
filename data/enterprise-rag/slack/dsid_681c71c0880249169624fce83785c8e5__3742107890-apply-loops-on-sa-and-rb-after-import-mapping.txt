@@ -1,0 +1,62 @@
+eng-infra
+
+maria: Hey — `terraform plan` keeps insisting it will replace the k8s ServiceAccount even after I imported it manually. Anyone seen this pattern?
+
+maria: Plan excerpt:```
+# kubernetes_service_account.app[0] must be replaced
+-/+ resource "kubernetes_service_account" "app" {
+    metadata {
+      name = "app-sa"
+      annotations = {
+        "eks.amazonaws.com/role-arn" = "arn:aws:iam::123:role/old-role"
+      }
+    }
+  }
+```
+
+maria: I ran `terraform import module.platform.kubernetes_service_account.app[0] default/app-sa` and `terraform state show` shows the old arn, so plan still wants to replace.
+
+sam: :eyes: Two quick suspects: provider address changed (provider alias or namespace) or index/key changed (list -> for_each). Did you refactor recently?
+
+maria: No code change in this PR. We did move some IAM role attachments into a separate module and bumped provider versions across modules.
+
+liam: Check the state provider and resource address: `terraform state list | grep app` and `terraform state show <address>`. If provider namespace changed you might need `terraform state replace-provider`.
+
+anya: Also double-check the actual k8s object: `kubectl get sa app-sa -n default -o yaml` — sometimes annotations in state differ because import mapped to wrong resource address.
+
+terraform-bot: Lock acquired by maria for workspace 'staging' (session 6a9...). Apply queued: waiting for lock release.
+
+sam: If the config uses `for_each` now, the state key might be `app[0]` vs `app[\"app-sa\"]`. That will cause diffs even if the live object is correct.
+
+maria: `terraform state show module.platform.kubernetes_service_account.app[0]` shows the old arn. `kubectl` shows the live annotation is `arn:aws:iam::123:role/infra-app`. So import should have captured the live value — but maybe the import got associated to the wrong address.
+
+liam: Yep. Use `terraform state mv` to move the existing state entry to the address that matches your config (e.g., `module.platform.kubernetes_service_account.app[0]` -> `module.platform.kubernetes_service_account.app[\"app-sa\"]`). That only updates state metadata.
+
+sam: Also check if the provider version changed (kubernetes provider 2.x+ has some behavior changes). If provider platform changed (e.g. registry path) use `terraform state replace-provider`.
+
+maria: Running: `terraform state mv module.platform.kubernetes_service_account.app[0] module.platform.kubernetes_service_account.app[\"app-sa\"]` — trying now.
+
+liam: After mv, run `terraform plan -target=module.platform.kubernetes_service_account.app[\"app-sa\"]` to verify no replacement. If it still wants to replace, post the targeted plan output.
+
+anya: For role/role_binding churn, watch for index vs map too. If subjects are a list, import can shift indexes; consider switching to stable `for_each` keys: `{ for s in var.services : s => s }`.
+
+maria: Update: mv fixed SA — targeted plan shows no replacement. But now plan proposes replacing `kubernetes_role_binding.app-binding` because the subjects list index changed after import.
+
+sam: If RB is using positional list, you can either update state keys with `state mv` or temporarily use `lifecycle { ignore_changes = [subjects] }` while you reconcile.
+
+liam: For immediate fix, map the RB state entries to their new addresses or re-import them with the correct addresses. Longer term: prefer `for_each` with stable keys. Add a runbook note.
+
+maria: Doing `terraform state mv` for the RB too, re-ran `terraform plan` — now it's only an annotation update (no replace). Preparing to apply.
+
+terraform-bot: Lock released by maria. Apply started by maria.
+
+maria: Apply finished: `Apply complete: 0 added, 1 changed, 0 destroyed.`
+
+liam: Great. Can someone add a short bullet in infra runbook: "When migrating lists->for_each or changing providers, inspect state addresses and prefer stable keys; use `terraform state mv` or `replace-provider` before applying." I'll draft one.
+
+maria: I'll add the note and include example `state mv` commands and a checklist.
+
+sam: Thanks for debugging and forlining the fix. :thumbsup:
+
+maria: TL;DR: import mapped to wrong address after provider/structure changes -> use `terraform state mv` to correct mapping, check provider namespace, then plan/apply.
+

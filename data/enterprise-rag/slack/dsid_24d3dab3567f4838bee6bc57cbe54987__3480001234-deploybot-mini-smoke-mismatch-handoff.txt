@@ -1,0 +1,67 @@
+eng-releases
+
+deploy-bot: Deployment finished: rollout v2026.03.21-rc3 -> production (canary 10%, eu-west). Post-deploy mini-smoke run started. Logs: https://deploys.redwood.internal/3480001234
+
+maya: saw alert for mini-smoke failures in eu-west. p95 latency fine but 5/20 synthetic probes returned 204/empty.
+
+ryan: interesting — which probe? embed-route or generate-route?
+
+maya: generate-route (short-prompt path). Probe id: gen-mini-384. Sample output shows empty body. Snip from logs: `HTTP/1.1 204 No Content` then `{"request_id":"..."}` missing.
+
+sam: that's odd, our smoke harness treats 204 as success sometimes. We should check telemetry ingestion — maybe sample dropped before write.
+
+infra-bot: Observability alert: metric `smoke.synthetic_fail_rate{region="eu-west",route="/generate"}` crossed 2% threshold at 2026-03-21T15:03:12Z. Volume 20 probes in window.
+
+lucy: does this correlate with the new routing tweak in rollout? v2026.03.21-rc3 introduced route-split with `prefer-local-cache` flag for eu-west canaries.
+
+ryan: good call. If prefer-local-cache returns empty early we might short-circuit response creation. Can someone grep service logs for `prefer-local-cache` path?
+
+maya: running now: `kubectl logs deploy/generate-svc -n prod --since=10m | jq -r 'select(.tag=="prefer-local-cache") | .msg' | head -n 50` — seeing `cache-check: miss` then `prefetch-signal: skipped` then `response-stream: closed without payload` x5.
+
+sam: looks like the prefetched-kv path closed the stream stack when prefill returned nil. That explains 204. Pipeline should fall back to fill step. Might be a race with kv-warmup.
+
+lucy: kv-warmup job for eu-west finished 5m before rollout but logs show some nodes reaped during autoscaling. Could be transient.
+
+maya: quick mitigation options: 1) rollback canary to previous variant 2) pin eu-west traffic to stable 3) hotfix to add fallback in pipeline 4) increase synthetic sampling to gather more context. Thoughts?
+
+ryan: prefer pin to stable for eu-west and keep rollout progressing elsewhere. Less blast radius and buys time.
+
+sam: +1 for pin. Hotfix is small but we need time to test — avoid rush. Also increase synthetic sampling to 100 probes / 5m to confirm rate.
+
+lucy: I'll open a pin request: `/pin-route eu-west generate-route v2026.03.20-stable` and start the sampling change.
+
+maya: ping ops@oncall for visibility and ask infra to check node churn during warmup.
+
+infra-bot: Command executed: `pin-route --region eu-west --route /generate --target v2026.03.20-stable --reason "mini-smoke empty responses on prefer-local-cache"` — request queued for approval. Approver: oncall@redwood.
+
+sam: also kicking off an ad-hoc quick-eval: `curl -fsS -X POST https://qa.redwood.local/eval -d '{"probe":"gen-mini-384","count":100,"region":"eu-west"}'`
+
+maya: oncall approved pin, infra applied it. Canary in eu-west pinned back to stable. Confirming traffic switch: `kubectl get routes -n prod | grep generate` shows `generate-route eu-west -> v2026.03.20-stable (pinned)`
+
+ryan: good. keep rollout for other regions as-is, but pause global ramp until we triage root cause. Change window note: hold elevated until 16:00 UTC or until triage complete.
+
+lucy: creating Jira: RD-4721 "mini-smoke: prefer-local-cache path returns empty -> ensure fallback" with tags [postdeploy, canary, eu-west]. Assigning to infra and runtime teams.
+
+maya: results from boosted sampling: 100 probes -> 12 empties (12%). Not fleeting.
+
+sam: that's above acceptable threshold. We need to repro locally with the exact kv state. I'll run a replay against canary variant with injected warmup misses.
+
+ryan: for release notes: add line under v2026.03.21-rc3: "Temporarily pinned eu-west generate-route to v2026.03.20-stable after mini-smoke detected empty responses on cache-prefetch path; rollout paused for further investigation."
+
+lucy: will update release notes and add incident link RD-4721. Also scheduling a 30m postmortem if we find a systemic issue.
+
+maya: final check — any user-facing impact? No customer reports so far, only synthetic detects. Good catch by smoke.
+
+sam: moving to reproduce now; will post logs snippet if I can reproduce. If we need to hotfix, propose adding `fallback=true` in pipeline as quick patch (tiny change).
+
+infra-bot: Action items summary:
+- eu-west pinned to v2026.03.20-stable (completed)
+- Sampling increased to 100 probes/5m (completed)
+- Jira RD-4721 created (link: https://jira.redwood.internal/browse/RD-4721)
+- Rollout paused global ramp until triage or 16:00 UTC (owner: ryan)
+
+maya: thanks team. keeping thread open until triage done.
+
+sam: (will update by 15:20 UTC)
+
+ryan: thx — good handling :thumbsup:

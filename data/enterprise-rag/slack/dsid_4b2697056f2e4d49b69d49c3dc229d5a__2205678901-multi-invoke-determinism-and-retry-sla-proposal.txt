@@ -1,0 +1,76 @@
+product
+
+maya: Quick sync — Acme asked for deterministic results when we fan-out to multiple tools (search + payments API + enrichment). They want identical outputs across retries and replicas. Can we meet that for Hosted?
+
+simon: Short answer: not for general Hosted traffic without heavy coordination. Determinism across parallel external calls is hard (external APIs, network nondeterminism). We can offer stronger guarantees on Dedicated/Private.
+
+alex: Agree. Options: 1) Best-effort parallel with idempotency + causal ordering hints. 2) Strict sequencing (single-threaded execution per logical request) — expensive and higher tail latency. 3) Hybrid: optimistic parallel + reconciliation/merge step.
+
+chris: From SLAs POV we need to surface tradeoffs clearly. If we do strict sequencing, per-request latency SLO will increase. For Hosted MVP we should default to best-effort and document failure modes.
+
+maya: Proposal for roadmap MVP (parity across product/dev time):
+- Offer parallel invokes by default with best-effort ordering.
+- Require callers to pass idempotency_key for external side-effects.
+- Provide an opt-in mode "sequential_consistency": available only on Dedicated/Private initially.
+- Default retry_budget = 2, overall pipeline timeout = 15s.
+
+elaine: +1 but add telemetry requirements: trace-id that ties all child calls and a per-call outcome (success/timeout/retry). Need to show cost delta in Console for Dedicated experiments.
+
+zhen: Infra note: to support sequential_consistency we either need a per-request coordinator (stateful) or a locked KV store to serialize ordering. Both have cost/ops implications. Estimate: 20-30% extra CPU/GPU overhead on Dedicated nodes for pinned requests.
+
+alex: Example client payload for MVP opt-in: 
+```
+POST /v1/invoke
+{
+  "model": "redwood-chat-1",
+  "parallel_calls": [
+    {"tool": "search", "idempotency_key": "abc-123"},
+    {"tool": "payments", "idempotency_key": "abc-123"},
+    {"tool": "enrich", "idempotency_key": "abc-123"}
+  ],
+  "ordering": "best_effort", // or "sequential_consistency" (dedicated only)
+  "retry_budget": 2,
+  "timeout_ms": 15000
+}
+```
+
+maya: Good. For customer asks (Acme) we should propose a Dedicated pilot with sequential_consistency + contract: agreed retry_budget and a canary window. We can commit to determinism only if they avoid non-idempotent third-party endpoints.
+
+chris: Launch criteria checklist:
+- API contract written and reviewed (simon)
+- Runtime prototype (alex)
+- Cost delta numbers surfaced in Console (elaine)
+- Dedicated pilot signed or approval from CS (maya)
+- Observable traces + per-tool SLA metrics (chris)
+
+simon: I'll draft the API spec and put clear warnings for Hosted limitations. Also will define default semantics for partial failures (best-effort: include partial results + error vector; sequential_consistency: abort on first hard failure unless caller passes "continue_on_fail": true).
+
+alex: Runtime notes: need to implement per-request coordination token + per-tool backoff. Suggested backoff policy: exponential with jitter, cap at 3 retries per tool, but governed by global retry_budget. Also need a per-request deadline and cancel children on deadline exceed.
+
+maya: Customer negotiation notes: offer Acme a Dedicated pilot with two lanes: strict-ordering (paid, SLA-backed) and paid rollbacks. If they accept we scope MVP to only their tenant for 90 days.
+
+zhen: Ops action: I'll run a perf baseline comparing best-effort vs sequential_consistency on a 10k QPS synthetic workload next week and post results. infra-bot will post canary deploy when prototype lands.
+
+infra-bot: Canary deploy scheduled: multi-invoke-coordinator v0.1 -> canary group (10%). Logs will be in /deploys/multi-invoke/v0.1.
+
+elaine: UI/Console: add per-request cost estimate and "ordering" toggle for Dedicated projects. Also show potential tail-latency impact in the cost preview pane.
+
+maya: Action items: @simon spec draft by EOD Friday, @alex prototype + canary next week, @chris metric defs + dashboard mock, @zhen perf runs. I'll coordinate CS pilot pitch.
+
+simon: Sounds good. one more Q: Do we require idempotency_key for all tools or only for those flagged side-effecting?
+
+maya: Require it if any parallel tool is marked side_effect: true. Make it optional otherwise but recommended. We'll document best practices.
+
+alex: I'll add a small example in the spec for reconciling unordered results (merge strategies: timestamp, precedence rules, custom merge hooks).
+
+chris: +1. Also recommend default overall timeout at 15s but allow controller to set up to 60s for Dedicated only.
+
+maya: Great. If no objections I'll lock this for planning and start drafting the PRD. :thumbsup:
+
+elaine: :thumbsup:
+
+zhen: :+1:
+
+simon: merging into roadmap doc after PRD review.
+
+maya: thanks team, will follow up with schedule.

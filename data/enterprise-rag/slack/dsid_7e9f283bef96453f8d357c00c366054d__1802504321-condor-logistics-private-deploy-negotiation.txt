@@ -1,0 +1,59 @@
+product
+
+lucas (AE): FYI — Condor Logistics wants an on-prem/private deployment with committed capacity and version pinning. They asked for a target delivery date and SLA. They opened with June 30 as their desired go-live.
+
+sarah.condor (Condor - IT): Confirming — we need private control plane inside our AWS account (VPC) and the ability to pin to v1.3 of the model. Data cannot leave our VPC. We can sign for reserved capacity, but need a canary window before full cutover.
+
+nina (CSM): cc @maya @kelly — Condor is on the enterprise contract track. They flagged latency requirements: p95 <= 120ms on 128-token prompts and 99.9% uptime. They want rollout dates to coordinate with their release.
+
+maya (PM): Thanks. Two quick asks: 1) Are they ok with hosted fallback for traffic spikes? 2) Do they require HSM/KMS integration on day 1?
+
+sarah.condor (Condor - IT): Hosted fallback is acceptable only for short bursts and only if data never leaves their VPC; so we need a strict traffic routing/fallback policy. KMS integration is required.
+
+kelly (Eng PM): Engineering readout: full on-prem (private control plane + inference in their VPC) is non-trivial. Rough estimate: 6 weeks for control plane + ops automation, 3 weeks for model packaging & quantization support, and 2 weeks for validation and compliance checks. With current sprint load we could aim for a July canary window, GA late August/early Sept if we shift scope.
+
+rick (SRE Lead): From infra/SRE: to meet 99.9% SLA on customer-managed infra we need a documented failover + observability plan and a support runway. Also we need to validate p95 numbers with their hardware profile — 4xA100 in their account could be OK but depends on batch sizes and concurrency.
+
+lucas (AE): Condor asked specifically for an SLA commitment in writing to present to their legal team. They said budget is available for a reserved capacity add-on.
+
+maya (PM): Proposal (high level):
+- Deliverables for canary (Target: 2024-07-15): private control plane deployment scripts, model pinning UI, basic rollout/canary workflow, KMS integration demo, and one-week canary support.
+- GA (Target: 2024-09-01): hardened SLOs, formal SLA, on-call rotations, full docs + runbook.
+Is that a reasonable split?
+
+sarah.condor (Condor - IT): July canary sounds workable. We need the canary to include latency regressions checks and access to logs/audit trail. Will also need a runbook for failback to hosted if things go bad.
+
+kelly (Eng PM): Agreed on must-haves for canary. Also flagging that model version pinning + rollback automation requires changes in the control plane APIs. Minimal API example: 
+```json
+{
+  "model": "open-llama-1-3b",
+  "pin": "v1.3",
+  "rollout_policy": { "canary_pct": 5, "monitoring": ["latency","regression-tests"] }
+}
+```
+
+maya (PM): Risk notes: 1) If we accept the June/July timeline we must deprioritize one of the Q2 platform items (either Perf Tokens view or Auto-quantize suggestion engine). 2) Certification/KMS compliance reviews often add 2–3 weeks if third-party audits are requested.
+
+nina (CSM): Condor will accept deprioritization if we provide a firm canary date and a lite SLA for the fallback path. They prefer a staged financial commitment: deposit for reserved capacity at canary signoff, remainder at GA.
+
+lucas (AE): I'll confirm that payment cadence with them. Also asked for a sample SOW clause around rollback: they want explicit rollback triggers (latency > 150ms p95 OR error rate spike).
+
+rick (SRE Lead): For rollback triggers we should use: latency p95 > 140ms for 5m OR 5% error rate increase over baseline for 3m. We can implement alerts and auto-route to hosted. Need to confirm that hosted fallback can be configured to respect their data residency (strip/blackhole data) — this is product/security question.
+
+maya (PM): Action items:
+- @kelly: produce an engineering scope doc + effort estimate (due EOD Friday).
+- @rick: draft rollback trigger thresholds and fallback playbook (due Monday).
+- @lucas: get payment cadence and SOW language from Condor (due Wed).
+- @nina: align with customer on audit needs (KMS/HSM) and confirm final hardware profile.
+
+deploy-bot: Deployment scheduled: control-plane-init -> staging on 2024-06-28 04:23 UTC (note: automated staging only).
+
+sarah.condor (Condor - IT): Thanks — we'll review canary requirements internally and come back with two preferred canary weeks.
+
+maya (PM): If engineering can hit the July canary, we'll add a formal line item in the roadmap and propose rolling backlog adjustments in next planning sync. +1 on the staged commercial commitment.
+
+kelly (Eng PM): I'll post the draft scope doc to the thread once ready, will include minimal MVP features and optional stretch items.
+
+lucas (AE): Condor is sensitive to dates because they're syncing infra changes with their logistics platform release. I'll push for the earliest canary option. :eyes:
+
+nina (CSM): Great thread. Keeping this open — will update participants when Condor confirms canary week. :thumbsup:

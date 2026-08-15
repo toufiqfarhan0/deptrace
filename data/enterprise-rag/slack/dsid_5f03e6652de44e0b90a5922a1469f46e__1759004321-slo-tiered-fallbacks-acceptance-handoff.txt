@@ -1,0 +1,52 @@
+product
+
+Sam (PM): Quick thread to lock SLO tiers and acceptance for the new inference routing rollout. Need final decisions for roadmap doc by EOD.
+Priya (Eng): Notes: two main knobs — routing priority (latency vs cost) and graceful-degrade modes (quantized fallback, reduced token ceiling, no-streaming). We should codify which tiers get which.
+Alex (SRE): Agree. Proposing tiered SLOs: Premium / Standard / Best-effort. Also an error-budget-based auto-degrade flag. If burn > 40% in a day, trigger fallback.
+Sam (PM): Ping @Priya @Alex — draft acceptance criteria below. Please comment inline.
+Jorge (QA): I can build the acceptance test harness once criteria are stable. Prefer simple measurable metrics.
+Maya (CS): Customer ask: enterprise customers want explicit max p99 and a documented fallback behavior. They also want an opt-out for auto-degrade.
+Dana (Security): One constraint: any fallback that routes to a different model variant must preserve data residency and KMS policy. Don't assume cross-region fallback.
+Priya (Eng): Draft acceptance (first-pass):
+```
+Acceptance Criteria:
+- Premium: p95 latency <= 150ms for seq_len=512, p99 <= 300ms. Error rate < 0.5% over 7d.
+- Standard: p95 latency <= 350ms for seq_len=512, p99 <= 800ms. Error rate < 1% over 7d.
+- Best-effort: p95 latency <= 1200ms. Best-effort has no SLA but must not exceed 3% errors over 7d.
+- Graceful degrade behavior when error_budget_utilization > 40% in 24h:
+  * Step 1: reduce max_tokens to 75% for non-premium
+  * Step 2: route new requests to quantized model variant (same region)
+  * Step 3: if still high burn, reject non-authenticated batch requests with 429 + retry-after
+- Rollout: Canary 5% -> 25% -> 100% across regions with rollback window 30m for regression >5% latency on canary.
+```
+Sam (PM): That looks sensible. Couple questions: what's the signal for "error rate"? 5xx only or include degraded outputs (timeouts)?
+Alex (SRE): Use 5xx + explicit backend timeouts + model-runtime OOMs. We should also surface a quality signal (regression vs baseline) but that will be separate alert.
+Priya (Eng): Implementation note: quantized variants can be 4-bit; expect ~20-35% latency improvement but slightly higher token-level hallucination risk. We'll add model-eval gating before rollout to canary.
+Jorge (QA): For tests I'll need: synthetic load tool + replay of recorded traces for seq_len distribution (50%, 30%, 20% for short/medium/long). Can we standardize the trace set?
+Maya (CS): I'll collect 3 customers who asked for stricter SLAs and provide representative prompts. They want an "opt-out" flag exposed in account settings.
+Dana (Security): Confirming: opt-out flag must reject auto-degrade but still allow manual admin degradation; also block cross-region fallback for accounts with data residency tags.
+Priya (Eng): Canary gating rules (rough draft):
+- Metric windows: 15m and 60m
+- Block progression if p95 or error_rate increases >10% vs baseline in BOTH windows
+- Auto-rollback if increase >20% in last 15m
+deploy-bot: Canary deploy started: rollout_id=rl-2026-03-infer-route-canary, target=5%_prod, started_by=Priya
+Alex (SRE): We should add a chaos window test to validate fallback triggers (simulate node OOM). Jorge can run that during canary.
+Jorge (QA): Ack — will run chaos OOM and network blackhole tests against canary. Will post logs to the PRD checklist.
+Sam (PM): Outstanding decisions for EOD:
+- Finalize numeric thresholds above (Priya/Alex)
+- Confirm opt-out UX + security constraints (Maya/Dana)
+- Provide canary test plan and dataset (Jorge/Priya)
+If we agree, I'll merge into PRD and mark roadmap milestone.
+Priya (Eng): I'll tighten thresholds after running small perf sweep; aim to confirm by 3pm PT.
+Alex (SRE): I'll add SLO burn runbook snippet and alert playbook (who to page at 30%/60%/90% burn).
+Maya (CS): I'll draft the opt-out email for enterprise customers and the contract language for SLAs.
+Dana (Security): I'll add KMS/data-residency checklist to the PRD.
+Sam (PM): Great — tagging this thread for visibility. Please reply in-thread when you push final numbers so I can snapshot into the PRD.
+Priya (Eng): pushed perf sweep -> see gist: https://internal.gists/reports/rl-infer-sweep-1759004321 (p95 samples attached). Preliminary: premium p95 median 140ms, standard p95 320ms.
+Alex (SRE): Noted. I'll draft the rollback/playbook doc and attach to PRD. Also recommending we default auto-degrade OFF for enterprise accounts (opt-in from product) to respect contracts.
+Sam (PM): Thanks everyone. I'll update the PRD (roadmap/scope section) once Priya and Alex confirm final thresholds.
+deploy-bot: Canary progress: 5% -> 25% after 40m, no regressions observed in primary metrics. Rollout ID rl-2026-03-infer-route-canary updated. :rocket:
+Jorge (QA): Ran chaos tests against 25% canary. OOM simulation triggered fallback as expected. Logging needs slight tweak (missing correlation_id on some 429s).
+Priya (Eng): I'll fix correlation_id in next patch. Good catch.
+Sam (PM): Leaving this open until EOD. If anyone wants to call a quick sync, 2pm PT.
+Maya (CS): I'll send calendar invite for the 2pm sync. ":thumbsup:"

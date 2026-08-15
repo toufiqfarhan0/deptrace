@@ -1,0 +1,40 @@
+architecture
+
+jess: Quick follow-up from the SM gating RFC: I prototyped a probe-based flow to detect SM features at driver init and again lazily on first model run. Questions: do we want a probe at startup (slower boot) or lazy per-model probe? Also how aggressive should the L4-specific path be vs falling back to generic kernel?
+arvind: Lazy probe seems better. Startup probe delays all launches and makes dev cycles slow. Probe on first device use for each node and cache the capability map. If we probe on first model run we can also record sequence-length distribution and pick kernels.
+molly: Agree on lazy. Also worry about edge cases where a job migrates between GPUs with different SM feature sets (heterogeneous pool). We need a robust fallback that doesn't crash but may degrade perf.
+ryan: For L4 specifically: it lacks some tensor core ops present on A100/H100. Our plan should be: prefer optimized kernels when sm >= 80 (H100), fallback to A100-tuned kernels for sm >= 80? Wait that sounds wrong. Proposed mapping:
+- sm >= 90 -> h100-optimized kernels
+- 80 <= sm < 90 -> a100-optimized kernels
+- sm < 80 -> generic kernels + slower matmul paths
+Also add a soft-fallback that uses mixed-precision emulation when a kernel uses unsupported intrinsics.
+jess: Nice. One additional constraint: Dedicated nodes may pin models and expect deterministic behavior. So any lazy probe must be stable across reboots and expose the chosen kernel in telemetry so customers can pin it.
+infra-bot: perf-ci scheduled job: kernel-compat-matrix/coverage-175614-run queued for 2026-04-02 02:00UTC :white_check_mark: 
+molly: Testing notes: we should validate 3 axes: model family (decoder/encoder/encoder-decoder), seq length (short/med/long), quantization (fp16/q4f/q8h). Also include memory-pressure tests to ensure fallback doesn't OOM.
+arvind: Implementation sketch (pseudo):
+```
+// on first device attach
+cap = probe_device_caps(device)
+if cap.supports(h100_intrinsics): select_kernel('h100')
+else if cap.supports(a100_intrinsics): select_kernel('a100')
+else select_kernel('generic')
+cache[device.uuid] = { kernel: selected, probe_ts: now() }
+```
+We should also implement a periodic re-probe if driver updates are detected.
+ryan: Edge case — live migration between capacity tiers in Dedicated: if a workload moves to a GPU with a weaker feature set, we need a guarded fallback in the runtime that gracefully switches kernels mid-flight, or restarts the model instance. Which do we prefer? Seamless switch is complex (KV cache layout changes), restart is simpler.
+jess: I vote restart the model instance with an explanatory log + metric. Seamless mid-flight switch will add a ton of complexity and bugs.
+molly: Agreed. Add a "compat-check" hook at allocation time. If compat mismatch, return a specific error so controller can trigger restart.
+arvind: Telemetry: record chosen_kernel, device_sm, probe_mode(lazy/startup), re-probe events. Add a per-model tag so we can roll out experimental kernels to a subset.
+perf-ci: adding test permutations to matrix: devices=[L4,A100,H100], models=[gpt2-small, llama2-13b, t5-large], quant=[fp16,q8h,q4f], seq=[32,512,2048]
+jess: Action items:
+- arvind: update RFC with probe vs startup tradeoffs + migration restart semantics (due EOD next Tue)
+- molly: add test matrix to perf CI and create OOM safety tests (due next Fri)
+- ryan: sketch controller behavior for restart on compat mismatch and defin e user-facing metric (due next Wed)
+- infra-bot: schedule canary runs to a subset of Dedicated nodes after RFC update
+
+jess: Any objections? If none I'll update the RFC and land the probe PR as experimental flag.
+arvind: No objections from me. +1 to experimental flag.
+molly: No objections.
+ryan: No objections. +1
+infra-bot: noted: canary schedule queued (node-group: dedicated-canary)
+jess: Cool — will update RFC now. Thanks!

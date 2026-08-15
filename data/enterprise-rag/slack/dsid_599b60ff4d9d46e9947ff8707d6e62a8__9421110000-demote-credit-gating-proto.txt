@@ -1,0 +1,17 @@
+eng-runtime
+
+maya: Saw eviction fanout during a slot-compact job on warm-5 -> small tenants hit tail latency.
+kevin: timeline? did demote follow compaction finish or overlap it?
+maya: Overlapped. compaction freed a big contiguous chunk and demote ran immediately.
+olga: Our demote uses global_free threshold only, which is brittle when compaction creates bursts.
+kevin: Short-term fix: suppress demote while compaction is active. downside: slower reclaim.
+nate: Alternative: per-prefix lightweight credit that decays; demote only low-credit prefixes. cheap and avoids global-blindness.
+maya: credit sketch: 0-100 scaled from recent hit-rate; exponential decay (half-life 10m); stored compactly (1 byte).
+olga: Also add small grace window after mark_demotable (200-500ms) to cancel if a pin arrives. avoids racing with inflight requests.
+infra-bot: note: canary pool warm-5 scheduled for next rollout.
+kevin: Telemetry: demote.mark, demote.cancel, demote.reclaim with reason label {compaction, low_credit, overflow}. Sample prefixes for trace.
+maya: Action: implement credit+grace behind flag demote_credit_alpha. run unit+sim tests, then 10% canary.
+nate: Ops: add alert for sustained memory pressure with low demote.reclaim rate so we can rollback if reclaim stalls.
+olga: Long term: consider pacing compaction to avoid giant free bursts. separate RFC.
+kevin: I'll open the PR and link here. keeping defaults conservative: threshold=20, grace_ms=250, half_life=8m.
+maya: Thanks team :thumbsup:

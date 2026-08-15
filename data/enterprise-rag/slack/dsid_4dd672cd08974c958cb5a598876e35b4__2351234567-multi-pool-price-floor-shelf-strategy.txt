@@ -1,0 +1,36 @@
+eng-infra
+
+Alex Kim: Quick idea — instead of pure price-optimized bidding, try a price-floor + "shelf" reserve model for preemptibles. saw 3x eviction churn in us-west last Tue.
+Priya Rao: Sketch it out? how's shelf different from soft-reserve?
+Alex Kim: shelf = a small fraction of capacity we keep at higher max-bid to avoid thrash, only used when warm buffer < threshold. price-floor prevents chasing tiny cheap wins that evaporate.
+Marco Diaz: ran a tiny sim overnight. if shelf_reserve=12% and price_floor=$0.11 we cut eviction rate ~35% and unit cost +6% — overall p99 tail cost down because we avoid restart waste.
+Li Chen: fyi oncall — if we increase max-bid on that shelf, what’s the graceful drain window? we need kube drain + kv-cache flush time baked in.
+Alex Kim: thinking 2min drain + 90s cache flush = 210s. set eviction_grace=240 to be safe.
+Priya Rao: can you post the policy snippet? will test in staging.
+Alex Kim: here, rough policy (staging):
+```
+# provision_policy.yaml
+pools:
+  - type: preemptible
+    price_floor: 0.11  # don't accept below this or we get flaky capacity
+    shelf_reserve: 0.12 # fraction of pool kept at higher max-bid
+    max_bid: 0.30
+    capacity_target: 0.65
+  - type: on_demand
+    capacity_target: 0.35
+    warm_buffer: 4 # nodes
+eviction_grace: 240
+graceful_drain:
+  kube_drain: 120
+  kv_cache_flush: 90
+```
+Marco Diaz: note — cap mix 65/35 is workload-dependent. for short-seq lang models we can push more to preemptible with larger shelf. for long-seq / batching prefer higher on_demand.
+Priya Rao: i'll run a traffic replay with 3 configs: shelf 8%, 12%, 20% and price_floor 0.09/0.11/0.14. target metric = job-restart-rate, tail-latency, and token-cost.
+Li Chen: add a monitor for eviction-origin tag — which pool did the node come from. also alert if eviction_rate > 8% for 10m.
+Alex Kim: yep. also add a synthetic test that hammer-deploys a tiny model to surface KV-cache flush > drain window.
+ops-bot: policy push to staging started by Alex Kim at 2351234599. rollout id: r-2026-03-shelftest
+Priya Rao: staging results halfway through, initial look — shelf 12% reduces cold restarts but increases average cost by ~4%. I'll share full numbers in #eng-infra later.
+Marco Diaz: if shelf increases cost but reduces tail, consider auto-scale shelf by observed eviction_rate: shelf = clamp( base + alpha * eviction_rate, min, max ).
+Alex Kim: good idea. alpha=0.5 maybe. start static, then a simple controller.
+Li Chen: when we flip to canary in us-west-prod, please schedule during low-traffic window and page SRE.
+Alex Kim: will do. Next: Priya run sims + Marco run cost model + Li prepare oncall playbook. sync EOD. :thumbsup:

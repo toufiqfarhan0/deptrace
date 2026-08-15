@@ -1,0 +1,28 @@
+eng-platform
+
+samir: heads-up — kicking off the canary for r3.14.2 in the changewindow, running quick observability audit.
+deploy-bot: Canary started for service=serve-main version=r3.14.2 env=prod region=us-west-2 canary=10% (id=cb-1768008888) :rocket:
+samir: checklist: p95 latency, 5xx spike, kvcache tail, embedding-queue length. start with the SLO dashboard -> /dashboards/deploy-watch/serve-main
+jen_sre: looking at p95 right now — pre-deploy baseline 210ms, current canary 220ms, small bump but within margin.
+kevin_prod: 5xx count is up 8 over baseline in the last 5m, concentrated on embed-route, spike aligns with canary start.
+ops-liaison: can you paste the exact query you ran for the 5xx grouping? I want to cross-check with the alert rules.
+kevin_prod: query: `sum(increase(http_requests_total{job="serve-main",code=~"5.."}[5m])) by (route)` — embed-route: +8, other routes stable.
+jen_sre: also seeing kv cache tail latency skew on a small subset of hosts (host-az2-12). I'll open a host-level trace.
+samir: ok, let's decide thresholds: if 5xx delta > 20 or p95 delta > 30% we pause traffic. current numbers: 5xx delta 8 < 20, p95 delta ~4.8% < 30%. Recommend continue but watch closely.
+deploy-bot: Observability alert check: slo-watch p95 threshold not breached; error-rate rule not fired.
+kevin_prod: logs show `KeyError` in embed handler on a specific shard — pushing a tail fix would take >30m.
+jen_sre: mitigation idea: pin route `embed-route` to previous version for canary traffic while other routes stay on r3.14.2. We can do a partial rollout pin.
+samir: good plan. ops-liaison can you coordinate the pin? We should note the decision in release notes.
+ops-liaison: on it — running router pin command: `tools/routerctl pin embed-route --from r3.14.2 --to r3.14.1 --percent 100 --scope=canary`
+deploy-bot: Route pin applied (embed-route -> r3.14.1) for canary id=cb-1768008888 :white_check_mark:
+kevin_prod: embed-route 5xx dropped back to baseline within 2m after pin. p95 overall unchanged.
+jen_sre: nice. I'll keep host-az2-12 under watch and collect traces for postmortem.
+samir: decision: continue rollout, note partial pin in the changelog, follow up with a post-deploy issue for embed handler fix.
+ops-liaison: added note to release_notes: "Partial pin: embed-route -> r3.14.1 during canary due to transient embed shard KeyError; no full rollback."
+samir: thumbs for continuing? :thumbsup:
+jen_sre: :thumbsup:
+kevin_prod: :thumbsup:
+deploy-bot: Canary percent increased to 50% (id=cb-1768008888) by ops at 1768009000.
+ops-liaison: closing audit — will bump to 75% in 10m if no new alerts.
+jen_sre: saving traces and metrics snapshot to /runs/1768008888/audit.json for post-release eval.
+samir: thanks everyone, keeping this thread open for any late regressions.

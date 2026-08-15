@@ -1,0 +1,48 @@
+support
+
+morgan.support: FYI — ticket #12345 (avi@acme.dev) is on hold by our fraud checks. Customer says they're a legit early-stage dev team trying to evaluate the API. Flags: VPN / disposable email / "SES bounce" seen on verification. Asking for manual review/override so they can try the trial. internal/ticket/12345 -> https://acme.internal/tickets/12345
+
+fraud-bot: AUTO FLAG: risk_score=0.78; flags=[vpn_ip, disposable_email, email_reputation_low, ip_geo_mismatch]; detected_provider=DigitalOcean; bounce_type=SES_DELIVERY_BOUNCE; evidence_ids=[ev-9081, ev-9082].
+
+priya.security: Can you paste the signup event + headers (IP, user-agent, x-forwarded-for) and the verification email bounce details? Also: do they attach any billing method? If customer attached a card we can use billing verification as a tie-breaker.
+
+morgan.support: Repro steps and logs below (redacted where appropriate):
+1) User signed up via /signup with email avi@acme.dev on 2024-11-18 14:03 UTC.
+2) Verification email bounced back with SES code 554 (complaint) and body: "Delivery to the following recipient failed permanently".
+3) Request headers from signup event:
+
+```
+POST /signup HTTP/1.1
+Host: app.redwood.local
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)
+X-Forwarded-For: 178.62.85.12
+X-Real-IP: 178.62.85.12
+Referer: https://acme.dev/pricing
+```
+
+Customer says the IP is their office VPN; they provided a screenshot of the VPN status (attached in ticket). They also supplied a payment method later (card) and uploaded a company invoice and a utility bill. I redacted numbers in ticket.
+
+lina.eng-oncall: Quick lookup: 178.62.85.12 -> DigitalOcean (ams3). Reverse DNS is ok (host.digitalocean.com). That IP is commonly used by small cloud VMs but we don't see it on the anonymizer list (tor/vpn list) right now. SES bounce could be caused by misconfigured mailbox. Disposable email check returned positive because domain uses a catch-all and transient MX records.
+
+priya.security: Thanks. Given: (a) detected IaaS IP, (b) disposable-email signal, (c) SES bounce. None are automatic decliners if we have billing attached and supporting docs. Policy: if billing method exists + supporting billing proof that ties to a company domain, TrustOps can do manual override with conservative limits.
+
+sam.trustops: I reviewed ticket 12345. Approve manual trial override with conditions:
+- Grant 7-day trial with soft quota: 10k tokens/day, 50k tokens total.
+- Mark account for 30d monitoring and auto-throttle on anomalous usage.
+- Require support to collect last4 of card + proof of company affiliation (which Morgan already has).
+
+Action to apply (run internally): grant_trial --account avi@acme.dev --days 7 --daily-quota 10000 --note "manual override after KYC, monitor 30d"
+
+priya.security: +1 from security. Please ensure we redact PII in the ticket before closing and upload the KYC docs to the secure evidence store (not in public ticket). Also add a short rationale to the risk log: "manual override due to billing verification + supplied documents despite disposable/email bounce and IaaS IP".
+
+morgan.support: Received. I pushed the grant_trial action and set the quotas. Asked the customer for last4 and utility bill (they provided last4=4242 and a utility PDF with billing address matching the billing name). Uploaded docs to evidence store (evidence/ev-9132). Noted monitoring and throttles.
+
+sam.trustops: Thanks. I'll add the risk entry and watch the first 48 hours. If anything spikes, auto-revoke is configured.
+
+morgan.support: Closing internal review here — ticket updated and customer notified that trial was granted with limits. If anyone wants the ticket link or wants to add additional rules, ping me. :white_check_mark:
+
+priya.security: Nice work. Please follow up if customer requests quota increases; those require a fresh risk review.
+
+lina.eng-oncall: added a note — no infra action required; monitoring hooks are in place.
+
+fraud-bot: NOTE: auto-observe rule attached to the account for 30d.

@@ -1,0 +1,91 @@
+incidents
+
+jordan: Drafting a compact incident communications pack we can stash in the incident toolbox. Want something copy/paste-ready for: (A) on-call handoff, (B) public status page, (C) short customer alert (SMS/email), (D) enterprise follow-up, and (E) concise post-incident recap. Posting raw drafts below — please edit for tone/mandatory legal lines.
+
+meera: This is great. Short note: prefer "may affect" vs "affects" for the public-facing lines. Also include an explicit "next update" ETA on status page blurbs.
+
+incident-bot: Related threads: <#incidents/1762005432> <#incidents/1763432100>. Use /incident-templates to pull canonical pack.
+
+jordan: OK here are the drafts. Keep each block very short so responders can paste into status or email quickly.
+
+--- ON-CALL HANDOFF (1-2 lines) ---
+jordan: ```
+INCIDENT {INCIDENT_ID}  pager @{oncall}
+Status: Investigating | Identified | Mitigated
+Impact: {short: e.g., "Increased 5xxs for Text Gen in eu-west-1 (~8% of requests)"}
+Immediate actions: list bullets of actions in progress
+Handoff time: {HH:MM UTC}  update this thread: #incidents ts={thread_ts}
+// < 3 short lines for visibility during shift changes.
+```
+
+meera: Add a line for suspected deploy/regression id if applicable: "Suspected regression: yes/no  deploy {sha}"
+
+--- PUBLIC STATUS PAGE (concise, non-technical) ---
+jordan: ```
+Summary: Some customers in {region} may experience errors or higher latency for {service}.
+Impact: A subset of requests may return errors or be delayed. Were monitoring.
+Current status: Engineers are investigating; temporary routing applied where available.
+Next update: {HH:MM UTC}
+Reference: internal incident {INCIDENT_ID}
+```
+
+ryan: Legal check: fine, but add a short "Data exposure: none suspected/under investigation" only when security has confirmed. Keep public page conservative.
+
+--- SHORT CUSTOMER ALERT (SMS / short email) ---
+jordan: ```
+Subject: Temporary service disruption for {service} in {region}
+Hi {customer_name},
+Some requests to {service} in {region} may be failing or delayed since {start_time}. Our team is investigating and weve applied temporary mitigations. Status updates: {status_page_url}. If this is causing critical business impact, contact {support_link} or reply to this message.
+Update promise: we will follow up with an initial impact note within 72 hours for affected enterprise customers.
+ - Redwood Inference Support
+```
+
+claire: For SMS: "Redwood: Some requests to {service} in {region} may be failing. Status: {status_page_url}"
+
+--- ENTERPRISE/ACCOUNT NOTIFICATION (short but more detail) ---
+jordan: ```
+Subject: Incident notice  {INCIDENT_ID}  {service}  {region}
+Hi {t am_name},
+We are investigating an issue affecting {service} in {region} since {start_time}. Impact: approx {percent}% of requests for customers routed to {region} experienced errors.
+Mitigations: traffic routed to fallback region, rate limits adjusted.
+Action items: we will provide a post-incident impact analysis within 72 hours including affected customers and any SLA implications. Your TAM {t am_email} is available for escalation.
+Regards,
+ Redwood Inference Incident Response
+```
+
+meera: Suggest adding a "Regulatory notice" placeholder for GDPR/CCPA/sector-specific customers: "Regulatory notification required: yes/no  contact {compliance_email}"
+
+--- POST-INCIDENT RECAP (single-paragraph + bullets) ---
+jordan: ```
+Incident {INCIDENT_ID}  {short-title}
+Start: {start_time}  End: {end_time}
+Summary: One-line objective summary of what happened (avoid blame; factual).
+Customer impact: bullets with who, duration, error type, estimated percent impacted.
+Root cause: short sentence (confirmed) or "under investigation".
+Mitigations & timeline: bullets with timestamps and owners.
+Communication owners: status page  @{status_owner}; customer notice  @{customer_owner}; internal recap  @{recap_owner}.
+Action items: owner + ETA for code fix, monitoring, docs updates.
+Links: logs, traces, status page, postmortem doc link.
+```
+
+ops-oncall: Please include a short "Severity & SLA impact" line for billing/ops teams: e.g., "Severity: P1/P2; SLA reduction: yes/no"
+
+jordan: Added in the example text above. Also proposing a 2-sentence "tone rubric" to include at top of the template chooser:
+
+Tone rubric: concise, empathetic, non-speculative, customer-first. Avoid technical root-cause statements until confirmed. Use non-alarming verbs ("may experience" vs "are having").
+
+ryan: Approve with one change: any customer-facing template must include the sentence about follow-up for enterprise customers when SLAs may be affected. Keep that default for accounts tagged as "enterprise".
+
+meera: I'll create a short cheat-sheet with 1-line examples to paste during live incidents (latency, 5xx spike, degraded throughput). Will link it to the bot.
+
+jordan: Thanks  let's land these into the docs. Plan: meera to PR the examples, ryan to sign off on legal phrasing, claire to own SMS variants. Once merged, update /incident-templates mapping and we can rehearse in the next on-call drill.
+
+incident-bot: Reminder: when you post to the status page, use the template id: template_inc_comm_v1 to ensure consistent wording.
+
+ops-oncall: One last ask  can we have a short audit field in the internal recap for "who approved customer message" (for legal/audit trail)? I can add that as an optional line.
+
+jordan: Good call, add: "Customer message approval: @{approver} (timestamp)".
+
+meera: LGTM. I'll open the PR end of day and drop a link here.
+
+jordan: Thanks everyone. Leaving thread open for any last tweaks for 48h. :thumbsup:

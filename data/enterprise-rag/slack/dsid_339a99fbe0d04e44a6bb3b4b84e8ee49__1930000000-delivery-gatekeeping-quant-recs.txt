@@ -1,0 +1,52 @@
+eng-platform
+
+Lara: Quick async check — where are we with the delivery-gatekeeping sprint? Need clear owners for: quant recommendations, batching/caching changes, and the canary that will watch for regressions. Please post milestones/blockers by EOD. @here :eyes:
+
+Jonah: Status update from infra/plat side: quant recs PR is merged to feature/quant-recs but perf test run still in flight. Tentative timeline: perf tests complete by Wed, staging rollout Thu, canary Fri, GA next Tue. I can own rollout orchestration.
+
+Sasha: On quant side — ran int8 sweep on A100 with our custom kernels. Good token-level perf, but see ~0.8% EM drop on long-form summarization for one config. Plan: ship per-layer mixed-quant profile + BF16 fallback for attention-heavy layers. Perf snippet below from my local run:
+
+```
+model: redwood-open-7b
+config: mixed-int8-layerwise
+latency_mean: 12.3ms -> 10.1ms
+p95: 28ms -> 30ms (small bump)
+quality: rouge-l avg 0.82 -> 0.813
+cost_delta: -11%
+```
+
+Sasha: I'll own creating the final profiles and landing them in `redwood/optkit/profiles`. Need a quick code review on the quant helper (pinging @Jonah).
+
+ml-bot: perf-run complete: feature/quant-recs @ commit 9f3a2d — unit tests passed, evals: longform-1: -0.9% rouge-l, summar-short: +0.2%, embedding-sim stable. Attached logs: s3://redwood-ci/quant/1930000000-run.log
+
+Raj: Batching/caching update — pushed batching policy v2 to staging (`/policies/batch_v2`). Observed ~18% lower token cost under steady load with 3% median latency increase. Still need tracing hooked into Console to validate per-route impact. Command I ran to deploy staging policy:
+
+```
+rlctl deploy-policy --env staging --policy batch_v2
+```
+
+Raj: I'll own the batching rollout and the Console tracing wiring. Blocker: need a Console API key from infra team (Lara, can you approve?).
+
+Tia: Canary plan for regressions: create canary job on dedicated pool with staged traffic ramps: 1% -> 5% -> 20% over 6 hours, run for 24h. Canary will run eval set + production traffic sampling with auto-alerts on quality regressions >0.5% or latency p95 increase >10%. Canary config draft:
+
+```
+canary_name: quant-batch-gate-193000
+pool: dedicated-staging-3
+ramp: [1,5,20]
+eval_set: longform-prod-subset-v2
+alerts: rouge-l drop > 0.5% OR p95 +10%
+```
+
+Tia: I can own the canary execution and alerting wiring but need someone to own the rollback playbook and on-call during the window.
+
+Lara: I can approve the Console API key for Raj. For rollback owner, Jonah willing to be lead — Jonah, can you be primary and Sasha backup for quality checks? :thumbsup:
+
+Jonah: Happy to be rollback lead. Sasha as backup works. I'll also coordinate with Support for the alert routing (pager/team).
+
+deploy-bot: canary created: canary/quant-batch-gate-193000 (status: scheduled). CI link: https://ci.redwood.ai/runs/1930000000
+
+Sasha: Quick note — we'll run a focused prompt set for the long-form regression check (20 prompts, seeds fixed). I pushed the set to `eval/longform/quick-gate.json`.
+
+Raj: Thanks Lara — will ask infra for the Console API key now. Planning a staged rollout: staging -> limited dedicated -> canary -> GA.
+
+Lara: Great, this is enough for leadership update. Action items: Sasha (quant profiles + review) by Wed EOD, Raj (batching tracing + staging deploy) by Thu EOD, Tia (canary run + alerts) Fri, Jonah (rollback lead & support routing) Fri during canary. If anything slips, ping this thread. Thanks all :pray:

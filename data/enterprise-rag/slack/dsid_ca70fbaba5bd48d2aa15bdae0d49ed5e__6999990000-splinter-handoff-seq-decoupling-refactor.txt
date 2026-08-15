@@ -1,0 +1,48 @@
+eng-runtime
+
+olivia: quick heads-up — prototyped a 'splinter' handoff refactor that decouples the sequence token from the lease handshake. goal: avoid a single global sequencer and make transfers per-slab/idempotent. sketch in playground, TL;DR: simpler invariants, more messaging but safer correctness boundaries.
+
+matt: curious — what are the main break/risk surfaces? eviction races? stale reads?
+
+olivia: main wins: reduces cross-node contention and avoids a serialized transfer queue. tradeoffs: more cross-node chatter during handoff and need for dedupe + explicit commit/ack. correctness: require transfer id + ack + final commit to flip residency.
+
+srajan: can you paste the proto-ish flow? helps me reason about failure modes.
+
+olivia: sure, proto sketch:
+
+```text
+SEND_TRANSFER(prefix, epoch, seq_token, transfer_id)
+ACK_RECEIVE(prefix, epoch, seq_token, transfer_id)
+COMMIT(prefix, epoch, transfer_id)
+RECLAIM_IF_NO_ACK(prefix, epoch, transfer_id)
+```
+
+matt: how do we preserve read-after-write during in-flight transfers? what prevents a stale node from serving newer writes?
+
+olivia: seq_token still used locally for version checks. during transfer sender marks prefix as "transferring:epoch=X, transfer_id=Y" and rejects reads < COMMIT epoch. receiver buffers writes until COMMIT. if ACKs never arrive, sender can reclaim after timeout + additional fencing (transfer_id CAS).
+
+evan: reclaim timeout needs careful tuning. I'd prefer lease-backed reclaim with exponential backoff + eviction-credit dampening. also add metrics: transfer_latency_ms, commit_wait_count, duplicate_transfer_count.
+
+anna: perf note: multi-step flow could inflate p99 for hotkey handoffs. can we micro-batch transfers for the same slab/prefix group?
+
+olivia: good call — prototype includes a micro-batcher on sender: coalesce outgoing transfers every 2ms or up to 8 prefixes. in sim this cut messages ~30% and reduced tail by ~15% under hotkey spikes.
+
+infra-bot: deploy-plan suggested: canary us-west-2, 5% shard traffic, 24h observation window.
+
+srajan: for idempotency, use opaque transfer_id (uuid) and CAS at receiver for commit. receiver should be able to NACK if it sees a higher epoch or already-committed transfer. sample config: 
+
+```json
+{"handoff": {"batch_ms": 2, "max_batch": 8, "reclaim_timeout_ms": 1500, "transfer_id_header": "X-Transfer-ID"}}
+```
+
+matt: observability: please add a tracing span `handoff.transfer` on both sides and propagate seq_token + transfer_id. we need metrics sliced by prefix_shard and outcome (committed, reclaimed, duped, failed).
+
+olivia: noted — will add tracing + outcome metrics. plan: land proto + unit tests -> integration canary -> load test with hotkey spike harness. posting for review: @srajan @matt @evan.
+
+evan: +1. also add an abort path doc: receiver on seeing higher epoch should write a tombstone and NACK, sender treats that as a safe reclaim.
+
+anna: compatibility check: shadow-read fallback should remain available during transfers (allow reads but tag as stale and emit an alert). avoids user-visible errors while we complete transfer.
+
+matt: sounds good. want a 30m sync to pair on tests and the reclaim logic. tomorrow 10:00 PT works for me.
+
+olivia: booked 30m tomorrow 10:00 PT — invite sent. thanks all :thumbsup:

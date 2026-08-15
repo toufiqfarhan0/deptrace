@@ -1,0 +1,16 @@
+eng-ml
+
+Priya: quick sync — proposing a small 'golden-run' + capability probe on ingest to avoid runtime surprises. short callouts below.
+Owen: ok, what's golden-run exactly?
+Priya: tiny deterministic workload: seeded prompts + fixed rng, run on a reference host, produce golden tokens + compact perf trace. not the full bench.
+Marta: how to stop teams from picking trivial seeds?
+Priya: bench-team provides canonical seedsets per family and registry requires at least one long and one multi-turn seed.
+Samir: capability probe should be <30s: fused_attention, kv layouts, aten ops. annotate registry with compatibility_status (compatible/partial/incompatible).
+Ken: comparator policy? exact diffs are noisy.
+Owen: use token-id normalized edit distance + perf thresholds. defaults: <=3% token-id diff and p50 within 10% => pass. expose flags.
+Priya: manifest fields: seeds[], bench_host_tag, bench_suite_version, bench_config_checksum, max_wall_time, comparison_policy, provenance. ingestion CI runs golden + probes and writes bench_signature.
+Samir: I'll add a probe runner to ingest CI and registry flag.
+Marta: migration plan: run golden-probe on current models, annotate results, do not block traffic.
+Priya: action items: 1) i'll draft guideline + sample manifest PR; 2) Samir: probe runner; 3) Owen: tolerant comparator lib.
+InfraBot: presubmit job `golden-probe` created (job 121478). runtime ~60s on reference image.
+Priya: thanks — i'll open RFC with examples and a tiny runner. please ack on PR. :pray:

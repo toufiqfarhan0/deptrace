@@ -1,0 +1,55 @@
+devex
+
+maria: Heads up — found another clipboard copy issue in the onboarding sample. README shows "API_BASE=api.redwood.com" but the code in the snippet reads process.env.API_HOST and the curl example uses Authorization: Bearer <token>. It's tripping up customers.
+
+sam: Oof, where exactly? path + line numbers?
+
+maria: examples/getting-started/README.md, the network call snippet. Here's what it currently has:
+
+```js
+const url = `${process.env.API_HOST}/v1/generate`
+const res = await fetch(url, {
+  headers: { Authorization: `Bearer ${process.env.REDWOOD_TOKEN}` }
+})
+```
+
+But the top of the README tells users to set `API_BASE=api.redwood.com` which is a different var name and also missing the scheme.
+
+oliver: Yeah that's classic copy-paste drift from when we refactored env names. Suggest we standardize on REDWOOD_API_URL across all examples (explicit https://prefix) so users can copy-paste without swapping.
+
+toni: Also noticed parity issues across SDK samples — Node sample uses `Authorization: Bearer` but the Go snippet uses `X-Api-Key: <key>` which is actually for our old internal gateway. We should pick one canonical auth example for README and then show per-sdk nuance below.
+
+maria: Agreed. Proposed canonical curl block to replace the confused one:
+
+```bash
+export REDWOOD_API_URL=https://api.redwood.ai
+export REDWOOD_API_KEY=sk-REPLACE_ME
+
+curl "$REDWOOD_API_URL/v1/generate" 
+  -H "Authorization: Bearer $REDWOOD_API_KEY" 
+  -d '{"input":"hi"}'
+```
+
+sam: Love it — explicit env names and scheme. Can we also put a short note that SDKs will handle the header for you if you pass the key into the client constructor? That prevents double-headers.
+
+toni: Good call. Add a tiny snippet for Node SDK:
+
+```js
+import Redwood from '@redwood/inference'
+const client = new Redwood({ apiKey: process.env.REDWOOD_API_KEY, apiUrl: process.env.REDWOOD_API_URL })
+await client.generate({ input: 'hi' })
+```
+
+maria: I'll open a docs PR. Assigning to @sam for review and @oliver for SDK parity check.
+
+docs-bot: created issue #3421 to track README env var parity and auth header consistency.
+
+ci-bot: FYI, lint failed on current branch because the README had an inline HTML comment that breaks our markdown linter. See CI details in the PR.
+
+sam: I'll take the PR review today. Quick checklist: 1) change env names, 2) unify auth examples, 3) run `make docs-lint`, 4) add a footnote about SDK auto-handling headers.
+
+oliver: I'll run the SDK examples locally against the staging gateway to confirm the header behavior and update the Go example to use the client constructor instead of raw X-Api-Key header.
+
+maria: Thanks — will paste the PR link when ready. :thumbsup:
+
+sam: Nice catch. These tiny mismatches cause a ton of onboarding friction. :facepalm:

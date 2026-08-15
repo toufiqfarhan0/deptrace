@@ -1,0 +1,44 @@
+eng-runtime
+
+Sophia: Quick heads-up — canary on dedicated pool shows ~20% p95 regression after we rolled quant-calib v2 at 03:10 UTC. FP8 paths look stable. :thinking:
+Raj: Can you share repro info? model and seq length distribution?
+Sophia: gpt3.5-like. median 512, tail up to 2048. Canary used triton CUTLASS toggle + quant-calib v2.
+Mike: I saw similar on a small client cohort yesterday. Suspect kernel fallback to a slower int4 path. Any profiles?
+Sophia: Short perf paste:
+```
+baseline: fp8-cutlass p50 40ms p95 120ms
+after calib: runtime selects int4-gemm for many requests -> p95 145ms
+KV misses amplify wait: kv_cache lock spikes observed
+```
+Tara: Flamegraphs uploaded: https://internal/prof/1958887777/fg
+Tara: Flame shows hotspots in cutlass::fallback_gemm and kv_cache::acquire_lock.
+Raj: What did the arch prober report on canary nodes?
+Sophia: Most reported sm86 but a subset reported sm80. Looks like prober confidence dropped for nodes with the newer driver and we ended up with mixed kernel families.
+Mike: So runtime routes some requests to sm80-optimized kernels even though hardware is sm86 -> slower kernels chosen.
+Raj: We have REDWOOD_RUNTIME_ARCH_HINT env to force behavior. Can you try forcing sm86?
+Sophia: Did that test: export REDWOOD_RUNTIME_ARCH_HINT=sm86; restart runtime. p95 returned to ~118ms for the same workload.
+Mike: Good quick mitigation. For root cause, prober heuristics need tightening or a driver-level detection.
+Tara: Also noticed KV lock contention worsens on the int4 path because kernel duration per-token increases with batch-size variance, holding the kv lock longer.
+Sophia: Right. The int4 calibration reduces compute but adds branching and extra setup in CUTLASS for some layer sizes, increasing kernel overhead and lock hold time.
+Raj: Immediate actions proposed:
+- rollback quant-calib v2 on canary (ops already triggered rollback)
+- set REDWOOD_RUNTIME_ARCH_HINT=sm86 on affected pool
+- add a small yield in kv_cache lock path (e.g., sleep/yield after 50us) to reduce tail contention
+Mike: I'll wire up CI microbenchmarks: int4 vs fp8 for seq=2048 batch=4, KV-hot vs KV-cold, capturing --kv-lock-stats.
+Raj: I'll author a deterministic repro job and a perf harness PR.
+Tara: Suggest a batching heuristic experiment: if kv_miss_rate > 10% then cap batch_size to 8. Could reduce lock hold times. A/B on a small canary subset.
+Sophia: Medium-term: batch-cap A/B + kv_lock_yield quick patch. Long-term: rework prober to use driver ioctl queries or ship multi-arch kernel with runtime CPU/GPU dispatch. Also revisit calibration mapping to avoid CUTLASS branchy paths.
+Mike: Agreed. I'll help with CI and collect traces tomorrow.
+deploy-bot: Canary rollback executed for canary-group-3 by @ops at 03:30 UTC. Reason: p95 latency regression. :white_check_mark:
+ops-bot: Incident IR-2026-042 created: temporary perf regression detected and mitigated. Owners: eng-runtime, eng-ml.
+Sophia: Adding flamegraph link and env override example to the incident ticket.
+Sophia: Env snippet for ops:
+```
+# temp override for pool
+export REDWOOD_RUNTIME_ARCH_HINT=sm86
+systemctl restart redwood-runtime
+```
+Tara: Also let's add an alert for >10% p95 increase post-deploy so this is caught automatically.
+Mike: +1
+Raj: PRs I plan to open: repro harness, kv_lock_yield quick patch, batch-cap A/B. Links to follow.
+Mike: Will post CI perf results in the morning. Thanks all. :thumbsup:

@@ -1,0 +1,53 @@
+incidents
+
+Sara: heads up — ACME123 opened an escalation: dashboard shows ~3.2M tokens for Mar 12 but invoice lists ~3.9M. I traced metrics and see an ingest gap 2026-03-12 03:40-04:10 UTC. Did a producer go down? :thinking:
+Mike: hmm — I see a pause in the ingest metrics graph. logs from metering-proxy show a reconnect storm around 03:43. ops-bot reported kafka consumer lag spike.
+Anjali: pulled the ingest logs, looks like the pipeline rebalanced and some offsets were compacted. snippet:
+```
+2026-03-12T03:43:12Z ERROR consumer-group metering-consumer commit failed: OffsetOutOfRange
+2026-03-12T03:43:12Z WARN kafka connection reset by peer
+```
+Mike: that explains missing events in the live meter. Did the replay job run?
+Sara: we had an automated replay scheduled but I can't find a successful run. thread shows replay-job-1769800000 failed.
+ops-bot: replay-job-1769800000 status: FAILED. Reason: checksum-mismatch on batch 11234. See /var/log/replay/replay-1769800000.log
+Ryan: checksum-mismatch usually means partial duplicate or event ordering changed. We should avoid double-counting when backfilling.
+Anjali: starting a manual replay dry-run now with --verify-checksum and --dedupe-window=5m. Command:
+```
+./events_replay_tool.py --start 2026-03-12T03:35:00Z --end 2026-03-12T04:15:00Z --verify-checksum
+```
+Anjali: dry-run output (truncated):
+```
+replay dry-run summary: total_events=124k, token_estimate=780k, checksum_mismatch_batches=1 (batch=11234)
+```
+Mike: if dry-run token_estimate ~780k that might bridge most of the invoice delta. But invoice shows +700k compared to dashboard. We still need to reconcile duplicates.
+Billing: can we get an ETA? customer is asking for credit if invoice is wrong.
+Sara: short-term: propose running a controlled backfill at 09:00 PT with dedupe enabled and checksum verification, then produce a reconciliation report with raw event counts and token deltas. We'll offer provisional credit if replay increases invoice.
+Ryan: steps I recommend:
+1) snapshot current billing snapshots and dashboards (for audit)
+2) run replay-tool with `--safe-merge` to avoid double-counting (this writes to staging metering stream)
+3) run reconciliation script `scripts/metering_reconcile.py` and compute per-customer token deltas and checksums
+4) only after manual sign-off push deltas to billing ingest
+
+Add commands:
+```
+# snapshot dashboards
+curl -X POST https://console.internal/api/snapshots -d '{"name":"pre-backfill-1769876543"}' -H 'Authorization: Bearer $ADMIN'
+
+# run replay (staging)
+./events_replay_tool.py --start 2026-03-12T03:35:00Z --end 2026-03-12T04:15:00Z --safe-merge --dedupe-window=5m --out=staging-stream
+```
+Anjali: dry-run matches Ryan's items. I also found the failed batch contained out-of-order event timestamps which tripped our checksum. I can run a remediation to reorder, but that risks changing token attribution slightly. I'll include a per-customer diff.
+Billing: please include a CSV with columns [customer_id, dashboard_tokens, replay_tokens, invoice_tokens, token_delta, action_recommended]. We'll need that to compute credits.
+support-bot: created support ticket SUP-2026-3342 for ACME123 and linked this thread.
+Sara: plan: run controlled backfill at 09:00 PT (2026-03-12T16:00:00Z), run reconciliation, share CSV with Billing and Support by 11:00 PT. If replay adds >0 tokens for ACME123 we'll propose provisional credit and notify customer.
+Mike: also adding an alert to detect checksum-mismatch in future replays and auto-pause the pipeline instead of blind replays. filing infra PR. :warning:
+Anjali: launching final replay now in staging to ensure no side effects. I'll post results here. :eyes:
+Ryan: thanks. keep it tight — customer-facing message must be clear about steps and timing.
+Sara: noted — I'll draft the message once we have reconciliation CSV.
+Mike: thumbs up.
+ops-bot: replay-job-1769876543-staging status: COMPLETED (dry-run). estimated_tokens=792345, checksum_issues=0
+Anjali: staging replay completed cleanly, staging token estimate 792,345. Proceeding to run production backfill at scheduled time unless objections.
+Billing: standing by for CSV.
+Sara: no objections. I'll update Support to tell ACME123: planned reconciliations and provisional credit policy.
+support-bot: updated ticket SUP-2026-3342 with expected timeline and link to this thread.
+Sara: ok closing loop here — follow-up thread in #billing once CSV uploaded. Thanks everyone. :white_check_mark:

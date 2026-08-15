@@ -1,0 +1,33 @@
+incidents
+
+Ivy: quick postmortem follow-up from the 01:58 UTC GPU surge. we need owners for headroom targets, autoscale/scheduler tweaks, tenant quota backstops, and a recurring audit. short replies please.
+Marcus: i'll own scheduler/autoscale tuning. short-term: per-node slot-cap bump behind a flag for micro-models (8->12). ETA PR 2025-06-20.
+Lee: i'll do tenant quota backstops. plan: per-tenant token-bucket + emergency throttle route + alerting. PR ETA 2025-06-18.
+Polly: i'll draft headroom targets per-cluster + routing policy to Dedicated pools and include cost delta. due 2025-06-22.
+sre-bot: incident digest: 2025-06-15 01:58 UTC surge -> scheduler queue growth and headroom depletion; peak GPU util 98.9%; fallback rate 26%.
+Ivy: two quick policy choices: raise baseline headroom for critical routes (~12%) OR rely on faster autoscale + queuing. comments?
+Marcus: prefer minimal baseline headroom + safer autoscale only if startup < 6s. otherwise small baseline (10-12%) for critical routes.
+Lee: quota sketch:
+```yaml
+per_tenant:
+  burst_tokens: 380
+  refill_per_sec: 38
+  max_concurrent: 170
+alerts:
+  sustained_pct: 72
+```
+Polly: recurring pattern: headroom erosion every ~3 weeks aligned with batch-job windows. propose a weekly headroom audit in ops rotation to catch drift.
+Ivy: opsbot, create a recurring task for weekly headroom audit and assign to ops-rotation.
+opsbot: created task #CI-7801 "weekly-headroom-audit" assigned ops-rotation; first run 2025-06-23.
+Marcus: canary plan: 5% traffic for 2h, monitor gpu_utilization, scheduler_queue_len, preemption_rate, fallback_rate. smoke test: 10m at 80% sustained.
+Lee: opened draft PR for token-bucket: https://git.internal/r/5512 - review ping @Marcus @Polly
+Marcus: opened scheduler PR draft: https://git.internal/r/5513 - feature flag `slot_cap_boost_small_models` included.
+Polly: i'll include overlap with batch windows in the audit checklist and reach out to batch owners.
+Ivy: owners + timelines recap:
+- Marcus: scheduler/autoscale PR + canary plan  due 2025-06-20
+- Lee: quota token-bucket PR + alerting  due 2025-06-18
+- Polly: headroom + routing proposal (with cost delta)  due 2025-06-22
+Ivy: verification plan: 2h canary verification and 6h soak after full rollout; post results here.
+Lee: enabling alerts 24h post-merge.
+Marcus: i'll add the smoke test to CI and create dashboard panels for canary metrics.
+Ivy: thanks — i'll create a milestone card and link this thread in the postmortem. marking follow-ups in progress; update thread with PR/merge links. :thumbsup:

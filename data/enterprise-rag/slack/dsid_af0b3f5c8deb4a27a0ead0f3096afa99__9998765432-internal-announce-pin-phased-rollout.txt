@@ -1,0 +1,39 @@
+eng-releases
+
+Zoe: Drafting internal release note for Wed 02:00 UTC window. Want a phased pin (internal -> public) and a short rollback snippet.
+
+Zoe: ```
+Release v2.3.1
+- Fix: dispatcher memory leak under burst (fewer OOMs)
+- Tune: KV cache heuristics (~12% token cost savings)
+- Ops: internal canary pin then public flip; auto-fallback to v2.2.9 on latency spike
+- Impact: No API changes; SDK patch-level bump only
+```
+
+Marco: Add one-line rollback criteria and the exact CLI lines for ops.
+
+Zoe: Added: 
+- Rollback criteria: sustained p99 >200ms for 10m OR error rate >3x baseline
+- Internal pin: `./deploy pin --version v2.3.1 --scope internal --actor @Marco`
+- Public flip: `./deploy pin --version v2.3.1 --scope public --actor @Priya`
+- Rollback CLI: `./deploy rollback --to v2.2.9 --reason "p99>200ms_10m"`
+
+Priya: Comms: internal note will include the runbook + CLI. Public blurb: "Stability patch to reduce memory errors; no customer action required." I'll prep both and attach to the PR.
+
+ops-oncall: Roster: @ops-oncall (primary), @Lee (backup). I'll monitor 01:50-04:00 UTC. On standby for rollback.
+
+Marco: Ops runbook (short):
+1) T-30m: post internal announce with CLI + runbook (Zoe)
+2) T0 (02:00 UTC): run internal pin (Marco) and start 10m health checks
+3) If stable: after 90m run public flip (Priya posts public blurb)
+4) If rollback criteria hit: run rollback CLI and open #incident
+
+deploy-bot: Deploybot scheduled: window=2026-03-24T02:00:00Z, duration=30m, change-id=ch_999876, canary=true, auto-fallback=v2.2.9.
+
+Zoe: PR: https://github.com/redwood-inference/release-notes/pull/512 - please review by EOD. I'll post internal announce at T-30m unless ops wants to.
+
+Priya: LGTM, will attach public copy to PR.
+
+Marco: I'll execute the internal pin and stay on the thread for any rollback.
+
+ops-oncall: Acknowledged.

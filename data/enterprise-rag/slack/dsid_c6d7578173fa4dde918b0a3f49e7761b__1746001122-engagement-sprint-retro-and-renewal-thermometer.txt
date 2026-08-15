@@ -1,0 +1,65 @@
+customer-success
+
+Marina: quick sync — running a short engagement-sprint retro + renewal "thermometer" for Northbridge ahead of the QBR next Wed. want to lock slide owners and exec ask. who can take which pieces?
+
+Liam: I can own the onboarding health slide and the demo checklist. will update deck by EOD today. :thumbsup:
+
+Priya: I'll take renewal risks + mitigation plan. estimate: 2 potential product blockers (data retention & SSO), renewal probability ~75%. I'll include contingency asks for exec. :chart_with_upwards_trend:
+
+Jorge: I'll do the action-items slide and callouts for enablement gaps. can somebody drop the latest runbook link?
+
+Marina: runbook here: https://redwood.app/s/nb-qbr-runbook (latest v3) — please add bullet owners inline.
+
+Samira: tagging @Liam re: onboarding — we still have 3 accounts stuck on the infra checklist (region quotas). I can drive follow-ups with infra, need a one-line ask for the exec slide (uptime/window to expedite quotas).
+
+Liam: noted. suggest exec ask: "Allocate priority quota to unblock onboarding for Northbridge pilot (ETA 48h)" — will add under risks/asks.
+
+Priya: for renewal thermometer — proposed breakdown:
+```
+Health: 72/100
+Onboarding progress: 65%
+Usage trend: +4% MoM
+Open blockers: 3 (SSO, retention, quota)
+Renewal likelihood: 75% (with exec assist -> +12%)
+```
+
+Jorge: small UX ask — can we surface a short customer quote on the slide? Samira, do we have a recent NPS comment?
+
+Samira: yes — pulled quote and added to the shared slide (last page).
+
+Marina: schedule: final slide deck by Tue 10am PT, dry run Tue 2pm PT. Exec readout Wed 11am. If your slide isn't in the deck by Tue 10am, I'll reassign.
+
+Liam: done — I'll push onboarding slide by 9:30am Tue.
+
+Priya: SLA for mitigation plan writeup — can do by Mon EOD, will include ask language and owner matrix.
+
+Jorge: adding action items to the deck now. quick q: do we include the detailed enablement timeline or keep a summary?
+
+Marina: summary in deck, detailed timeline in runbook + link to appendix. keep deck tight for execs.
+
+deploy-bot: Reminder — QBR deck template v2 deployed to /decks/templates/qbr-2025-v2 at 1746001200.
+
+Samira: FYI — reaching out to Product for SSO remediation ETA. will capture any scope we need the exec to greenlight.
+
+Liam: small ask for CS Ops: can someone update SFDC renewal stage to "At Risk - exec assist" if we surface the request? want sales notified.
+
+Marina: yes, I'll update SFDC after Priya's mitigation text is final.
+
+Priya: action items summary (adding to comments so folks can copy):
+- Priya: write mitigation + exec ask (Mon EOD)
+- Liam: onboarding slide + quota ask (Tue 9:30am)
+- Jorge: action-items slide + appendix link (Tue 10am)
+- Samira: product follow-up & quote (Mon EOD)
+- Marina: SFDC update + dry run coordination (Tue)
+
+Jorge: all good. will ping on thread if anything blocks. :eyes:
+
+Marina: thanks team — super short retro notes after dry run. tagging for visibility: @Samira @Priya @Liam @Jorge. :raised_hands:
+
+Samira: :thumbsup:
+
+Liam: got it.
+
+Priya: will post the mitigation paragraph here once ready for quick review.
+
+(5 reactions: :thumbsup: on Marina's last message)

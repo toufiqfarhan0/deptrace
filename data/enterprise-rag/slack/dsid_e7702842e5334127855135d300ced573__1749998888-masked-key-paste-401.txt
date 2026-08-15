@@ -1,0 +1,43 @@
+sources/slack/support/1749998888-masked-key-paste-401.json
+
+raj (CS): heads-up — Acme Prod hit a bunch of 401s right after key rotation. Their CI shows 401 invalid_api_key. Can someone take a look?
+
+alex (eng): do we have the curl/logs from the customer? quick confirm if header is being sent as `x-api-key` or `Authorization: Bearer`.
+
+raj (CS): pasted what they sent:
+
+```
+curl -i -X POST https://api.redwood.ai/v1/generate \
+  -H \"Authorization: Bearer sk-****************abcd\" \
+  -H \"Content-Type: application/json\" \
+  -d '{"model":"gpt-small","prompt":"hi"}'
+HTTP/1.1 401 Unauthorized
+{
+  "error": {"type":"invalid_api_key","message":"The API key provided is not valid."}
+}
+```
+
+marta (product): oh — looks like they copied the masked version from the dashboard. after creation the UI masks most characters (we show last 4) and they pasted that into their env var. the masked string is not a valid key.
+
+jordan (sre): yep, that will 401. masked value literally contains asterisks so the server rejects it. steps to fix:
+1) Rotate the key again (customer only sees the full value right after creation).
+2) Copy the full value immediately and update their secret store (Vault/Secrets Manager).
+3) Restart the service/pipeline that reads the env var (or `kubectl rollout restart` for k8s).
+
+alex (eng): can repro locally by putting `sk-****************abcd` in an env var and curling — same 401. We should ask the customer to confirm which secret store they put it in (cloud vault, k8s secret, env) so we can check for double-masking/templating.
+
+raj (CS): customer used a web UI paste to their CI settings. they confirmed they copied the shown value, not the one-time modal. they want guidance on best practice.
+
+marta (product): i will send the how-to: short note + link to docs. important to remind them that the dashboard only shows the full key once. also adding a tooltip to the key list to warn about one-time visibility — filing a small UX ticket. @alex can you add a short wording? :eyes:
+
+alex (eng): adding wording now — keep it short. also adding a tiny client-side copy helper so users can copy from the one-time modal.
+
+support-bot: Ticket #C-4721 updated: status -> investigating. SLA window: 22h left.
+
+raj (CS): sent step-by-step to customer: rotate -> copy from modal -> update secret store -> restart. they rotated and redeployed.
+
+jordan (sre): verified request logs show new key fingerprint and 200s for that org in the eu-west region.
+
+raj (CS): customer confirms resolved, no more 401s. closing the Slack thread and ticket. :tada:
+
+marta (product): follow-up: raising a UX task to make the one-time copy flow more obvious and add a small help link in the key modal. thanks team!

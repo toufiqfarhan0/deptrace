@@ -1,0 +1,32 @@
+product
+
+Maya (PM): dropping updated spend-panel mock to reduce rail noise on org/project switch — figma: https://figma.com/file/xyz
+Jamal (Design): left rail looks heavy on 1280px. can we collapse at <920px?
+Maya (PM): rail holds scope, range, invoice CTA. idea: collapse to a single scope chip on narrow screens.
+Liam (Frontend): fine, but chip must be keyboard accessible and persist state. no hidden data.
+Jamal (Design): collapsed chip shows 'Org · 3 projects' and opens popover with radio list. keeps context.
+Sophia (A11y): popover needs role="dialog" and focus management; visible focus styles on the chip.
+Maya (PM): add microcopy in popover so org vs workspace naming isn't confusing.
+Jamal (Design): draft copy: "Scope: which workspace's spend do you want to view?" then rows: "Organization (all projects) — 1.2M tokens" and "payments (project) — 120k tokens"
+Liam (Frontend): prefer shorter labels in UI; keep long explanations in tooltip.
+Sophia (A11y): tooltips need explicit trigger (info button) + aria-describedby; don't rely on title attr.
+Maya (PM): token breakdown moved from right rail to collapsible tray under timeline. keeps timeline primary. default state?
+Jamal (Design): data shows token split is second-most used on desktop. default expanded desktop, collapsed mobile?
+Liam (Frontend): technically easy with CSS grid. will do expanded desktop, collapsed mobile. quick CSS sketch provided.
+Maya (PM): invoice download placement — inline in header vs inside invoice drawer. tradeoff: discoverability vs accidental clicks.
+Jamal (Design): suggestion: show inline only for admins, also keep in drawer for everyone.
+Sophia (A11y): keep wording identical in both places, e.g., 'Download invoice (CSV)'.
+Liam (Frontend): we already gate via role; showing/hiding based on admin flag is straightforward.
+Maya (PM): token denom toggle accessibility? uses segmented control now.
+Sophia (A11y): use native radio group or tablist semantics; arrows should move selection and state must be announced.
+Jamal (Design): increase selected contrast from 10% to 20% and enlarge hit target for touch.
+Console Bot: deploy-preview: https://deploy.preview/redwood/spend/1841122334 — visual tests: 12 failures (spacing), accessibility: 0 regressions
+Maya (PM): thanks. @Jamal please patch spacing. @Liam let's sync on chip/popover keyboard tomorrow 10am PT.
+Jamal (Design): will push updated mock with explicit copy and tooltip text.
+Sophia (A11y): I'll review the new mock; add aria-live region on header summary so screen readers announce scope/data changes.
+Liam (Frontend): will add aria-live="polite" and a cypress focus-order test; need ~1hr for tray animation.
+Maya (PM): aiming to ship behind feature flag next week. any blockers?
+Jamal (Design): none after updates.
+Sophia (A11y): none, will review new mock.
+Liam (Frontend): no blockers, small dev time needed.
+Maya (PM): great, I'll publish the short spec and feature flag name later today.

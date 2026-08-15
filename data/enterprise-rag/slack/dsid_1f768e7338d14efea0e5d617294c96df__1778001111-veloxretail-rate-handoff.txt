@@ -1,0 +1,27 @@
+incidents
+
+infra-bot: :rotating_light: Paging @priya — automatic alert: sustained 5xx increase for org VeloxRetail (org_id=ORG-4321). Current 5m error rate 6.8% and token throughput +420% vs baseline. Please respond.
+priya: on it, seeing the spike in dashboards. tagging lucas for quota context — is this a customer-initiated batch job?
+lucas: looks like VeloxRetail kicked off a large embedding job around 16:02 UTC. They're hitting our per-org limits and triggering downstream backpressure. Maria, can you confirm if they've notified support?
+maria: reached out — they say they started a migration job and didn't expect it to be this big. asking them to throttle on their side but we need infra mitigation now.
+priya: ok. immediate plan: 1) temporary emergency rate increase for ORG-4321 (burst) 2) apply traffic-shaping rule to cap sustained RPS 3) enable extra logging for this org 4) notify acct team + rollback window 30m. agree?
+maya: +1. need infra signoff if we raise concurrency beyond reserved pool. Also watch GPU queue length.
+ops-bot: Suggested command for org-level limit update available in /internal-admin. Use with care.
+priya: executing emergency change now. issuing admin call (audit id will be posted).
+priya: ```
+curl -X POST https://admin.redwood.ai/internal/orgs/ORG-4321/rate-limits \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"burst":1200,"sustained":350,"window_seconds":60,"ttl_minutes":30,"reason":"emergency spike VeloxRetail 2026-03-15"}'
+```
+infra-bot: Admin API accepted change. change_id=chg-20260315-77. Previous sustained=120, burst=400. New sustained=350, burst=1200 (ttl 30m).
+lucas: applying traffic-shaping rule to keep long-running embedding jobs in a slower queue to avoid KV cache churn. rule id=ts-907.
+priya: monitoring metrics: error rate dropping from 6.8% -> 1.2% within 90s. latency P95 up slightly from 62ms -> 88ms. GPU queue length stable.
+maria: emailed VeloxRetail with rollback window and asked them to throttle. they confirmed they'll pause new jobs for 20m.
+maya: adding an auto-rollback if sustained tokens > 80% of cluster capacity for more than 2m. if triggered, we'll revert and notify SRE.
+priya: creating incident ticket INC-2026-345 in tracker, will handoff to oncall+engineering after 30m. next oncall is lucas in 25m — will you take the handoff?
+lucas: yes I can take handoff. will stay on for the rollback window and watch the shard-level queues.
+ops-bot: Reminder: admin change will auto-expire in 30m (chg-20260315-77). If you need extension, run same API with new ttl and include exec notes.
+priya: thanks everyone. summary saved to incident channel. leaving note: temporary per-org lift applied, traffic shaping applied, customer asked to throttle, monitoring healthy. handoff to lucas in 25m.
+lucas: ack, will follow up with a postmortem draft and cost impact estimate for the account team.
+priya: handing off now — marking incident as "mitigated, in monitoring". :white_check_mark:

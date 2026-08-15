@@ -1,0 +1,28 @@
+eng-oncall
+
+Alice Nguyen: Starting handoff — I'll be off at 18:00 PT. Quick notes for tonight's shift.
+Alice Nguyen: Coverage: Bob Chen takes primary, Carlos Rivera will be secondary. Diane on pager backup until 21:00.
+Bob Chen: ack. taking primary. :thumbsup:
+Carlos Rivera: ack. I can hop in for any infra escalations.
+Alice Nguyen: Watchlist FYI (non-incidents):
+Alice Nguyen: - prom/scrape-delay: sporadic 30-60s scrape delays from eu-prometheus cluster; noisy alerts M=warning. Action: ignore unless >5m.
+Alice Nguyen: - runtime/kv-cache-evict: occasional eviction spikes during long chats (low severity). Causes token latency blips ~100-200ms.
+Alice Nguyen: - edge-router/502-spike: small blips on cloudfront->edge-router at 02:00 UTC; historical and self-heals.
+Alice Nguyen: - autoscaler/flapping: autoscaler healthcheck sometimes flips when GPUs are near 90% ephemeral load; watch queue length before scaling.
+Bob Chen: noted. Any temporary suppressions we should enable?
+Alice Nguyen: I put a short runbook snippet in the oncall doc, but quick cmds:
+Alice Nguyen: ```
+# silence prom alert for eu-prom cluster 1h
+curl -XPOST http://alertmanager.internal/silences -d '{"matchers":[{"name":"cluster","value":"eu-prom"}],"startsAt":"now","endsAt":"1h"}'
+```
+Carlos Rivera: thanks. For kv-cache spikes, is there a metric threshold to watch?
+Alice Nguyen: watch kv_cache_eviction_rate > 0.05 for 5m and latency_percentile_95 > 800ms
+Diane Park: I'll keep an eye on the autoscaler dashboard during my window.
+infra-bot: scheduled maintenance for infra-agent on 2024-06-15 01:00 UTC — minor telemetry gap expected.
+Bob Chen: I'll update the status channel if anything crosses severity P3->P2.
+Alice Nguyen: One more: noisy tokenizer-latency alert keeps firing in staging — not relevant to prod, ignore if origin=staging.
+Bob Chen: ack. Also pinging @diane for the overnight pager rotation swap if needed.
+Diane Park: happy to swap if someone needs an earlier slot. :wave:
+Bob Chen: good. Logging the handoff end note: primary=Bob, secondary=Carlos, backup=Diane until 21:00 PT. I'll staple this to oncall doc.
+Alice Nguyen: Thanks all — enjoy the evening. :coffee:
+Bob Chen: thanks, heading in. :rocket:

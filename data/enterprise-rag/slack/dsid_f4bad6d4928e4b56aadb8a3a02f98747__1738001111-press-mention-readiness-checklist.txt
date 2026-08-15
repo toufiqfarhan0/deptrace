@@ -1,0 +1,45 @@
+marketing
+
+claire_marketing: Quick heads-up — small press pickup just landed referencing our 'Optimize' benchmark. Published window is TOMORROW 10:00am PT. Need a readiness checklist + who’s on press on-call. cc @sam_ops @alex_prod @maria_ceo
+
+sam_ops: On it. Are we under embargo or live pickup? Any preview link?
+
+press_bot: New pickup created by reporter: techdaily@example.com — "Optimize benchmark" mention. Tentative publish: 2025-06-12T17:00Z. Embargo: none listed.
+
+claire_marketing: No embargo. It's a short mention but could trigger follow-ups. Link to draft quote + metrics: https://drive.redwood/marketing/bench-opt-onepager (please use press-central rather than public folders)
+
+alex_prod: I can prepare a 1-paragraph technical blurb and a short FAQ. Will post in 15m.
+
+maria_ceo: I can provide an exec quote if needed — available 9:30–11:30 PT. Prefer to avoid commenting on pricing or roadmap.
+
+sam_ops: Ops will be on-call for infra questions. Last night's latency blip might come up — do we have a concise incident summary we can share?
+
+alex_prod: Draft incident blurb: "We observed a transient latency spike affecting a subset of routed requests; autoscaling restored normal throughput within 7 minutes. No customer data or availability impact. Root cause under investigation; mitigation applied." Thoughts?
+
+claire_marketing: Good. Tweak to avoid "incident" word maybe: "transient latency spike" is fine. Add line: "customers unaffected". Keep it short.
+
+alex_prod: Updated blurb posted: https://drive.redwood/marketing/bench-opt-onepager#blurb
+
+claire_marketing: Also need a 1-pager (audience: mainstream tech press), an internal Q&A (top 5 questions + scripted answers), and a link to benchmark methodology. Alex, can you include the methodology link and a short note on dataset/seed?
+
+alex_prod: Will include methodology section and a bullet about comparability caveats.
+
+press_bot: PR brief sent to distribution list: press@redwood-dist. Timestamp: 2025-06-11T22:14Z.
+
+sam_ops: Confirming press on-call rota: primary @sam_ops, backup @alex_prod, exec fallback @maria_ceo. Ops will monitor slack channel #press-live during window.
+
+claire_marketing: Final checklist (please react with :thumbsup: when done): 1) 1-pager uploaded to press-central (done) 2) FAQ Q&A posted (alex) 3) Exec quote drafted (maria) 4) Incident blurb approved (ops/prod) 5) Press on-call assigned (sam) 6) Social draft queued (marketing).
+
+maria_ceo: Quote posted in doc — short and non-technical. Approved.
+
+alex_prod: FAQ posted and technical blurb + methodology attached.
+
+sam_ops: Incident blurb approved. Ops monitoring setup: Pager duty escalation disabled for public queries; route to #press-live.
+
+claire_marketing: Thanks team. I'll send a one-line play for comms responders and the social snippets now. If anyone sees press pinging before 9am PT tomorrow, please forward to #press-live immediately.
+
+sam_ops: :thumbsup:
+
+alex_prod: :thumbsup:
+
+maria_ceo: :thumbsup:

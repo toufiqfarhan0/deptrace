@@ -1,0 +1,40 @@
+devex
+
+anika: Heads-up — onboarding sample in examples/node/getting-started.md has drift. Top shows `API_HOST=https://api.redwood.ai` but the Node snippet expects REDWOOD_API_URL and uses axios while the curl examples expect REDWOOD_API_KEY. Users copy the envs and get a 401 within 10s.
+
+ram: Yikes. Which snippet lines?
+
+anika: The fetch/axios mismatch is here:
+
+```js
+// current in file
+const axios = require('axios')
+const url = `${process.env.REDWOOD_API_URL}/v1/generate`
+const res = await axios.post(url, { input: 'hi' }, { headers: { Authorization: `Bearer ${process.env.API_KEY}` } })
+```
+
+But the README frontmatter says `API_HOST` and shows export API_KEY=...
+
+pete: Classic. Let's standardize to REDWOOD_API_URL and REDWOOD_API_KEY everywhere, explicit scheme, and prefer fetch in JS examples so it's browser-friendly. Also remove the inline HTML comment that breaks markdown-lint.
+
+anika: Proposed replacement JS block:
+
+```js
+// Node/browser compatible
+const url = `${process.env.REDWOOD_API_URL}/v1/generate`
+const res = await fetch(url, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.REDWOOD_API_KEY}` },
+  body: JSON.stringify({ input: 'hi' })
+})
+```
+
+ram: Good. Add note: "If using the SDK, pass apiKey to the client and do not set Authorization header manually." That will stop duplicate headers.
+
+pete: I'll submit a small docs PR that: 1) replaces API_HOST/API_KEY with REDWOOD_API_URL/REDWOOD_API_KEY, 2) swap axios -> fetch snippet, 3) remove HTML comment, and 4) run `make docs-lint`.
+
+docs-bot: created issue #3560: unify onboarding env names and swap axios->fetch.
+
+markdown-lint: CI report: PR 562 failed - missing blank line before fenced code block.
+
+anika: I'll fix formatting and push. Thanks — these tiny differences keep tripping users during onboarding. :sweat_smile:

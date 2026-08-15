@@ -1,0 +1,14 @@
+people-ops
+
+Ana (Eng Manager): Quick q — can we do a promo + small market adj for one IC off-cycle? They moved teams 30 days ago.
+Ravi (People Ops): Yes, both are possible. Submit as one form and call out 'off-cycle + market adj'.
+Ana (Eng Manager): Is retro pay allowed?
+Keisha (Comp): Retro up to 90 days possible, but comp will review backpay case-by-case. Provide manager justification + 3 impact bullets.
+Ana (Eng Manager): Any local payroll caveats? They are US-based but on different cost center now.
+Ravi (People Ops): For cost-center changes, finance signoff required. PayrollBot: Note — next US payroll cutoff 2101234580 UTC. Approvals 5 business days before cutoff for retro in that run.
+Ana (Eng Manager): Where's the form?
+Ravi (People Ops): https://go.redwood.com/promo-offcycle — choose "promo + market" and attach evidence doc.
+Ana (Eng Manager): Who reviews comps >1.25x refresh?
+Keisha (Comp): Those go to comp committee. Expect 2-5 business days.
+Ana (Eng Manager): Thanks — I'll draft and ping you for a quick review.
+Ravi (People Ops): Happy to review. Keep screenshots out of thread.

@@ -1,0 +1,51 @@
+eng-platform
+
+Maya: Quick sync — nightly token-cost job started failing after instr PR got merged ~2am. Error shows schema mismatch on event field `token_count` -> KeyError in billing aggregator. stack: `KeyError: 'token_count'`
+
+Devon: I saw the alerts, am bisecting now. Looks like embeddings pipeline change renamed `token_count` -> `tokens.total` in data-fixes/embeddings-rename.
+
+Maya: Confirmed. We need a short-term mitigation + a proper rollout plan. Prefer ingestion to accept both keys to avoid billing gaps.
+
+Sasha: +1 for dual-key acceptance. I can add a migration in event-transformer and tests. Can we gate with a 10% canary for 2h? :thumbsup:
+
+AJ: I'll create a ticket (INF-4312) and link the offending PRs. Also pinging billing for impact assessment.
+
+telemetry-bot: Incident created: INF-4312 (severity: P2). Oncall: infra-oncall. Linked alerts: billing-agg-02, nightly-job-failure.
+
+infra-oncall: I can roll back the embeddings change if we need an immediate stopgap. Rollback risk: last 3h of billing snapshots will be inconsistent. Prefer patching ingestion first.
+
+Devon: Agreed. Patching ingestion to accept `token_count` and `tokens.total` is less disruptive. I'll own the PR. ETA EOD if nothing blocks.
+
+Maya: Devon + Sasha pair is fine. Devon — open the PR and include unit + smoke tests. Sasha — add migration and canary config in console. Can we aim for a 5pm PT deployment window?
+
+Devon: Opening PR in ~30m. Repo: infra/ingest, branch: fix/dual-token-key. Smoke test command: `pytest tests/ingest/test_token_schema.py::test_dual_key`
+
+Sasha: I'll add migration and a query to validate live traffic: `SELECT count(*) FROM events WHERE token_count IS NULL AND tokens_total IS NULL;` Run that against prod-replay before rollout.
+
+Maya: AJ — please add deployment_time to INF-4312 and notify #finance and billing. @aj
+
+AJ: Done — INF-4312 updated, deployment_time: 17:00 PT. Notified #finance (cc: @billing-team). Added rollback steps and escalation contact.
+
+telemetry-bot: Deploy job queued: canary=10% -> 2h observation. PR: https://git.company/infra/ingest/pull/789
+
+Devon: PR opened: https://git.company/infra/ingest/pull/789 — tests passing locally, smoke run queued. @maya @sasha please review when able.
+
+Maya: Reviewing now. Left a small nit about switching a debug log to info. Otherwise looks good.
+
+Sasha: Nit fixed and pushed. Canary started at 17:05 PT.
+
+infra-oncall: Canary healthy after 30m. No error spike on billing-agg or nightly jobs. Recommending full rollout after 30 more mins if stable.
+
+Maya: Sounds good. If full rollout succeeds, AJ please close INF-4312 and add postmortem action items: root cause = non-backwards-compatible field rename in embeddings pipeline, missing schema-contract CI test.
+
+AJ: Will close once full rollout done. Drafting postmortem stub for tomorrow morning. Closing timeline estimate: canary->full by 18:30 PT.
+
+Devon: Followups I’ll do after merge: add schema contract test to CI (fail on missing fields), and update docs with a migration checklist.
+
+Maya: Adding schema contract test and migration checklist to infra backlog. Thanks all — great quick cross-team response.
+
+Devon: Thanks — will post PR updates here as they happen.
+
+telemetry-bot: Canary -> full rollout scheduled pending 30m health window.
+
+Maya: End of thread for now.

@@ -1,0 +1,28 @@
+marketing
+
+Ava: Final run-through for Midwest Office Hours tomorrow. Need quick confirmations: swag, lead routing, speaker kit.
+Diego: I can pick up extra stickers from PrintCo at 9am. Which SKU? :truck:
+Priya: SKU STK-RED-042. Updated the inventory tab.
+Sam: Reminder: badge scanner -> Zapier -> SFDC. Normalize tags to `demo`,`dedicated`,`private`.
+Ava: @Sam paste the Zap steps please.
+Sam: Scanner POST -> Formatter extract name,email,interest -> Normalize tag -> Create/Update SFDC Lead (LeadSource=MidwestOH, Campaign=MW-Office-Hours).
+Diego: Vendor says tote batch delayed 24h. We still have 150 tees, 200 stickers, 300 postcards.
+Priya: Can we move sticker sheets into speaker gift? Speakers get enamel pin + notebook.
+Evan: LogisticsBot: PrintCo ETA now 08:30 tomorrow. Loading dock code at 07:45.
+Ava: @Priya order 12 pins + 12 notebooks and upload invoice.
+Priya: Ordered PIN-ELM-12 and NBK-RED-12; invoice in drive.redwood/marketing/mw_oh/invoices.
+Diego: Booth needs 2 power strips, HDMI dongles, and a small demo sign. Who has signage?
+Evan: I'll bring power strips and HDMI kit. Kit list: 2x6-outlet, USB-C->HDMI, HDMI->DP, cables, toolkit.
+Sam: Lead triage rules: high-intent -> AE within 2h; medium -> webinar invite; low -> monthly newsletter.
+Ava: Postcard QR should prefill source=MW_OH and utm_campaign=officehours_mw (short rvwd.ai/mwoh).
+Priya: Soft-proof uploaded. Approve by 18:00 or accept vendor color variant.
+Ava: Approved. Booth pitch 20s script please.
+Sam: 20s: "We speed up LLM inference costs and latency. Want a 1-min demo?" 45s: fuller enterprise pitch.
+Diego: I'm presenting a 10-min slot. Need 6 slides + 2 leave-behinds. @Priya use template; @Sam add benchmark bullets.
+Priya: Template and chart `inference_bench_mw.png` in drive.redwood/marketing/mw_oh/assets.
+Evan: LogisticsBot: Staff arrival 07:00, load-in 07:30, badge pickup 07:45. Security needs attendee list by 18:00 today.
+Ava: Final attendee list coming. Canonical tags: `demo`,`dedicated`,`private`,`pricing`,`partner` exactly.
+Sam: Adding Zap normalization step.
+Diego: Anyone bring compact printer? If not I'll order print-at-venue.
+Priya: I can bring mine but charging overnight. Also bringing spare badges.
+Ava: Thanks team. Confirm by 20:00. :thumbsup:

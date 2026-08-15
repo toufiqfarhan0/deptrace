@@ -1,0 +1,90 @@
+incidents
+
+incident-bot: [P1] High GPU queue + autoscaler not scaling (custom metrics unavailable). Alert: https://redwood.internal/alerts/2950001111 :rotating_light:
+
+nora-oncall: I'm jumping in. seeing sustained growth on gpu-serving pool, pending ~1.1k, 3x normal. paging oncall.
+
+sam-sre: grabbing metrics. prometheus-adapter returning 502 on queries to Prometheus: 
+```
+E 09:18:03 prometheus-adapter: query "gpu_queue_length" failed: HTTP 502 Bad Gateway - TLS handshake error: remote error: tls: bad certificate
+```
+Adapter logs show repeated TLS handshakes failing since 09:12.
+
+tasha-ml: dashboards confirm long tail latency increasing, gateway 504s visible. Some model-pools hitting eviction due to oom when queues spike. Customers reporting timeouts from recommender and realtime-chat.
+
+rick-eng: HPA objects in cluster `inference-prod` show status: "unable to fetch external metrics: adapter returned 502". Current replicas stuck at 8 (min=8, max=40).
+
+mila-support: opening impact tickets for top 5 tenants: realtime-chat, recommender, search-prod. prepping shared incident note to send to account teams.
+
+nora-oncall: mitigation plan: 1) short-term: manual scale + drain low-priority workloads; 2) restore metric path (adapter <-> Prometheus) by rotating certs or fallback to kube-metrics; 3) prepare traffic-shedding rule and SLA notices. Executing 1 now.
+
+nora-oncall: `kubectl scale deployment gpu-inference --replicas=24 -n inference-prod` — adding nodes from on-demand pool.
+
+ops-bot: Action queued: request to cloud-provision 6 additional GPUs from reserved-capacity pool submitted by nora-oncall.
+
+sam-sre: checking Prometheus: TLS cert used by Prometheus web endpoint expired at 2026-02-28T09:10:00Z. Cert rotation job failed on that host group due to missing secret (pipeline bug). prometheus is up but serving TLS with expired cert; adapter rejects it.
+
+tasha-ml: to speed recovery, can we flip HPA to use a CPU fallback metric temporarily? That would enable autoscaling while we fix certs.
+
+rick-eng: patching HPA to add fallback metric (cpu) via a temporary second HPA targeting same deployment isn't allowed in cluster. Instead we'll patch HPA to a synthetic metric using custom-metrics annotation pointing to kube_metric 'cpu/usage' as fallback. Applying patch now.
+
+rick-eng: `kubectl patch hpa/gpu-inference-hpa -n inference-prod --type=json -p='[{"op":"add","path":"/spec/metrics/-","value":{"type":"Resource","resource":{"name":"cpu","target":{"type":"Utilization","averageUtilization":60}}}}]'`
+
+incident-bot: HPA patched by rick-eng at 2026-03-11T09:29:10Z.
+
+mila-support: customer messages queued; telling customers we're aware and scaling efforts in progress.
+
+sam-sre: while CPU fallback will help, heavy batching means CPU alone won't reduce queue fast enough. proceeding to restore adapter connectivity: rotating Prometheus TLS certs and re-running cert-rotation job.
+
+sam-sre: cert rotation commands: 
+```
+# recreate secret with new certs
+kubectl -n monitoring create secret tls prometheus-tls --cert=prom.crt --key=prom.key --dry-run=client -o yaml | kubectl apply -f -
+# restart prometheus and adapter
+kubectl -n monitoring rollout restart statefulset/prometheus
+kubectl -n monitoring rollout restart deployment/prometheus-adapter
+```
+
+nora-oncall: also enabling routing rule to deprioritize non-prod tenants for 15m: `POST /infra/routing/deprioritize?tag=nonprod&ttl=15m`.
+
+tasha-ml: disabled non-critical background warm starts and stale cache loads to free memory on replicas — should speed up new replica readiness.
+
+sam-sre: after rotation and restarts: 
+```
+I 09:41:02 prometheus-adapter: TLS handshake completed with Prometheus host prom-metrics-1.internal
+I 09:41:05 prometheus-adapter: metric gpu_queue_length now returned for namespace inference-prod (lag ~22s)
+```
+Adapter healthy and backfilling. HPA now seeing metrics.
+
+incident-bot: manual scale reached 24 replicas at 09:35:22Z; queue length peaked at 1124 at 09:22:07Z, now down to 310 at 09:47:10Z.
+
+rick-eng: HPA recomputed desiredReplicas=30 and beginning to scale; CPU-fallback will remain until adapter stable for 10m.
+
+mila-support: observed customer 504 rate drop from 9% -> 2.4% after manual scale + deprioritization. Customers notified.
+
+nora-oncall: live mitigation summary: 
+- manual scale to 24 replicas (temporary on-demand GPUs)
+- deprioritized non-prod traffic for 15m to reduce ingress
+- rotated Prometheus TLS certs and restarted prometheus-adapter to restore metrics path
+- patched HPA to add CPU fallback briefly to enable autoscaling in presence of metric gaps
+- disabled low-priority warm-starts to speed new pod readiness
+
+sam-sre: root cause (prelim): cert-rotation pipeline failed to update Prometheus TLS secret on a subset of monitoring nodes; prometheus served expired certs, prometheus-adapter refused connections causing external metric unavailability and HPA freeze at min replicas. Contributing factors: no adapter-heartbeat alert and lack of a documented HPA fallback plan.
+
+tasha-ml: action items: 
+- add alert if prometheus-adapter cannot query Prometheus for >1m (pager)
+- add certificate expiry monitor for monitoring TLS secrets with automated rotation (and test rotations)
+- document HPA fallback pattern and automate temporary CPU-based fallback via controller when external metrics disappear
+- add runbook to deprioritize ingress per tenant tags for emergencies
+
+rick-eng: I'll own the HPA fallback automation. sam-sre please own cert rotation reliability and add unit test to rotation pipeline.
+
+mila-support: CS will send a post-incident customer summary and coordinate credits where appropriate.
+
+nora-oncall: handing off to day team (sam-sre + rick-eng + tasha-ml). I'll close the pager once monitoring stable for 30m. thanks everyone. :white_check_mark:
+
+incident-bot: Pager acknowledged closed by nora-oncall at 2026-03-11T10:02:12Z.
+
+nora-oncall: filing postmortem draft with timeline, commands used, impacted tenant list, and action owners. Will link here when ready.
+
+(moderation note: no customer PII or logs with secrets included in this thread)

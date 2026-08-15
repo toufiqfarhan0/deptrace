@@ -1,0 +1,95 @@
+incidents
+
+oncall-bot: Incident opened: GPU capacity alarm triggered in us-west-2. Autoscaler reported repeated rate-limit errors while attempting to scale pools. Pager: @maria_g on-call.
+
+oncall-bot: Summary: queue growth -> throttling -> failed scale due to API rate cap + batching/config regression causing low packing efficiency.
+
+maria_g: I see large queue backlog on inference-frontend -> gpu-queue. 99th latencies spiking to 8s and many requests are hitting soft-throttle. Starting investigation.
+
+kevin_s: I'm seeing the autoscaler logs showing 429 from cloud-resource API when creating instances: "Rate exceeded". Also autoscaler hit per-region create limit.
+
+nina_ops: Confirmed. us-west-2 new instance create attempts 120s window, 95% failed. Backfills from other regions not routing because model routing policy pinned to region.
+
+sam_eng: Noted correlation with the rolling patch last night: continuous_batcher default changed from 50ms->200ms and prefix_cache TTL lowered from 30m->5m in the rollout. That PR was to reduce memory, might be reducing KV cache hit rate.
+
+luca_ml: If prefix cache miss rate increased, per-request work increases and batching efficiency drops. More GPU time per request -> fewer requests per GPU -> autoscaler trying to make more GPUs.
+
+maria_g: Customer impact check: internal metrics show spike in 429 throttles to hosted tier customers and dedicated queues show timeouts. Customer-facing error rate from API gateway up 4%. Adding to incident severity.
+
+ops-bot: Deploy tracker: rollout 2026-11-02T03:12 UTC "batch-tuning/v3" flagged as completing at 03:12 and auto-rollback off.
+
+kevin_s: Can we confirm if the rollout changed continuous_batch_window and prefix_cache_ttl? I see config bundle id cfg-20261102-batchv3 applied to us-west-2.
+
+sam_eng: Yes, that bundle reduced prefix_cache_ttl to 300s and increased batch_window to 200ms to reduce mem. I pushed it during maintenance window.
+
+maria_g: Immediate mitigation suggestions: 1) rollback cfg-20261102-batchv3 in us-west-2 2) temporarily raise autoscaler API quota via cloud support OR enable cross-region fallback routing to us-east-1 3) change model routing to allow fallbacks to smaller variant for non-enterprise tiers. Which is fastest?
+
+kevin_s: Fastest: rollback config and enable cross-region fallback. Raising cloud quota needs support ticket (can take minutes to hours). Rollback to previous config bundle should be immediate.
+
+luca_ml: Also can set a temporary per-pool concurrency cap to avoid hitting async pressure. But that is lower priority.
+
+nina_ops: I'll start rollback of cfg-20261102-batchv3 for us-west-2 now. Maria, can you coordinate customer comms and oncall handoff?
+
+maria_g: Starting rollback. Command: 
+```
+redwood deploy-config --region us-west-2 --bundle cfg-20261028-batchv2
+```
+Rolling now. Watching metrics.
+
+ops-bot: Rollback triggered by nina_ops at 2133337705. Bundle cfg-20261028-batchv2 applying...
+
+kevin_s: Meanwhile I'm flipping routing policy to allow fallback to us-east-1 for non-enterprise orgs: 
+```
+redwood routing update --allow-fallback us-east-1 --selector tier!=enterprise
+```
+This will ease pressure on us-west. Doing it now.
+
+sam_eng: Also proactively pausing canary that was enabling auto-scale aggressive warm-up. That can cause a burst of creations. Pausing canary now.
+
+luca_ml: Watch cache hit metrics: prefix_cache.hit_rate currently 11% in us-west-2 pre-rollback. Expected baseline ~72%.
+
+maria_g: Noting customer impact: a top customer (org: streamlytics) reported increased error rate and delayed responses. Reached out to SE. Will offer status update.
+
+ops-bot: Config rollback completed at 2133337740. Metrics: latency 99th dropping from 8s->2.2s in 10m window. Queue length decreasing.
+
+nina_ops: Autoscaler still has pending create attempts but rate of attempts reduced. Cloud API still returning some 429s but less urgent.
+
+kevin_s: Cross-region fallback in effect. We're seeing ~18% of requests route to us-east-1 now. That should reduce required capacity in us-west.
+
+maria_g: On-call handoff: I'll be handing off to @kevin_s in 30m for continued monitoring. Notifying pager duty and support.
+
+pagerduty: Paging: escalation to kevin_s in 10 minutes.
+
+kevin_s: Taking 1st shift. Monitoring dashboards. Any outstanding mitigations?
+
+luca_ml: We should still investigate packing efficiency regression. After rollback, prefix_cache.hit_rate back to ~68% and batch packing efficiency improved. That confirms regression. Need follow-up: why did the TTL change happen without load test?
+
+sam_eng: Follow-up action: revert PR, add e2e perf test in CI that asserts KV cache hit rate doesn't drop >20% for baseline workloads, and add a staged rollout with small region pilot plus load replay. Creating ticket: PERF-4632.
+
+nina_ops: Cloud support: opened ticket CS-99812 to request temporary raise of create rate limit while we stabilize in case we see another spike.
+
+maria_g: Customer comms: drafting status: "We've identified a recent config change to batching and prefix cache that reduced caching efficiency and increased per-request GPU time causing autoscaler to scale up; config has been rolled back and routing fallback enabled. Some customers experienced higher latencies and throttles between 03:10-03:50 UTC. We're monitoring and will follow up." Sending to support and trust.
+
+kevin_s: Monitoring shows last_message_ts windows stable. queue length in us-west-2 down 70% from peak. No new 429s in last 4m.
+
+ops-bot: Post-incident checklist: create postmortem, assign owners: sam_eng (root cause), luca_ml (perf test), nina_ops (cloud quota follow-up), maria_g (customer comms).
+
+maria_g: Handing off to kevin_s now. I'm going offline but will stay reachable.
+
+kevin_s: Acknowledged. I'll keep watch for 2 hours and update oncall channel every 30 minutes.
+
+luca_ml: Long-term: evaluate dynamic prefix cache sizing, and add alert for prefix_cache.hit_rate < 50% that triggers performance guardrails before autoscaler ramps.
+
+sam_eng: Also adding a safety: when autoscaler sees >X failed creations due to rate limit, it should throttle attempts and open fallback routing automatically instead of persistent retries. Filing AUTOSCALE-271.
+
+maria_g: Thanks everyone. Closing active paging. Assigning follow-ups and will file postmortem.
+
+ops-bot: Incident status: mitigated. Root cause suspected: cfg-20261102-batchv3 change to prefix_cache_ttl and batch_window. Mitigation: rollback and cross-region fallback. Postmortem assigned.
+
+pagerduty: Incident resolved. No further pages.
+
+kevin_s: I'll post postmortem draft in ~3 hours. If anyone has screenshots/logs to attach, please add to the incident doc.
+
+luca_ml: Attaching initial perf graphs to the doc now -> link: https://internal.redwood/inci/2133337777/graphs (internal)
+
+maria_g: closing thread for active mitigation, continuing root cause analysis in postmortem. Thanks all.

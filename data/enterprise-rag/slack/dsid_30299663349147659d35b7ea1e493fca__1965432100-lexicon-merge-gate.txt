@@ -1,0 +1,43 @@
+docs
+
+ivor-docs: Heads-up: PR #4999 needs a final docs-style + lexicon pass before merge. Blocks: one broken link, glossary mismatch (we use 'end user'), and the JS snippet should prefer streaming. planning to merge after 11:00 PT.
+
+nate: on it. dropping the preview link once CI runs. can someone confirm if the migration guide still references `/v1/private`?
+
+ci-bot: docs preview triggered for PR #4999 - https://preview.internal/redwood/PR-4999
+
+ci-bot: docs preview failed - linkcheck: 1 broken external link (`http://old.example.com/redwood-faq`). Render logs: https://ci.internal/4999/logs
+
+ivor-docs: i replaced that URL with the canonical redirect. also saw glossary-bot flagged "customer" in two files. switching to "end user" now.
+
+glossary-bot: term mismatch: "customer" detected in `docs/migration/connector.md`. recommended replacement: "end user". See /style/lexicon.md for rules.
+
+rachel: small note on headings: style guide expects sentence-case for headings and code-blocks to use `api_key` as variable name. also suggest the JS example show streaming as primary. sample streaming snippet:```javascript
+import Redwood from '@redwood/inference'
+const client = new Redwood({ apiKey: process.env.REDWOOD_KEY })
+for await (const chunk of client.stream('Hello')) {
+  process.stdout.write(chunk)
+}
+```
+
+nate: made the streaming swap and the lexicon edits in migration/connector.md and getting-started/js.md. also added a short compatibility note about `/private/v2` vs `/v1/private` with an example YAML for pinning old behavior:```yaml
+redwood:
+  api_path: /v1/private
+  compatibility: true
+```
+
+ci-bot: docs preview started - https://preview.internal/redwood/PR-4999
+
+ci-bot: docs preview passed \u2705 (rendering + linkcheck) - https://preview.internal/redwood/PR-4999/preview.html
+
+lgtm-bot: requesting approvals: 1 more human approval required for docs PR #4999
+
+ivor-docs: tiny nit: in migration guide you changed a header to Title Case; please restore sentence-case.
+
+nate: fixed heading to sentence case and standardized variable names to `api_key`.
+
+lgtm-bot: approval recorded from rachel.
+
+rachel: approved. :+1: merge after 11:00 PT window.
+
+ivor-docs: merging in 5m, thanks for the quick turnaround everyone :sparkles:

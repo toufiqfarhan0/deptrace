@@ -1,0 +1,83 @@
+sales
+
+Avery Johnson: Deal blocker 🚨 QuantGrid procurement is holding signature until we commit (in writing) to a “Runtime LTS channel” w/ support window + patch cadence. They got burned by a latency regression on a prior vendor and want explicit stability + backport policy. Can someone from Release Eng/Runtime give me approved wording + timeline we can stand behind?
+
+Hannah Schmitt: +1, I’m seeing similar language pop up in NorthStar Bank security addendum. They’re asking “6–12 month stable baseline, security fixes, reproducible artifacts.” Need consistent answer.
+
+Connor O'Brien: looping in @Mateo Alvarez + @Marissa Cole + @Rachel Kim. Avery — what are they asking for specifically (support duration, patch SLA, etc.)? Don’t want Sales committing to exact dates we can’t guarantee.
+
+Avery Johnson: Their redlines (summary):
+- LTS channel available for Dedicated + Private
+- Support window >= 12 months per LTS major/minor baseline
+- Monthly patch cadence, plus out-of-band security patches
+- Security patch turnaround “within 72 hours of disclosure” (their words)
+- Ability to pin version + get checksums/provenance
+- “No breaking changes within support window”
+They’re okay that new features don’t land on LTS.
+
+Mateo Alvarez: We can commit to the *program*, but careful on the “72 hours of disclosure” part — depends on severity + reproducibility. We should phrase as target SLA for Critical/High with best-effort + customer notification.
+
+Marissa Cole: Product POV: we’re positioning LTS as “slower-change, predictable patches” with explicit backport eligibility (security + Sev1/Sev2). Not “no changes,” but “no feature churn / controlled diffs.”
+
+Rachel Kim: From CS: QuantGrid is a good pilot candidate, but procurement wants GA language. We can offer an addendum that references the public doc once published. They mainly need confidence we won’t force emergency upgrades.
+
+Connor O'Brien: Current internal plan (what I’m comfortable putting in customer-facing language):
+- First LTS line is runtime 1.18 LTS (tagged as `1.18.x-lts`)
+- Support window: 12 months from GA of that LTS line
+- Patch cadence: monthly (target), plus out-of-band for security + critical Sev1
+- Backports: security + Sev1 + select Sev2 only; no new features
+- Artifacts: signed/checksummed + traceable to commit + release notes; pinning supported in Private installer + Helm
+Timeline: we’re in pilot phase now; aiming to GA the channel after pilot criteria are met. I’d rather not put a hard calendar date in the contract.
+
+Dev Patel: Support angle: if they want “request a backport” language, we should say Support will triage Sev and route to Release Eng; acceptance per backport rubric; comms via ticket + release notes.
+
+Avery Johnson: This is helpful. Can we give them *some* timeframe? They’re pushing for “available by end of Q2.”
+
+Mateo Alvarez: I’m not comfortable committing to end-of-Q2 in contract language. We can say “GA planned in 2025” or “GA after successful pilot with enterprise customers.” If you need a date for deal motion, we can do a side letter w/ non-binding target.
+
+Soojin Lee: Please avoid “guarantee” / “no breaking changes” phrasing. Recommended framing:
+- “stability-focused channel”
+- “backwards-compatibility is a priority; changes are communicated in LTS release notes”
+- “exceptions may apply for critical security fixes”
+Happy to review the exact paragraph before it goes out.
+
+Hannah Schmitt: +1. Also they’ll ask what “supported” means (bugfixes only vs troubleshooting). We should reference Support tier separately.
+
+Connor O'Brien: Proposed approved blurb (Sales can paste; tweak customer name only):
+“Redwood Inference provides a stability-focused Runtime Long Term Support (LTS) channel intended for Dedicated and Private deployments. Each Runtime LTS line offers a stable baseline supported for 12 months from GA. Redwood targets a monthly patch cadence for LTS, and may issue out-of-band patches for security vulnerabilities and critical production defects. LTS patches prioritize minimal, reviewable changes and include ‘slower-change’ release notes (categorized changes, known issues/workarounds, and compatibility/upgrade guidance). Backports into an LTS line are limited to security fixes and high-severity production issues (Sev1 and select Sev2) subject to Redwood’s backport review and test/performance gates; new features are delivered in the standard release channel. Redwood also provides verifiable artifacts (checksums/signing/provenance) and supports version pinning for Private installer and Helm-based deployments.”
+
+Connor O'Brien: For the security timing part: “For critical security issues, Redwood will prioritize remediation and communicate timelines; patch timing depends on severity and verification.” We should not accept “72 hours of disclosure” verbatim.
+
+Avery Johnson: This is exactly what I need. Can you also give me one sentence about perf regressions (they’re obsessed with p95)?
+
+Mateo Alvarez: Add: “LTS patches are gated by regression tests and performance benchmarks; if a patch introduces a material regression, Redwood will provide rollback guidance and/or a follow-up patch.” Don’t promise zero regressions.
+
+Marissa Cole: + include “known issues” section in every LTS note so procurement sees we’re transparent.
+
+Soojin Lee: If you send me the final paragraph you plan to email, I’ll do a quick wording pass today.
+
+Avery Johnson: Will do. Connor — can you DM me this blurb + I’ll fold into the procurement response.
+
+Connor O'Brien: DMing now + will also drop a short version for exec summary.
+
+Rachel Kim: FYI if QuantGrid wants a pilot letter, we can offer “early access to LTS channel during pilot, with weekly check-ins” (non-contractual) — sometimes that unblocks.
+
+Dev Patel: And if they ask for a backport request process, point them to Support ticket intake + required repro/logs + severity mapping.
+
+Avery Johnson: Got it. Thanks all — I’ll push back on the 72h clause and use the “prioritize + communicate timelines” language. :thumbsup:
+
+Soojin Lee: Please tag me on the email draft before it goes to procurement.
+
+Connor O'Brien: Also: make sure they understand LTS is for runtime (kernels/scheduler/serving), not model behavior guarantees.
+
+Avery Johnson: Good call — they conflated runtime vs model once already. I’ll clarify.
+
+Hannah Schmitt: Following — would love to reuse the same blurb for NorthStar.
+
+Connor O'Brien: Yep, treat it as standard. If Legal needs a reference, we’ll point them to the LTS policy doc once it’s published in customer-facing docs.
+
+Mateo Alvarez: +1. Let’s keep all deal language consistent. If any customer pushes for hard SLAs, route through Exec + Legal.
+
+Avery Johnson: Understood. Sending draft to @Soojin Lee in 10.
+
+Soojin Lee: Standing by.

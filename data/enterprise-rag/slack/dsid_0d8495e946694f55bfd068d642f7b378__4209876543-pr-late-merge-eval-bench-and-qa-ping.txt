@@ -1,0 +1,47 @@
+eng-runtime
+
+ashok: Heads-up — PR #8269 is ready for merge but CI microbench flagged a p95 regression on long-seq workloads. Attaching bench links and logs. Can we get 2nds before I book a merge slot?
+
+maria: pinging for reviews. I skimmed the diff, looks fine functionally but want a quick perf sanity from @devin or @sara.
+
+devin: I can run the small-batch and long-seq microbench locally now. Which commit should I test?
+
+ashok: use commit 9a7f3d2 (branch: runtime/kv-prefetch). Bench artifacts: https://artifacts.internal/bench/4209876543 and perf logs: https://logs.internal/4209876543.
+
+sara: quick note — the canary we ran yesterday showed a ~7% p95 token latency bump on A100 for seq_len=2048, but not on H100. Might be a scheduling regression with the new prefetch path.
+
+kevin: is the memory footprint different? last time a p95 bump coincided with a transient mem spike on warmup.
+
+ci-bot: CI: microbench-suite — small-batch: PASS; long-seq: FAIL (p95 increased by 7.1%). Detailed results: https://ci.internal/runs/4209876543
+
+maria: @devin can you grab the heatmap and kernel timings from the artifact? look for increased memcpy or extra kernel launches around token 1500-1700.
+
+devin: running now. quick grep shows an increase in memcpy_time in stall logs: "kv_prefetch: memcpy_us=1200 -> 2100" in the failing run (non-failing run had ~900). Dumping full flame.
+
+ashok: ack. that matches what I saw in the local repro. Prefetch is adding an extra memcpy when cache-miss aligns with chunk boundary. I tried a small tweak to coalesce requests but haven't benchmarked it at scale.
+
+sara: can we try a variant that disables prefetch for seq_len>1024 as a temporary canary? If that removes the bump we can merge with a revertable flag.
+
+devin: quick canary: toggled PREFETCH_MAX_SEQ=1024 and re-ran — p95 restored to baseline on A100. Throughput unaffected for small-batch. Link to canary run: https://artifacts.internal/bench/4209876543/canary1
+
+maria: good repro. plan: hold merge until we either (a) land a coalesce fix with perf numbers, or (b) merge behind a config flag and roll out gradually. Which do we prefer for the release window?
+
+kevin: given the release window I'd prefer (b) — merge with flag off by default and enable for dedicated canaries. ops can flip for smaller fleets first.
+
+ashok: I can prepare the flag PR today and include a note to ops for staged enablement. Will also push the coalesce fix branch for review — may need another day.
+
+maria: ok — can someone give an explicit approval for the merge-with-flag plan so I can move it through the queue? @devin @sara?
+
+devin: +1 from perf side for merge-with-flag and staged rollout. I'll add bench artifacts comparing default vs prefetched enabled for H100 and A100.
+
+sara: +1. please include a canary playbook step to monitor p95 and memcpy_us metric for first 30m after flip.
+
+ashok: thanks — I'll open the follow-up PR to add PREFETCH_MAX_SEQ and a canary annotation, and then request merge slot. tagging: @maria for final queueing. :thumbsup:
+
+maria: sounds good. I'll reserve merge slot TOMORROW 10:30 PT and keep it blocked until we see the flag PR merged. please post the PR number here when ready.
+
+ci-bot: Note: when you merge behind a runtime flag remember to add a rollout policy entry in the console and a rollback script in ops runbook.
+
+ashok: will do. PRs: #8270 (flag), #8271 (coalesce-fix WIP). Posting artifacts to the merge ticket in 30m.
+
+kevin: thanks all — appreciate the quick perf triage.

@@ -1,0 +1,39 @@
+eng-security
+
+maya: Quick heads-up — the weekly entitlement sweep flagged an orphaned admin binding on project infra-prod, principal svc-deploy@redwood-internal.iam.gserviceaccount.com. Looks like a leftover from the old deploy flow. Need a handback + full logchain for recert/evidence. :eyes:
+
+alex: On it. I can pull the audit chain. Probable SetIamPolicy around Mar 2nd. Will run a narrow query and upload an evidence bundle.
+
+rivka: Is the grant to the SA directly or via a group? KMS bindings sometimes come from cross-project grants which complicate revocation.
+
+alex: Initial check: direct binding to roles/editor on infra-prod. KMS grants show up in the same policy snapshot. Will confirm.
+
+maya: If it's direct we should follow the least-priv playbook: (1) evidence bundle, (2) request owner handback, (3) canary revoke, (4) monitor audit log for errors.
+
+alex: Running this now:```bash
+gcloud logging read 'protoPayload.methodName="SetIamPolicy" resource.labels.project_id="infra-prod" AND protoPayload.authenticationInfo.principalEmail="svc-deploy@redwood-internal.iam.gserviceaccount.com"' --limit=200 --format=json > /tmp/1712504321-audit.json
+```
+
+access-bot: automated reminder — periodic-access-review window opens in 7 days. Flagged item infra-prod/svc-deploy. See /apps/access/review/infra-prod.
+
+rivka: If we revoke, we need a fallback path for the deploy pipeline. Suggest create a scoped short-lived role for the pipeline and add to our CI service account, test in staging first.
+
+samir: I'll take the PR to remove the editor binding once alex drops the evidence. Plan: canary revoke at 02:00 UTC, 15-minute observation window, rollback if pipeline alerts. I can own rollback. :handshake:
+
+alex: Uploaded evidence bundle to gs://redwood-sec-evidence/handbacks/1712504321/evidence.tar.gz and added a short README with the logchain (entries + links). Also exported the raw logging query and a timeline.
+
+maya: Thanks. Rivka — can you draft the short-lived role template we want for the pipeline? Keep permissions limited to deploy APIs only.
+
+rivka: Drafted. Pushed to repo: https://git.internal/redwood/infra-iam/pulls/394 — includes policy diff and acceptance test plan.
+
+samir: PR for removal: https://git.internal/redwood/infra-iam/pulls/395 — reference evidence bundle and change notes. Scheduling canary revoke in the PR description.
+
+maya: Good. Runbook notes: 1) keep the evidence link in the PR; 2) add a post-revoke audit query; 3) contact oncall if any sign of pipeline failure.
+
+deploy-bot: deploy-pipeline: build succeeded for infra-deploy @ revision 7a3f — last run 22:55 UTC — will monitor after revoke. :zap:
+
+alex: Post-revoke audit query (to run after canary):```bash
+gcloud logging read 'protoPayload.methodName="CallFunction" resource.labels.project_id="infra-prod" AND timestamp>="2026-03-02T02:00:00Z"' --limit=100 --format=json
+```
+
+maya: Assigned owners: alex (evidence + audit queries), rivka (replacement role + tests), samir (PR + rollback). We'll keep this thread as the source of truth. Tag me if anything breaks. :thumbsup:

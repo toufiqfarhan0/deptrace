@@ -1,0 +1,21 @@
+announcements
+
+Elena Park: Hey team — we just merged and published the Community Model Attribution & Licensing Cards v1.0 standard. This is the canonical model card schema + attribution/license metadata we want community repos to include. https://github.com/redwood-inference/model-cards/releases/tag/v1.0 :party_parrot:
+Samir Khanna: Nice! Is there a minimal YAML header we recommend for model metadata?
+Elena Park: yes — see snippet below. It's intentionally tiny for quick adoption:
+```
+model_name: my-open-model
+license: apache-2.0
+weights_checksum: sha256:...
+attribution:
+  authors: ["Org / Person"]
+```
+Theo Ramos: How do we handle backwards compatibility with the old `README-MODEL.md`? Any migration script?
+Elena Park: There's a small migrator script in the repo (`scripts/migrate_readme_to_card.py`) and we've added tests. We do plan to keep `README-MODEL.md` supported for a patch window (6 months).
+Maya Chen: Happy to help with docs and translations — can we get a list of the required strings to localize?
+Riya Singh: Can we add an optional contributor credit badge? I can prototype a small SVG generator.
+doc-bot: PR #412 merged by @elena (model-cards: release v1.0) — changelog: schema stabilization, migrator, examples, badge guide.
+Elena Park: @Maya I'll DM the POI file. @Riya love it — if you open a draft PR we can include it in the next patch. Office hours TOMORROW 10:00 PT to walk through adoption and answer maintainer q's — sign-up: https://forms.gle/example
+maintainer-bot: Scheduled: Maintainers' Q&A (model-cards v1.0) — 2026-03-24 10:00 PT — reminder will post 15m before.
+Samir Khanna: sweet, will try migrating a couple community models tonight and give feedback.
+Elena Park: Thanks everyone! If you're a repo maintainer and want the badge or auto-checks added, reply here and we'll set it up. :rocket:

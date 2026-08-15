@@ -1,0 +1,30 @@
+eng-platform
+
+kevin: opened PR https://github.com/redwood-inference/platform/pull/582 — SDK: streaming + tool-calling tweaks. Breaking change to streaming callback shape (small). Can someone from eng-platform / devex give it a quick review before EOD? main changes: emit partial chunks + meta events, add StreamContext to SDK, adapter for old callbacks.
+
+ci-bot: CI: All checks passed · build #582 · coverage 87% :white_check_mark:
+
+maria: taking a look now. quick q — is the callback signature change opt-in or will it break existing users immediately?
+
+kevin: short example to illustrate: ```
+// old
+onChunk(chunk: string) => { /* append */ }
+
+// new
+onChunk({ text, type, stream_id }) => { /* handle partials, meta */ }
+```
+It ships with an adapter `createLegacyStreamAdapter` so old handlers should still work, but I want another pair of eyes on the semantics (especially errors).
+
+alex: skimmed the PR — code looks good. left a nit about naming and asked for a tiny unit test for the adapter. also: devex needs a docs PR to update examples/ and the TS SDK types.
+
+sam: will run the integration suite locally in ~15m: `make test-integration SDK_STREAM=1` — will flag any runtime breakages or TS issues.
+
+maria: left one comment about error handling when a tool call fails mid-stream — do we emit a meta event `tool_error` or terminate the stream with an error frame? personally prefer a `meta: { type: "tool_error", code }` event so clients can recover. added comment in PR.
+
+kevin: good call — I can switch to emitting a `meta` event and wire the adapter to translate into a thrown error for legacy handlers. will push a small commit and ping. aiming to avoid a semver major if possible.
+
+alex: :thumbsup: once the adapter + doc update land and CI is green, happy to approve. prefer we do a 24h canary rollout after merge. @sam please monitor canary traces and error rates.
+
+sam: ack — will watch logs, traced spans, and latency dashboard. will post any anomalies to #eng-sre.
+
+ci-bot: Deploy-bot: canary job queued for merge candidate when PR is merged.

@@ -1,0 +1,105 @@
+incidents
+
+incident-bot: ALERT: kv-cache growth spike detected on gw-prod-east (1.9x baseline). Continuous-batching queue latency rising. Auto-page fallbacks increased. Severity P2 — paging to #incidents. Please ack. https://grafana.internal/redwood/d/kvcache
+
+maria (oncall): acked. I'm looking. Is this correlated with the 03:00 canary rollout? :thinking_face:
+
+ben (sre): I'm  on it, pulling recent eviction/alloc metrics. Initial look — index TTL churn + a sudden warmup of a few model prefixes. Could be a traffic pattern from a customer integration that spins up many short-lived contexts.
+
+carla (serving): I see the same in runtime traces — KV index entries ~120M -> 220M over 10m on gw-prod-east. Continuous-batching window sizes jumped, causing larger batches and higher KV lookups. Streaming token cadence shows partial flushes stalling at 60-120ms.
+
+maria (oncall): impact? any customer affects?
+
+laura (support): Tim reported a few customer tickets about streaming stalls for real-time summarization customers starting ~22:08 UTC. They're seeing ~2-3s stalls mid-stream, sometimes reconnects.
+
+tim (customer-success): Customers A and C have active sessions. A reported degradation. C has higher churn; could be responsible for warmup. I'm pinging account teams.
+
+ben (sre): adding logs snippet from the agent:
+```
+2026-07-12T22:10:05Z runtime[kv]: insert(key=ctx:usr:XYZ, size=12KB) eviction=disabled reason=warmup
+2026-07-12T22:10:18Z runtime[batch]: window_ms=250 -> 1200 backlog=340 cache_miss=0.62
+2026-07-12T22:12:02Z runtime[stream]: partial_flush: stalled tokens=128 cadence_ms=900
+```
+
+carla (serving): hypothesis: combination of sudden prefix warmups + our new continuous-batching heuristics expanded max window under perceived high throughput. That increased memory pressure -> more paging and lock contention -> partial flush stalls.
+
+devon (ml): any recent model or client-side change that would cause many short contexts?
+
+laura (support): Customer C pushed a release at 21:58 that increases ephemeral conversation spawning for the embedding workflow. They noted higher parallelism.
+
+maria (oncall): ok mitigation plan: 1) throttle continuous-batching on gw-prod-east (reduce max_window_ms), 2) temporary kv eviction aggressiveness increase for prefixes matching ephemeral keys, 3) enable streaming partial-flush workaround (decrease token batch threshold). Can we do 1+2 quickly?
+
+ben (sre): I'll prepare a hotfix config and roll to a subset of gw-prod-east nodes (canary). Patch:
+```
+clusters:
+  gw-prod-east:
+    continuous_batching:
+      max_window_ms: 300
+      batch_growth_limit: 2
+    kv_cache:
+      eviction_policy: lru
+      eviction_target_percent: 65
+      prefix_filters:
+        - "ctx:ephemeral:*"
+```
+Applying to 3 nodes first.
+
+deploy-bot: rolling config change to gw-prod-east (nodes gpe-03,gpe-04,gpe-07). Change id: cfg-20260712-039.
+
+deploy-bot: config apply success on gpe-03 (22:16:11Z). gpe-04 (22:16:24Z). gpe-07 (22:16:39Z).
+
+ben (sre): metrics after canary: KV entries delta reduced on patched nodes, continuous batch window decreased from ~1.2s to ~320ms, backlog down 70%. Partial flush stall rate on patched nodes down to baseline.
+
+maria (oncall): good. Can we expand to all gw-prod-east? How fast?
+
+carla (serving): I'd prefer a ramp: expand in 10m steps while watching stroke rate and latency. Also we should whitelist long-running contexts so real-time customers don't see too many small batches.
+
+maria (oncall): agree. Ben, please start ramp to 100% over next 30m if metrics stay stable. Laura, please surface a short note to affected customer A that we're investigating and applying mitigations. Tim can craft customer message.
+
+tim (customer-success): drafting now: "We've applied a temporary mitigation to reduce streaming stalls. You may see slightly reduced throughput for a few mins as we rebalance — this will improve stability. We'll follow up with root cause and permanent fix."
+
+laura (support): sending to customer A now.
+
+ben (sre): ramp started at 22:22Z. gpe-* nodes receiving config; target full roll by 22:50Z if no regressions.
+
+carla (serving): note: partial-flush workaround is a small runtime toggle that reduces token aggregation threshold, added CLI flag:
+```
+--streaming.partial_flush_threshold=48
+```
+We set to 48 for now (from 128). Adds a small token-level overhead but avoids long stalls.
+
+maria (oncall): update on impact?
+
+deploy-bot: cfg-20260712-039 applied to 80% of nodes (22:33:10Z).
+
+ben (sre): Observed system-wide paging rate drop ~55% since 22:17Z. Streaming stall incidents reported by monitoring down from ~14/min -> 1-2/min. Customer A reports improved behavior.
+
+laura (support): Customer A confirms improvement. "latency back to normal, thanks" — forwarded to Tim.
+
+devon (ml): we should still investigate long-term: if customer C's pattern is legitimate load, we need better warmup isolation and prefix bucketing to avoid global cache blowups. Also a runtime fix for partial flush lock contention is required.
+
+maria (oncall): agree. Action items:
+- ben: finalize expanded rollout and validate metrics (due 22:50Z)
+- carla: write an RFC for warmup isolation + prefix buckets + eviction tagging (due EOD)
+- devon/caral/ben: triage partial-flush root cause (lock path) and schedule a patch for next runtime release
+- laura/tim: customer comms and post-incident note
+
+ben (sre): full rollout completed 22:48Z. No regressions. Monitoring will stay in high-eyes for 2h.
+
+deploy-bot: cfg-20260712-039 rollout complete (22:48:31Z).
+
+maria (oncall): handing off to ben for long-tail follow-up. I'll update oncall rotation and log incident. Thanks everyone. :white_check_mark:
+
+ben (sre): taking follow-up. Creating incident ticket INC-20260712-39 with timeline and mitigations.
+
+carla (serving): quick note — runtime partial-flush lock stacktrace (from gpe-04):
+```
+#0 runtime::stream::flush_pending()
+#1 runtime::kv::lock_shared()
+#2 runtime::stream::flush_worker()
+```
+Probably a lock ordering issue when eviction is active during large batch flush. Repro instructions attached to INC ticket.
+
+maria (oncall): marking as mitigated at 22:50Z. Please update the postmortem template and link to ticket. Closing in-channel.
+
+incident-bot: INCIDENT UPDATE: 1939987654 marked mitigated by maria (oncall) at 22:50:12Z. Next steps assigned.

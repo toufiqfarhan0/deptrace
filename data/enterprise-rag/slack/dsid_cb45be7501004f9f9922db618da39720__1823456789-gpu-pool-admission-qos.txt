@@ -1,0 +1,36 @@
+eng-infra
+
+Ada: Seeing a weird TPM drop on west-gpu-pool after we enabled preemptible scaling. Measured ~120k TPM from traces but accounting shows ~85k. Anyone else seeing a disconnect? :thinking:
+Raj: We pushed an accounting change in the last runtime deploy — it now includes KV-cache occupancy and a small GPU reservation penalty per request. That can look like a TPM delta when batch sizes shift.
+Sophia: Can you paste a trace snippet and the per-request metadata? want to compare tokens_in/out vs what billing counted.
+Ada: Pasting a short trace and sample line: <link to trace>
+```
+request_id=abc123 tokens_in=512 tokens_out=1024 batch_size=4 gpu=nv4a-48 mem_reserve=4GiB
+observed_tpm=120000 accounted_tpm=85000
+```
+Raj: Short version: accounting now computes an "effective_tokens" that adds kv and reservation overhead. Formula we used during rollout: 
+```
+effective_tokens = tokens_in + tokens_out + ceil(kv_hits/16)*16 + (reserved_gb * 8)
+per_gpu_tpm_capacity = floor(gpu_token_rate / effective_tokens)
+```
+Mike: That reserved_gb*8 term was added to model streaming to prevent noisy small requests from starving memory. It effectively charges a flat token cost per request which bumps low-token requests a lot.
+Sophia: Right — if batch_size drops, avg tokens per request falls but the per-request reservation stays constant, so accounted TPM goes down even though observed per-token throughput didn't.
+Ada: Ok, makes sense. For admission control we should treat reservation as a request-level fixed cost and batching as an amortized token cost. Proposal:
+- compute per-GPU available_token_budget = static_gpu_budget - sum(active_reservations)
+- maintain EWMA of avg_tokens_per_request per route/pool
+- admission check: if (projected_tokens + reservation_costs) > budget -> queue or apply backpressure
+Config sketch:
+```
+admission:
+  window: 30s
+  ewma_alpha: 0.2
+  reserve_per_request_gb: 4
+  backlog_high: 200
+```
+Raj: Also call out the RPM vs TPM mismatch — throttling purely on TPM can still allow too many concurrent short requests (high RPM) and blow out request slots / scheduling overhead. We need a dual-threshold: tokens AND requests.
+Mike: +1. Dual-threshold admission: require both token_budget check and request_slot check. If tokens ok but request_slots exhausted -> queue. If request_slots ok but token_budget exceeded -> reject or degrade model variant.
+infra-bot: deploy:admission-v2 rollout started to canary (west-gpu-pool) at 1823456840 :rocket:
+Ada: Canary up. I'll run a mixed-length load (short bursts and long streams) and log both observed_token_emit and accounted_tpm, plus RPM. Will report numbers in ~20m. :thumbsup:
+Sophia: If canary looks stable we should add per-model quantization/packing profiles to reduce the reservation penalty impact for small requests.
+Raj: I'll open a PR with the detailed formula, docs, and a tiny tool to simulate: `tools/capacity/calc_effective_tpm.py` so teams can preview accounting impact by route.
+Mike: Thanks all, this explains the discrepancy and gives a clear next step.

@@ -1,0 +1,56 @@
+architecture
+
+elaine: quick question — where should quota + rate-limit enforcement live for the different hosting modes? hosted, dedicated, private have different needs and i want a clear ownership boundary before the RFC PR
+
+sam: leaning toward control-plane quick checks for hosted (cheap deny fast) + data-plane authoritative accounting for dedicated/private. but need to handle offline private control-plane cases 
+
+marco: agreed. hosted can do soft-fail in control-plane then final enforcement at runtime. for dedicated we should make the runtime the source of truth because it has accurate token counts and batching effects
+
+anya: small UX concern: if control-plane returns a quota error for hosted, how do we surface that in the SDK vs as a 429 from the inference runtime? customers will expect consistent behavior
+
+elaine: good point. proposal: normalized 429 API error surface for clients regardless of where enforcement happened. include header X-Redwood-Quota-Origin: controlplane|runtime and a human-readable reason. SDKs will prefer raising QuotaError with origin attr
+
+sam: sounds nice. what about requests that are routed across modes (hosted fallback -> dedicated)? we might double-charge the quota or miscount
+
+marco: we should attach an idempotency token and an admission token at routing time. flow: router issues admission_id -> forwards to runtime with admission_id -> runtime returns usage_report referencing admission_id -> control-plane reconciles. that prevents double counting on fallback
+
+elaine: sketch: ```
+# admission flow pseudo 
+admission = router.request_admission(tenant, tokens_estimate)
+if admission.allowed:
+  runtime.process(req, admission.id)
+else:
+  return 429
+```
+
+anya: how to handle private air-gapped deployments where control-plane unreachable? runtime must be allowed to enforce locally with local policy bundles. we need signed policy manifests that runtime can validate
+
+marco: yes — signed policy bundles + a ttl. runtime keeps a local counters shard and periodically ships usage to the control-plane when reachable. reconciliation algorithm: last-write-wins with admission_id dedupe
+
+sam: latency SLOs: hosteds want pre-flight admission to be <5ms. we need a fast admission cache in the router for common tenants. eviction strategy? lru with token bucket refill aligned to billing window
+
+elaine: also consider circuit-breaker semantics — when runtime is overloaded, it should return a structured fallback hint: {fallback: "dedicated" | "degraded-model" | "retry-after"} so router can pick next step
+
+marco: fallback hint idea is good. add version compatibility: runtime must declare capabilities: supports_fallback, supports_admission_id, consumption_precision (estimated|exact). router can then pick target gracefully
+
+ops-bot: deploy: staging -> canary -> prod triggered by @sam. Status: canary deployed to 3 hosts (runtime v1.18.0)
+
+anya: security question — admission_id must not leak tenant identity across shared routers. admission_id should be opaque and scoped to router+tenant. use HMAC with router key
+
+sam: yes HMAC(router_key, tenant||nonce||ts) works. router rotates keys quarterly, runtime should accept last two keys for a grace period
+
+elaine: i can write an RFC followup with these boundaries: 1) hosted: control-plane preflight + runtime enforcement, 2) dedicated: runtime authoritative, control-plane reconciles, 3) private: runtime authoritative with signed policy bundles and offline reconciliation. include admission_id flow, headers, and error normalization
+
+marco: add tests: 1) fallback double-charge sim, 2) key rotation acceptance, 3) private offline reconcile window. i can set up unit tests for reconciliation algorithm
+
+anya: also add telemetry hooks: admission_latency histogram, admission_origin gauge, reconciliation_lag metric, and a badge in the console showing "offline policy age" for private tenants
+
+elaine: perfect. i'll draft RFC and ping you all. TL;DR: split enforcement based on trust/availability; normalize client-facing errors; use admission ids + signed policy bundles for offline/air-gapped; provide fallback hints and capability declarations
+
+sam: thanks — this clears a lot. one more tiny ask: include recommended default TTLs for policy bundles (24h?) and admission token TTL (5s)
+
+elaine: noted. 24h bundle TTL, admission token 5s by default. i'll include override knobs.
+
+marco: thanks, moving to RFC PR.
+
+ops-bot: Note: Remember to run `tools/validate-admission-schemas` before submitting the RFC PR.

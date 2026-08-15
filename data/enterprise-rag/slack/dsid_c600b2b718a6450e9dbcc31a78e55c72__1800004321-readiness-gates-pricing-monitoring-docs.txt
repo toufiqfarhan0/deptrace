@@ -1,0 +1,38 @@
+product
+
+maria: Quick sync — final GA readiness call for Optimize. Need explicit decision on SLAs, docs signoff, support coverage, monitoring SLOs, and pricing guardrails. Who owns what?
+aj: I can own SLAs + SLI definitions. Proposal: P95 latency <= 200ms for hosted gen, availability 99.95% (monthly).
+maria: 👍 that seems in-line. Can you write the SLI doc and paste the short version into the GA checklist? deadline EOD Wed.
+devon: For docs I need clear acceptance criteria. Minimum: quickstart + one migration guide (pilot->dedicated), API reference update for streaming, and example billing calc.
+sree: Monitoring: will wire up dashboards and alerts. Questions: do we want an error budget burn alert at 2% of monthly burn or 0.5%?
+aj: start with 0.5% for GA (safer). If we see many false positives we can relax after 2 weeks.
+jamie-sales: Pricing guardrail ask: for pilot customers we need per-customer soft quota (monthly token cap) and a billing-overage alert to AMs. Can engineering surface a per-customer quota flag?
+devon: We can; needs API + console toggle. Timeline?
+maria: Console toggle is optional for GA but API flag is required. devon—can you scope the API change and migration notes?
+devon: Will do. If we add toggle later, we need to note behavior in docs (default = no cap).
+ops-bot: Deploy scheduled: staging -> canary @ 2024-05-03T10:00Z, automatic rollback on 5xx increase > 1.5x baseline for 10m.
+sree: Good. For alerts: set paging for SLO breaches and immediate paging for P95 > 500ms. Non-paging for slowdowns < 500ms.
+aj: Also add KV-prefix cache miss rate SLI (affects cost). Goal: <10% miss rate for steady-state workloads.
+maria: Who will author the runbook for SLA breaches and rollback?
+sree: I can draft the runbook with playbook steps in the docs repo. Will include runbook checklists and snippet commands.
+devon: Example runbook snippet to include in the doc: ```bash
+# kill canary
+curl -X POST https://infra/api/deploys/cancel -d '{"deploy_id":"$CANARY"}'
+```
+jamie-sales: For pricing: we need a simple forecast calc in the docs showing token->$ mapping and an example monthly bill for 100M tokens. Also confirm overage rounding (per-1k tokens).
+aj: We'll standardize on per-1k tokens rounding. Add note: embeddings billed per vector unit.
+maria: Support coverage: GA support hours = 24/5 L1, 24/7 L2 on-call rotation for first 90 days. That is expensive — is it doable?
+jamie-sales: Sales ok with 24/7 L2 for first 90 days if we have a clear escalation SLA and playbook. We can commit to a narrower set of prod-impacting incidents for 24/7 paging.
+sree: Agree. We'll gate paging to severity >= Sev2. Documented in runbook.
+devon: Docs signoff: propose owners: devon (API + quickstart), sree (runbook + monitoring), aj (SLA/SLI page), maria (final checklist). Signoff deadline Thu EOD.
+maria: Action items: aj -> SLA doc + SLI defs (EOD Wed), devon -> API flag scoping + docs draft (Thu), sree -> dashboards + runbook draft (Thu), jamie-sales -> pricing examples + pilot quota language (Thu).
+ops-bot: Reminder: create incident channel `#optimize-ga` at 2024-05-06T08:00Z.
+aj: One more: fallback policy — pinned model variant + fallback to lower-cost variant on overload. Need explicit cost/quality note in docs.
+devon: I'll add the fallback behavior note and sample config snippet: ```json
+{"routing_policy":"fallback","variants":["optimize-v2","optimize-v1"]}
+```
+maria: Looks good. If everyone meets deadlines we can sign off on Friday morning. Any blockers?
+jamie-sales: Legal asked for a short clause on data residency for Private customers — we should add a line to the GA docs that Private deployments require separate contract. I'll add wording.
+aj: Noted. I'll add SLA exception language for Private deployments.
+sree: I'll add dashboard links to the checklist once deployed.
+maria: Thanks all — summary will be pasted into the GA checklist doc after this thread. :tada:

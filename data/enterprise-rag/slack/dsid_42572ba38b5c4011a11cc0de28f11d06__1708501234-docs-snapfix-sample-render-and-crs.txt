@@ -1,0 +1,32 @@
+docs
+
+maria: quick heads-up — the runtime guide code block on /docs/runtime/sequence-handling is rendering HTML entities (`&lt;`/`&gt;`) instead of real angle brackets, so the example doesn't execute in the playground :grimacing:
+leo: ahh thanks for flagging. which snippet/line is it? can you paste the path + short excerpt?
+maria: path above, snippet start around `### Example: streaming client` — lines show `<StreamClient>` as `&lt;StreamClient&gt;` in the rendered page. filing a quick PR would be fastest IMO
+sam: I can take a quick pass on a snapfix. will do a branch and ping for review.
+maria: thanks! small checklist: 1) swap the markdown fenced block to triple-backtick with language `html` (current has some inline escaping). 2) verify the embed playground link still works. 3) add `owner: docs` to frontmatter so we get alerted on link scans
+sam: copying the snippet I see this in the source: ```html
+&lt;StreamClient token="${TOKEN}" onMessage={...}&gt;
+  ...
+&lt;/StreamClient&gt;
+```
+sam: fix is: ```html
+<StreamClient token="${TOKEN}" onMessage={...}>
+  ...
+</StreamClient>
+```
+olivia: @sam nice catch. small comment: make sure we don't accidentally re-enable raw `&lt;` if the markdown renderer is escaping because of a leading space or HTML sanitizer. test the published preview please
+sam: will confirm. pushing branch `docs/snapfix/runtime-escape-170850` now and opening PR with the three-change commit.
+docs-bot: PR opened: https://git.company/repo/pulls/4123 — sam:runtime-escape-170850 (labels: docs, quick-fix)
+maria: pinging @olivia for a quick CR when you have a minute — low risk but want a second pair of eyes on frontmatter tweak
+olivia: can review in ~45m, unless someone else grabs it sooner
+leo: if you're pressed, I can do the review too — otherwise wait for olivia since she owns that area
+sam: preview should be available in ~5m after CI. thanks both
+deploy-bot: Preview deployed: https://preview.company/snapfix/runtime-escape-170850 — see the streaming example section, rendering now uses raw angle brackets
+olivia: looked through the PR. small nit: add a one-line note in the commit message referencing the link scanner ticket so we can correlate. otherwise approves :+1:
+maria: merging after olivia's approval. also added `owner: eng-docs` in frontmatter (keeps it consistent with other runtime pages)
+docs-bot: PR merged by maria. changelog: docs: runtime example rendering fix (1708501234)
+sam: thanks team. filing a follow-up to add a unit test to the docs build for HTML-escaping examples so this doesn't regress
+leo: great. can you drop the follow-up ticket number here when it's created?
+sam: will do — follow-up #8672 created. adding the test is scheduled in next docs sprint
+maria: perfect. closing the loop — thanks everyone :wave:

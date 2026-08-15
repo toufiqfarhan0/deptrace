@@ -1,0 +1,19 @@
+sales
+
+amina: Customer wants an on-prem POC delivered by couriered USB seed-bundles. Airgapped, embargoed sites, and customs/import paperwork request. They also asked about TPM-backed attestations on install.
+derek: We can support TPM attest + site-specific manifest sealing. Pattern: bundle envelope encrypted per-site, manifest signed by customer HSM or our signed artifact if escrow approved. Recommend customer HSM for compliance.
+amina: Logistics question: courier handles USB transport; do we require chain-of-custody labeling / tamper-evident seals?
+quinn: Yes - we recommend tamper-evident seals + a printed manifest with SHA256. Ingestion requires scanning at secure workstation and a checksum verify step.
+ops-bot: Ingestion steps (short):
+- mount usb on hardened workstation
+- run: redwood-verify --manifest manifest.json --checksum SHA256
+- malware-scan (AV) + quarantine if alerts
+- import: redwood-operator import --bundle /mnt/usb/bundle.tar.gz --site-id S123 --offline
+quinn: For upgrade cadence they want quarterly majors only, with emergency hotpatches requiring signed escalation from their CISO. We support labels: quarterly/hotpatch and token-gated hotpatch installs.
+derek: Delta patch support: operator v2 supports chunked patches referencing a base sha; will refuse if base mismatch. Rollback keeps N=3 snapshots, automatic rollback if health probes fail within 3m by default.
+amina: They also need offline license activation — can we do per-device activation using an offline OTP code included on the bundle?
+quinn: Yes — we can provide single-use activation tokens sealed in the manifest envelope; operator redeems locally and increments local meter. When/if site reconnects later we reconcile counters.
+derek: Security questionnaire points to include: SPDX SBOM per-bundle, telemetry disabled in offline mode, crypto: RSA-3072 signing option or ECDSA-P256, envelope AES-256-GCM, HSM: PKCS#11 + optional TPM endorsement.
+legal: Noted. I'll review escrow language and customs declarations for physical media shipments. Prefer customer HSM but escrow path exists with contract addendum.
+amina: I'll put together a short runbook, a courier checklist, and a draft quote (one-time provisioning per site + optional onsite day). Quinn will include activation token example. Expect drafts by EOD PT.
+quinn: Drafts incoming. Thanks team :thumbsup:

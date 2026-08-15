@@ -1,0 +1,42 @@
+customer-success
+
+Maya H: Draft outbound for customers delayed during Dedicated pool provisioning this morning — need copy, triage checklist, and credit language. Draft below.
+
+Maya H: ```Subject: Update — Dedicated provisioning delay (resolved)
+
+Hi <CustomerContact>,
+
+Status: Resolved — provisioning restored.
+
+What happened: an autoscaler change caused new Dedicated pool assignments to queue between 08:0510:22 UTC, delaying some activations. Existing Dedicated workloads were not affected.
+
+What we did: rolled back the change, reconciled queued allocations, and backfilled pending pools. Normal provisioning resumed at 10:22 UTC and queued pools completed shortly after.
+
+If you were affected: your account team will post a completion timestamp in the tenant activity feed. If activation was delayed and you need help, reply with tenant ID and a 2-hour window and well prioritize manual validation.
+
+Compensation: affected tenants may be eligible for a one-time credit equal to 3% of the first-month Dedicated commit (accounts with < $50k commit may receive up to $2,500). Credits subject to eligibility verification.
+
+Resources: status.redwood.ai (incident #2026-DED-PRV), provisioning dashboard: https://console.redwood.ai/dedicated/provisioning.
+
+We're sorry for the disruption.
+
+— CS Ops
+```
+
+Diego R: change completion time to 11:08 UTC (engineering verified). Also add note: pause automated migration retries until pool status=Ready to avoid duplicates.
+
+Lina P: add CS triage checklist: tenant ID, original ETA, completion timestamp, renewal window flag, migration owner.
+
+Ben K: change "will receive" to "may receive" per Legal, cap applies to accounts < $50k.
+
+LegalBot: phrasing approved with qualifiers.
+
+Maya H: final draft updated and scheduled for 12:30 UTC. OpsBot, queue outbound.
+
+OpsBot: Incident #2026-DED-PRV created  outbound scheduled 12:30 UTC.
+
+Lina P: I'll run triage and flag any at-risk renewals.
+
+Ben K: prepping renewal notes.
+
+Maya H: thanks team, will paste sent copy here after outbound."

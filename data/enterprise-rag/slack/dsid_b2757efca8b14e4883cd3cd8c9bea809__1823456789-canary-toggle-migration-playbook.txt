@@ -1,0 +1,63 @@
+eng-platform
+
+alisa: Quick sync — we need a short runnable playbook for the v2 compatibility rollout (deprecation + canary toggles + SDK updates). Who's owning each piece? I want owners and minimal timelines today.
+
+matt: I can own route compatibility + nginx/proxy routing. PR #4921 adds the /v2 header routing logic; target canary start Thu.
+
+jane: I’ll own runtime fallback behavior and model-variant mapping. Runtime will auto-fallback to v1-compatible model if v2 variant fails; I’ll add tests. ETA EOD tomorrow for test plan.
+
+kevin: SDK lead here — will do the minor semver bump and feature-flag support. Plan: release patch to the JS SDK with header helper and opt-in flag, then a coupled minor release with docs. Target next Tue.
+
+ci-bot: build status: js-sdk/patch -> passed (https://ci.example.com/builds/3487) :white_check_mark:
+
+matt: Canary policy proposal: 1) internal-only (team opt-in), 2) 10% beta, 3) 50% gradual, 4) 100% after 48h of no regressions. Automatic rollback if 5xx > 0.5% in 30m. Thoughts?
+
+jane: +1 to the stages. Add a smoke test that hits embeddings + chat paths. I'll add smoke to the rollout job.
+
+kevin: For SDK flags, sample config:```json
+{
+  "apiVersion": "v2",
+  "compat": {
+    "enableV2": false,
+    "canaryHeader": "x-redwood-canary"
+  }
+}
+``` We’ll default to false and provide a helper to flip during canary.
+
+alisa: Nice. Also need a clear migration checklist for customers and internal app owners: docs, changelog, sample curl, migration window, and rollback instructions. I can draft the doc if folks drop one-line items here.
+
+matt: Item: infra — add nginx route and rollout toggle in traffic director. Owner: matt. Blocker: need k8s config change reviewed by infra. PR #4978.
+
+jane: Item: runtime — smoke tests + fallback metrics dashboard. Owner: jane. Needs: dashboard tile from SRE.
+
+kevin: Item: SDK — feature flag + upgrade guide + snippet for client. Owner: kevin. Needs: docs link + a short migration example.
+
+sre_oncall: We can add the dashboard tile. Prefer rollout window Tue-Fri 02:00-05:00 UTC for low traffic. Also request a load-test sim (30m) before 50% stage.
+
+alisa: Example curl to test canary header:```bash
+curl -H "Authorization: Bearer $TOKEN" -H "x-redwood-canary: true" https://api.redwood.example.com/v2/generate -d '{"prompt":"hi"}'
+```
+
+matt: I'll attach the infra PRs and pin the nginx change to the rollout doc. Will open a short-lived followup thread for infra cutover times.
+
+kevin: I’ll open the SDK PR today and link to the migration doc once it exists. Will include the helper for toggling canary in the client.
+
+alisa: Action items summary: [matt] nginx + traffic director PRs, [jane] runtime smoke tests + dashboard, [kevin] SDK PR + migration snippet, [sre_oncall] load-test + dashboard tile, [alisa] draft playbook doc. Please react with :thumbsup: if you ack ownership.
+
+matt: :thumbsup:
+
+jane: :thumbsup:
+
+kevin: :thumbsup: will drop PR link in thread when ready.
+
+ci-bot: reminder: run the integration-suite after SDK PR lands to ensure no API contract break.
+
+alisa: Thanks — capturing this into docs/redwood-internal/v2-migration-playbook.md and pinging product for customer comms once we hit 50%.
+
+matt: FYI, dependency note — client teams using our old client-side routing will need the new header quickly. I’ll compile a short list of hotspots.
+
+jane: If anyone wants to join a quick 15min sync tomorrow to iron out tests, ping me.
+
+kevin: Acked, will be there.
+
+alisa: Closing here — will post doc link in this thread when done.

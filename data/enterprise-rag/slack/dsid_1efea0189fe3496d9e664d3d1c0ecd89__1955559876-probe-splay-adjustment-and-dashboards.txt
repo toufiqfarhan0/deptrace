@@ -1,0 +1,45 @@
+eng-oncall
+
+incident-bot: INCIDENT: synthetic probe 'canary-embedder-eu' failing 4/5 checks in the last 5m — alert routed to #eng-oncall.
+Maya Singh: seeing the bot, pulling up probe timeline now. @Ajay can you check eu-west-1 serving pools?
+Ajay Patel: on it. quick look: pool-rd-3 had a rapid series of 503s around 10:12 UTC, then recovered. appears correlated across runners.
+Maya Singh: any deploys around that time? @Sofia any model pushes?
+Sofia Gomez: no app deploys. we did promote a quantized variant to dedicated customers at 04:00 UTC but that shouldn't touch the hosted canaries.
+Ajay Patel: logs: connection reset/retries clustered at minute boundaries. suspect probes are synchronized and causing correlated false-positive alerts during transient autoscaler activity.
+Maya Singh: yep — classic probe sync. mitigation plan: add jitter/splay to probe schedule + require N consecutive failures before paging. temporary alert change to reduce noise.
+Sofia Gomez: agree. proposed alert rule change: require 3 failures within 10m before firing. that should filter short bursts.
+Maya Singh: I'll patch the alert now. Ajay can you change the probe config to add a randomized start offset (splay) and stagger restarts?
+Ajay Patel: patching canary-config repo now, will roll to runners. adding splay_seconds: 300 and jitter. restarting probe runners in a stagger.
+incident-bot: DEPLOY: probe-config v2025.3 applied to canary fleet. rollout 100% in ~2m.
+Maya Singh: confirming customer-facing metrics — no spike in real user errors. CS not seeing customer pages. good.
+Sofia Gomez: adding a Grafana panel to visualize the change. query I'm testing: ```promql
+sum_over_time(canary_fail_count{probe=\"canary-embedder-eu\"}[10m])
+```
+Switching to a rule-based moving window: ```promql
+increase(canary_fail_count{probe=\"canary-embedder-eu\"}[10m]) > 2
+```
+Maya Singh: creating a dashboard row "Synthetic Probe Health" with three panels: failure rate, last_success timestamp, and probe jitter distribution. will snapshot and attach to ticket.
+Ajay Patel: note for follow-up: correlate probe failures with autoscaler/instance churn events — may still see noise if autoscaler too aggressive. adding autoscaler events to dashboard.
+Maya Singh: quick config snippet I'll use for the alert (temporarily): ```yaml
+alert: CanariesHighFailure
+expr: increase(canary_fail_count{probe=\"canary-embedder-eu\"}[10m]) >= 3
+for: 0m
+labels:
+  severity: warning
+annotations:
+  summary: \"Canary probe failure spike in EU\"
+```
+Sofia Gomez: adding probe config example to repo README for other probe types.
+Ajay Patel: rollout finished — runners report splay applied. average observed jitter ~120s across fleet. no new alerts in the last 90m.
+Maya Singh: creating follow-up ticket INC-4921: "Synthetic probe false-positive reduction and dashboarding" with tasks: A) Formalize splay defaults B) Add consecutive-failure gating C) Add autoscaler correlation panels D) Run 24h ETA for false-positive baseline. assigning owners.
+oncall-rotation: Acknowledged. handing off to next oncall: Nina in 45m.
+Nina (SRE): I'll own post-incident analysis and the ticket. please add any saved logs or grafana snapshots to INC-4921.
+Maya Singh: added grafana snapshot: https://grafana.company/internal/d/abc123/canary-health?from=now-2h&to=now — :thumbsup:
+Sofia Gomez: doc snippet for probe config changes: ```yaml
+probe:
+  splay_seconds: 300
+  consecutive_failures_to_alert: 3
+  jitter: true
+```
+Ajay Patel: small note: we should avoid very large splay for low-frequency probes (it delays detection). 300s seems like a good balance for this embedder probe.
+Maya Singh: agreed. follow-ups scheduled, monitoring window opened for 24h. I'll stay around for the first 30m to watch. closing this thread in 2h unless someone needs more.

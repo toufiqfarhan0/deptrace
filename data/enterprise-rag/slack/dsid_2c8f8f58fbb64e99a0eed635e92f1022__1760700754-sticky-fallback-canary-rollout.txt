@@ -1,0 +1,44 @@
+incidents
+
+incident-bot: (pager) Severity: P2 — Canary fallback loop detected
+incident-bot: Canary id=canary-20260315-9 for model=gptx-lite-q4 in eu-central-1 showing 35% fallback to gptx-v1 with sticky=true; repeated reassignment observed. Live: https://redwood/ops/rollouts/canary-20260315-9
+carol-sre: oncall here, grabbing it. Noted the spike at 08:07 UTC. Will pull routing logs.
+carol-sre: logs excerpt:
+```
+[2026-03-15T08:07:12Z] req=zx11 model=gptx-lite-q4 -> variant_unavailable
+[2026-03-15T08:07:13Z] req=zx12 assigned=gptx-v1 sticky=true
+[2026-03-15T08:07:14Z] req=zx13 latency=950ms
+```
+bob-infra: routing policy dump:
+```
+rollout: canary-20260315-9
+traffic: 15%
+region: eu-central-1
+fallback:
+  allowed: [gptx-v1]
+  sticky: true  # default template set this accidentally
+```
+bob-infra: template likely has sticky default; canaries should not carry sticky assignments.
+alice-runtime: agree. Immediate plan: 1) pause canary 2) clear sticky assignments for cohort 3) nudge health-checks and re-eval.
+carol-sre: pausing now:
+```
+curl -X POST "https://controlplane.internal/api/rollouts/canary-20260315-9/pause" -H "Authorization: Bearer $INCIDENT_TOKEN"
+```
+carol-sre: pause accepted. Now clearing sticky assignments:
+```
+curl -X POST "https://routing.internal/api/assignments/clear" -H "Content-Type: application/json" -d '{\"cohort\":\"canary-20260315-9\"}'
+```
+carol-sre: clear returned 200. Watching fallback %.
+alice-runtime: I'll push a guarded change: the control plane should reject sticky=true when rollout.type==\"canary\" unless explicitly overridden with admin override. Also add an audit warning in the UI.
+bob-infra: submitted PR: https://git.redwood/infra/rollout-templates/pull/451 — change default sticky=false and add unit tests. Deployed to staging.
+erin-cs: CS note drafted and sent to affected customers in eu-central-1 (names redacted). Included ETA and that canary paused and fix applied.
+dave-prod: action items created in incident tracker INC-20260315-99. Assigning owners: infra(bob-infra), runtime(alice-runtime), SRE(carol-sre), CS(erin-cs), product(dave-prod).
+frank-support: got inbound tickets for timeout errors; routed to CS draft.
+carol-sre: metrics: fallback_pct 35% -> 4% in 7 minutes after clearing. p95 latency returned to baseline.
+alice-runtime: we should also implement an automated job: when a canary is paused or rolled back, auto-clear sticky assignments for cohorts tagged canary.* — I'll draft runbook change and automation task.
+bob-infra: added lint to rollout-cli: if sticky flag present for canary, require --confirm-sticky and surface a big warning.
+erin-cs: customers acknowledged, one requested postmortem. We'll schedule comms after RCA.
+carol-sre: scheduling 45-min RCA at 13:00 UTC. Invite: @bob-infra @alice-runtime @dave-prod @erin-cs.
+carol-sre: incident summary: canary rollout issued with sticky fallback default; transient model variant unavailability caused routing to assign sticky fallbacks; sticky assignments persisted and caused sustained degraded performance for canary cohort. Mitigation: paused canary, cleared sticky assignments, patched template and rollout CLI, customer comms sent.
+incident-bot: Incident INC-20260315-99 created, severity=P2, owner=carol-sre.
+carol-sre: handing off infra tasks to bob-infra and runtime tests to alice-runtime. Leaving follow-ups in INC-20260315-99. Closing oncall shift.
