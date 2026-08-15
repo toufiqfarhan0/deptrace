@@ -1,0 +1,75 @@
+docs
+
+ivy: FYI I opened a docs PR to update SDK code examples: move streaming to event-based handling, add small retry/backoff snippets, and a canonical pagination loop for Go. Seeing intermittent timeouts in Python streaming sample.
+omar: I'll take the TS + migration note. Plan: show AbortController, async iterable events {type:'delta'|'meta'|'end'}, and a tiny retry wrapper.
+lee: I'll update Python and Go. For Python show compatibility with older .text fields and new .delta, and a simple exponential backoff. For Go show context cancellation + page token loop.
+omar: Draft TS snippet:
+```ts
+// TS: event-streaming + AbortController + retry helper
+import { RedwoodClient } from '@redwood/inference';
+const client = new RedwoodClient({ apiKey: process.env.RW_KEY });
+
+async function streamPrompt(prompt: string) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 45_000);
+  try {
+    const it = client.responses.stream({ prompt }, { signal: ac.signal });
+    for await (const ev of it) {
+      if (ev.type === 'delta') process.stdout.write(ev.delta);
+      if (ev.type === 'meta') console.error('[meta]', ev.info);
+      if (ev.type === 'end') console.log('\n-- stream ended --');
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function withRetries(fn: () => Promise<any>, attempts = 3) {
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn(); } catch (e) { last = e; await new Promise(r => setTimeout(r, Math.pow(2, i) * 100)); }
+  }
+  throw last;
+}
+```
+
+lee: Python draft:
+```python
+# Python: streaming with backoff and compatibility with old/new event shapes
+import time
+from redwood import Client
+client = Client(api_key="${RW_KEY}")
+
+def stream_with_retries(prompt, max_tries=4):
+    for attempt in range(1, max_tries + 1):
+        try:
+            for ev in client.stream_generate(prompt):
+                # ev may be a simple string, or an object with .delta / .text
+                txt = getattr(ev, 'delta', None) or getattr(ev, 'text', None) or (ev if isinstance(ev, str) else '')
+                print(txt, end='', flush=True)
+            return
+        except (ConnectionError, TimeoutError):
+            time.sleep(min(2 ** attempt, 30))
+    raise RuntimeError('stream failed after retries')
+```
+
+lee: Go pagination draft:
+```go
+// Go: pagination loop with context cancellation
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+pageTok := ""
+for {
+    resp, err := client.ListEmbeddings(ctx, &ListRequest{PageToken: pageTok, PageSize: 200})
+    if err != nil { return err }
+    for _, item := range resp.Items { fmt.Println(item.Id) }
+    if resp.NextPageToken == "" { break }
+    pageTok = resp.NextPageToken
+}
+```
+
+ivy: Two small asks before merge: (1) add a one-line migration note in the Streaming docs: "Streaming now emits event objects (type: 'delta'|'end'|'meta'); update consumers to inspect ev.type and ev.delta" and (2) add a CI integration that runs a staging stream for ~35s to catch regressions.
+omar: will add the migration blurb and update sidebar summary.
+lee: will push the snippet edits to the PR and tag @omar for TS API review.
+ci-bot: CI queued for PR #611  docs-lint + snippets-check.
+ivy: thanks — I'll watch CI and merge once tests pass and @omar approves. :shipit:

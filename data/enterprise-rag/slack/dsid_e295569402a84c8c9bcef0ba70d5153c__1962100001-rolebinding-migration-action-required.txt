@@ -1,0 +1,62 @@
+eng-security
+
+Emma (Security): Heads-up :warning: We are deprecating the legacy `role_map` format in the authz-evaluator. Any services using wildcard/team-based mappings (e.g. `team:*`, `app:*-owner`) will stop being evaluated by the old path after 2026-04-01 23:59 UTC. Action required: update to the new `roleBindings` structure and redeploy.
+
+Oliver (Eng Platform): Which repos/configs are likely affected? Can we get an automated scan?
+
+Emma (Security): Quick checklist:
+- Run the role_map scanner across `infra/`, `services/`, and `k8s/` manifests.
+- Convert `role_map` entries to `roleBindings` per the migration guide.
+- Create PRs and tag `@devon` for rollout windows.
+- Deadline: 2026-04-01 23:59 UTC. If you need exceptions, file a ticket with security@redwood.ai.
+
+Maria (Backend): Example old vs new please \u2014 want to patch a couple of microservices today.
+
+Emma (Security): Old -> New example:
+
+Old:
+```
+role_map:
+  "team:eng:frontend": "app:frontend-owner"
+  "team:sre": "*"
+```
+
+New:
+```
+roleBindings:
+  - principal: "group:eng-frontend"
+    roles:
+      - "app:frontend-owner"
+  - principal: "group:sre"
+    roles:
+      - "monitor"
+      - "operator"
+```
+
+Notes:
+- Prefer groups or scoped principals instead of wildcards.
+- If you relied on `*` for admin, switch to explicit roles and add a small ACL review.
+
+Devon (SRE): Can we script conversion for infra repos? Might be a few hundred manifests.
+
+security-bot: Automated scan queued. Found 43 files with `role_map` patterns across infra + services (top hits: infra/k8s, services/payment, services/notebooks). Run `/scan-rolemap` in #eng-security to get a per-repo report. :mag:
+
+Emma (Security): We do have a converter script (internal): https://internal.tools/redwood/migration/rolemap-convert \u2014 it makes best-effort transformations but requires manual review for wildcard -> explicit role mappings. DO NOT merge without a human review.
+
+Oliver (Eng Platform): I'll run the scanner on the platform org and create follow-up issues for each repo. Can we get a CSV export from the bot?
+
+security-bot: CSV export available at https://internal.tools/reports/rolemap-scan/1962100001.csv (access: eng-platform, backend, security). Use the `--fix` flag cautiously.
+
+Maria (Backend): Will open PRs for services/payment and services/billing today. Tagging `@Oliver` for review.
+
+Devon (SRE): I'll coordinate rolling updates and create a canary policy. Put the timing in the PRs so we can schedule maintenance windows if needed. :hammer_and_wrench:
+
+Emma (Security): Thanks. If you're an owner of any service and don't acknowledge in 24h, we'll schedule a forced remediation with limited exceptions. Creating channel #sec-role-migration now. Post your repo names there and paste PR links.
+
+Oliver (Eng Platform): Ack. Starting the scan now.
+
+Maria (Backend): Ack \u2014 PRs inbound.
+
+Devon (SRE): Ack. I'll prepare rollback playbooks in case anything misbehaves.
+
+Emma (Security): Final reminder: this is a security-affecting change (authz semantics). Please prioritize. Reach out in #sec-role-migration or DM me directly for edge cases.

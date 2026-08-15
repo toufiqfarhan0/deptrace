@@ -1,0 +1,73 @@
+eng-oncall
+
+incident-bot: PagerDuty alert: service=runtime-inference-prod-us-west severity=critical — p95 latency > 2.0s for 2m. Pager: https://pagerduty.example/PD12345 :rotating_light:
+
+pagerduty-bot: Page fired (INCIDENT PD12345) — triggered by rule: latency_p95_threshold. Escalation: oncall -> senior-oncall -> eng-lead.
+
+sanjay: acked via PD, I'm taking this. starting dashboard sweep.
+
+maria: seeing a correlated burst of KV cache misses on node pool gpurnn-3 in us-west-2. tail tokens/sec dip and a few 503 retries reported by the gateway logs.
+
+joel: any customer-facing errors?
+
+sanjay: gateway retries bumped from ~0.1% -> 1.2%, but no sustained 5xx surge. looks like lat tail only so far. no customer-reported outages in Zendesk.
+
+maria: copying the grafana snippet I used:```query: sum(rate(kv_cache_miss_total[1m])) by (node_pool) / sum(rate(kv_cache_request_total[1m])) by (node_pool) * 100``` node gpurnn-3 shows ~18% miss rate vs baseline ~2%.
+
+joel: possible causes: cold KV shards, autoscaler lag, or a bad model variant with larger KV memory pressure. can we scale gpurnn-3 pool +2 nodes temporarily? would prefer not to flip model just yet.
+
+sanjay: running a quick scale:```bash
+redwoodctl scale pool gpurnn-3 --region us-west-2 --delta 2
+kubectl get pods -l pool=gpurnn-3 -n inference-prod
+```
+
+ops-runner: scale request accepted, scaling gpurnn-3 from 4 -> 6 replicas. pods scheduling...
+
+incident-bot: PagerDuty note: Sanjay acknowledged PD12345.
+
+maria: KV miss rate dropping to ~6% after new pods joined. p95 down from 2.3s -> 1.1s.
+
+pagerduty-bot: PD12345 auto-resolved (alert cleared). :white_check_mark:
+
+sanjay: good first wave cleared. I'm going to keep an eye for 10m. marking as monitoring, not declaring incident.
+
+(3 minutes later)
+
+pagerduty-bot: PD12346 fired (same rule, same service) — another transient p95 spike detected. :rotating_light:
+
+alyssa: I'm momentarily awake and saw the PD ping. jumping in to assist on rotation if needed.
+
+maria: this looks like a brief KV reclaim pressure on gpurnn-3 again — pattern: small bursts every ~5-8 mins for the past 30m. could be a background job (checkpoint/eviction) or a noisy tenant causing bad cache churn.
+
+joel: we should enable an emergency fallback route for the next 30m to reduce SLO risk: route low-priority traffic to `model-emb-lite-v1` variant and enable `kv-prefetch=true` for inference-critical routes. That buys us headroom while we root cause.
+
+sanjay: agree. applying route override now:```json
+{"route":"/v1/generate","model_fallback":"model-emb-lite-v1","duration":"30m","reason":"auto-p95-flap mitigation"}
+```
+
+ops-runner: route override applied, rollout id r-20260314-001.
+
+incident-bot: PagerDuty PD12346 acknowledged by sanjay.
+
+maria: after the override, p95 stabilized around 0.9s. no further pages in the last 4m. KV miss back to baseline.
+
+pagerduty-bot: PD12346 auto-resolved.
+
+sanjay: summary: two quick flaps, both auto-resolved after scaling + temporary routing fallback. no customer-facing errors were reported, only p95 latency SLO bumps. impact: brief latency degradation for a subset of requests (~10% of traffic on gpurnn-3) but retries remained low and downstream services healthy.
+
+joel: action items: 1) schedule a short post-incident follow-up to correlate background jobs (cron checkpointer) with flare windows; 2) add a guardrail to alert when p95 spikes coincide with KV miss > 10% for >2m (to reduce noise); 3) consider autoscaler tuning to pre-warm gpurnn pools during the nightly checkpoint window.
+
+alyssa: taking the follow-up to-do 1 and 3. I'll open a ticket and ping infra.
+
+sanjay: handoff: I'm going offline in 20m; @alyssa you're on deck. notes pinned to PD12345/46 with scale commands and route rollback (`redwoodctl route rollback r-20260314-001`).
+
+alyssa: got it, thanks. I'll keep monitoring for one hour and then let ops rotate back. :thumbsup:
+
+maria: leaving a short runbook snippet in the ticket for next oncall:```steps:
+- check kv_cache_miss_total by node_pool
+- if miss>10%: scale pool +2 or enable route fallback
+- if repeated flaps: capture heap/eviction logs from gpurnn nodes
+- contact infra if pods are stuck scheduling
+```
+
+sanjay: closing thread for now. will open a postmortem only if we see recurrence in 24h. thanks all. :heart:

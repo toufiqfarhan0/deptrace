@@ -1,0 +1,55 @@
+eng-runtime
+
+alex: Pushed a perfetto trace from the spike window — looks like a recurring pattern where KV cache miss -> kernel selector flips to an int8 path and we see a 2-4ms stall per request. Trace: https://perfetto.local/trace/abc123 (redacted)
+maria: can you point to the span names? is the stall in the selector itself or the kernel launch?
+alex: Selector slice = \"kernel_selector::choose\". Kernel launch slices after that show a gap (idle/queue) before the int8 kernel starts. timeline shows client->gateway->runtime with the KV miss flag set on runtime span.
+jon: did you capture an nsys timeline? nsys would show the cuda_launch waits vs actual kernel time.
+alex: yes, attached a short nsys capture clipped to the 10s window. Key snippet:
+```
+# nsys summary (trimmed)
+CUDA API        46.3ms
+CUDA Kernels    112.9ms
+CUDA Memcpy     9.1ms
+Kernel launches show a 3.5ms tail where no kernel is executing but CPU is busy in selector.
+```
+maria: sounds like the selector is doing fallback/compat checks on miss and triggering a slower kernel variant. batching heuristic could be causing tiny batches that favor int8 kernels incorrectly.
+jon: I grepped the trace for kv_cache.miss events and aligned them with slice ts. pattern: every 7th request is a miss and that aligns with kernel transitions.
+alex: pasted perfetto query I used:
+```
+SELECT slice.name, slice.ts, slice.dur
+FROM slice
+WHERE slice.name LIKE '%kernel_selector%' OR slice.name LIKE '%launch%'
+ORDER BY slice.ts
+LIMIT 200;
+```
+jon: Nice. Also saw increased context switch counts in the same intervals (perf sample). Could be selector doing synchronous fs/metadata checks for quantized kernels.
+maria: The runtime currently does a capability probe for each new kv key when miss occurs, which can hit an RCU-protected map and take ~1-2ms. Combine that with kernel transition logic and small batching and you get the observed 3-4ms.
+alex: Repro recipe: run perfetto with synthetic client at qps=120, seq_len=128, batching window=1ms, kv_cache hitratio tuned to 85% (simulate misses every 7th). Repro is stable.
+jon: Hypothesis: selector picks int8 when batch token count < threshold, but when kv miss occurs it forces a recompilation/compat check and that path isn't async -> stalls.
+maria: Proposed fixes:
+- Make capability probe async (fire-and-forget) when we see miss on hot path
+- Avoid switching kernel variant mid-request; pick kernel at batch formation time only
+- Increase batching window to 4ms for small-seq workloads to amortize probe cost
+alex: Quick experiment: I toggled batch_window_ms 1 -> 4 locally and re-ran trace. Stall occurrences dropped 78% in the same window. Will push the trace link to the thread.
+jon: Good. Any perf regressions risk? we need to ensure latency p99 for high qps doesn't increase.
+maria: We'll do a canary: apply async probe + batch_window_ms=4 for the small-seq route. Add feature flag route.kernel_selection.v2. If canary stable for 2 hours, ship.
+perfetto-bot: New trace uploaded by alex: https://perfetto.local/trace/abc123/annotated
+alex: I attached a small diff for the selector change (proof-of-concept) in the thread. core change is delaying capability check onto a worker and making selector return a conservative kernel immediately.
+```
+// pseudo
+if (kv_miss) {
+  schedule_async_probe(key);
+  return conservative_kernel; // avoid blocking
+}
+```
+maria: assign to me for rollout. I'll own the canary and metrics. Maria -> will add evals to ensure no model quality regressions when using conservative kernel.
+jon: I'll run a deep nsys on the canary to ensure CUDA queues remain healthy.
+alex: action items:
+- maria: create canary PR + feature flag (ETA: today EOD)
+- jon: nsys deep run and perfetto baseline (ETA: tomorrow morning)
+- alex: synthetic repro script and traces uploaded (done)
+- deploy-bot: schedule canary when PR merged
+deploy-bot: Canary window scheduled at 2026-03-05T22:00:00Z for 2h pending PR merge :white_check_mark:
+maria: Thanks — I'll post canary link and dashboard once up. :thumbsup:
+jon: Also adding a unit test to ensure selector doesn't block on kv probe in hot path.
+alex: Great, thanks team. I'll mark this as regression-investigation done in GH issue after canary passes.

@@ -1,0 +1,79 @@
+1719998880
+
+morgan: heads up — found a batch of expired partner webhook logs in S3 that contain KMS ciphertext fragments and a couple of old service-account emails. looks like a partner integration was spamming logs with wrapped blobs.
+
+sanjay: ugh. any plaintext in those logs or just ciphertext?
+
+morgan: only ciphertext + metadata (project, key name, sa email). but we can’t be 100% until we rewrap/unwrap safe copy.
+
+kai: quick sanity — are those KMS keys still in our key ring? if partner had a long-lived grant we need to revoke it before rotation.
+
+morgan: keys: projects/redwood-prod/locations/global/keyRings/partner-keys/cryptoKeys/ingest-key. grant shows a binding to partner-sa@partner-prod.iam.gserviceaccount.com dated back 2023.
+
+ashley: when did the RBAC change land that could have allowed that? I remember we tightened cross-project deny last quarter.
+
+sanjay: related: earlier this week we rolled a vault policy change that removed the vault-service-account from kms:Decrypt for the backup key — that broke some automated audits. i guess partner grants slipped in before we tightened scopes.
+
+oncall-bot: INCIDENT CREATED: #sec-cred-sweep-1719998880 — severity: medium — owner: @sanjay — runbook: /runbooks/cred-sweep (auto)
+
+morgan: proposal: 1) revoke partner SA grant immediately 2) snapshot ciphertexts (immutable archive) 3) rewrap to a new key we control 4) rotate any exposed SA tokens / short-lived creds and notify partner.
+
+sanjay: +1. i'll run revoke now:
+```
+# revoke grant
+gcloud kms keys remove-iam-policy-binding \
+  projects/redwood-prod/locations/global/keyRings/partner-keys/cryptoKeys/ingest-key \
+  --member=\"serviceAccount:partner-sa@partner-prod.iam.gserviceaccount.com\" \
+  --role=\"roles/cloudkms.cryptoKeyEncrypterDecrypter\"
+```
+
+kai: after revoke, we should ensure audit logs include the remove binding event and that it’s forwarded to our SIEM. i noticed an audit sink gap for kms.admin events — logs were showing up delayed.
+
+morgan: sigh — that’s the RBAC/AUDIT issue. the audit sink's SA lost storage.write in project-ops during the vault RBAC cleanup last week.
+
+ashley: action items:
+- sanjay: revoke partner grant + post cmd output to thread
+- kai: re-enable sink write perms, confirm historical backlog retrieval
+- morgan: archive ciphertexts and coordinate rewrap plan with infra (ETA 1h)
+- ashley: draft customer/partner notification template (we need to be transparent)
+
+sanjay: revoke done. gcloud returned 0. posted logs to ops-log.
+
+kai: fixed sink perms (added serviceAccount:sink-collector@redwood-prod.iam.gserviceaccount.com -> roles/storage.objectCreator). kicking backlog retrieval; ETA ~30m.
+
+morgan: snapshot done — objects copied to gs://sec-archive/1719998880/immutable/ (retention 365d). starting rewrap to new key: projects/redwood-prod/locations/global/keyRings/secure-rotations/cryptoKeys/ingest-key-v2
+
+morgan: rewrap command (using kms-as-a-service):
+```
+for obj in $(gsutil ls gs://ingest-logs/partner/*.cipher); do
+  gsutil cp \"$obj\" - | \
+  kmstool rewrap --from-key ingest-key --to-key ingest-key-v2 > \"/tmp/rewrap/$(basename $obj)\"
+  gsutil cp \"/tmp/rewrap/$(basename $obj)\" gs://sec-archive/1719998880/rewrap/
+done
+```
+
+ashley: good. two compliance questions: 1) do we need to trigger a formal rotation in Vault for any secrets referencing the old key? 2) audit log retention for this incident — legal wants 7 years if partner data touched.
+
+sanjay: 1) yes — update vault key metadata and create a new secret version for any secrets that referenced the old ciphertext. 2) i've alerted legal; we’ll set the incident tag and escalate retention on the archive bucket.
+
+kai: note: there may be downstream caches that hold unwrapped payload if any consumer decrypted earlier. we should search for accesses by partner SA in the last 90d.
+
+morgan: running iam query now: `gcloud logging read \"protoPayload.authenticationInfo.principalEmail=\\\"partner-sa@partner-prod.iam.gserviceaccount.com\\\"\" --project=redwood-prod --limit=500`
+
+oncall-bot: WATCH: backlog retrieval completed — 312 events re-ingested into SIEM.
+
+morgan: siem shows 4 decrypt ops tied to partner SA in May 2024 that used ingest-key. raising to incident.
+
+ashley: ok, escalate to P1? we need severity alignment. this is cross-account access to our kms keys.
+
+sanjay: i recommend P1 -> we have confirmed decrypts by an external SA. initiating P1 checklist.
+
+morgan: rotation in progress. i'm staging all downstream secret version updates into a canary namespace first. will post progress.
+
+kai: also adding a hard deny rule: block cross-project grants for that key ring via org-level constraint while we finish the audit. put me on it.
+
+ashley: i'll draft the partner notification and legal notice now. include remediation steps, timeline, and offer root cause once we have it.
+
+morgan: current status update for thread: revoke done, sink perms fixed, snapshot + rewrap started, SIEM confirms decrypts, severity P1, oncall engaged.
+
+sanjay: i'll own final rotation and vault secret updates. let's sync after rewrap completes (ping @kai @ashley). :white_check_mark:

@@ -1,0 +1,29 @@
+docs
+
+vivian_docs: Quick flag while updating the Rate limits & Billing Tiers doc: a few related fixes should land together.
+owen_engineer: what did you find?
+vivian_docs: 1) examples still show `retry_after` (seconds) only. Runtime sends `retry_after_ms` now. Recommend showing both and instructing clients to prefer `retry_after_ms`.
+maya_support: support is getting reports of clients waiting 1000x too long because they treated ms as s. This is high-impact.
+sam_sdk: I can add tiny SDK snippets and tests. Draft JS:```js
+// prefer retry_after_ms, fallback to retry_after (s)
+const body = await resp.json();
+const waitMs = body.retry_after_ms ?? (body.retry_after ? body.retry_after * 1000 : null);
+if (waitMs) await sleep(waitMs);
+```
+sam_sdk: Python:```py
+body = resp.json()
+wait_ms = body.get('retry_after_ms') or (body.get('retry_after') and body['retry_after'] * 1000)
+if wait_ms:
+    time.sleep(wait_ms / 1000)
+```
+vivian_docs: 2) quota docs mix "tokens" and "billing units". Add a small conversion table and a migration note for customers on the old metering keys.
+owen_engineer: I'll draft the conversion table (gen tokens -> units, embeddings per 1k vectors -> units) and add a short example.
+vivian_docs: 3) the console link in the doc points at a path that 302s; change to https://console.redwood.ai/usage/billing/tiers and note that "Billing Viewer" role is required to see per-tier breakdowns.
+ci-bot: Link-checker: flagged 1 redirect on docs -> /usage/legacy. Replace with canonical console URL.
+maya_support: please call out in the PR description to ping support and update KB after merge.
+vivian_docs: I'll open a single PR with three commits: (a) retry payload + snippets + snippet-tests, (b) billing units + conversion table, (c) link + screenshot updates. PR draft will include follow-ups for infra to expose `burst_used` metric and `requests_per_tier` alerting.
+sam_sdk: PR draft: https://github.com/redwood-inference/docs/pull/812  adding reviewers @owen_engineer @maya_support.
+docs-bot: CI: please ensure snippet-tests include required imports and run in the docs CI image.
+oven_engineer: will review tomorrow morning.
+maya_support: ack, will review support wording.
+vivian_docs: thanks everyone 44d closing loop here.

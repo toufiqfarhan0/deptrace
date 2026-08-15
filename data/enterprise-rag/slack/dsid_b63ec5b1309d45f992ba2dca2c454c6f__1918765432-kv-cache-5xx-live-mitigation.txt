@@ -1,0 +1,62 @@
+incidents
+
+incident-bot: :rotating_light: Paging oncall: High error rate observed for /v1/generate (5xx, 502 gateway errors). Alert: 8.7% error rate over 5m, spike from 0.2% baseline. Investigate KV/prefix cache paths.
+jordan: I'm on it. pulling up traces and recent deploys.
+maya: saw a pattern — 502s correlate with prefix-cache GET failures and a lot of cache-miss churn. seeing eviction spikes on shard-7.
+ryan: confirmed. prometheus shows prefix_cache_evictions_total jump around 11:02 UTC, eviction rate x20. memory pressure on nodes in pool-d.
+samira: any customer impact? which tenants affected?
+jordan: early pager flagged prod global, but top errors concentrated for customers in us-west-2. A few higher latency requests, retries causing gateway timeouts too.
+luca: logs show repeated KV client errors: "kvcache: checksum mismatch - prefix index corrupted" and then fallback causing downstream 502s.
+ops: running rolling restart of kv-proxy on pool-d nodes to flush bad mappings. will coordinate with oncall.
+maya: before restarts - let's capture a core dump/sample and export the prefix index for shard-7. need a copy for postmortem.
+ryan: oncall handoff note: I'm primary until 11:30 UTC, jordan you're shadow. if restart doesn't reduce errors we'll engage infra.
+jordan: running quick health check:
+```
+# kvproxy health
+curl -sS http://kvproxy-pool-d-7/health | jq .
+{
+  "status": "degraded",
+  "cache_entries": 124312,
+  "evictions_1m": 4823
+}
+```
+samira: starting customer impact assessment: listing top 5 affected customers by error volume now. will notify CSMs if any SLA breach.
+luca: more logs: repeated sequence - prefix read OK then immediate checksum mismatch at apply stage. looks like partial writes or concurrent compaction race.
+incident-bot: deploy-bot noticed config change at 10:58 UTC: "kv-compact-window=10m" rolled to pool-d by maya.
+maya: I deployed that compaction tweak to reduce memory tail, but didn't expect it to trigger checksum issues. rolling it back now.
+jordan: rollback command: `kubectl set env deploy/kv-proxy KV_COMPACT_WINDOW=30m -n infra`
+ops: doing a canary restart of kv-proxy on pool-d-7 with rollback env. watching metrics.
+(5m passes)
+ops: canary restart done on pool-d-7. eviction rate down 70% on that node. errors partially improved.
+ryan: routing note: we're temporarily routing traffic away from pool-d to pool-c for latency-sensitive customers — small traffic shift via smart-routing policy.
+samira: CSM alert draft: "We observed elevated 5xx errors affecting inference requests in us-west-2 between 10:58–11:18 UTC, mitigation in progress. No data loss observed. More updates coming." Approve? :eyes:
+maya: approve. add mention for customers with reserved capacity — they may see reduced throughput if pinned to pool-d.
+jordan: digging deeper — KV checksums indicate index pages with mismatched version numbers. I'm grabbing on-disk snapshots from kvstore on pool-d nodes.
+luca: running kv-verify tool locally against snapshot:
+```
+./kv-verify --shard 7 snapshot-2026-04-01-1102.tar.gz
+ERROR: prefix_index page 492 checksum mismatch
+suggested-action: restore page from last-good checkpoint or rebuild index
+```
+ops: we have a last-good checkpoint ~20m prior. restoring page could be disruptive; prefer rebuild with index repair path.
+ryan: what's the risk of full index rebuild? CPU spike, IO, temporary increased latency, but should restore consistency. we should throttle rebuilds.
+maya: suggest scheduling repair on off-peak and in the short-term enable prefix-cache bypass for reads to avoid applying corrupted index pages — this will increase backend load but reduce 5xx.
+jordan: how to enable bypass?
+ops: config toggle: `PREFIX_CACHE_BYPASS=true` per-service. I'll enable it for inference-router in us-west-2 for non-reserved traffic. Doing now.
+(30s)
+ops: bypass enabled. preliminary metrics: 5xx rate drops from 8.7% -> 3.1% within 60s. backend CPU up ~15%.
+samira: good. continuing customer impact check — top customer is acme-analytics, 12% of errors. CSM notified.
+luca: we should also add temporary circuit-breaker to reduce retry storms: set client retry limit to 1 for 502/504. jordan can you roll that?
+jordan: will patch client-config map: `retries: 1` and apply.
+maya: long-term fix: revert compaction window until we stabilize, then run KV index repair job with rate limiting, and add additional checksum verification in compaction logic. open a follow-up ticket for research.
+incident-bot: postmortem-queue: Created INC-2026-042-001 "kv-prefix-index-corruption-eviction-storm" and assigned to eng-runtime.
+ryan: oncall summary for handoff: cause suspected index corruption triggered by aggressive compaction rollouts, produced eviction storm and cache-miss flood leading to downstream 502s and timeouts. Mitigations applied: rollback compaction config, canary restart of kv-proxy, enabled prefix-cache-bypass for inference-router in us-west-2, reduced client retries, routing traffic away from pool-d. Current status: error rate stable at ~0.9% and falling.
+samira: contacting affected customers and CSMs. any need for SLA credits? we'll assess after postmortem.
+luca: saving artifacts: snapshots, kv-verify outputs, restart logs. tagging with incident id.
+maya: follow-up actions: 1) add preflight for compaction change, 2) add synchronous checksum check during compaction, 3) automated quick-bypass playbook for similar events.
+jordan: I'll prepare timeline and logs for postmortem. handing off to ryan for final oncall coverage.
+ryan: thanks everyone. I'll keep watch for 2h then mark incident resolved if stable.
+incident-bot: :white_check_mark: Incident state changed to MONITORING.
+ops: note — if we see checksum mismatch again, do not restart all kv-proxies at once; stagger with 60s delay to avoid simultaneous cache repopulation.
+maya: agreed. closing live thread but keep channel pinned to incident until postmortem complete.
+incident-bot: thread archived metadata: severity=P2, customer-impact=partial, affected-region=us-west-2, mitigation=rollback+prefix-bypass+routing."

@@ -1,0 +1,65 @@
+devex
+
+anna (devex): Anyone else hit an auth + retry loop that only reproduces when using the ESM bundle on edge (Cloudflare Pages)? Works locally with CJS. :confused:
+
+mike (sdk): Hmm — sounds like an export shape/interop issue. Can you paste your package.json exports + the import line from the edge bundle?
+
+anna (devex): Sure, snippet from package.json:
+```json
+"exports": {
+  ".": {
+    "require": "./dist/cjs/index.cjs",
+    "import": "./dist/esm/index.js"
+  },
+  "./package.json": "./package.json"
+}
+```
+and edge import is just: `import Redwood from '@redwood/inference-js'`
+
+anna (devex): Error on deploy is a 401 -> retry -> 401 loop, stack trace points into auth layer: 
+```
+TypeError: client.auth.getToken is not a function
+    at /worker/edge.js:12:34
+```
+
+tiago (runtime): Edge bundlers (Pages/Workers) often roll your code into an ESM bundle and differ in default interop. If your CJS build attaches methods to `module.exports` and your ESM build uses `export default`, the bundler might be resolving the wrong shape. Also some bundlers drop non-enumerable properties.
+
+mike (sdk): Confirming — we had a similar bug: our auth helper was `module.exports = createAuth` in CJS and `export default createAuth` in ESM, but the runtime packaging ended up with `{ default: [Function] }` vs the function itself depending on how the edge runtime resolves packages. Edge consumers doing `import Redwood from '@redwood/inference-js'` expect the default export to be the client factory.
+
+olivia (docs): For DX, we should standardize a single surface — both builds should export named and default bindings. Eg in src/index.ts: `export default createClient; export const createClient = createClient;` so both `import Redwood from` and `import { createClient } from` work.
+
+anna (devex): Is that enough for auth+retry? The error was specifically `client.auth.getToken is not a function` — that's an instance method missing after import.
+
+mike (sdk): That points to the runtime object shape changing during bundling. Another common culprit: we attach helpers on prototype in CJS path, but tree-shaking or transpilation in ESM build turned them into non-enumerable descriptors. Practical fix: add a thin compatibility shim at package root that always imports the ESM runtime and re-exports a normalized object shape. e.g. `dist/esm/interop.mjs` and `dist/cjs/interop.cjs` that both `module.exports = require('./index').default` / `export { default } from './index.js'` but also do `module.exports.createClient = module.exports.default` so both shapes are consistent.
+
+tiago (runtime): Also watch for bundler polyfills — `node:*` imports get rewritten and some edge runtimes remove functions if they rely on Node builtins. But your stack trace suggests missing method, not missing builtin.
+
+anna (devex): Thanks. Quick thought: types entrypoint — some users doing `import type { Client } from '@redwood/inference-js'` get type errors because our `types` in package.json points to `dist/types/index.d.ts` but our conditional exports don't have a `types` export, so TS sometimes resolves to package root package.json and picks the wrong file. Any suggestions?
+
+olivia (docs): TypeScript resolution with conditional exports is messy. Best practice we should follow: keep a top-level `types` field pointing at a single declaration file (dist/types/index.d.ts) and also add `exports."./*".types` mappings if we need per-entry declarations. But simplest: ensure `types` exists and the dist types export the same named bindings as runtime and include `export as namespace Redwood`? Not necessary. Also add small example imports in `types/examples` so editors/TS server catch regressions.
+
+mike (sdk): Agreed. Actionable plan:
+- Add compatibility shim to guarantee identical runtime shape across CJS and ESM (I can PR).
+- Keep `types` top-level pointing at `dist/types/index.d.ts`. Ensure `index.d.ts` exports `default` and named `createClient` and the `Client` interface.
+- Add a tiny `examples/edge-smoke` that imports the package as ESM and runs a mocked auth flow, asserting `client.auth.getToken` exists and called.
+- Add CI workflow `ci/edge-smoke.yml` that runs esbuild/vite build + deploy to a worker-like environment (use wrangler dev or vite preview) or at least run `esbuild --bundle --platform=browser` then `node`-based smoke runner that emulates bundling shape.
+
+anna (devex): That sounds perfect. If we add the smoke test to PRs that touch packaging, should catch regressions early.
+
+mike (sdk): I'll open PR with:
+- shim in `dist/*` and update `package.json` exports to map `import` -> `./dist/esm/index.js`, `require` -> `./dist/cjs/index.cjs`, and keep `types` -> `./dist/types/index.d.ts`.
+- add example `examples/edge-smoke` + CI job calling the example.
+
+ci-bot: scheduled check: packaging-smoke — queued (will run on PR).
+
+olivia (docs): I'll add a short note in the SDK publishing guide about "ensure identical export shapes" + a one-liner example for edge bundlers.
+
+anna (devex): Awesome — ping me when PR is up and I'll test on Pages/Vercel Edge. :eyes:
+
+mike (sdk): PR: https://github.com/redwood-inference/sdk/pull/1234 (draft) — includes shim + example + types fix.
+
+anna (devex): Tested draft on Pages — auth object shape now present, retry loop gone. :tada:
+
+tiago (runtime): Nice. Follow-up: add a small test matrix in CI to run both `node` and `esbuild` bundle shapes to catch interop differences earlier.
+
+anna (devex): Agreed. Thanks everyone.

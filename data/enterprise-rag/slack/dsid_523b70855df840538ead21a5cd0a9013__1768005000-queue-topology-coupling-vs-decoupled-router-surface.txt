@@ -1,0 +1,57 @@
+eng-runtime
+
+sam: Quick q — do we want queue topology to be tightly coupled to admission policy or expose a decoupled surface API? thinking about continuous-batcher router complexity.
+
+maria: +1 to discuss. Tight coupling gives simpler invariants (queue==policy) but makes refactors and rollouts painful.
+
+cheng: For latency SLOs coupling helps pack similar length/payloads which improves kernel utilization, but it hurts fairness when tenant work shapes change quickly.
+
+alex: Also coupling increases state churn during deploys. If admission logic changes, we end up migrating queue state across many workers. seen that blow up in staging.
+
+infra-bot: CI: batcher-tests failed on staging — https://ci/redwood/1234 :rotating_light: (failing test: queue-migration-race)
+
+sam: yeah saw that. the race is in the migration handshake between old admission and new queue-owner.
+
+maria: rough proposal: keep admission decisions pluggable (PolicyPlugin) but return a compact stable queue_id that maps to a physical queue. decoupled API but stable ids so operators can reason about state.
+
+cheng: sounds neat. indirection costs an extra lookup per request though — any numbers?
+
+alex: extra lookup is tiny vs GPU kernel time. we measured ~200ns in a prior prototype. the bigger cost is complexity of cache invalidation / TTL.
+
+sam: if we memoize mapping at the connection level we avoid repeated lookups, but eviction/migration becomes tricky — need TTL + metrics to avoid stale pins.
+
+maria: agreed. Also we should surface observability: expose mapping metric (queue_id -> admission_policy_version) and a tag for sticky vs ephemeral. otherwise debugging is awful.
+
+cheng: a downside: tight coupling naturally gives KV-cache affinity (same queue => same KV shard and warmer KV hits). decoupled routing would need separate KV-affinity plumbing.
+
+alex: yeah, decoupled + naive KV would regress cold-starts. we could implement a kv-affinity layer that consults queue_id mapping. more plumbing but keeps logical separation.
+
+sam: what about a hybrid: default decoupled model for flexibility, plus an optional "sticky queues" fast-path for heavy tenants where we keep queue and admission coupled for affinity? feature-flagged.
+
+maria: i like hybrid. rollout plan idea: opt-in sticky queues for top tenants first, measure improvement. API suggestion for router surface:
+
+maria: ```
+RequestAttrs {
+  tenant_id: string,
+  hint_length: int,     // estimated seq len
+  priority: enum,       // e.g. normal, low, realtime
+  sticky_opt_in: bool   // request-level hint for sticky queue
+}
+Router -> PolicyPlugin -> queue_id
+```
+
+cheng: ACK. i'll sketch an RFC with perf numbers. initial microbench: mapping lookup ~200ns, kv-hit uplift ~7% for sticky queues on realistic traces. will include charts.
+
+alex: ops checklist for rollout: 1) add mapping & plugin hooks 2) enable sticky queues opt-in for top-5 tenants 3) telemetry: 95p/99p latency, KV hit-rate, queue-migration failures 4) rollback if 95p regresses >5%
+
+sam: who can own the RFC + rollout checklist?
+
+maria: i'll own the doc and checklist. will draft and post link in #eng-runtime when ready.
+
+alex: i pushed a stability test that simulates admission churn to repo under /batcher/tests/stability. will add it to canary pipeline.
+
+infra-bot: Deploy scheduled: batcher-router-v2 canary at 2026-04-01T08:00Z
+
+sam: thanks all — sounds like hybrid decoupled-with-sticky fast-path approach. i'll follow the RFC when posted.
+
+maria: end.

@@ -1,0 +1,58 @@
+eng-releases
+
+deploybot: 🚦 Deployment blocked for production: tag v2.4.1 (commit 3a1b9e2) by jamie
+
+deploybot: Environment: prod-east-1
+
+deploybot: Status: HOLD — premerge CI checks failed: integration-tests, browser-e2e
+
+deploybot: Details: https://ci.example.com/builds/7890
+
+jamie: Ack. what's failing? Can we rerun the flaky suite?
+
+liam: integration-tests failed with timeout in auth-integration (logs below)
+liam: ```
+TimeoutError: Browser did not respond within 120s
+at tests/auth_integration.test.js:42:15
+-- output truncated --
+```
+
+priya: e2e shows a selenium wd timeout too. Seems like infra flake. SRE, any insights? @sre-oncall
+
+sre-oncall: seeing increased error rate in the test runners since 02:10 UTC, investigating. Could be pod scheduling on k8s node g5. I'll follow up in infra thread.
+
+jamie: If infra is flaky we should avoid rolling forward. Suggest pin to stable tag v2.4.0 (commit 2f9c11a) for this change window and open hotfix branch for 3a1b9e2.
+
+liam: +1 to pin. We can rollback to v2.4.0 and re-run smoke. Who can cut the rollback tag?
+
+priya: I can cut a deploy-pin PR and request manual approval. Will include release notes link: https://go/redwood/releases/v2.4.0
+
+jamie: /rerun ci --focus=integration-tests
+
+ci-status-bot: Rerun queued for integration-tests (build 7891). ETA ~6m.
+
+deploybot: Reminder: deploy remains BLOCKED until CI passes or release manager pins a previous tag.
+
+jamie: OK locking this. I'll create pin PR and assign @liam for manual verification.
+
+liam: on it. I'll run a local smoke after pin and report back.
+
+sre-oncall: update: suspected node pool autoscaler misbehaving, scaled down then back up. Rolling restart of test runners in progress.
+
+ci-status-bot: build 7891 finished: integration-tests PASSED; browser-e2e still failing (timeout)
+
+jamie: browser-e2e flaky. We still need a plan. Proposal: pin for release window, ship v2.4.0, then revert/patch 3a1b9e2 in a hotfix after investigations.
+
+priya: I opened PR #842 pinning deploy to 2f9c11a, added changelog note and QA checklist. Link: https://git.redwood.ai/pr/842
+
+liam: Verified smoke against 2f9c11a in prod-like cluster. All green.
+
+jamie: Approving PR and merging. proceeding with rollback pin. :white_check_mark:
+
+deploybot: Deploy to production for tag v2.4.0 (commit 2f9c11a) started by jamie
+
+deploybot: Deploy finished: SUCCESS
+
+jamie: Nice. Will schedule follow-up to triage 3a1b9e2 failures.
+
+sre-oncall: I'll post incident update to #incidents with root cause timeline once confirmed.

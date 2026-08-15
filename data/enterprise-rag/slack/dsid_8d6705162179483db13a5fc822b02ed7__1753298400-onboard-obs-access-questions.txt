@@ -1,0 +1,37 @@
+devex
+
+matthew: hey team :wave: starting my first day — quick one: I can't access Datadog, Grafana, or Sentry dashboards. Okta shows 'entitlement missing' after SSO. Who should I ping for onboarding access?
+
+olivia: welcome matthew :tada: — i'll help. Do you have the onboarding ticket? Also paste your Okta email and I'll kick off the grants (Datadog: read, Grafana: viewer, Sentry: member usually).
+
+matthew: matthew@redwood.com
+
+devex-bot: devex-bot created ticket OBS-8421 for observability access (Datadog/Grafana/Sentry). Owner: olivia. ETA 24h.
+
+samir: cc @olivia — quick troubleshooting: try incognito / clear SSO cookies first. sometimes Okta session is stale. If you still get 'not authorized' it's likely an entitlement mapping missing.
+
+matthew: tried incognito, still lands on Okta -> then "You are not authorized to access this application". I tried clicking the invite link from Okta but nothing.
+
+olivia: I just requested Grafana invite from infra team, you should get an invite email in ~15m. For Sentry I need security approval @maria to add you to the org. Datadog may require adding to the 'inference-observability' team.
+
+maria: approving Sentry membership for matthew now. Heads up — please enable 2FA in Sentry once you accept.
+
+infra-bot: infra-bot sent Grafana invite to matthew@redwood.com (expires in 7 days).
+
+matthew: got the Grafana invite, can view dashboards now! Datadog still 403 though. Any KB I can follow?
+
+samir: KB: https://internal.redwood/docs/observability/access — steps: Okta -> Applications -> "Redwood Datadog" -> Assign People -> add user. If that fails I can escalate to identity. Also confirm your Okta account email exactly matches matthew@redwood.com.
+
+olivia: added a short checklist to the onboarding doc: Datadog (read), Grafana (viewer), Sentry (member). Note: if you need edit rights to a Grafana dashboard file a separate request with justification. Dashboard names we usually grant access to: infra/latency-overview, infra/inference-costs, infra/p95-by-model.
+
+matthew: quick question — where's the 'cost by model' dashboard in Grafana? I searched but couldn't find it.
+
+olivia: in Grafana navigate to Dashboards > Browse > search 'inference-costs' or check folder 'infra'. If it's missing it might be a permissions/search scope issue — @samir can grant search/view perms.
+
+samir: granted search/view; and I created OBS-8422 to add you to Datadog team 'inference-observability' so you'll inherit the dashboard access.
+
+matthew: just checked — Datadog works now and I can see the metrics and the cost dashboard. All green :thumbsup: Thanks everyone for the fast help!
+
+olivia: awesome — welcome again! If anything else pops up ping #devex or DM me. I added a small note in the new-hire checklist about expected wait times for identity props.
+
+matthew: will do, thanks :heart:

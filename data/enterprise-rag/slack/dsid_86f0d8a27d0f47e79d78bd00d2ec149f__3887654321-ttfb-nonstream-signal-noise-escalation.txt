@@ -1,0 +1,49 @@
+support
+
+customer-support: FYI ACME reported a regression: streaming requests' TTFB jumped at p95/p99 starting ~2026-03-16 17:40 UTC. Non-stream (sync) looks fine. Can we triage?
+
+maria: Thanks — can you paste a minimal repro request and the observed numbers (p50/p95/p99) and headers?
+
+customer-support: Repro curl they ran: `curl -N -H "Authorization: Bearer <token>" -H "Accept: text/event-stream" https://api.redwood.ai/v1/stream`
+Observations from their telemetry: non-streaming p95 ~120ms, p99 ~220ms. Streaming first-chunk p95 ~1.2s, p99 ~2.1s. Total completion times roughly similar to before.
+
+devon: Which model/route/region/tenant? Also recent deploys?
+
+customer-support: Model: rw-13b-2026-v3, route: /v1/stream, region: us-west-2, tenant: tenant-acme-11. They noticed it after the infra deploy late yesterday.
+
+elaine: Pulling proxy logs for tenant-acme-11 now. I see many flush events grouped: `proxy-coalesce: window_ms=45, flushed_chunks=3` around 17:40:10. Previously window_ms was 8ms default.
+
+ops-bot: Deploy 2026-03-16-23:37 (rev e4f9a2) applied config change: global.stream_coalesce_window_ms = 45 (was 8). Trigger: performance-tuning/streaming-coalesce.
+
+kai: Did runtime kernel/kv cache or batching changes land at the same time? Those could alter chunk sizes and interaction with coalescing.
+
+ryan: Grep of infra repo: `commit e4f9a2` changed coalesce window. No runtime code changes in that deploy. Diff: `- stream_coalesce_window_ms: 8
++ stream_coalesce_window_ms: 45`
+
+maria: That would explain why SSE/h2 first-chunk got delayed — proxy waited to coalesce small chunks instead of flush-on-first-byte. Short-term mitigation: tenant override to set stream_coalesce_window_ms=0 (disable coalescing) for tenant-acme-11, OR rollback global config. Can ops apply tenant override?
+
+elaine: I can push a tenant override now. Applying flag: `tenant_config tenant-acme-11 set stream_coalesce_window_ms=0`
+
+customer-support: ACME is ok with a temporary tenant override. They want an ETA for stable fix after workaround.
+
+elaine: Override applied at 17:42:03 UTC. Early telemetry: first-chunk p95 dropped to ~130ms within 2 minutes. p99 ~240ms. Looks back to baseline.
+
+maria: Great. Short term resolved. Next steps: 1) Add a per-tenant coalescing capability to dashboard + allow tenant overrides in the console. 2) Update rollout playbook: large increases to coalesce window require canary on SSE endpoints. 3) Postmortem.
+
+devon: Long-term we should make coalescing adaptive: if Accept==text/event-stream or connection is long-lived, favor smaller windows or immediate-first-flush. Also consider tuning based on measured chunk sizes and upstream latency.
+
+kai: Also add an alert: first_chunk_latency.p95 > 300ms for streaming routes, and tie to recent config changes.
+
+ryan: I'll open infra PR to revert the global change and instead add a canary rollout + tenant opt-in. Will also add a flag to the deploy tool to warn when coalesce_window_ms > 20.
+
+ops-bot: Rollback plan created: `infra rollback e4f9a2 --staged --region us-west-2` (will schedule if infra approves).
+
+maria: Customer-side communicate: let ACME know we applied override and monitoring is green. Offer retro call.
+
+customer-support: Sent update to ACME; they confirmed improved UX and will wait for final patch. Thanks all. :thumbsup:
+
+devon: Assigning follow-ups: ryan to PR (infra), kai to runtime checklist, elaine to console tenant toggle, maria to postmortem doc. Please add timelines in the follow-up thread.
+
+elaine: I'll also add a short-lived dashboard widget showing coalesce_window_ms by region/tenant so we can spot future regressions.
+
+maria: Nice work team. :clap:

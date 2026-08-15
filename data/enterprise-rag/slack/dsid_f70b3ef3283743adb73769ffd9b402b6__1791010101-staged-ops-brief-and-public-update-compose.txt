@@ -1,0 +1,19 @@
+incidents
+
+incident-bot: Pager triggered — P1: elevated tail latency on EU generation endpoints (gen-eu-01..03). Pager routed to @priya. Runbook: https://runbooks.internal/latency-eu :rotating_light:
+priya: joining bridge now — creating adhoc bridge link, will post shortly
+ben: seeing 5xx spike and genqueue backlog ~120 on gen-eu-03. logs show repeated OOM in worker-12. snippet: ```[2026-03-17T10:05:12Z] worker-12 OOM at step decode```
+maya: customer telemetry: ~3.8% requests with >2s extra latency, errors bumping to 1.2% (baseline 0.1%). tagging as partial degradation unless error rate grows. who will draft public copy?
+alex: I can draft an initial short blurb for status — keep it conservative: no PII, no internal hostnames. pinging legal for a quick review.
+priya: mitigation plan: (1) reroute new requests to us-west capacity for EU customers, (2) scale gen-eu pool and restart worker-12. starting reroute now, ETA ~15m to see effect.
+incident-bot: Bridge created: https://zoom.link/abcd. Status page draft created (draft id: st-20260317-98).
+alex: DRAFT for status page (please review): "We are investigating elevated latency on text generation in our EU region. Some customers may experience slower responses or intermittent errors. Our on-call team is rerouting traffic to alternate capacity and applying targeted restarts. No customer data was accessed or lost. Next update in 30 minutes"
+legal-bot: Quick check: wording ok. please remove internal worker id from public copy. Approved to publish once reroute in flight.
+maya: classification: Partial degradation — non-critical latency increase. SLA impact: unlikely at current error rate, monitoring closely. recommend marking customers potentially affected by region tag EU.
+ben: reroute command executed: `kubectl -n gen annotate svc/gen-eu reroute=usw-2026-03-17` — backlog draining, genqueue depth down to 40 now.
+alex: Publishing initial status update now: https://status.redwood-inference/incidents/st-20260317-98 — short note posted with monitoring tag. Next scheduled update +30m or sooner if resolved.
+priya: monitoring metrics on bridge. if backlog not <10 in 20m we escalate to dedicated capacity and open a priority job to replace affected node image.
+incident-bot: Update: reroute shows improvement — p50/p95 latency trending down.
+alex: draft resolved notice prepared: "Resolved — The elevated latency affecting EU generation has been mitigated by rerouting traffic and restarting impacted workers. Systems are returning to normal, and we will continue to monitor. If you continue to see problems, please contact support."
+priya: confirm: errors back to baseline ~0.15%, queue depth ~6. good to publish resolved in 10m after sustained baseline.
+alex: posting resolved update and closing public incident. thank you everyone for quick turnaround :tada:

@@ -1,0 +1,22 @@
+marketing
+
+alex: Quick note — I uploaded the weekly KPI dashboard for March 3–9. High level: webinar CTR up 14% MoM, but MQL-to-SQL conversion dipped.
+maya: saw it, thanks. Where are you seeing the conversion drop? landing page or SDR follow-up times?
+alex: Landing page time-on-page decreased ~20s. I suspect the registration flow we A/B’d on Feb 20 is underperforming. Query used: `SELECT cohort, leads, sqls FROM marketing.kpis WHERE date BETWEEN '2026-03-03' AND '2026-03-09'` (dashboard tile: /dashboards/kpis-weekly)
+chris: FYI ad spend for the webinar cohort was ~15% higher; attribution is messy — GA last-click says paid, HubSpot multi-touch favors content. We need to align on attribution for the numbers we show in exec deck.
+sam: Can we run a quick fingerprinting of inbound leads? I can tag the webinar reg form with utm_campaign and add a hidden field for first_touch. Will that help attribution consistency?
+maya: yes please. Also want to split out dedicated vs hosted interest — message performance looks different for those personas.
+olivia: On routing: current rule sends webinar registrants to SDR queue A. We should route enterprise-ish emails (company domain != gmail/yahoo) to SDR B. Sam, can you add a filter rule in HubSpot?
+sam: on it. I'll add `if email_domain not in ['gmail.com','yahoo.com'] -> owner = SDR_B` and set task priority high. Will include a webhook to post to #sdr-routing for visibility.
+alex: Good. Back to attribution debate: propose we present both 'Last non-direct' and 'Multi-touch weighted' in the KPI summary and call out the variance. That avoids pretending one is gospel.
+chris: +1. For the exec deck, include a one-slide sensitivity: show revenue impact if we credit paid vs content. I can mock numbers.
+marketing-bot: Weekly KPI digest uploaded: https://redwood.internal/dashboards/kpis-weekly — updated 1711009876 by alex :chart_with_upwards_trend:
+olivia: Also, webinar nurture performance — open rates for sequence after event are 38% first email, 22% second. We should rework subject A/B and mention benchmark narrative in the follow-up (e.g., low-cost inference wins). Thoughts?
+maya: Keep the benchmark story tight: latency and cost per token are the two headlines. Pair the blog post with a short benchmark explainer doc for the webinar slide.
+alex: Timeline for webinar follow-up updates: sam updates routing today, chris prepares the sensitivity slide by EOD Thu, maya drafts benchmark explainer by Fri morning. We'll review KPI deck in Monday's weekly review.
+chris: I'll also add a small note about attribution model change in the dashboard metadata (so historical comparisons are fair).
+sam: Done on routing rule draft, pushing to staging for test. Will ping #sdr-routing once live.
+maya: thanks — can someone drop the final dashboard link in the weekly KPI review thread? Makes it easy for the execs.
+alex: Will do. Last ask: capture traffic source for webinar registrants in a CSV export so growth can run further attribution experiments. I'll export and share with Growth.
+olivia: great. small follow-up: can we add a short blurb in the webinar post-event email that asks what drove them to register? quick 2-option poll helps ground attribution.
+alex: good idea. ok team — action items noted. Thanks! :rocket:

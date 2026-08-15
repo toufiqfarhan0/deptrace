@@ -1,0 +1,73 @@
+incidents
+
+incident-bot: 🚨 Incident detected: p99 spike observed across routing layer in us-west-2; streaming stalls reported. Automated alert: SLO breach (p99 > 1200ms) — creating live thread.
+
+oncall-amy: I'm on it. paging eng-sre and routing owners. Can folks grab triage? :phone: @miguel @tara
+
+miguel: grabbing. initial glance shows per-shard latency skew, requests piling on a small set of backends. logs show routing policy v2 rollout in last 20m.
+
+tara: confirming — I deployed the affinity-weighting change 18m ago to reduce cross-zone traffic. rolling config looks normal but we do see a handful of shards with >15k connections.
+
+courtney: customer-ops: we have 3 hosted customers seeing streaming stalls; one dedicated customer (acme-marketing) reporting intermittent reconnects. CS notified.
+
+oncall-amy: key metrics: p95 is up ~2x, p99 up ~5x, error rates small but streaming stalls (500ms+ idle) spike. impact: degraded tail for long-context requests.
+
+miguel: logs snippet showing hotpartition mapping:```
+2026-03-15T21:12:04Z router-assign shard=shard-47 route=policy-v2 -> backend-set A
+2026-03-15T21:12:31Z backend-A-12 pending-queue-length=64 latency_ms=1340
+2026-03-15T21:13:07Z backend-A-6 kvcache-miss spike seq=4096
+```
+
+tara: interesting — it looks like policy-v2 hash normalization changed weight math so a subset of keys now consistently map to same few shards (hot keys). could be a rotation bug in the seed.
+
+oncall-amy: mitigation options: 1) rollback policy-v2 rollout, 2) force-reshard evict for the hot keys, 3) enable eager-fallback to policy-v1 for streaming routes. Thoughts?
+
+courtney: if we rollback, we need a customer-impact note. CS: rollback preferred if it stops stalls quickly. acme-marketing is on dedicated; need to avoid disruption to their reserved pool.
+
+ops-runbook-bot: Runbook reminder: for routing hotkey incidents — (A) throttle write-heavy prefixes, (B) initiate canary rollback, (C) if rollback not immediate, route-reading traffic to fallback-model.
+
+miguel: proposing quick rollback of the rollout in us-west-2 only (canary rollback) + enable eager-fallback for streaming routes for 10m to drain queues. I'll prepare rollback patch.
+
+tara: I can flip eager-fallback flag. doing it now. 
+
+oncall-amy: please post exact commands and expected effects. keep me updated every 5m.
+
+miguel: rollback command queued:```bash
+# rollback routing policy rollout in region usw2
+./deployctl set-config routing.policy_v2.rollout=0 --region=us-west-2 --pr=hotfix/rollback-318765
+```
+expected effect: new requests use policy_v1 mapping, existing inflight continue on old backends, tail should reduce as load redistributes.
+
+tara: eager-fallback ON for streaming routes: `curl -XPOST http://ops-api/flags/eager_fallback -d '{"region":"us-west-2","routes":["/stream/*"]}'` -> response 202.
+
+oncall-amy: update: 2m after eager-fallback flip, p99 down ~30% but still above SLO. starting rollback now.
+
+miguel: rollback in progress. monitoring.
+
+(automated) deploy-bot: Rollback job hotfix/rollback-318765 started by miguel at 2026-03-15T21:18:12Z.
+
+courtney: CS update: customers seeing fewer stalls but still some reconnects. sending proactive note to affected hosted customers.
+
+miguel: rollback completed. routing.policy_v2.rollout=0 applied to us-west-2. verifying map distribution...
+
+tara: resharding happening automatically as mapping changes. queue lengths dropping on previously hot backends. p99 trending down.
+
+oncall-amy: p99 now ~740ms (from >1200), p95 within SLO. keep monitoring for 30m. tagging for post-incident follow-up: routing-policy rollout validation, add chaos tests for shard skew.
+
+courtney: FYI - acme-marketing reported reconnections stopped after ~6 minutes post-rollback. they want a short blameless summary.
+
+miguel: initial root cause hypothesis: rollout math edge-case + seed rotation produced non-uniform hash distribution for long prefix keys causing hot partitioning in us-west-2; combined with KV-cache miss storm on those backends amplified tail.
+
+ops-runbook-bot: Suggest followups: (1) add rollout canary telemetry (per-shard heatmap), (2) add guardrail to abort rollout if per-shard qlen > 2000 for >2m, (3) add synthetic streaming workload check post-rollout.
+
+oncall-amy: handing off to next oncall (tara) for 2hr watch and mitigation FYI. @tara you'll own the RCA notes and link to postmortem. thanks all. :white_check_mark:
+
+tara: taking handoff. starting RCA doc skeleton in #incidents-docs and will ping for SME details.
+
+courtney: I'll prepare customer email draft and share in thread.
+
+oncall-amy: closing livepage but leaving thread open for follow-up. if p99 regresses we'll reopen. :lock:
+
+customer-success: thanks team — CS will coordinate comms, include timeline and mitigation steps.
+
+(automated) incident-bot: Incident resolved: p99 back under threshold in us-west-2; please file postmortem within 72h.

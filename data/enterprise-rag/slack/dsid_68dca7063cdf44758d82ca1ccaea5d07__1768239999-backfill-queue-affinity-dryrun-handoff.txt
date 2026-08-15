@@ -1,0 +1,40 @@
+eng-platform
+
+maria: Heads-up - we have a ~6h gap in agg_hours (eu) for 2026-03-20. Planning a targeted backfill tonight at 02:00 UTC. Need to decide queue affinity so it doesn't starve realtime recomputes. :eyes:
+aj: +1. Prefer low-priority pool with aggressive preemption. Can we route by tenant priority so prod-critical tenants don't get preempted?
+kevin: We already have fairshare tokens but they're global. Could add a backfill-affinity tag so scheduler can prefer GPUs with spare capacity.
+linh: If we tag, we need to ensure KV cache warm-up doesn't blow memory. Backfills should use smaller batch sizes and KV-less warmup.
+maria: Agreed. Also want a dry-run to estimate tokens / ETA and cost. Console needs to show estimated token-hours before starting.
+sam: For dry-run we can simulate using last-week traffic profile and run a micro-window. Suggest CLI flag --dry-run to produce estimate + sample artifact.
+kevin: Example CLI we discussed:
+```
+ri backfill create --target=agg_hours --range=2026-03-20..2026-03-20 \
+  --queue=backfill-lowprio --dry-run --canary=0.01
+```
+kevin: Dry-run should output: estimated GPU-hours, affected-tenant-list, sample-rows, dedupe-rate estimate.
+linh: On dedupe: if late rows overlap primary ingest window, we risk double-counting. Need idempotent upsert keys and TTL reconciliation. Add a preflight check that verifies idempotency keys exist.
+nancy: Can console surface a "preflight passed/failed" badge and link to the sample artifact? That would reduce ops handoffs.
+aj: Also think about routing policy fallback: if lowprio pool saturates, route to dedicated with strict rate-limit per-tenant rather than spilling into realtime. Safer for SLAs.
+maria: Good. For tonight: plan = run dry-run 22:00 UTC, review estimates by 23:00, then manual approve for 02:00 start. Who can own the dry-run?
+kevin: I'll run dry-run and post results. Ops-bot, please schedule a pagerless window for 02:00-05:00 fallback lane.
+ops-bot: scheduled maintenance window: telemetry-backfill-eu 02:00-05:00 UTC — notifications sent to #eng-oncall.
+sam: Quick UX ask — show "expected budget burn" in the backfill modal. Pull estimate from the dry-run artifact.
+maria: We'll need a canary: run 1% of tenants first and validate aggregates in console (diff view). If diffs > 0.5% abort.
+linh: I'll add an automated diff check job that compares canary output to baseline and emits a pass/fail.
+kevin: Dry-run started: uploading sample artifact to s3://ri-backfill/dryruns/1768239999.json
+kevin: Dry-run results: est 1.3 GPU-hours, est cost $28, dedupe ~0.2%, ETA for full run ~2h at assigned slots. Artifact: s3://ri-backfill/dryruns/1768239999.json
+maria: Thanks. Approving manual kickoff if no objections by 00:30 UTC. Please react :thumbsup: to approve.
+nancy: Added console precheck flag and UI note about canary thresholds.
+aj: One more ops note — make sure we don't evict model kernels needed by realtime by applying node-affinity label `backfill=true` to spare nodes only.
+maria: Great coordination, thanks all. Will post run decision at 00:30.
+kevin: copy, standing by to launch.
+nancy: I'll add the console banner and canary progress chart.
+kevin: launched canary at 02:00 UTC (0.5% tenants).
+ops-bot: job telemetry-backfill-eu-canary started (job_id: tb-1768239999-canary).
+kevin: canary diff = 0.03% (within threshold). progressing to 10% after 15m.
+maria: If anything exceeds thresholds abort and send incident with tag backfill-rollback.
+kevin: canary passed; escalating to full window. starting bulk with queue backfill-lowprio and affinity label backfill=true.
+ops-bot: job telemetry-backfill-eu started (job_id: tb-1768239999-bulk). estimated finish 04:15 UTC.
+sam: Console note: estimated budget burn shows $2k if full run completes — FYI finance.
+maria: Closing loop: add postmortem checklist item to evaluate whether we need a smaller default batch size for eu during business hours.
+kevin: Job finished 03:58 UTC. final diff 0.04%. closing thread. :white_check_mark:

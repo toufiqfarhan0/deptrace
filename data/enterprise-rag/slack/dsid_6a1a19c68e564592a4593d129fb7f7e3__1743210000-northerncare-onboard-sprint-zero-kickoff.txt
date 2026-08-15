@@ -1,0 +1,39 @@
+customer-success
+
+Maya (CS): Morning team — kickoff for NorthernCare onboarding. They signed for Dedicated with a 90-day pilot. Need: stakeholder roster, top 3 success metrics (incl. renewal health signal), and a compact 30-day plan. Ellen, any constraints or must-haves?
+Ellen (NorthernCare): Hi all — thanks. Must-haves: EU data residency, SOC2 evidence, and SSO via our Okta tenant. Were also worried about renewal timing since procurement needs preliminary ROI metrics by week 8.
+Ravi (Solutions): Okta + EU residency noted. I can start the Okta integration flowchart today. For the ROI signal, recommend capturing average cost-per-response and latency SLOs tied to a sample query set.
+Diego (Eng): For infra: reserved pool ready in eu-central. Can provide a staging endpoint by Day 4. Perf targets suggestion: p50 <120ms, p95 <300ms at 5 RPS for their expected load. If we miss p95 by >20% that's a runway risk.
+Sofia (CS Programs): I'll own enablement and the ROI one-pager. Proposal: 2 enablement labs (power users) + a 30-min exec demo before week 8. Also will create the NPS-lite feedback form.
+Maya (CS): Draft success metrics (putting procurement ask first):
+- ROI signal: cost-per-utterance + latency trend chart available by day 45
+- Security/compliance: Okta SSO + SOC2 docs verified by day 14
+- Product health: End-to-end test pass rate >95% and perf within proposed SLOs
+- Adoption: 2 trained power users + 10 pilot prompts exercised
+Ravi (Solutions): I'll fill in the Okta steps and a checklist for certifying SSO: metadata exchange, attribute mapping, test accounts. ETA EOD tomorrow.
+Ellen (NorthernCare): For SOC2 we can share a redacted report — sending to Mayaand legal today. Also Okta admin will be Laura (laura.n@northerncare.org).
+Diego (Eng): Quick technical note: if they plan long contexts (>1024), we need to discuss quantization/kv cache sizing. Ellen, do you expect long medical notes or short queries?
+Ellen (NorthernCare): Mostly 512-768 tokens per request, some batch jobs up to 2k but those can be async.
+Diego (Eng): Good — we'll cap real-time for up to 1024 and propose an async batch path for larger jobs.
+Maya (CS): 30-day checkpoints draft:
+Day 0: Kickoff + access requests (Okta, netpeers)
+Day 3: Staging endpoint live + smoke tests
+Day 7: Security review complete (SSO + SOC2 doc ingestion)
+Day 10: First perf run + baseline metrics captured
+Day 14-16: Enablement session #1 (power users) + runbook handoff
+Day 21: Integration tests with EU routing enforced
+Day 28: Exec demo prep + NPS pilot 
+Day 30: Go/no-go checkpoint and renewal health flag review
+calendar-bot: Meeting scheduled: "NorthernCare Onboard - Weekly Stand" every Tue 15:00 CET starting 2024-07-02. Invites sent.
+Ravi (Solutions): Blockers to note: customer needs a private peering form filled and an Okta test tenant. Ellen, can Laura complete those this week?
+Ellen (NorthernCare): Yep, Laura will fill peering and send test Okta metadata by tomorrow.
+Sofia (CS Programs): Action items I picked up: create ROI one-pager (4d), NPS-lite (2d), enablement lab slides (5d).
+Diego (Eng): I'll run the Day 10 perf baseline and post the results. If p95 exceeds 350ms I'll loop infra with Solutions.
+Maya (CS): Owners summary:
+- Okta & SSO checklist: Ravi
+- Networking & peering: Ellen (customer) + Ravi to review
+- Perf baseline & infra tuning: Diego
+- Enablement + ROI + feedback: Sofia
+- Overall success + procurement liaison: Maya
+Ellen (NorthernCare): Thanks! Also flagging procurement contact: j.kim@northerncare.org — they'll expect the ROI one-pager by week 6.
+Maya (CS): Noted. I'll push the kickoff notes + action tracker into the customer onboarding doc (https://redwood.internal/onboard/northerncare) after Ravi's Okta checklist lands. Closing thread — will reopen with updates.

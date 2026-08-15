@@ -1,0 +1,30 @@
+eng-releases
+
+dev-jun: Planning a blue/green springboard flip for router v3 tonight 01:00 UTC. Quiet window 01:00-01:30. Plan: 15m shadow, then cohort 15% -> 40% -> 100%. Need SRE + infra ack.
+sre-maya: Ack. Add rollback gates: sustained 5xx > 0.4% for 3m OR p95 > 250ms for 5m. Also block on TLS handshake errors > 0.2%.
+deploy-bot: Orchestration scheduled. Steps: shadow 15m, cohort weights [15,40,100] at +15m,+25m,+28m. Probes: /health, /api/ping, TLS-handshake check. Auto-pause on gates.
+infra-ryan: Preflight checklist: warm green pool, ensure certs synced, set drain=75s on LB. Will run cert parity check at 00:45 UTC.
+pm-zoe: I'll post a short note in release notes and ping support.
+
+deploy-bot: Cert parity check at 00:46 UTC: mismatch on cert CN for green nodes in ap-southeast (CN shows staging cert). Failing nodes: g-ap-2, g-ap-4.
+infra-ryan: Oof. Those green nodes got an older image. I'll remove them from green pool and re-deploy certs. Hold shadow until parity OK.
+dev-jun: Good catch. Hold the window until fixed. Update runbook with step to verify certs across hostgroups.
+sre-maya: Agree. TLS mismatches would cause random 502s; do not proceed.
+deploy-bot: Green pool updated: g-ap-2/g-ap-4 removed. Cert deploy scheduled and recheck at 00:58 UTC.
+infra-ryan: Re-deploy done and certificates rotated. Re-run parity: OK 100% at 00:59 UTC. Ready to start shadow at 01:00.
+deploy-bot: Starting 15m shadow now. Traffic duplicated to green, not primary. Probing.
+sre-maya: Shadow traces look clean. No TLS errors. p95 green 130ms vs blue 125ms. Fine.
+pm-zoe: Support notified and monitoring channel #deploy-alerts active.
+deploy-bot: Advancing to 15% cohort at +15m.
+infra-ryan: 15% in. Observing slight 502 blips in eu-central from a single edge host e-eu-7. Removing host from ring.
+sre-maya: 502 level peaked at 0.18% then back to 0.03% after host removal. Below rollback gate. Continue to 40% in +10m.
+
+deploy-bot: Advancing to 40% now. Auto-rollback armed.
+dev-jun: Good. If anything hits the TLS gate, full rollback and collect traces.
+sre-maya: At 40% we're stable. p95 140ms, 5xx 0.05%. All good to promote to 100% in 3m if no regressions.
+
+deploy-bot: Promoting to 100% now. Note: manual confirmation required for post-flip cleanup (drain old blue). Use flag `--finish-cleanup`.
+infra-ryan: Started draining blue pool, drain counts proceeding, live traffic on green.
+pm-zoe: Updating release notes: "v3 flipped via springboard; no user impact after minor edge host removal." Posting summary to #releases.
+sre-maya: Leaving a 30m watch for late regressions. All metrics look nominal.
+dev-jun: Nice work team. Closing thread unless anyone objects. :shipit:

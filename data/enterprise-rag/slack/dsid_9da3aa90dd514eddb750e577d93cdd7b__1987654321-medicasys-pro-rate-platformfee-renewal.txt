@@ -1,0 +1,27 @@
+finance
+
+Ana F: Hey team — customer 'MedicaSys' on Private asked about their upcoming renewal. Their support tier was downgraded mid-term but platform fee wasn't pro-rated on the draft invoice.
+Matt L: I pulled the draft invoice, looks like platform_fee: $48,000 annual line is full amount still.
+Sophia R: They sent a PO today and flagged the mismatch. They expect a pro-rated platform fee reflecting the tier change on 2025-11-03.
+Ana F: Timeline: Renewal effective 2026-03-01, support tier moved from Enterprise -> Standard on 2025-11-03. Need true-up credit for 4 months of Standard rate.
+Rajesh K: What's the Standard vs Enterprise platform fee delta? I have: Enterprise $48k/yr, Standard $24k/yr. So pro-rate credit = (48k-24k)*(4/12) = $8k.
+Matt L: Confirming calc. Quick snippet of the draft invoice lines:
+```
+line 1: platform_fee | qty:1 | amount: 48000
+line 2: support_tier  | Enterprise -> Standard | proration note missing
+```
+Leah O: Billing-bot — can you attach the invoice PDF for reference? :paperclip:
+billing-bot: Attached invoice_7623_draft.pdf (link: https://redwood/invoices/7623)
+Sophia R: Customer asked for the credit to be applied on the renewal invoice rather than issuing a separate credit memo.
+Ana F: Ops question — can we do that without breaking revenue recognition? If we apply a negative line on renewal that's fine for finance — need approval from RevOps.
+Matt L: I'll route to RevOps. @Leah O can you prepare an approval email template and include the calculation? Use the exact wording: "apply $8,000 pro-rated platform fee credit to renewal invoice #7623"
+Leah O: On it. Drafted, will send to revops@redwood.com and cc Sophia.
+Rajesh K: Also, we should check contract SOW — the support-tier change request form is in the case file. If legal requires amendment, we may need signature.
+Sophia R: They've confirmed in email thread (forwarded) — no contract amendment necessary per their procurement team.
+Ana F: Action items: 1) RevOps approval (Matt) 2) Leah send approval email 3) Billing to update renewal invoice to include -$8,000 line 4) Mark PO #PO-42811 applied once invoice updated.
+Matt L: I'll ping RevOps and update this thread with their decision. :thumbsup:
+Ana F: Thanks — please update by EOD Pacific. If we don't get approval, we'll issue a credit memo and notify customer.
+Matt L: RevOps replied (via DM): approve - proceed with credit on renewal. They asked for the audit trail entry.
+Leah O: Done. Invoice updated and audit note added: "pro-rated platform fee credit for support tier downgrade (2025-11-03)"
+Sophia R: Customer notified, says thanks and will process payment when updated invoice is received. :white_check_mark:
+Ana F: Closing loop — final posted invoice link: https://redwood/invoices/7623/posted

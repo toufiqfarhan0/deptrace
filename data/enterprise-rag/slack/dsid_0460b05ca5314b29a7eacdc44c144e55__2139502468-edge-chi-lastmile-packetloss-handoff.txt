@@ -1,0 +1,39 @@
+incidents
+
+PagerDuty: :rotating_light: PAGING: High packet loss observed from POP-CHI to last-mile ISPs (err_rate=4.8%). Pager: page to Network OnCall (priority P1) — incident id inc-21395
+Network OnCall: on it, joining. can someone drop the last 5m of tail logs?
+Alex K: pulling pcap from chi-egress-1 now, will share quick summary.
+Maya R: seeing 5xx spikes in the chi-edge pool in telemetry (50th->95th RTT jump). Correlates with upstream carrier flaps.
+Sam T: any customers reporting full outage? Logs show increased TCP retransmits and timeouts for connections to ch1.cdn.redwood.net
+Network OnCall: customer impact: spike in 4xx/5xx for ~10% of sessions originating from CH region; several short-lived request failures for streaming and embeddings. Not global.
+Jess L: tagging @marketing and @support to prep comms if we escalate.
+Alex K: pcap snippet:
+```
+00:00:01 IP 10.2.3.4 > 198.51.100.23: Flags [P.], seq 1:145, ack 1, win 64240, length 144
+00:00:01 IP 198.51.100.23 > 10.2.3.4: Flags [R], seq 0, ack 0, win 0, length 0
+... many RSTs and retransmits, interspersed with >30% ICMP unreachable from isp-gw
+```
+Network OnCall: looks like asymmetric drop towards ISP handoff. Traceroute shows last hop packet loss (~30%).
+Maya R: metrics: egress error rate per-POP: CHI=4.8%, SFO=0.5%, ORD=0.6% (baseline <0.3%).
+Sam T: initiating temporary traffic steering: add BGP prepend to upstream-provider-A for CHI egress to prefer alternate carrier. Applying now.
+Network OnCall: applied prepends to provider-A; propagating. Also enabling L4 steer to ORD-POP for high-latency sessions via CDN control plane: `cdn steer --from chi --to ord --threshold 200ms`
+PagerDuty: incident inc-21395 acknowledged by Network OnCall.
+Alex K: after steer, pcap shows drop rate down to ~2% on the affected prefix, retransmits decreasing. Still seeing intermittent blips.
+Jess L: support: we have 8 premium customers in CH region seeing elevated 5xx, CS notified. Putting canned status draft in #status-drafts.
+Maya R: adding NAT session dump — conn tracking shows half-life of sessions low, likely due to ISP flapping.
+Sam T: rolling back prepends to baseline for provider-A (so not to overprep), instead advertising more-specific /24 via provider-B as a soft-failover. Give it 3m to converge.
+Network OnCall: update for handoff: I need to rotate off in 20m. Handoff summary -> inc-21395: CHI last-mile packet loss causing 4-6% request failures for CHI-origin sessions. Mitigation: L4 steer to ORD + BGP more-specific announced via provider-B. Current status: error rate reduced to ~1.4%, still above baseline. Next oncall: Maya R will take over.
+Maya R: acknowledged handoff. I'll monitor BGP convergence and edge RPC retries. Will keep CS updated.
+Sam T: provider-B reports partial blackholing on a subset of their peering — they're doing an internal mitigations change; asked for ETA 12-18m.
+Alex K: adding helpful logs for handoff: `chi-egress-1: /var/log/conntrack.log` snippet attached in thread.
+Status Bot: Draft status page entry created: "Partial packet loss at POP-CHI affecting some customers; engineering mitigation in progress. More info in incident inc-21395."
+Network OnCall: note to incoming: prioritize: 1) confirm continued reduction in user-facing errors, 2) coordinate with provider-B for complete convergence, 3) prepare rollback if steer causes congestion elsewhere.
+Maya R: running synthetic checks against CHI origin and ORD failover, will post results every 5m. First run: 95% success (was 82% at peak).
+Jess L: support ack: ticket template updated with affected customers + mitigation steps, CS prepping customer outreach for those >1% error SLA.
+Sam T: provider-B confirmed they pushed a fix to their backbone, we should see improved reachability in next 8m.
+Alex K: post-fix traceroute shows last hop loss dropping to single-digit percent.
+Network OnCall: marking mitigation as partial; will keep incident open until error rate <0.5% and provider confirms stable for 30m. Handoff complete. :white_check_mark:
+Maya R: taking over monitoring. will escalate back to oncall in 15m if regress.
+PagerDuty: incident inc-21395 reassigned to Maya R.
+Status Bot: Status page updated: "Mitigation in progress — traffic being rerouted; some customers may still experience intermittent failures." :information_source:
+Maya R: logging final note before sleep: keep alerts on for CHI egress, if error rate rises above 1% trigger immediate page. Good handoff, thanks team :wave:

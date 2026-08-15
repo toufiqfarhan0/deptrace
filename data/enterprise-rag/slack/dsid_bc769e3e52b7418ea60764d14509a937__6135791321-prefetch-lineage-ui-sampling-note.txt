@@ -1,0 +1,22 @@
+eng-platform
+
+Nina: quick flag 1  several tenants seeing negative per-token in the cost dashboard after cache credits apply. PMs are confused and shipping tickets. :confused:
+Carlos: saw it too earlier on /v1/chat/respond. looks like prefetch amortization + late refund events stacking for small sessions.
+Mei: quick repro on staging if anyone wants to try:
+```
+curl -X POST https://staging.api.redwood/econ/sim -d '{"route":"/v1/chat/respond","chain":["edge","nlg"],"prefetch":true}'
+```
+Arjun: short-term UX: show gross_token_cost and net_cost (post-credits) side-by-side. default to net, but if net < 0 show a discrete "why negative" tooltip with a short explainer.
+Nina: data ask: we only emit cache_credit number today. propose adding optional fields: credit_source enum (prefetch|evict_refund|manual), lineage_hash (8-char hex) and an explicit cache_credit numeric. keep optional to avoid cardinality explosion.
+Carlos: cardinality concern acknowledged. propose deterministic sampling by tenant_id at 2% default, 100% capture for canaries and paid tiers. sampled events include lineage fields.
+Mei: console change: add toggle "include amortized prefetch credits" and an endpoint that returns both gross_series and net_series. if lineage_hash exists show a CTA "show sampled traces" that queries /econ/trace?lineage=<hash>.
+Arjun: ops rule: exclude canary traffic from amortized pools so experiments don't skew tenant economics. also add alert: route 95p net_cost < 0 for > 10m -> dry-run initially, then escalate if persistent.
+Nina: action items:
+- Mei: mock UI + API contract (toggle, sampled traces CTA).
+- Carlos: sampling rollout plan + storage estimate (2% default, deterministic).
+- Arjun: RFC to exclude canaries from amortization + alert runbook.
+- Nina: quick schema PR to add optional credit_source, lineage_hash, cache_credit numeric and migration notes.
+infra-bot: econ-service v2.15.0 deployed to staging (hash: b7f3a1c)
+Carlos: i'll post sampling estimates in the channel in ~1h.
+Mei: will post UI mock in #design later today.
+Nina: thanks team  short sync in 20 for handoffs. :thumbsup:

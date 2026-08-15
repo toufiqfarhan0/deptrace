@@ -1,0 +1,18 @@
+design
+
+Priya: Heads-up — eval-run failure toast copy feels too terse: 'Eval run failed — see logs'. Users need an actionable hint.
+Marco: Agreed. Ideally the toast tells the *likely* failure class and a next step. E.g. 'Eval run failed — timeout. Retry or increase timeout.' vs 'Eval run failed — unauthorized. Update API key.'
+Owen: Implementation note: toasts should be quick, actionable, and optionally expandable. Primary action = one verby CTA like 'Retry run'. Secondary action = 'View logs' (not 'details'). Keep the toast copy under ~100 chars.
+Claire: A11y: failure toasts must be announced via aria-live="assertive" or role="alert". If the toast opens a details panel, move focus into it, expose the reason text to SR via aria-describedby, and restore focus when it's closed. Buttons must be keyboard-focusable and have accessible names.
+Priya: Draft variants: short = 'Eval run failed — retry or view logs.' expanded = 'Eval run failed: request timed out after 30s. Try increasing timeout or retry the run. View logs for stack trace.' Thoughts?
+Marco: Prefer CTA labels that describe the action: Primary = 'Retry run' Secondary = 'View logs'. If the cause is auth-related include 'Update API key' as a contextual quick action.
+Owen: UX pattern idea: collapse duplicate toasts for the same eval suite into one: '3 eval runs failed — view latest logs'. That avoids spammy toasts. If users click the toast it opens the eval results panel (keyboard focusable).
+Claire: For color/contrast, error tag text and icons must meet AA (4.5:1). Use explicit remediation text rather than 'contact support' unless it's truly a platform issue. Example messages by class:
+- Timeout: 'Eval run failed — request timed out (30s). Retry run or increase timeout.'
+- Auth: 'Eval run failed — unauthorized. Update API key or contact an admin.'
+- OOM: 'Eval run failed — model OOM. Try smaller batch size or a quantized model.'
+Priya: Also include a microcopy for the expanded details header: 'Eval run failure details' and for empty logs state: 'No logs available — the run did not start.' Both should be SR-friendly.
+Marco: Copy lint: use active voice, direct verbs, avoid vague 'see logs' anchor text. Use descriptive link text: 'View logs' not 'click here'.
+Owen: For toasts with a 'Retry run' action, debounce clicks and visually disable the button while retrying. Microcopy for disabled state: 'Retrying…' (with ellipsis). Make sure SR announces the state change.
+DesignBot: Accessibility checklist: role="alert" or aria-live="assertive" on error toast; aria-describedby links to the detailed cause; buttons are focusable and use descriptive labels; expanded panels trap focus while open; focus is restored on close. Contrast and multiple failure collapse handled.
+Priya: I'll update the design spec with short/expanded toast text, the error-class templates, ARIA attributes, and examples for the multiple-failure collapse. Will follow up with Eng for the focus management behavior. Thanks everyone :thumbsup:

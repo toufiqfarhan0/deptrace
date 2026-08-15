@@ -1,0 +1,36 @@
+sales
+
+elena_sales: Quick thread for Nimbus Bank POC. They want detailed answers on KMS key custody, BYO-HSM network topology, and cost comparison between per-op billing vs flat HSM premium. Also asked about rotation SLA of 48h for KEK.
+
+sam_se: For network topology we support two patterns: 1) Direct VPN to customer HSM (preferred), 2) Cloud-proxy (KMIP/PKCS11) with mutual-TLS. Which does Nimbus prefer?
+
+client_head_crypto: VPN preferred. They require isolated egress IPs, 1Gbps dedicated link, and signed HSM attestation on onboarding. Also expect the ability to rotate KEK within 48h without downtime.
+
+anya_ops: 48h KEK rotation SLA is tight. We can guarantee a best-effort staged rotation with dual-key acceptance for 72h. For 48h we need to enforce prefix cached keys TTLs <= 30m and extended canary windows. Need to confirm with customer.
+
+billing_bot: Preliminary pricing: reserved pool premium + per-hsm-op option. Example: base reserved $25k/mo, BYO-HSM premium +18% ($4.5k/mo), per-hsm-op $0.0007/op. One-time onboarding $28k.
+
+elena_sales: Can security confirm whether 48h rotation with zero-downtime is contractable?
+
+tom_sec: Zero-downtime cannot be guaranteed if the customer's HSM firmware upgrade is part of rotation. We can guarantee continuity for KEK rotation if the HSM stays available. Add clause: maintenance exceptions for customer HSM firmware updates and network interruptions.
+
+sam_se: Technical ops snippet for onboarding we need:
+```
+REDWOOD_MODE=dedicated
+BYO_HSM=true
+VPN_CONFIG=ipsec
+HSM_ENDPOINTS=[10.2.2.5:5696]
+MUTUAL_TLS=true
+ATT_CERTS_REQUIRED=true
+CACHE_TTL=1800
+```
+
+anya_ops: Also require runbook sign-off and DR contact list. We'll run a staged rotation dry-run during pilot.
+
+elena_sales: Action items: 1) Sam to draft topology diagram + call flow, 2) Tom to produce security clause language for rotation/maintenance exceptions, 3) Billing to prepare two line-item quotes (flat premium vs per-op), 4) Anya to create runbook dry-run checklist. Meeting scheduled 11am PT tomorrow.
+
+client_head_crypto: We'll provide VPN termination details and vendor attestation certs by EOD. Also include SLA penalty language for missed rotation windows.
+
+tom_sec: We'll propose a remediation SLA (service credit) for missed rotation windows except where outage caused by customer HSM.
+
+elena_sales: Perfect. Ping me for any blockers. :sparkles:

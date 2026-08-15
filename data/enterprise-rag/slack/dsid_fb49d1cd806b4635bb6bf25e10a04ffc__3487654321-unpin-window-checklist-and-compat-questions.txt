@@ -1,0 +1,33 @@
+eng-releases
+
+anna-prod: FYI scheduling an unpin window tonight 23:00 UTC to remove the runtime pin (3.2 -> 3.3). Planning a staged canary: 5% -> 25% -> 100%. Need final checklist + rollback plan.
+sam-release: thanks. can we confirm SDK shim compatibility? some clients still on sdk@1.4.x.
+maria-rls: quick note: quantized llama3q has a KV-cache layout change in 3.3, so we'll need the runtime shim in place or a model-variant that uses legacy-kv.
+ryan-eng: canary on staging passed basic perf, but long-seq e2e tests flaked (memory growth on 3.3 when seq>8k). investigating root cause now.
+anna-prod: @ryan-eng how likely is rollback? we should pre-script the rollback steps.
+ryan-eng: probably needed if memory growth persists. rollback plan: 1) pause traffic 2) revert routing to runtime=3.2 3) clear warm caches 4) roll out minor patch. I'll draft runbook.
+deploy-bot: [deploy-bot] Scheduled: soft-unpin runtime v3.3 in prod window 2026-03-20T23:00:00Z -> canary 5% for 15m then 25% for 20m then 100% (if all green). Trigger command: `deploybot unpin --runtime=3.3 --env=prod --stages=5,25,100`
+anna-prod: checklist request: - @oncall-sre watch memory/ooms - perf thresholds (p50 < 60ms, p99 < 450ms) - regressions on hallucination eval set <= 1.5% - model-compat smoke for quantized variants - SDK pin notices to client teams
+oncall-sre: I'll be on pager for the window. suggest adding a datadog composite: `runtime.uno_p99 > 450 or runtime.mem.delta > 500MB` alert to the canary policy.
+sam-release: for SDK: propose adding temporary header-based routing to force sdk@1.4.x to 3.2 until clients upgrade. sample rule: `if header x-sdk-version <= 1.4.99 route -> runtime:3.2`
+maria-rls: Also add model fallback: if model variant fails, fallback to `model:llama3q-legacy-kv` automatically. We should list model exceptions in deploy notes.
+ryan-eng: quick patch idea: enable KV-cache compatibility-mode in the runtime via `--kv-compat=true` flag; low-risk toggle to help long sequences while we fix memory regression. Will test on staging now.
+anna-prod: if kv-compat is safe, we can proceed but keep rollback ready. set canary gate checks: memory, p99 latency, and token-accuracy on a 100-case prompt set.
+deploy-bot: [deploy-bot] Canary gate set: memory-growth<200MB, p99<450ms, token-accuracy-delta<1.2% over control. Auto-rollback on gate fail.
+sam-release: timeline: if kv-compat fixes staging in 30m, we start at 23:00. if not, postpone by 1 hour to allow engineering fix.
+ryan-eng: staging run with `--kv-compat=true` finished: long-seq memory stable. pushing a small rolling canary to preprod for 1hr.
+anna-prod: OK. decision: wait for preprod 1hr run. if stable, proceed with 23:00 window. if any regressions, we abort and reschedule. update release notes with model exceptions and SDK guidance.
+deploy-bot: [deploy-bot] Updated schedule: tentative unpin at 2026-03-20T23:00:00Z pending preprod signoff. Next status update in 45m. :white_check_mark:
+sam-release: I'll send a short announcement to #customers and #integrations with SDK guidance and the fallback plan once we have final signoff.
+maria-rls: Adding models list now: `llama3q`, `llama3q-quant-v2`, `gptx-lite-quant`. exceptions: `llama3q-quant-v1` will remain pinned to runtime 3.2.
+ryan-eng: prep runbook snippet for rollback (will paste here):
+```
+# rollback runtime unpin
+1. deploybot route-set --env=prod --runtime=3.2 --percentage=100
+2. deploybot scale --runtime=3.3 --replicas=0 --grace=60
+3. clear cache: redis-cli flushdb --pattern "kv_cache_*"
+4. notify #incidents and #customers
+5. escalate to eng-sre if OOMs persist
+```
+anna-prod: perfect. thanks everyone. will reconvene after preprod run.
+deploy-bot: [deploy-bot] Preprod run started at 2026-03-20T22:15:00Z with `--kv-compat=true`. Monitoring hooks active.

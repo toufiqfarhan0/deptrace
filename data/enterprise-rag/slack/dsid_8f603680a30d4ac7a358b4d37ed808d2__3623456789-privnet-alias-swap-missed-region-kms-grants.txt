@@ -1,0 +1,41 @@
+eng-infra
+
+maria: FYI after the midnight privnet audit-rule rollout a bunch of GPU nodes in eu-west-2 and ap-south are stuck in bootstrap.
+jon: same, nodes stuck at 'decrypting keystore' in the agent logs.
+sre-bot: Incident created: INC-2026-4822  node-keystore-decrypt-failure. PD alerted.
+liam: did we change any KMS or IAM conditions recently? I recall a conditional-iam tweak for cross-account logging.
+nashley (security): I rolled an audit-sampling exception at 00:15 (policy: audit/privnet/exempt) and during that deployment we introduced a new KMS alias and rotated grants.
+maria: timeline matches. Node logs show: "kms:AccessDenied: not authorized to perform: kms:Decrypt on key arn:aws:kms:eu-west-2:..."
+jon: snippet from gpu-keystore agent:
+```
+2026-03-22T00:28:07Z gpu-keystore: ERROR: kms.Decrypt failed: AccessDenied
+2026-03-22T00:28:07Z gpu-keystore: principal arn:aws:iam::111111111111:role/svc-gpu-keystore
+```
+liam: security, did the key policy or grant constraints change?
+nashley (security): I switched alias `alias/privnet-keystore` -> `alias/privnet-keystore-v2` and tightened key policy to restrict principals to the logging service. The alias swap also pointed to a key we initially created only in us-west-2 for testing.
+maria: that would explain regional failures if eu/ap nodes reference the alias but the key/grant wasn't replicated.
+ops-oncall: quick check: eu-west-2 and ap-south show AccessDenied; staging/us-west-2 unaffected.
+jon: mitigation options: 1) revert alias in affected regions, 2) create key + grants in the regions, 3) restart keystore agent pods. Which is fastest?
+nashley (security): I can revert the alias in eu-west-2 and ap-south and add the keystore grant for `svc-gpu-keystore` in both regions. ETA ~10-15m.
+maria: alias revert would immediately restore decrypt if legacy key still has grants. Is the legacy key still scheduled for rotation?
+nashley (security): legacy key is usable for now; rotation window later this month. Revert is safe short-term. I'll do revert + grant.
+billing: heads up: adding regional keys and replication will add KMS + replication costs. Flagging to ops for closure once done.
+jon: executing runbook: step A revert alias -> step B patch grants -> step C restart daemonset -> step D monitor boot metrics.
+maria: reverting alias in eu-west-2 now.
+maria: done in eu-west-2. Restarting gpu-keystore daemonset on affected nodes.
+jon: restart in progress...
+sre-bot: Auto-checks: 7/12 nodes transitioned from BootFailed -> Booting within 2m.
+liam: logs in eu-west-2 show successful Decrypt after revert.
+nashley (security): adding grants in ap-south and eu-west-2 now and updating the internal rollout checklist to require cross-region key + grants preflight.
+ops-oncall: still seeing one node in ap-south fail after decrypt with conntrack errors to KMS endpoint. Might be NATGW saturation. Cloud metrics show NAT gateway concurrent connections spiked during mass keystore boot.
+jon: opening NET-2043 to scale NATGW in ap-south and provision a temporary private endpoint route for keystore traffic.
+maria: can we throttle keystore agents or stagger restarts to avoid NATGW burst?
+liam: yes, add a 10s jitter to daemonset restart and limit parallelism to 2 pods per AZ for this rollout.
+nashley (security): I'll freeze further alias swaps until checklist enforced in deploy pipeline. Also adding a preflight script that validates: region list, key ARN presence, explicit grants for principal, and a simulated decrypt call via STS role in each region.
+ops-oncall: incident -> mitigation. Retaining INC-2026-4822 open for postmortem + audit logs. I enabled debug logging for gpu-keystore agents and forwarded logs to incident channel.
+billing: cost note: temporary natgw scale + KMS regional keys replication ~ $300-700/day if left for a few days. Ops please close replication window after verified.
+maria: postmortem owners set: maria, jon, ashley. I'll draft timeline and remediation steps.
+jon: short-term done. Long-term actions: preflight in CI, alias-swap guard, region-replication SOP, and NATGW burst throttling mitigation.
+nashley (security): will add explicit replication step to KMS playbook and block PR merges that change keystore alias without passing the preflight.
+liam: adding a small e2e test to the keystore deploy job that does a cross-region decrypt check using a test grant.
+maria: thanks everyone. Closing thread once postmortem doc and timeline are in docs/incidents. :thumbsup:

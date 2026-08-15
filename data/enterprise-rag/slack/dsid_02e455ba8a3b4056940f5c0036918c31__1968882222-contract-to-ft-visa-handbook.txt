@@ -1,0 +1,25 @@
+people-ops
+
+Sara - People Ops: Hey team — quick question re: Kyle converting from contractor -> full-time. He’s on STEM OPT (EAD expires 2026-12-15). Hiring manager wants a 2026-05-03 start. What do we need to lock before offer goes final?
+Raj - Recruiter: Congrats! He accepted verbally. I shared an estimated comp package. For immigration, we talked about H-1B vs extending OPT. Kyle said he prefers employer-sponsored H-1B, but timeline might push start.
+Maria - Eng Manager: We really want him onboard by 5/3 for sprint ramp. Is OPT extension doable fast?
+Immigration Bot: FYI — STEM OPT requires employer E-Verify and a formal I-983 training plan. Processing note: STEM extension can be filed up to 90 days before current EAD expiration; USCIS processing times vary.
+Sara - People Ops: Ok — actions I’m tracking: (1) Verify E-Verify (Anna?), (2) Request Kyle’s current EAD and passport scans + I-94, (3) Decide H-1B petition vs rely on STEM extension. Who owns which?
+Anna - Benefits: We have E-Verify enabled for US hires; confirmed in our portal. I can share the E-Verify employer ID and link to the E-Verify confirmation doc.
+André - Payroll: Payroll needs exact work authorization docs on file before first payroll run. If start = 5/3, we need docs by payroll cutoff (04/25). If H-1B petition-only (no approval) that’s not sufficient for I-9 completion; he must be authorized to work on day 1 (EAD or H-1B approval).
+Raj - Recruiter: Kyle can provide EAD card scan this afternoon. He also mentioned his attorney could file H-1B cap-exempt? Not sure. I’ll confirm.
+Sara - People Ops: Good — Raj pls upload EAD scans to the secure HR folder and tag me. If we plan to rely on STEM extension, timeline: file I-765 by 90 days before EAD expiry so there’s continuity. For a 5/3 start we only need current EAD to complete I-9; pending STEM extension can create automatic 180-day work authorization if filed timely, but we can’t assume that for benefits enrollment cutoff.
+Maria - Eng Manager: If there's risk we don't have docs by 4/25 can we make an adjusted start (soft ramp) or contractor extension?
+Raj - Recruiter: We can extend contractor assignment for 2 weeks -> I'll coordinate with vendor. That gives time if USCIS delays.
+Immigration Bot: Quick checklist for People Ops to confirm: 
+- EAD card or H-1B approval packet (or proof of cap-exempt status)
+- Passport + I-94 front/back
+- Signed I-9 (completed in-person or via approved remote verification workflow)
+- For STEM: I-983 training plan filed and employer DSO notified
+- Receipt number for any pending I-765 (for 180-day rule)
+Sara - People Ops: @Anna please confirm benefits effective date rules if start slips into June — do we need to pro-rate or use waiting period?
+Anna - Benefits: For FT hires, benefits eligibility starts on the first of the month following 30 days of service OR the first of the next month depending on plan. If start moves to 6/01, enrollment window changes. I’ll DM the exact dates and send the enrollment checklist.
+André - Payroll: Also note: visa status affects tax withholding in some cases — if Kyle remains on OPT non-resident for tax purposes, withholding differs. Payroll needs W-4 + SSN (or ITIN) if available.
+Raj - Recruiter: Kyle — can you confirm if you have an SSN and can share scans today?
+Kyle - Contractor: I have SSN and EAD. Uploading scans now to the secure folder link Raj sent. Can confirm attorney said H-1B is being evaluated, but not filed yet.
+Sara - People Ops: Thanks Kyle. Next steps I’ll take: (1) confirm I-9 verification method and deadline, (2) coordinate with Payroll for cutoff, (3) if H-1B is chosen, loop in Legal to start LCA prep. Raj pls confirm contractor extension option and timeline. I’ll update thread by EOD. :white_check_mark:

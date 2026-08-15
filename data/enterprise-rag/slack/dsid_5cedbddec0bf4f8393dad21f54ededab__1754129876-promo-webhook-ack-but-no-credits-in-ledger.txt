@@ -1,0 +1,51 @@
+support
+
+maria_support: Customer ticket #10293 — promo shows as applied in the UI and customer received confirmation email, but account balance remains 0. Posting details and repro below.
+chris_billing: can you share org and subaccount IDs?
+maria_support: org_id: org_8Hkq, subaccount_id: acct_sub_23, grant_id: grant_9876. Customer screenshot shows green check and email stating "You have $100 credit". Partner webhook logs show our callback 200 OK.
+leo_engineer: paste the webhook payload and our callback logs please.
+maria_support: payload from partner:
+```
+{
+  "grant_id": "grant_9876",
+  "org_id": "org_8Hkq",
+  "subaccount": "acct_sub_23",
+  "amount_cents": 10000,
+  "status": "accepted",
+  "timestamp": "2025-08-12T16:12:03Z",
+  "transaction_id": "txn_55a3"
+}
+```
+and promo-service shows no callback retries.
+chris_billing: I queried ledger for txn_55a3 -> 0 rows. Is there a grants row?
+maria_support: grants row exists (grant_9876) with created_at matching webhook, but ledger_entries table has no entry referencing that grant.
+leo_engineer: likely causes: billing_profile missing on the subaccount at ingest time and we skip creating ledger entry (we currently log a warn but return 200), or FK failure swallowed by rescue, or background materialization job failed.
+ops-bot: Deploy started by leo_engineer/git: add-ledger-retry
+maria_support: customer redeemed via the checkout on 2025-08-12 09:12 PT and expects credits instantly.
+chris_billing: maria, run this on prod-readonly and paste: `select id, billing_profile_id, created_at from accounts where id = 'acct_sub_23';`
+maria_support: result: id=acct_sub_23, billing_profile_id=NULL, created_at=2024-11-01T12:04:22Z
+leo_engineer: that explains it. ingest path assumed billing_profile present; when NULL we bail without ledger write and return 200. bug.
+chris_billing: remediation for this customer?
+leo_engineer: immediate plan: backfill ledger entry linking the grant to a billing_profile. Steps: 1) find org-level billing_profile (eg: `select id from billing_profiles where owner_org = 'org_8Hkq' limit 1;` -> bp_44f), 2) do idempotent insert into ledger_entries with grant_id and external_txn_id txn_55a3, 3) mark grant as materialized. I'll do a dry-run and execute with audit.
+maria_support: customer wants this today.
+leo_engineer: DRY-RUN SQL:
+```
+-- verify no existing ledger entry
+select * from ledger_entries where external_txn_id = 'txn_55a3' or grant_id = 'grant_9876';
+-- expected: zero rows
+```
+Insert (idempotent):
+```
+insert into ledger_entries (id, grant_id, billing_profile_id, amount_cents, created_at, external_txn_id)
+values ('le_9a2', 'grant_9876', 'bp_44f', 10000, now(), 'txn_55a3')
+on conflict (grant_id) do nothing;
+```
+I'll run with auditing and post logs.
+ops-bot: backfill-ledger-20250812 queued by leo_engineer
+leo_engineer: backfill complete. Inserted ledger entry le_9a2. Audit log: user=leo_engineer, job=backfill-ledger-20250812, note="mapped to bp_44f".
+chris_billing: verified ledger now has row; balance calculation returns +10000 cents on the subaccount.
+maria_support: confirmed with customer — they see the credit on dashboard and via API `/v1/usage`. Customer: :tada:
+leo_engineer: follow-ups: PR to change ingest behavior to 1) validate billing_profile presence and either create temp profile or return 409 so partner retries, 2) add monitoring for grants without ledger entry after X minutes, 3) add unit/integration tests.
+maria_support: logged engineering follow-up #10314 and billing policy #10315; customer notified.
+chris_billing: closing the support escalation; we will add a short postmortem summarizing root cause and remediation.
+maria_support: thanks all :heart:

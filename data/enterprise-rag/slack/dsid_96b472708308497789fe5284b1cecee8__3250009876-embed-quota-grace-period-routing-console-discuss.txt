@@ -1,0 +1,49 @@
+eng-platform
+
+alex: Heads-up — seeing a cluster of 413s on /v1/embeddings when clients send ~30k-dim batched payloads. Router is dropping instead of splitting.
+
+maria: Ugh. Any idea why split path didn't kick in?
+
+sam: We have a splitter but it only runs after preflight which currently fails fast on > max_bytes. Need a grace window so router can pre-accept then split async.
+
+jin: From console POV, we should show split_rate and fallback_rate per-tenant if we do this. Ops will want to know how often we reroute to low-precision model.
+
+lisa: Meta: prefer soft-fail first — return a 202 + header `X-Embed-Units: estimate` while splitter requeues, rather than immediate 413. Easier UX for mobile SDKs.
+
+alex: Proposal sketch: add a routing policy `grace_split` that lets router accept oversize requests for up to N ms while splitter attempts to create valid shards and route them. If it fails, return 413.
+
+sam: Config example:
+```json
+{
+  "policy": "grace_split",
+  "grace_ms": 200,
+  "max_splits": 8,
+  "fallback_pool": "low_precision_dedicated"
+}
+```
+
+maria: That looks fine. For console, we need a toggle (FF) `embed_grace_split_v1` and a rollout UI with % and tenant whitelist. Also telemetry name mapping so we can surface in dashboards.
+
+jin: Telemetry events to emit: `embed.split_attempt`, `embed.split_success`, `embed.split_error`, `embed.fallback_routed`. Add tags: tenant_id, split_count, original_bytes, final_bytes, route_latency_ms.
+
+lisa: Add metrics: embed.queue_time_ms, embed.split_count, embed.fallback_used (0/1). We should ensure these are emitted before canary so we can alert on split_error spikes.
+
+sam: Runtime note: need to be careful with KV cache keys across split shards — prefix hash must be preserved so downstream cache hits still work. Otherwise we'll degrade quality.
+
+alex: Good catch. Also think about per-tenant soft-quotas: allow a small daily budget of grace_bytes. If they exceed it, skip grace_split and return 413. Avoids abuse.
+
+maria: UX in console: new tile in usage -> "Embed split events" with a small tooltip: "requests automatically split by router to fit max payloads". Link goes to a table of examples + sample request payloads (privacy scrubbed).
+
+jin: I'll mock the tile. Dashboard link (draft): https://console.redwood.dev/dashboards/embed-split-events (placeholder).
+
+lisa: Rollout plan: FF on 1% of tenants for 24h, watch `embed.split_error` and `embed.fallback_routed` and p95 route latency. If stable, 10% for 48h, then 100% after a week. Add automatic rollback if split_error rate > 1% and p95 latency +30%.
+
+sam: Implementation notes: splitter must be idempotent and surfaced to the ingress tracing. Add `split_id` and `parent_request_id` to traces. Also ensure we don't double-count billing units — need a single api-level token accounting event.
+
+alex: Billing: we should emit `embed.billing_units` with `parent_request_id` and `units_total` once all shards finish. Console should show expected cost delta under "what changed" when enabling grace_split.
+
+maria: Sounds like a plan. Action items: sam + lisa to prototype runtime+telemetry; jin to wire the FF and dashboard mock; i'll draft the PR description and rollout steps.
+
+ov-bot: deploy-bot: canary deployment for `embed-grace-split` feature flag started to 1% tenants (deploy id: dpl-2026-03-21-01).
+
+alex: Thanks — I'll watch the dashboard and ping if anything odd. :eyes:

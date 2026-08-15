@@ -1,0 +1,57 @@
+eng-security
+
+morgan: CI flagged a SAST hit in serving-runtime PR #4821 — possible secret-in-tests. tagging security for triage.
+
+sam: Scan report: https://scans.internal/reports/4821
+sam: rule=hardcoded-credential, severity=high, path=tests/fixtures/keys/mock_key_blob.go
+
+sec-bot: scan-id=SV-4821-0x9 status=NEW fingerprint=ef12bc34 suggested_action=review
+
+isabel: can someone paste the exact lines? want to see context before assuming it's a copy/paste of real material.
+
+morgan: snippet: ```
+const mockKeyBlob = "QkFTRTY0VEVTVF9LRVlCSUxPQ0tfLi4u"
+```
+morgan: reproduce locally: `make scan-local && ./tools/sast-run --repo serving-runtime --pr 4821`
+
+taylor: quick product question — do we allow non-real, encoded blobs in tests? if so we should encode metadata for the scanner to ignore (suppression + evidence) instead of nuking the test.
+
+sam: FYI the CI scanner job runs under role scanner-ci-role which currently lacks kms:GenerateDataKey permissions. If we ever wanted the scanner to validate ciphertext against KMS metadata we might need a scoped action, not global Decrypt.
+
+liam: absolutely do not add broad kms:Decrypt to the CI role. If validation needs KMS, use ephemeral, narrowly-scoped grants created per-run and logged.
+
+isabel: I'll take triage. Plan: verify fingerprint, search our KMS metadata store for matching ciphertext tags, check repo history for origin, then mark FP or escalate to rotate.
+
+morgan: repo blame shows the fixture landed in 2022 by @dev-q as a mocking artifact. no PEM headers, looks encoded not PEM. but we need to be certain.
+
+taylor: proposed triage/workflow:
+- sec triage confirms FP or true positive
+- if FP: create suppression record with clear evidence (file, lines, commit) and a TTL (suggest 60d)
+- if TP: rotate keys, run artifact KMS audit, and update postmortem
+- followup: add a lint in tests banning PEM-like markers to prevent future noise
+
+sam: sample ephemeral grant flow we could automate in the scanner job:
+```bash
+GRANT_ID=$(aws kms create-grant --key-id alias/ci-scan-fixtures --grantee-principal arn:aws:iam::123456789012:role/scanner-ephemeral --operations GenerateDataKey --query GrantId --output text)
+# use grant for a single run, then revoke or rely on grant constraints
+aws kms retire-grant --grant-id "$GRANT_ID" --key-id alias/ci-scan-fixtures || true
+```
+Log grant-id into ticketing system for audit.
+
+liam: audit checklist: pull CloudTrail for events GenerateDataKey, Encrypt, Decrypt against alias/ci-scan-fixtures between commit date and now. Query example: `eventName IN ("GenerateDataKey", "Decrypt", "Encrypt") AND resources[].ARN = "arn:aws:kms:...:alias/ci-scan-fixtures"`
+
+isabel: oncall — can you fetch any Decrypt or GenerateDataKey events tied to alias/ci-scan-fixtures for the last 60 days? need quick signal before I close triage.
+
+oncall: oncall: pulling CloudTrail slice now, will post summary in ~15m.
+
+sec-bot: created SEC ticket SEC-2026-0507 and linked PR #4821 https://issues.internal/SEC-2026-0507
+
+morgan: if FP, please add exact suppression payload: {file, start_line, end_line, commit_sha} and set expiry=60d. also open a tiny docs PR showing how to file suppression evidence.
+
+taylor: lint suggestion: fail tests if `/-----BEGIN (RSA|PRIVATE|CERTIFICATE) KEY-----/` appears in test files or fixtures. CI should block merges for that rule.
+
+liam: ops note: if we go the ephemeral-grant route, add automated grant creation to the scan orchestration, emit grant-id to stdout and to the ticket, and ensure grants have narrow constraints (principal + encryption-context).
+
+isabel: triage update — initial KMS metadata search returned no matches for the blob, repo history shows test-only usage. marking as likely false positive; will prepare suppression with evidence and link it to SEC-2026-0507. will still push the lint to block PEMs.
+
+morgan: thanks — set thread status: in_progress -> awaiting suppression. :thumbsup:

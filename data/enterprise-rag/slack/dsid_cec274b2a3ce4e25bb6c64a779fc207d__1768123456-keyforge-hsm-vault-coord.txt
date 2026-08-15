@@ -1,0 +1,34 @@
+partnerships
+
+Ana: Heads-up 1: KeyForge (HSM + secrets manager partner) asked to coordinate a joint announcement for Redwood Private next month. They want SSO/SAML, SCIM provisioning, and our Vault plugin demoed. Marketing/legal/eng - any hard constraints? :calendar:
+Sam: Security: we need to verify FIPS level, HSM attestation, and confirm key-wrap semantics (KMIP vs custom API). Who will own the security checklist?
+Priya: Eng-infra can take the Vault plugin + SCIM connector. Estimate: 3 sprints for production-ready + CI e2e tests. Well need KeyForge SAML metadata and a sample SCIM schema.
+Marco: Solutions will produce a partner runbook, terraform quickstart for Dedicated and Private, and a short walkthrough for Marketplace listing. Will draft copy for review.
+Devon: Legal: request partner logo guidance, co-marketing MOU, and an embargo date. Need any PR drafts 7 business days before publish. Ill send a redline template by EOD.
+Priya: Proposed minimal SCIM mapping:
+```
+scim.user.id -> external_id
+scim.user.userName -> email
+scim.user.name.givenName -> first_name
+scim.user.name.familyName -> last_name
+scim.user.groups -> group_memberships
+```
+We can extend with custom attributes for role/org when KeyForge confirms support.
+Sam: Also decide which KMS mode to demo: customer-managed CMK in KeyForge HSM (recommended for Private) vs platform-managed key wrap for Hosted. Suggest demo uses customer-managed to show compliance posture.
+Ana: Marketing needs a 1-pager that lists supported modes (Hosted/Dedicated/Private), a partner quote, 2 screenshots (console and Vault flow), and a short GIF. Marco can you own assets? :camera:
+Marco: On it. Need a KeyForge test tenant to capture flows. @KeyForge-bot please share test credentials or a demo tenant link. Ill also add a short demo script for the gif.
+KeyForge-bot: (automated) Received request for SAML metadata and a test tenant. Support rep will follow up within 24h.
+Devon: Also flagging channel partner clause for co-selling in the MOU. If anyone has example clauses, drop them in #partnerships-resources for the redline.
+Priya: Rollout plan: pilot with 2-3 customers -> collect KPIs (latency for key ops, provisioning success rate, sync latency for SCIM) -> GA. Target GA date: 2026-05-20 assuming no major blockers.
+Sam: Quick question: do we want to surface HSM vendor attestation on the public page or only in a technical appendix?
+Devon: Public: state "FIPS-certified HSM support". Link to technical appendix and attestation docs for customers with compliance needs.
+Ana: Action items recap:
+- Priya: Vault plugin + SCIM POC (owner)
+- Marco: marketing assets + request demo tenant (owner)
+- Sam: security checklist, FIPS/attestation request (owner)
+- Devon: MOU redline + embargo window (owner)
+I'll collate and share a single tracking doc and set a follow-up sync for 2026-04-25 11:00 PT. :rocket:
+Marco: Adding draft runbook and terraform snippet to the shared doc now: https://redwood-internal/docs/partnerships/keyforge-integration
+Sam: Also, for test matrix, add key rotation and multi-tenant key separation tests.
+Priya: A note on SCIM: confirm support for incremental sync vs full sync; incremental preferred.
+Ana: Great, closing the thread. Follow-up on 2026-04-25. Thanks everyone! :white_check_mark:

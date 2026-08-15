@@ -1,0 +1,56 @@
+docs
+
+maria (Docs): Quick sync: PR #6123 is nearly there but QA spotted gaps in the streaming + pagination snippets across py/ts/go. Specifically: resume-token TTL not mentioned, no jittered retry examples, and missing a short fallback pattern for failed resumes. Can someone own the updates?
+
+sam (SDK): I can lead the SDK snippets update. Which exact examples?
+
+maria (Docs): Update docs/snippets/sdk/streaming-resume/*. Keep examples tiny. Also adjust examples/get-started/stream-paginate/README.md to reference token TTL and add an inline note in docs/guides/pagination.md.
+
+eli (PY SDK): I pushed a small python example to branch docs/stream-retries. Plan: show an ExpJitter retry wrapper and a resume-token check. Example: ```py
+# show jittered backoff + resume handling
+from sdk import Retry, ExpJitter
+retry = Retry(backoff=ExpJitter(base=0.1, max=2.0))
+resp = client.stream(request, retry=retry)
+for chunk in resp:
+    if getattr(chunk, 'resume_token', None):
+        # validate or persist token for resume attempts
+        resume = chunk.resume_token
+    print(chunk.text)
+```
+
+jon (Go eng): I'll add a minimal Go snippet that emphasizes context cancellation and an exponential backoff helper. Nothing heavy, just the pattern: ```go
+ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+defer cancel()
+stream, err := client.Stream(ctx, req)
+if err != nil { return err }
+for chunk := range stream.Chunks() {
+  fmt.Println(chunk.Text)
+}
+// recommend: use exponential backoff with jitter for reconnects
+```
+
+linda (TS SDK): TypeScript example going in; will show async iterator + a short typing hint for resumeToken. Plan: ```ts
+for await (const part of client.stream(req)) {
+  if (part.resumeToken) { resume = part.resumeToken }
+  console.log(part.text)
+}
+// note: resumeToken is string | undefined
+```
+
+maria (Docs): Two editorial points: 1) explicitly say resume tokens expire after 24 hours and link to the token TTL policy (small inline link) 2) include a one-paragraph fallback pattern: if resume fails, switch to polling pages with a sample pseudocode block (just a few lines). Keep examples short 2d no full apps.
+
+sam (SDK): Should we also call out "batch_size" as an optional knob here? Might be useful for readers balancing throughput vs latency.
+
+maria (Docs): Yes 2d add a single-line note: "set batch_size for throughput vs latency trade-offs". Don't expand further.
+
+deploy-bot: docs preview build for PR 6123 is ready: https://deploy.preview/docs/pr-6123 (status: passed) :white_check_mark:
+
+eli (PY SDK): @sam @jon can you sanity-check my python call shape? I used `resp = client.stream(request, retry=...)` which matches current SDK surface but want to avoid surprises.
+
+sam (SDK): I'll review and post tiny feedback before EOD.
+
+jon (Go eng): Looked fine, left a couple micro-nits on variable names in the branch.
+
+linda (TS SDK): TS snippet pushed and linted. Also updated examples README link.
+
+maria (Docs): Thanks everyone. Target: merge before Thursday release cut. If anyone hits blockers, DM me directly. :pray:

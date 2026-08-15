@@ -1,0 +1,49 @@
+1769998888
+
+incident-bot: PAGER: routing-policy 'evacuation' generating high 5xx and latency on tenant routing. impact: spillover into dedicated pools and cross-tenant exposure detected. severity: P1. link: https://ops.redwood/alerts/1769998888
+Selena: ack — I'm getting the oncall. tagging @Ajay for live
+Ajay: I'm oncall. starting timeline capture. first visible spike ~1769998800, sudden jump in routed requests hitting dedicated-us-east-2 despite host selection being hosted-us-east. looks like fallback path stuck to dedicated variants.
+Morgan: seeing same in the dashboard — token rate +200% for dedicated pool, error rate from model-variant mismatch (model variant requested: redwood/gptx-small-quant, served: redwood/gptx-medium-fp16) — likely model-variant mapping mismatch in policy.
+Ivan: tenant isolation alarms firing: some tenants are seeing cross-tenant latency and billing anomalies. CS pinged: they reported live-prod slowdowns and elevated invoices.
+Ajay: quick mitigation thoughts: 1) stop the evacuation policy routing so fallback can't trigger, 2) force route policy to prefer local-hosted variants, 3) roll back recent policy change made ~1769998700. I'll attempt (1) now.
+Selena: good. please coordinate with infra so we don't evict in the middle of jobs.
+Ajay: running command:
+```
+redwoodctl routing get --policy evacuation --region us-east --verbose
+```
+Output (truncated):
+```
+policy: evacuation
+binds:
+ - priority: 50 -> target: dedicated-us-east-2 (eligible=true)
+ - priority: 40 -> target: hosted-us-east (eligible=false)  # bug: eligible flag inverted
+fallbacks:
+ - model_variant_map: {gptx-small-quant: gptx-medium-fp16}
+```
+Ajay: the eligible flag is inverted — hosted path marked ineligible so requests fall through to dedicated. applying hotfix to flip eligible flag.
+Ivan: if you flip it, we should watch for capacity saturation. dedicated pool is already near 85% util. recommend enabling burst-throttle on tenant keys before flipping.
+Morgan: I can apply a temporary throttle for affected tenants. listing top offending tenants: tenant_42, tenant_acme, tenant_delta.
+Selena: Morgan apply throttle for _42 and acme now, Ivan help confirm dedicated headroom.
+Morgan: Applied rate-limit: `redwoodctl quota apply --tenant tenant_42 --rps 10` and for acme too. responses: OK.
+Ivan: checking pool capacity: dedicated-us-east-2 free slots: 12 GPUs but many are pinned. if we flip routing we expect sudden surge. propose to bring a small burst pool and mark it for fallback instead of main dedicated. requesting @deploy-bot for an on-call infra scale.
+deploy-bot: Deploy job queued: scale/dedicated-us-east-2-burst +2 nodes. ETA ~2m.
+Ajay: flipping eligible flag now (rolling change with canary):
+```
+redwoodctl routing set --policy evacuation --region us-east --binds '[{"priority":50,"target":"dedicated-us-east-2","eligible":false},{"priority":40,"target":"hosted-us-east","eligible":true}]'
+```
+Ajay: Change applied to canary subset (10% routes) — monitoring.
+Selena: watching latency and errors.
+Morgan: canary looks good, error-rate dropping for those requests, latency back to normal for hosted path. ded pool token rate decreasing.
+Selena: proceed to full rollout in 60s if metrics hold.
+Ajay: rolling to 100%.
+Selena: roll complete. monitoring 5m.
+Ivan: post-roll metrics: dedicated token rate down 78%, hosted latency normalized, 5xx down from 12% -> 0.4%.
+cs-ops: CS note: acme reported degraded search ranking and a spike in cost. they're asking for an incident summary and ETA for billing adjustment.
+Selena: acknowledged, we'll prepare postmortem and cost impact numbers. quick estimate: 3 tenants over-routed for ~22m, avg extra token spend ~120k tokens per tenant.
+Ajay: root cause hypothesis: a recent policy deployment (PR #4321) inverted the `eligible` flag order for binds under evacuation policy for us-east. unit tests didn't catch because codepath is sensitive to bind ordering. action items: rollback PR, add tests for bind ordering, alerting for sudden dedicated-token spikes.
+Morgan: creating a follow-up ticket: RFC-evac-policy-fix, adding suggested guardrails (synthetic canary on routing policy changes).
+Ivan: CS coordination: assign to Morgan for customer comms, Selena to own postmortem.
+Selena: assign owners and timeline: 1) incident triage + mitigation — done; 2) notify affected customers (cs-ops) — in progress; 3) postmortem draft due EOD; 4) tests + patch PR by tomorrow morning.
+Ajay: leaving oncall. Selena taking over.
+Selena: thanks — marking incident as RESOLVED once we finish customer comms. :white_check_mark:
+incident-bot: Incident 1769998888 status changed: RESOLVED by Selena at 1769999500

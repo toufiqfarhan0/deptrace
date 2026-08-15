@@ -1,0 +1,53 @@
+eng-runtime
+
+alex: Heads up — I opened a small PR that tightens the KV prefetch window to avoid stale reads when sequence lengths spike. Can someone spare a quick review? Would like to merge before tomorrow's deploy window if no issues. PR: https://github.com/redwood-inference/runtime/pull/4972
+
+maya: grabbing it now, looks small from the diff. is there a perf regression risk?
+
+alex: perf should be neutral — it's more defensive (shorter prefetch ttl). added a microbenchmark locally, no regression.
+
+prashant: I'll take a look in ~30m, busy with another release task atm. if you need someone sooner @anna might be free.
+
+anna: I can jump on this after stand. quick ask: can you add a unit test for the ttl edge where sequence len goes > prefetchSize? caught that before in prod.
+
+alex: good call — added a small test and pushed 3 commits. also fixed a nil-pointer check in the prefetch path. snippet:
+
+```go
+if hdr == nil {
+    // nil means no active cache header, safe to skip prefetch
+    return nil
+}
+// proceed with prefetch
+```
+
+ci-bot: build #5218 started for PR 4972. running unit + integration suites.
+
+ci-bot: unit tests passed. integration suite: kv-consistency-test failed (flaky timeout). mark: flaky.
+
+maya: saw that flaky before, likely due to test harness timings. can we rerun?
+
+alex: triggered rerun.
+
+ci-bot: rerun started by alex. build #5220.
+
+prashant: skimmed the logic — looks good. one minor comment on a log level (debug vs info) but not a blocker. happy to approve after green.
+
+ci-bot: all checks green for PR 4972.
+
+maya: LGTM :thumbsup:
+
+anna: quick nit resolved, approving.
+
+prashant: approving too, thanks alex.
+
+alex: thanks all — merging now. I'll watch errors and rollback if noise. cc: infra oncall if I see spike. :rocket:
+
+ci-bot: PR 4972 merged into main by alex. changelog note: "kv: tighten prefetch ttl, add ttl edge test"
+
+alex: will post a short blurb in the morning stand notes about the small change and the monitoring to watch for any KV misses.
+
+maya: thanks for the quick turnaround.
+
+anna: nice.
+
+prashant: good ship.

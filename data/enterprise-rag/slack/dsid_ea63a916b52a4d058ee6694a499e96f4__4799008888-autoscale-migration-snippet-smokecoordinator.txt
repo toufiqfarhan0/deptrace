@@ -1,0 +1,56 @@
+docs
+
+Ana (docs): Hey team, quick doc thread: I found an inconsistent field name in the Dedicated provisioning examples. Some examples use `autoscale` (legacy) while others use `scalePolicy`. The mismatch is confusing in the Quickstart.
+
+doclink-bot: Automated scan: provisioning/examples contains 4 files referencing `autoscale` and 2 files referencing `scalePolicy`. See: https://ci.internal/doc-scans/4799008888
+
+Noah (eng-runtime): Ugh, thanks Ana. We changed the internal model a while back but missed a few example files. We should standardize on `scalePolicy` for v2. Are we planning a compatibility note or a migration table?
+
+Ana (docs): I'd like to do both: 1) update examples to v2 (scalePolicy) 2) add a small migration table and a compact code snippet showing v1 -> v2 mapping so existing users can adapt quickly. Also propose a tiny smoke YAML that product/staging can apply.
+
+Priya (ml): Can you add a short note about how min_instances interacts with warm KV caches? People often assume scaling to 0 preserves caches — it doesn't. A single sentence warning would help.
+
+Noah (eng-runtime): Good call. Maybe: "Note: scaling to 0 will drop in-memory KV caches; set min_instances >=1 to preserve warm caches." Short and to the point.
+
+Ana (docs): Draft migration table (one-line rows):
+- autoscale.threshold -> scalePolicy.target_utilization_pct
+- autoscale.cooldown -> scalePolicy.cooldown_seconds
+- autoscale.min -> scalePolicy.min_instances
+- autoscale.max -> scalePolicy.max_instances
+
+Ana (docs): Minimal smoke YAML (staging use only):
+```yaml
+scalePolicy:
+  mode: target_utilization
+  target_utilization_pct: 65
+  cooldown_seconds: 45
+  min_instances: 1
+  max_instances: 4
+```
+
+Noah (eng-runtime): Looks good. Small request: change target to 70 in production example; 65 is fine for staging. Also add a line showing how to apply via the CLI: `rwctl tenants apply-scale --tenant t-stg --file autoscale-staging.yaml`.
+
+Ana (docs): Will add CLI one-liner and note about prod value. Also putting the v2 Python snippet (short):
+```python
+# redwood-sdk v2
+from redwood import ProvisioningClient
+client = ProvisioningClient()
+policy = {"scalePolicy": {"mode": "target_utilization", "target_utilization_pct": 70}}
+client.tenants.update_scale("t-123", policy)
+```
+
+Priya (ml): Suggest a tiny chatty example for model owners showing why target_utilization matters: "Set target_utilization_pct based on p95 GPU utilization observed in traces; higher targets save cost but increase latency risk."
+
+Ana (docs): Added sentence in the autoscale section. One more thing: consolidation plan. I'll open a small docs PR updating the 6 example files plus the Quickstart. Noah, can you own a tiny runtime compatibility note (one paragraph) to put in the migration section?
+
+Noah (eng-runtime): Yep, I'll draft the runtime note and drop it into your PR as a comment.
+
+doclink-bot: Scheduling follow-up: re-scan after PR merge to confirm no legacy `autoscale` tokens remain.
+
+Ana (docs): PR opened: https://github.com/redwood/docs/pull/4895 0 files changed (examples + quickstart + migration table). Assigning @Noah for the runtime blurb and @Priya for the ML note.
+
+Priya (ml): Quick review in a bit. If it's small we can merge and then I'll run a staging smoke.
+
+Noah (eng-runtime): I'll add the blurb today. Thanks for catching this, Ana.
+
+Ana (docs): Thanks all 44d closing thread after merge + re-scan.

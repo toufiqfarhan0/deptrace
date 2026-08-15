@@ -1,0 +1,33 @@
+docs
+
+Alex K: quick heads-up — opened a small docs PR with an on-prem preflight check script. covers MTU checks for overlay + basic HSM reachability, plus an SDK proxy example. need a quick review and a link-fix for the installer anchors
+Docs Bot: PR opened: https://github.com/redwood-inference/docs/pull/4123 — CI started :github: 
+Maria G: looking now. can we include a minimal migration checklist in the PR for customers moving from hosted -> private (networking + certs + hsm steps)?
+Alex K: yes — added a short checklist section in the draft. also noted a broken anchor in docs/install/onprem.md that points to #hsm-setup (anchor is actually #pkcs11-setup).
+Jamal R: sample preflight usage looks good. small nit: prefer explicit mtu warn threshold at 1400 for flannel/overlay. suggestion: `--mtu-threshold 1400` param
+Alex K: good call. added flag and updated help text. snippet in PR:
+```bash
+# run local preflight before packaging offline bundle
+./scripts/preflight-check.sh --hsm --mtu-threshold 1400 --sdk-proxy http://127.0.0.1:8080
+```
+Lin T: can we also print the expected pkcs11 socket path and a hint for SUSE/RHEL differences? had a customer confusion last week about /usr/lib64 vs /usr/lib
+Maria G: yes, add a short table in the notes. also add a one-liner for verifying HSM with softhsm for local testing:
+```bash
+softhsm2-util --init-token --slot 0 --label test-token
+pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so -O
+```
+SRE Ops: quick security check — ensure the script never logs HSM PINs or private keys. if any env var for PIN is used, print obfuscated value (e.g. ****1234).
+Alex K: script now masks PINs, and prints only connection status + cert fingerprint. added test for that in CI.
+Jamal R: about the SDK example — include both curl and node snippet so docs show integration surface. node example (very tiny):
+```js
+const fetch = require('node-fetch')
+fetch(process.env.RW_ENDPOINT + '/v1/health', {headers:{'Authorization': `Bearer ${process.env.RW_KEY}`}})
+  .then(r => r.json()).then(console.log)
+```
+Docs Bot: Link-check: found failing anchor in docs/install/onprem.md -> line ~72, anchor #hsm-setup not present. recommended fix: change link to #pkcs11-setup or add anchor.
+Maria G: I'll push a follow-up commit to fix the link and add the migration checklist table. planning to squash with Alex's commits.
+Lin T: one more airgap note — remind users to include the signed tarball checksum alongside the offline bundle (sha256 + detached gpg). I'll add the exact commands in a small paragraph.
+Alex K: thanks — if you two are happy I'll merge after CI green. tagging @eng-oncall for awareness in case preflight touches installer hooks. :eyes:
+SRE Ops: ack, will watch the deploy. :thumbsup:
+Maria G: LGTM after link fix and the SUSE note. go ahead once CI passes. :shipit:
+Alex K: merging once green, will follow up with a short release note in #release-war-room about the preflight script and example snippets.

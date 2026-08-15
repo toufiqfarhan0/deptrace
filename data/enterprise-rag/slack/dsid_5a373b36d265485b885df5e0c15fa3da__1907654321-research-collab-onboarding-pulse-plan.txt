@@ -1,0 +1,35 @@
+product
+
+Maya R: quick draft — proposing a lightweight research-collaborator onboarding + pulse plan for early-access customers who opt into feedback. Goal = 6-week engagement sprint: weekly 10-min pulse, 2x deep interviews, one integration checklist. Need input on recruitment messaging, opt-in funnel, cohort sizing by persona, success metrics, and launch gates. thoughts?
+
+Josh P: +1. Segment by persona: platform, product, ML infra. target 3-5 active seats per persona to get actionable signal. incentive = extra credits + 2h onboarding session. keep opt-in flow 2–3 steps max.
+
+Leila C: small legal/priv note — include clear privacy opt-in text and data retention window. can we offer a "no-logs" trial checkbox for sensitive customers? propose gating: weekly pulse response >=50% and median pulse NPS >=7 to continue.
+
+Simon H: ops notes — we need these instrumentation events: onboarding_started, pulse_sent, pulse_response, interview_scheduled, integration_verified, bug_reported. add tags for persona + cohort. propose dedicated read-only slack channel per collaborator cohort for async tracking.
+
+Emma (research-bot): suggested cadence: pulse email Wed 11:00 PT, reminders at 48h and 24h. pulse template (3 quick fields):
+```
+1) What did you try?
+2) What happened / where did it fail?
+3) How big is the impact (low/med/high)?
+```
+keeps replies ~1–2 sentences.
+
+Maya R: good call. acceptance criteria to graduate from the pilot: stability (error rate <1% on instrumented calls), latency SLO met for primary route, and a documented integration runbook + at least one shipped internal example. can we align these to product goals?
+
+Josh P: also recommend A/B test onboarding flows: self-serve walkthrough vs scheduled concierge onboarding. metric = time-to-first-success (defined as first successful inference + validated output).
+
+Leila C: add stop-criteria: churn >30% across 3-week window or major PII concerns -> pause cohort. also define data retention: default 90 days for pilot data, option for shorter retention on request.
+
+Simon H: will draft the slack channel template, event schema, and a short 30-min kickoff deck for collaborators. ops can run initial onboarding sessions.
+
+Maya R: awesome — i'll consolidate into a 1-pager and loop in legal + ops for sign-off. @Josh P @Leila C can you take ownership of messaging and privacy/incentives respectively? :thumbsup:
+
+Josh P: taking messaging + A/B experiment.
+
+Leila C: taking privacy + incentive policy. will sync with legal tomorrow.
+
+Simon H: ops owner for instrumentation and channel setup.
+
+Emma (research-bot): created a checklist task (research-onboard-8432) and logged action items for owners. :robot_face:

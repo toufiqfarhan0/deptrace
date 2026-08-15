@@ -1,0 +1,88 @@
+incidents
+
+Incident-bot: Pager duty: PROD eu-west-1 gateway errors >5% (5xx+timeouts). Pager: Emily (oncall). Severity: P1. Link: https://pagerduty.example/INC2145006789
+
+Emily: ack — I'm looking at dashboards and traces. assigning roles.
+
+Sam: ack, I'll check ingress proxies and load balancers. seeing cluster gw-eu-b returning a lot of 502/504.
+
+River: I'm checking traces. sampling sparse; many requests have no X-Request-Id header and missing span ids, so correlation is terrible.
+
+Nikhil: Logs confirm ~25-35% of failing requests lack request-id. that's our correlation hole.
+
+Emily: hypothesis: upstream clients or edge are dropping or not setting request-id causing missing spans. plan:
+- add a short-term header generator at edge if X-Request-Id absent
+- temporarily ramp trace sampling to 100% for the affected pool
+- shift some traffic off gw-eu-b to gw-eu-a
+
+Sam: can implement traffic steering now. preparing k8s weight patch; will also smoke test curl after middleware deploy.
+
+River: will push a lightweight Envoy/Lua filter to inject X-Temp-ReqId when missing, and increase trace sampler for gw-eu-b to capture full traces for 10m.
+
+Emily: paste the curl you plan to run for validation, Sam.
+
+Sam: test from bastion:
+```
+# no x-request-id header
+curl -i -H "Host: api.redwood-inference.svc" "https://gw-eu-b.internal/health" --resolve gw-eu-b.internal:443:10.1.2.3
+```
+Expect header X-Temp-ReqId present after patch.
+
+Nikhil: note: downstream logs may get duplicate ids. we'll update Fluentd mapping to prefer X-Request-Id then X-Temp-ReqId.
+
+Ops-bot: Runbook steps: 1) enable 100% sampling for gw-eu-b 2) deploy header-inject Lua to envoy 3) shift 30% traffic to gw-eu-a 4) monitor 5xx for 10m 5) rollback if no improvement.
+
+River: pushing Lua to staging. snippet:
+```
+function envoy_on_request(request_handle)
+  local rid = request_handle:headers():get("x-request-id")
+  if not rid or rid == "" then
+    local gen = tostring(os.time()) .. "-" .. tostring(math.random(999))
+    request_handle:headers():add("x-temp-reqid", gen)
+  end
+end
+```
+
+Sam: starting weighted rollout now: gw-eu-b 70% / gw-eu-a 30%. will go to 50/50 in 5m if stable.
+
+Support: affecting batch embedding jobs and some long-sequence text gen calls. support channel #support-prod-2145006789 created.
+
+Emily: logs show X-Temp-ReqId appearing. trace attach rate climbed to ~82% after sampling bump.
+
+River: traced a failed request (x-temp-reqid: 214500-901). root cause points to backend svc-cache timing out on a redis miss leading to 502 cascade.
+
+Nikhil: short-term mitigation: configure backend call circuit-breaker with fast fail time (100ms) and increase backend pool size briefly to absorb retries.
+
+Emily: Sam, can you canary a circuit-breaker config on svc-cache? do controlled rollout.
+
+Sam: applying helm patch: cb_timeout=100ms, max_connections=250. canary 5% -> 50% -> full if stable.
+
+Ops-bot: Metrics update: 5xx rate dropped from 5.7% -> 1.4% after header injection + traffic steering. p95 latency slightly up but acceptable.
+
+Emily: Support, please notify affected customers: "We observed transient gateway errors in eu-west-1; mitigations applied and we're monitoring. Contact support if you see persistent 5xx." get ops sign-off.
+
+Support: drafted and posted update to customer-status. monitoring replies.
+
+River: noticed some historical log files during rotation don't have X-Temp-ReqId; triggering temporary Fluentd buffer and re-ingest for the incident window.
+
+Nikhil: create follow-ups: 1) ensure edge always sets X-Request-Id at CDN/edge 2) schema validation for downstream services requiring id 3) permanent change in logging pipeline to prefer consistent id field.
+
+Emily: action list:
+- short: inject X-Temp-ReqId at edge (done)
+- short: 100% trace sampling for 10m (done)
+- short: traffic shift gw-eu-b -> gw-eu-a (in progress)
+- short: CB on svc-cache canary (in progress)
+- short: support customer notice (done)
+- long: permanent edge id generation + schema validation + logging pipeline hardening
+
+Sam: closing the page. channel open for 1h monitoring. react :thumbsup: when stable.
+
+Emily: thanks. tagging postmortem owner @River. I'll write the incident stub in ops-incidents.
+
+Incident-bot: Incident P1 mitigated (error rate reduced). PagerDuty INC2145006789 remains open for postmortem.
+
+Support: will collate incoming tickets into the incident tracker.
+
+River: follow-up: I'll own the postmortem and create a ticket for the logging/edge fix. will include timelines and root cause analysis.
+
+Emily: final check-in in 60m unless regression. :white_check_mark:

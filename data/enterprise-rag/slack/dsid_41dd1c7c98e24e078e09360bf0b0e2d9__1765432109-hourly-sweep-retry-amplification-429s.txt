@@ -1,0 +1,37 @@
+support
+
+Alex H: Heads up — customer dropship-prod reporting repeating 429 spikes every hour at :00 for the last 6h. RPM/TPM jump then client retries amplify. Pulling logs now.
+
+Maria G: Can you paste a sample req_id + request headers? trying to confirm if this is per-tenant RPM cap or something upstream.
+
+Alex H: Sample: req_id=rs-12345 header: Authorization: Bearer sk-prod-..., X-Request-ID: rs-12345, X-Client-Retry: 3. Observed RPM ~18k, TPM ~11k. Our tenant rpm_limit is 15k.
+
+Tyler K: That will hit the tenant cap. Are they running any scheduled fanout jobs?
+
+Alex H: Yes — they run an inventory-sweep cron at :00 that fans out ~5k parallel requests from each of 6 regions (total ~30k concurrency). Clients immediately retry on 429 with no jitter.
+
+Sophia L: Two problems: synchronized minute-boundary sweeps + retry amplification (no jitter / not honoring Retry-After). Recommend: stagger the cron, add randomized jitter, and respect Retry-After header. Also can we pull per-tenant rate-limit traces?
+
+Alex H: Pasted a trace snippet from logs: ```[2026-03-16T00:00:00Z] req_id=rs-12345 status=429 tenant=dropship-prod rate_limit=tenants:15k returned_after=60```
+
+Maria G: Short-term mitigation: we can temporarily bump the tenant RPM to 30k for 60m and advise the customer to roll out client fix. I'll request an emergency quota change (need approvals).
+
+Tyler K: Long-term guidance to customer: shard the sweep (per-tenant shard tokens), add jitterized exponential backoff with cap, and honor Retry-After header. Example snippet: ```js
+// client pseudo
+async function retryWithJitter(fn, attempt){
+  const base = 1000 * Math.pow(2, attempt);
+  const jitter = Math.random() * 1000;
+  await sleep(base + jitter);
+  return fn();
+}
+```
+
+Alex H: Customer says patch rollout will take >24h. Can we do server-side smoothing (queueing/spillover) while they fix clients?
+
+Sophia L: We have a tenant-level 'burst-mitigation' smoothing flag that queues requests for short periods and smooths bursts. Ops: can you enable for dropship-prod? Also consider temporary quota bump.
+
+eng-sre-bot: Action taken — enabled burst-mitigation for tenant dropship-prod at 1765432135. Temporary RPM increased to 30k until 1765435735. Monitoring: alert on >10% 429 rate and token-bucket 75% saturation. :white_check_mark: 
+
+Maria G: Customer confirms 429 rate dropped after the mitigation. I'll open a follow-up ticket for the SDK patch + recommended cron staggering guidance in the playbook.
+
+Alex H: Thanks team. I'll own the postmortem and include example SDK changes, a checklist for ops (how to enable smoothing), and recommended telemetry to detect minute-boundary spikes. Closing once postmortem is shared. :thumbsup:

@@ -1,0 +1,55 @@
+support
+
+maria.su: @acme-oncall getting multiple p99 complaints, started ~03:20 UTC. p95 ~0.9s -> 1.2s, p99 spiking to ~2.8s. customer reports occasional 503s. Observed: gpu-node-17 showing OOMs and rising GPU memory pressure. Can SRE take a look?
+
+devon_k: looking now. quick glance at traces — tails show long allocator stalls (~600ms) before token generation resumes. I see slab_compaction attempts failing and repeated 'OutOfMemory' warnings in runtime logs. grabbing logs for gpu-17.
+
+maria.su: tenant: acme-42, model: gptq-blue-13b, avg seq ~1024 (spikes to 2k on some requests). bursty traffic—batcher saw batches up to 128 recently. sending sample request ids.
+
+jake_r: pasted runtime log snippet:
+```
+[2026-03-17T03:22:01Z] worker=runtime-7 gpu=gpu-17 WARN MemoryAllocator: allocation failed: Needed=1.2GiB Available=0.9GiB
+[2026-03-17T03:22:01Z] worker=runtime-7 ERROR KVCache: entries=2_340_123 growth_rate=+12%/5m
+[2026-03-17T03:22:02Z] worker=runtime-7 INFO SlabAllocator: free_ratio=8% fragmented_segments=312
+```
+this looks like KV cache growth + fragmentation.
+
+devon_k: confirmed. allocation pattern + long conversations = KV growth. fragmentation prevents large contiguous allocs -> OOM. immediate mitigations we can try:
+1) enable tenant-level active eviction TTL (evict prefixes >10s) via admin API
+2) reduce max_batch_size for acme-42 in routing policy to 32
+3) temporarily route acme-42 to dedicated pool (if available) or fallback to smaller model variant (gptq-blue-7b)
+4) schedule rolling restart for runtime workers on gpu-17 (drain then restart) to trigger compaction
+5) apply per-tenant soft-rate-limit to smooth bursts
+
+maria.su: customer prefers minimal downtime. Which of those are lowest risk and fastest to apply?
+
+devon_k: order of low->higher risk: 1) enable eviction TTL (instant, no restart), 2) set route max_batch_size=32 (instant), 3) enable soft-rate-limit 100r/s for tenant (instant), 4) route to smaller model (warmup needed but lower risk), 5) rolling restart (30–60s request drain per worker). I'd do 1,2,3 now.
+
+jake_r: small commands:
+```
+# enable eviction for tenant
+POST /admin/tenants/acme-42/kv/eviction {"ttl_secs":10}
+# set route batch size
+POST /admin/routing/acme-42 {"max_batch_size":32}
+# soft rate-limit
+POST /admin/tenants/acme-42/rate_limit {"type":"soft","rps":100}
+```
+I also recommend adding a tmp flag to allocator: --allocator-compact-threshold=0.6 for more aggressive background compaction. That requires rolling restart.
+
+maria.su: applied eviction TTL + batch_size + soft rate limit at 03:28. Observability: p95 dropped from 1.2s -> 0.45s within ~8 minutes. p99 improved but still at ~1.7s. no further OOMs so far. Customer asking for permanent fix.
+
+devon_k: good short-term. For long-term: we should limit per-tenant KV growth (config kv_max_entries or bounded by token count), improve allocator so it can coalesce small free segments (patch to background compaction), and add eviction heuristics based on conversation activity. Also add alerting: slab_fragmentation_percent > 65% OR kv_entries increase > 500k in 10m triggers page.
+
+jake_r: I'll draft a small runtime change: background compactor that triggers when fragmentation>70% OR free_ratio<10%. Also cap tenant KV at 1_000_000 entries with LRU eviction to avoid unbounded growth. Will open PR and can canary to a subset of nodes.
+
+maria.su: customer is okay with rolling restarts during maintenance window, prefers we keep them updated. schedule?
+
+devon_k: scheduling rolling restart for gpu-17 at 23:40 UTC (maintenance window). plan: drain requests on worker -> wait for active requests to finish (max 60s) -> restart -> verify metrics -> next worker. minimal impact expected. will also temporarily keep eviction TTL active until allocator patch lands.
+
+sre-bot: Scheduled: Restart gpu-17 runtime workers at 2026-03-17T23:40:00Z. Maint window: 30m. Auto-notify customer. Rollback: revert eviction flag + routing if regressions observed.
+
+maria.su: thanks, will inform acme. please add incident ticket and owners. :thumbsup:
+
+devon_k: creating INC-2026 with action items: 1) telemetry dashboard for slab fragmentation + kv growth, 2) PR for background compactor, 3) runtime flag defaults change, 4) follow-up postmortem + customer notes. assigning to jake_r + devon_k.
+
+maria.su: noted, closing loop with customer after restart.

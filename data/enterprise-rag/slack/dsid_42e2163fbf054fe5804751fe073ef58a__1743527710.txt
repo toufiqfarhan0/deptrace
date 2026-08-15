@@ -1,0 +1,129 @@
+incidents
+
+incident-bot: :rotating_light: Triggered alert: Hosted API p99 latency burn (us-east) is above threshold for 10m
+Signals: chat.completions p99=18.7s (baseline 4.2s), timeout_rate=3.8%, 5xx_rate=1.1%
+Dashboards: https://grafana.redwood.ai/d/hosted-api-us-east-overview?from=now-30m
+Runbook: https://confluence.redwood.ai/display/ONCALL/Hosted+Overload+Circuit+Breaker+Runbook
+
+Rafael Mendes: seeing this too. oncall says mostly chat.completions, model=rw-llama-70b in us-east. Anyone already digging in runtime signals?
+
+Aisha Bello: looking at overload dash (new one). shed_rate is basically 0 (not enabled), but runtime queue depth is spiking hard. prefill_q_depth p95 ~ 140 (normally <20). decode tokens/sec saturated ~ 95-98%.
+
+Christine Wong: pulling request samples from gateway logs. a bunch of client timeouts, retries overlapping. seeing long prompts too (preamble ~12-16k tokens). looks like burst + long-context.
+
+Ethan Park: gateway side: concurrency is unbounded for that route right now besides tenant quota. we can put a temporary cap per-route in us-east if needed. question is do we want to flip breaker canary early?
+
+Peter Holtz: +1 consider canary. concern: if we start returning 503/overloaded without Retry-After in all paths we could trigger retry storm. do we have the hotfix everywhere in us-east?
+
+Christine Wong: Retry-After consistency should be good post pr-18472 but I’m not 100% if prod us-east has it on all handlers. I can verify quickly.
+
+Mina Haddad: routing perspective: we can also enable fallback to us-west for a subset if policy allows. but careful: cross-region latency and west is already ~70% utilization.
+
+Sofia Ivanova: runtime: sched backlog is real. batching is already at cap. we’re also seeing kv cache pressure on a subset of GPUs (fragmentation proxy up). if we keep admitting at this rate, p99 will keep walking.
+
+Rafael Mendes: ok, goal is stop cascade. options:
+1) temporary gateway cap (concurrency + token bucket)
+2) enable breaker canary (us-east only, small tenant slice)
+3) routing fallback (only for tenants configured)
+
+Aisha Bello: error budget burn is accelerating. for the last 15m, availability SLI for hosted in us-east is trending <99.0 if this continues.
+
+Amara Diallo: I can apply a per-route concurrency cap via the gateway config toggle (no deploy). We have a “soft reject” mode that returns 429 w/ Retry-After when at cap. But do we want 429 or 503 here?
+
+Nikhil Sharma: from PM side: prefer stable semantics. overload should be 503 with explicit code if it’s platform saturation. 429 is more “client throttled”. but if we only have 429 available quickly, do it + clear messaging.
+
+Peter Holtz: +1 semantics, but priority is stop tail-latency + timeouts. timeouts are worst UX.
+
+Christine Wong: checked a few live responses in us-east via replay. overload handler is not active so no direct proof. but the common 503s we see are upstream timeouts (no Retry-After). :grimacing:
+
+Ethan Park: the breaker framework is behind flag `overload_protection.breaker_enabled`. canary mode exists: `breaker_mode=canary` + `canary_tenant_hash=5%`. It would return 503 with `error.code=overloaded` and set Retry-After.
+
+Rafael Mendes: that sounds like what we want, but we’re mid-incident. are we confident it won’t false-positive and take out healthy traffic?
+
+Aisha Bello: thresholds from tuning sheet for us-east: open when queue_depth>120 for 30s OR token_sat>0.95 for 60s. We’re currently above both for ~8-10m. So it would definitely open.
+
+Sofia Ivanova: from runtime side, opening would help immediately. we need to reduce admission. we can also temporarily reduce max_tokens cap under duress, but that’s a broader behavior change.
+
+Mina Haddad: if breaker opens, routing can attempt fallback only when configured. do we have default fallback configured for self-serve? I think no (opt-in).
+
+Ethan Park: correct, no default fallback. breaker open would primarily shed/queue at gateway.
+
+Connor O'Brien: FYI deploy status: us-east control plane updated yesterday, runtime patch is current. no deploys in progress. if we flip flags, it’s immediate.
+
+Peter Holtz: can we do a two-step? apply a small gateway cap now to reduce blast radius, then flip breaker canary to get correct error semantics + correlation IDs.
+
+Amara Diallo: I can set cap to 80% of current observed throughput and add token bucket on chat.completions only. That will start returning 429 w/ Retry-After=2 for excess.
+
+Nikhil Sharma: if we do 429, please make sure Support gets a heads up. customers will ask.
+
+Rafael Mendes: ok do the cap now. then we enable breaker canary 5% tenants in us-east, monitor for 5-10m, then decide expand.
+
+Ethan Park: ack. I’ll flip breaker canary flag for us-east only after Amara’s cap is in. Christine can you monitor error payloads to ensure Retry-After present + correlation id?
+
+Christine Wong: yep. I’ll tail gateway responses and spot-check.
+
+Amara Diallo: applying cap now…
+
+deploy-bot: Config change applied: gateway/us-east route=chat.completions
+- concurrency_cap: 2200 -> 1600
+- token_bucket_rps: 0 -> 900 (burst 1200)
+- reject_status: 429
+- retry_after_seconds: 2
+Requested by: Amara Diallo
+
+Aisha Bello: immediate impact: queue depth is starting to flatten (not climbing). timeout_rate down from 3.8% -> 2.6% last 5m but still high.
+
+Rafael Mendes: good. Ethan go ahead with breaker canary.
+
+Ethan Park: flipping `breaker_enabled` to canary (us-east, 5%).
+
+deploy-bot: Feature flag updated: overload_protection.breaker_enabled
+- region: us-east
+- mode: canary
+- canary_tenant_hash: 5%
+- error_status: 503
+- error_code: overloaded
+- include_retry_after: true
+Requested by: Ethan Park
+
+Christine Wong: seeing 503 responses now with payload:
+`{"error":{"code":"overloaded","message":"Service is temporarily overloaded. Please retry.","request_id":"req_7f2..."}}`
+Headers include `Retry-After: 3` and `x-request-id` present. :thumbsup:
+
+Peter Holtz: nice. any sign of clients ignoring Retry-After and hammering?
+
+Aisha Bello: retry traffic is elevated but not spiking further. overall RPS stabilized. breaker_open_rate for canary slice ~0.9 (expected given saturation). also seeing 503s replacing timeouts for that slice.
+
+Sofia Ivanova: runtime now recovering: decode backlog down ~20%. token/sec sat still high but not pegged. should see p99 improve in ~10-15m.
+
+Rafael Mendes: decision point: expand breaker beyond canary? or keep canary + cap until load subsides.
+
+Mina Haddad: keep canary only for now. expanding means more hard 503s and we haven’t notified Support / status page. if p99 improves w/ cap, that’s enough.
+
+Nikhil Sharma: agreed. for now keep impact minimal.
+
+Rafael Mendes: ok. action items:
+- Keep gateway cap for 60m, reassess.
+- Keep breaker at 5% canary in us-east.
+- Aisha to watch SLO burn + p99.
+- Christine to confirm Retry-After coverage on remaining overload paths.
+
+Aisha Bello: update: p99 chat.completions us-east is down to 11.2s (from 18.7s). timeout_rate now 1.4% and trending down.
+
+Peter Holtz: :thumbsup: can we also add a note in #support that some tenants may see 503 overloaded w/ Retry-After, expected during incident mitigation.
+
+Rafael Mendes: I’ll ping Support liaison.
+
+Rafael Mendes: @Dev Patel heads up: us-east had burst traffic causing timeouts. We applied temporary caps and enabled 5% breaker canary. Some tenants may see 503 `error.code=overloaded` with Retry-After; guidance is exponential backoff + respect header.
+
+Connor O'Brien: FYI for postmortem: capture current thresholds, cap values, and canary config. I’ll open an incident doc.
+
+Christine Wong: one more thing: some 429s from cap don’t include `error.code` right now (just message). not ideal but ok short-term. I’ll file a bug / link to overload taxonomy task.
+
+Aisha Bello: metrics stable for last 10m. p99 now 8.6s. still above baseline but improving.
+
+Rafael Mendes: holding steady. if it continues improving, we can remove cap gradually and keep canary running for another day to collect data.
+
+incident-bot: :information_source: Incident status updated by Rafael Mendes: MITIGATING
+Summary: us-east saturation due to burst + long prompts. Applied gateway admission caps + enabled 5% breaker canary to convert timeouts into explicit overload errors.
+Next update in 30m.

@@ -1,0 +1,60 @@
+eng-security
+
+maria.sec: Heads-up — found a rolebinding that unintentionally grants the infra-deployers group edit access to gpu-pool namespaces. Looks like a merge from last week's infra change pulled in a ClusterRoleRef we didn't intend. This could let deploy agents modify GPU node selectors.
+
+sam.infra: ugh. How did you detect it? any evidence of misuse yet?
+
+maria.sec: no signs of exploitation so far. I noticed increased failures in the canary deploys and then inspected the rolebindings. pasted the relevant yaml below:
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gpu-pool-deployer
+  namespace: infra-gpu
+subjects:
+- kind: Group
+  name: infra-deployers@example.com
+roleRef:
+  kind: ClusterRole
+  name: edit
+  apiGroup: rbac.authorization.k8s.io
+```
+
+li.runtime: That roleRef -> ClusterRole: edit is the problem. edit on the namespace lets you change daemonsets, nodeSelectors, tolerations, etc. My bet: IDP group nesting means more users than intended. We should enumerate group membership and audit impersonation checks.
+
+ben.secops: mitigation suggestions: 1) remove the Group subject from the RoleBinding (fast) 2) create a Namespace-scoped Role with only the minimal verbs (get,list,watch) and rebind the deployers to that until we sort membership.
+
+maria.sec: agree. For immediate mitigation I'm going to patch the binding to remove the group. running: `kubectl patch rolebinding gpu-pool-deployer -n infra-gpu --type=json -p='[{"op":"remove","path":"/subjects/0"}]'`
+
+ops-bot: patch submitted by maria.sec at 2026-03-18T18:07:10Z — rollout id: r-4b9f
+
+audit-bot: AUDIT LOG: rolebinding.patch user=maria.sec target=rolebinding/gpu-pool-deployer namespace=infra-gpu status=Success ts=2026-03-18T18:07:11Z
+
+sam.infra: nice — can you also run a quick `kubectl auth can-i` as one of the deployer SAs to confirm reduced permissions? e.g. `kubectl auth can-i patch daemonsets --as=system:serviceaccount:infra:deployer -n infra-gpu`
+
+li.runtime: also list nested groups from Okta: `okta-cli groups members infra-deployers@example.com` — we need to see unexpected service accounts or cross-team users. I'll take that on and open an IDP ticket if I see nesting spillover.
+
+ben.secops: action items: 
+- maria.sec: confirm patch succeeded and post can-i output (today EOD)
+- li.runtime: IDP group membership audit & ticket (owner)
+- sam.infra: prepare a namespaced Role with least-priv for deployer workflow and a short rollback PR
+
+maria.sec: can-i output (quick check):
+```
+$ kubectl auth can-i patch daemonsets --as=system:serviceaccount:infra:deployer -n infra-gpu
+no
+```
+
+maria.sec: patch worked, permissions denied. I'll file a short postmortem and flag the PR that introduced the cluster-role ref.
+
+li.runtime: found two nested groups that were recently onboarded from partner-infra. opening okta ticket to collapse nesting and remove partners from infra-deployers.
+
+sam.infra: I'll draft the least-priv Role and drop a PR for review. tagging @ben.secops for fast-track.
+
+ben.secops: thanks — once PR is in, let's run a quick automated eval on canary jobs for 24h. If green, we can backfill a stricter gating rule in the infra-lint CI.
+
+maria.sec: added incident note: short-lived privilege expansion, no signs of exploit, mitigated by patch, follow-ups assigned. :white_check_mark:
+
+ops-bot: Created ticket INFRA-4523 "Investigate infra-deployers group nesting and rollback accidental cluster-role ref" assigned to li.runtime, sam.infra — due 2026-03-22
+
+sam.infra: acked. will update as I have the PR. :thumbsup:

@@ -1,0 +1,68 @@
+support
+
+maya: Heads-up — customer ACME-2312 reports a sudden spike of 502s for hosted /v1/embeddings after a guest-side burst. Happening ~14:13 UTC. Attaching curl and minimal logs we captured.
+
+maya: curl they used:
+```bash
+curl -v -H "Authorization: Bearer $TOKEN" "https://api.redwood.ai/v1/embeddings" -d '{"input":[...large batch...]}'
+```
+
+maya: nginx upstream errors in frontdoor logs: 
+```
+[14:13:02] upstream prematurely closed connection while reading response header from upstream, client: 10.1.2.3, server: frontdoor, request: "POST /v1/embeddings HTTP/1.1", upstream: "http://10.2.3.4:8080/", host: "api.redwood.ai"
+```
+
+sam: thx maya. Any pattern on client id / tenant? single tenant or multi-tenant burst?
+
+maya: single tenant (guest keys), ~200 concurrent small connections from their side, seq length small but lots of parallel streams.
+
+kai: sounds like keepalive pool exhaustion on frontdoor nginx / envoy. We saw similar when many short-lived conns + no reuse -> sockets spin up then drop. What does `netstat` look like on edge nodes?
+
+maya: quick netstat snap: 
+```
+tcp 0 0 10.0.0.1:443 10.1.2.3:53211 ESTABLISHED
+... lots in TIME_WAIT and CLOSE_WAIT
+```
+
+louise: ops-bot just posted a deploy 14:10 UTC for frontdoor config (conn_keepalive=off -> default 0). Might be related. ops-bot, can you link the deploy?
+
+ops-bot: Deploy #D-2024-501 applied to frontdoor at 2024-06-10T14:10Z (author: infra-release). Config change: disable keepalive pooling to prefer fresh conns behind LB.
+
+kai: there — disabling keepalive + guest swarm = thundering short conns. Nginx upstream will open new sockets, burst, then hit connlimit or backlog -> 502.
+
+sam: mitigation idea: re-enable keepalive on frontdoor + tune `keepalive_requests` and `keepalive_timeout`, or increase `worker_connections` temporarily. Also consider connection coalescing on midproxy.
+
+maya: repro steps that reproduce locally: run a 200-concurrency loop with requests every 30ms to /v1/embeddings (small payload). I can drop a short script.
+
+maya: repro script snippet:
+```python
+# loop spawner
+import requests,threading
+for i in range(200):
+  threading.Thread(target=lambda: requests.post("https://api.redwood.ai/v1/embeddings", headers={"Authorization":"Bearer $TOKEN"}, json={"input": ["a"]})).start()
+```
+
+kai: nice. Any traces from envoy side (conn pool ejections / conn-highwater logs)?
+
+maya: envoy logs show repeated `reset_due_to_connection_failure` and `upstream response timeout` at same window.
+
+louise: I'm going to rollback the frontdoor change (re-enable keepalive) as an emergency rollback. Will monitor. :eyes:
+
+ops-bot: Rollback #RB-2024-110 triggered by louise at 14:23Z -> frontdoor config restored.
+
+sam: after rollback, watch latency and 502 rate. If 502s drop we have confirmed config coupling. Also capture tcpdump on one node during spike.
+
+maya: post-rollback: within 90s 502 rate dropped from ~8% -> 0.6%. Customer confirms embeds returning.
+
+kai: follow-ups:
+- add a short-term guard: rate-limit per guest key at edge to prevent hard bursts
+- add an integration test for keepalive-disabled + guest-burst patterns
+- improve deploy checklist to include impact on short-lived-connection workloads (embeds/streams)
+
+louise: filing infra ticket INFRA-842 to add gating and automated smoke for frontdoor keepalive toggles.
+
+maya: closing loop with customer, adding our repro steps and suggested SDK guidance (reuse connections, use persistent client). :white_check_mark:
+
+sam: nice recovery. we should also consider defaulting keepalive on in hosters with midproxy present.
+
+maya: thanks team :thumbsup:

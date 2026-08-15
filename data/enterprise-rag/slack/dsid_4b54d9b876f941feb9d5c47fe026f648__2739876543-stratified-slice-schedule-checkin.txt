@@ -1,0 +1,32 @@
+architecture
+
+asha: Quick check — proposed schedule for the stratified slice cutover. Plan is phased: small hotpath extract, then sidecar adapters, finally stateful enrichers. Who wants to own which phase?
+
+miguel: top-down canaries + gating looks safest. we need a clear interface contract for the KV/cache adapter; if not, fallback will add expensive RPCs. also watch tail latency.
+
+jess_k: +1 for canaries. question: who owns cache invalidation and TTL semantics? @samir? :eyes:
+
+samir: I can own invalidation for phase 1 but it'll be temporary. suggested sequence (very small, can be done in a day or two per phase):
+1) introduce an adapter shim (stateless) that implements new interface
+2) dual-read behind a feature flag (old/new) for correctness checks
+3) run a 5% canary with perf/err gating
+4) 50% then 100% and remove shim
+
+miguel: shim is fine. add connection pooling to the shim — observed adapter churn causes >95th percentile spikes. also we should add microbenchmarks for serialization cost.
+
+asha: agree on pooling. can we add a short rollback playbook to the plan? minimal example below: 
+```
+# rollback steps (playbook for oncall)
+fflag disable stratified-slice
+route restore global-old
+monitor latency/5m and errors/1m for 10m
+if stable, revert PRs that flip canary
+```
+
+deploy-bot: deploy started: service/adapter-shim v2026.03.19.7 (canary: 5%)
+
+jess_k: pairing session scheduled with @samir tomorrow 10am PT to walk through the dual-read checks and dashboards. I'll own the canary metrics dashboard (latency, p95, p99, error-rate, typed regressions).
+
+samir: will prepare migration PR, include a README for ops with detailed runbook and an alerting playbook. I'll list expected regressions and safe thresholds.
+
+asha: perfect. next steps: update the RFC with phase owners + timeline + rollback playbook. we'll cover this in next arch sync. tagging as follow-up for next architecture meeting :thumbsup:

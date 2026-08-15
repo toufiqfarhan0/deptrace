@@ -1,0 +1,54 @@
+eng-infra
+
+alex: Quick design idea — a "deferred admit coordinator" that sits in front of the per-key token buckets and holds requests when GPU headroom is low. It would dole out short-lived "ephemeral burst" credits based on realtime headroom and queue pressure. Thoughts?
+
+maria: Are we talking about a separate admission layer or augmenting the current tokenbucket service? how do we compute headroom? :thinking:
+
+alex: Separate thin layer. Headroom = usable_gpu_seconds - estimated_inflight_seconds. Usable_gpu_seconds comes from fleet metrics (free gpus * median_batch_throughput). We already emit free_gpus per pool.
+
+kevin: Fairness question — we can't let noisy orgs borrow all ephemeral credits. Need per-org escrow + decay. Maybe ephemeral credits are non-transferable and have short ttl.
+
+sam: Implementation sketch: keep per-org token bucket as today, but have coordinator compute a global refill multiplier M = clamp(headroom_fraction * alpha, 0, 1). Each org's effective_refill = base_refill(org) * (1 + burst_factor * M). If M==0 no burst.
+
+alex: yep, exactly. Example snippet we could wire into token service: ```
+// pseudo
+headroom_frac = max(0, free_gpu_capacity - est_inflight) / total_capacity
+M = min(1, headroom_frac * 0.8)
+effective_refill = base_refill * (1 + 1.5 * M)
+// ephemeral credits issued with ttl=3s and non-transferable
+```
+
+infra-bot: [metric] gpu-pool-na1: free_gpus=2 (out of 48), avg_queue_len=42, inflight_est=0.82s/token, headroom_frac=0.02
+
+sophia: If queue > 30 for > 10s we should consider graceful fallback to a cheaper quantized model or CPU path. Cheaper models reduce cost but also preserve UX. We should include a route policy rather than immediately dropping.
+
+kevin: Agreed on fallback. Also suggest a hard cap: ephemeral burst can't exceed 2x base for any org within a 60s window. Prevents single org from draining headroom.
+
+maria: How do we signal regions? e.g., NA pool saturated but EU pool has headroom. Coordinator needs to be pool-aware and not global-only.
+
+alex: Coordinator will subscribe to per-pool headroom and make decisions pool-local. If request is multi-region eligible we prefer routing to pool with headroom. If not, we apply local policy.
+
+sam: edge case: what about async batch jobs that can wait longer? We could expose a hint in request (priority=low) and let deferred admit queue them with longer ttl, consuming backlog credits slowly.
+
+sophia: Cost note: ephemeral bursts increase short-term GPU utilization — we must ensure this doesn't force extra autoscale spins that hurt cost. Set a small burst_ttl and prefer routing over scale-up.
+
+kevin: Also need observability: per-org burst issued, burst_consumed, borrow_failures, fallback_count. Those should appear in console with alerting rules.
+
+maria: +1 for instrumentation. Can infra-bot post current pool headroom every 30s to the channel while we iterate?
+
+infra-bot: OK scheduled job created: will post headroom snapshots for pools na1/eu1/ap1 every 30s to #eng-infra until 1715240000.
+
+alex: Action items: 
+- (alex) prototype coordinator that reads headroom and computes M per pool (P1)
+- (sam) wire ephemeral credit issuance into token service with ttl and non-transferability (P1)
+- (kevin) write fairness policy (2x cap, 60s window) + tests (P1)
+- (maria) dashboards & alerts for burst metrics (P1)
+- (sophia) define fallback routing & cost bounds (P2)
+
+kevin: Timeline? can we ship a safe default (M capped to 0.3) within 2 weeks?
+
+alex: yes — we'll start with conservative M and no-auto-scale behavior. Rollout to na1 first. :white_check_mark:
+
+sophia: thanks — please include a simple simulation so we can reason about tail latency vs cost before flipping.
+
+maria: Great convo. I'll add this to the infra-weekly notes and link the prototype PR when ready. :sparkles:

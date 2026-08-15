@@ -1,0 +1,39 @@
+eng-platform
+
+Samantha W: saw a short 5xx surge right after the midnight deploy, ~00:12 UTC. gateway timeouts and a few 502s, can anyone point me to the best dashboards/traces to grab samples?
+
+InfraBot: Deploy finished: deploy/worker-v2 @ 2026-03-17T00:11:58Z by jay.k (ci/1234).
+
+Jay K: which routes are noisy? ingress or model shard?
+
+Samantha W: mostly /v1/generate and a couple internal shard proxy hops. quick grep showed fingerprints: request_id=ab12cd34, ab12cd35, ab12cd36 (two 504s, one 502).
+
+Liam: dash for per-route 5xx is here: https://grafana.redwood.ai/d/obs/error-rates?panelId=7&from=now-1h — filter by route=/v1/generate and span kind=ingress. For traces use: https://traces.redwood.ai/search?query=request_id:ab12cd34
+
+Emily: can we quiet the alert while we triage? it's firing on short bursts and drowning oncall. propose debounce: only alert if rate > 0.5% for 5m rather than 1m for that route.
+
+Liam: agree. current alert is 1m windows. Runbook: https://wiki.redwood.ai/runbooks/gateway-5xx (has quick curl to collect traces).
+
+Samantha W: putting a sample curl here to reproduce header for tracing:
+```
+curl -H "x-request-id: ab12cd34" -H "Authorization: Bearer $TOKEN" \
+  https://api.redwood.ai/v1/generate -d '{"prompt":"hello"}'
+```
+
+Jay K: grabbing the full spans now. @Anna C can you temporarily add a 5m debounce to the /v1/generate paged alert? if not, tell me and I'll patch the rule.
+
+Anna C: oncall here — I can mute the noisy alert channel for 10m and add debounce on the rule. doing quiet now, will post when done. :white_check_mark:
+
+InfraBot: Alert muted for channel #oncall-ops by Anna C at 2026-03-17T00:15:40Z.
+
+Liam: pulled three traces for those request_ids, links: https://traces.redwood.ai/trace/abcd1234, /trace/abcd1235, /trace/abcd1236. initial look: tail latencies show upstream model pod timeouts + a couple connection resets on proxy.
+
+Emily: thanks — can we also add a note to the alert text to include top upstream error (connection_reset / backend_timeout) so paging has better context? small change in the alert expression should do it.
+
+Samantha W: great. once debounce is in and we've grabbed spans, I'll open a quick postmortem with evidence and recommended fix (likely scale-up for that shard + small retry at client). :thumbsup:
+
+Anna C: debounce added and channel muted. I'll unmute in 30m. Logging the action: https://ops.redwood.ai/audit/quiet/2112233445
+
+Jay K: thanks team, marking triage done for now. will follow up if I see any regressions.
+
+Samantha W: awesome — saved traces and will attach to the postmortem. :eyes:

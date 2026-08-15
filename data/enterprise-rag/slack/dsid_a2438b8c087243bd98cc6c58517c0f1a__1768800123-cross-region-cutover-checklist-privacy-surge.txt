@@ -1,0 +1,63 @@
+architecture
+
+maria: Heads up — planning a regional cutover next week for APAC region expansion. want to codify the cutover checklist and privacy surge steps now.
+suresh: +1. do we have a canary plan? percent, metric gates, rollback steps?
+devin: propose: 1% -> 5% -> 20% -> 100%, 30m observation windows, gates on p50/p95 latency + error-rate < 0.5%.
+elaine: legal needs explicit note about SOV (data stay-in-region) for a subset of tenants. how are we enabling per-tenant residency flags during cutover?
+maria: architecture will honor tenant.residency tag. routing layer should refuse cross-region write if tenant requires region-local writes.
+sam: infra notes: ensure KMS access for APAC key is available to nodes before we flip. also confirm audit logs shipping to customer-owned S3 for Private tenants.
+infra-bot: reminder: prereq task list created: kms:apac-key ready, net-peering OK, alb-cert deployed, egress rules validated.
+suresh: KV cache priming question — we should warm hot prefixes for the top 10 tenants that will move to APAC.
+devin: can we prepopulate KV caches via replay? e.g.
+
+```\ncurl -X POST https://inference.internal/cache/prime \
+  -d '{"tenant":"T123","prefixes":["/v1/p/","/v1/c/"]}' \
+  -H "Authorization: Bearer $PRIME_TOKEN"\n```
+
+suresh: yes, but make sure prime token is short-lived and scoped.
+elaine: legal: we need an explicit customer-facing notice for impacted tenants with residency requirements. also collect consent where needed.
+maria: agreed. also need a kill-switch so we can steer traffic back to us-east if anything degrades.
+sam: routectl supports weights. example:
+
+```
+routectl set-weight apac 0.05  # 5% to APAC
+```
+
+sam: and rollback is just set-weight apac 0
+devin: metric hooks: we need an anomaly alert that triggers on either error-rate spike or token latency regression > 15% vs baseline. tie it to an automated canary rollback play.
+infra-bot: alert created: CANARY_APAC_LATENCY_REGRESSION. runbook: pages oncall, cut route to fallback pool, collect traces.
+suresh: question: how do we handle private deployments (customer self-hosted) — do they get included in the cutover at all?
+maria: Private installs are opt-in. for enterprise customers that want APAC infra, we coordinate separately. default is hosted only.
+elaine: data residency legal Q: if we temporarily process a request outside region due to failover, do we need per-customer preconsent? we need list of customers with strict non-transit requirement.
+devin: we have tenant metadata flag strict_non_transit=true. router must not forward those to non-resident regions even during failover. only manual exception with legal signoff.
+elaine: correct — add manual escalation path in runbook.
+
+maria: operational checklist draft (short):
+- confirm kms and certs (infra)
+- prime caches for top tenants (eng)
+- deploy routing policy with canary weights (devops)
+- enable observability hooks (slo + traces) (sre)
+- publish customer notice for residency-sensitive tenants (legal + cs)
+- smoke tests & API conformance check
+- go/no-go meeting
+
+sam: add one more: validate audit log immutability for private tenants (audit bucket write perms and retention policy)
+suresh: also ensure cross-region rate limits are configured to avoid avalanches when we open capacity.
+devin: for smoke tests — we'll run a small synthetic suite hitting token-level latencies, KV cache hit rates, and session sticky tests.
+maria: can someone draft the go/no-go checklist and share? keep it short — we need to ship.
+elaine: I'll prepare the customer notice template. will share in #customer-success for review.
+sam: I'll write the routectl and infra steps into the runbook.
+suresh: I'll handle cache priming scripts and the token rotation for prime token.
+
+devin: last Q — how do we detect silent data-eavesdropping (accidentally storing PII in cross-region prefetched caches)? any retention gating?
+elaine: retention gating: caches must respect tenant.pii_allowed boolean. if false, we must not materialize user content into long-lived caches outside the region. implement TTL override to 30s for those tenants.
+maria: ok, make that a blocker for canary if not implemented.
+
+action-items summary:
+- devin: define canary metric gates (ETA today)
+- sam: runbook + route procedures (ETA EOD)
+- suresh: cache priming + tokens (ETA tomorrow)
+- elaine: customer notice + legal signoff list (ETA tomorrow noon)
+- maria: schedule go/no-go meeting and publish final checklist (ETA tomorrow 3pm)
+
+maria: thanks all. will post the checklist once the above lands. :thumbsup:

@@ -1,0 +1,54 @@
+incidents
+
+Maya (Support): :rotating_light: multiple customers reporting 502/504s on hosted API /v1/generate since ~08:12 UTC. Tickets #3421 and #3423 attached. Error rate ~4% in the last 20m. sample curl repro below.
+
+Maya (Support): curl -i -X POST "https://api.redwood.ai/v1/generate" -H "Authorization: Bearer ****" -d '{\"model\":\"redwood-2\",\"prompt\":\"hello\"}'
+Response: HTTP/1.1 502 Bad Gateway
+{\"error\":\"upstream request timeout\"}
+
+Ravi (SRE-oncall): I'm on it. Are these all in us-west-2?
+
+Maya (Support): All reported from us-west-2, three different customers, different API keys. Same path and similar latency before failure.
+
+ops-bot: deploy:router v3.14 promoted to us-west-2 at 07:58 UTC (git: a1b2c3).
+
+Lena (API-gateway): seeing spike on Envoy clusters -> upstream timeouts to runtime pool. Error code 504 in Envoy logs. Pulling logs now.
+
+Lena (API-gateway): paste: ```
+[2026-03-15T08:11:54Z] envoy upstream request timeout, cluster: runtime_pool_usw2, request: POST /v1/generate
+[2026-03-15T08:12:02Z] rejected upstream connection, connection failure, no healthy upstream
+```
+
+Diego (Runtime): our runtime shows a sudden increase in tail latency for redwood-2 workers starting 08:10. Worker queue depth spiked, CPU saturating and GPU mem stable. Likely backlog at worker process level.
+
+Ravi (SRE-oncall): Can you attach a short perf trace? span IDs? Also check if prefix cache miss rates changed.
+
+Diego (Runtime): trace: https://traces.internal/trace/abcd1234 (private) — main takeaway: KV cache hit rate dropped from 92% to 18% at 08:09. Lots of cache warmups causing full compute on many requests.
+
+Maya (Support): Customers report no code changes on their side. This looks internal. Please escalate.
+
+Elena (Customer Success): I've messaged the impacted customers with status + ETA. They've pushed high priority workloads; need an ETA for mitigation.
+
+Ravi (SRE-oncall): Root cause hypothesis: after the router deploy at 07:58, Envoy connection pooling behavior changed (keepalive/conn-limit) causing bursts that evicted hot entries in the KV cache due to increased concurrency. The runtime then got thrashed while warming caches -> upstream timeouts surfaced as 502/504.
+
+Lena (API-gateway): Reverted router config to previous commit (a1b1b9) at 08:25 UTC to restore previous connection pool settings. Revert in progress.
+
+ops-bot: revert:router -> queued; started at 08:25 UTC.
+
+Ravi (SRE-oncall): Temporarily raising Envoy upstream_timeout to 45s and bumping connection_pool max_connections for runtime_pool_usw2 to 600 to reduce immediate 504s. Applying now.
+
+Lena (API-gateway): Config applied. Early indicators: error rate dropping from 4% -> 0.8% over 5m.
+
+Diego (Runtime): After revert + config bump, worker queue depth returning to baseline. KV cache hit rate climbing back to ~88% after warmups.
+
+Maya (Support): Noted improvement. Two customers confirmed recovery. Will keep tickets open until 24h stable.
+
+Ravi (SRE-oncall): Postmortem action items: 1) add automated canary for router connection pooling changes, 2) make KV caching more robust to concurrency bursts (soft limit on warmups + background prefill), 3) tune Envoy retry/backoff and upstream_timeout defaults, 4) add dashboard alert for sudden KV hit-rate drops.
+
+Diego (Runtime): I'll create an RFC for caching hardening and background prefill. Expect draft by EOW.
+
+Elena (Customer Success): I'll follow up with impacted customers and offer credits for downtime.
+
+Maya (Support): Filing internal incident ticket INC-2026-003. Marking sev-2.
+
+Ravi (SRE-oncall): Closing here when 24h stable. Thanks all. :thumbsup:

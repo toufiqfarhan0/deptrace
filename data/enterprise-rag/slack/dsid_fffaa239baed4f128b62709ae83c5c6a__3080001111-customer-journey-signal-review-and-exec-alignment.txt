@@ -1,0 +1,22 @@
+customer-success
+
+Aisha Patel: Heads up — I pulled the customer journey signal dashboard for AtlasOps. Renewal risk ticked up from 6% -> 18% after churn in onboarding completion. Need a short exec-ready slice for tomorrow's ops QBR. Thoughts on what to frontload?
+Diego Ramos: Thanks Aisha. Can you share top 3 drivers? I can run a cohort extract (week 1 > week 3 dropoffs) and a usage heatmap.
+Aisha Patel: main signals: 40% feature activation gap, 26% delayed integrations, 34% increased support tickets in week2. Also low NPS from enablement session 2. Need a 1-slide summary + 1 slide ask for execs (root cause + blockers + proposal).
+Marta Liu: For the slide owners: I can take the root-cause analysis slide and add a short runbook for escalation. Samir can you take the data slide?
+Samir (SRE): I can. I'll drop a compact table and two charts. Need the cohort export schema; Diego — if you run it please include session ids and integration flags.
+Diego Ramos: On it. ETA 2 hours. Will upload CSV to the QBR folder and ping here.
+Evan Chen: From the customer side — we asked for clearer onboarding milestones; EVA team asked for a sandbox env earlier. Adding that to asks.
+Aisha Patel: Good call Evan. Add 'sandbox access' as a canary ask we can promise in 30 days.
+Samir (SRE): Uploaded draft charts: /drive/qbr/3080001111/data-charts.png
+Marta Liu: Slide owners: Aisha — first slide problem statement & risk, Diego — data slide, Samir — charts, Marta — runbook & asks, Evan — customer quote. I'll stitch slides after Diego uploads.
+Aisha Patel: Exec ask text: 'Authorize 30d sandbox + 2x onboarding enablement slots + priority integration support' — approval needed from product and infra. Can someone tag product?
+Diego Ramos: @marta can you @product-leads in doc? Or @Samir you can ping infra if needed.
+Marta Liu: I'll ping @product-leads after slide draft is live. 
+remind-bot: I'll remind this thread in 120 minutes to review final deck. :alarm_clock:
+Aisha Patel: Perfect. Thanks team — if we can do a 15m dry run @ 16:30 PST that'd be great.
+Diego Ramos: 16:30 PST works for me.
+Evan Chen: I'm available for the dry run. I'll prep a 30s customer impact quote.
+Samir (SRE): noted — will be on for charts explanation.
+Marta Liu: I'll share final deck by 16:00 PST. Done.
+Aisha Patel: Awesome, wrapping here. Action items summarized: 1) Diego -> cohort CSV + upload (2h). 2) Samir -> polish charts (uploaded). 3) Marta -> runbook + ping product (finish by 16:00). 4) Evan -> customer quote. 5) Aisha -> exec ask text and send invite for dry run 16:30. I'll follow up if any blockers.

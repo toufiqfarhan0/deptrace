@@ -1,0 +1,31 @@
+eng-releases
+
+zara: Urgent: embeddings svc throwing intermittent 5xxs since 23:10 UTC. Suspect migration sidecar hang. Need a hotpatch to restart worker and flip migration flag. Request expedited approval (SRE + Product). Preferred window 23:30-00:15 UTC. deploybot, can you intake?
+
+deploybot: Intake acked. Hotpatch template: image=redwood/embeds:2026.03.migfix, canary=8% for 4m, approvals required: @leo (SRE) + @trina (Product). Provide runbook and rollback criteria.
+
+leo: Oncall here. Will validate runbook and smoke. Need rollback command and clear abort thresholds.
+
+zara: Runbook (short): 1) Start canary 8% for 4m. 2) Monitor errors and p95 via /dash?svc=embeds&window=4m. Abort if errors >0.8% OR p95 +200ms. 3) Rollback cmd: `kubectl -n prod set image deploy/embeds embeds=redwood/embeds:2026.03-stable && kubectl rollout status deploy/embeds` 4) Post release note.
+
+trina: Product ok, confirm no schema changes and we need a single-line release note. Draft: "Hotfix: worker restart + migration toggle to remediate intermittent 5xxs. No API/schema change."
+
+leo: Staging smoke passed at 23:18 UTC. KV warm, sample requests normal. Approve once canary metrics look stable.
+
+deploybot: Manual gate created. Approvals required: `/deploy approve 6165432100 --by @leo` and `/deploy approve 6165432100 --by @trina`. Use `/deploy kick 6165432100 --window 23:30-00:15` to start.
+
+ezan: opsbot watch on metrics and bridge up at kick.
+
+zara: Kicking at 23:31 UTC. Canary id cb-6165432100. Initial canary: errors=0.15%, p95 +40ms.
+
+leo: Canary green from SRE. `/deploy approve 6165432100 --by @leo`
+
+trina: Approving from Product now. `/deploy approve 6165432100 --by @trina`
+
+deploybot: Approvals received. Promoting to 100% at 23:36 UTC. Rolling update underway.
+
+deploybot: Rollout complete 23:38 UTC. Post-rollout metrics: errors 0.12%, p95 nominal. No rollback required.
+
+ezan: Holding bridge open +20m for monitoring. All stable.
+
+zara: Will post final release note and close thread after monitoring. Thanks team :white_check_mark: 

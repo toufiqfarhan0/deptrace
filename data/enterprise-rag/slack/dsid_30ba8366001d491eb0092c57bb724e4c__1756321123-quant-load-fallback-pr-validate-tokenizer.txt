@@ -1,0 +1,27 @@
+eng-ml
+
+alex: quick heads-up — onboard job for llama3-8b-quant failed on redwood-dedicated-1 during startup, OOM in load stage and a tokenizer mismatch warning showed up in logs. Anyone around?
+sasha: i'm looking. which artifact path did the onboarding use?
+alex: model_artifacts/llama3/8b/quant-v2 — the weights landed there from staging sync. I see:
+```
+[WARN] tokenizer mismatch: vocab_size 50257 vs config.vocab_size 50000
+RuntimeError: CUDA out of memory when allocating KV cache (init)
+```
+kai: saw a similar thing on staging last week — tokenizer json and the config.json sometimes get out of sync when we run quantize pipeline without re-running tokenizer merge.
+linda: can you paste the full load command and the quant config?
+alex: onboarding runner used: `python serve/onboard.py --model-path model_artifacts/llama3/8b/quant-v2 --quant backend=bitsandbytes,safe_load=true`
+jorge: that `safe_load=true` flag tries to mmap to GPU directly, which can fail if memory fragmented. fallback to CPU or smaller chunk size helped us previously.
+sasha: grabbing logs and diffs now. giving me 2–3 mins.
+infra-bot: Dedicated instance redwood-dedicated-1 restarted (autoscaler) — reason: gpu_memory_oom.
+kai: if tokenizer vocab mismatch is real, bad tokenization can produce garbage outputs even if load succeeds. We should fail onboard with a clear error rather than silently proceed.
+linda: added a quick checksum idea — compare tokenizer.vocab_hash against weights.metadata.tokenizer_hash before starting quant load. If mismatch -> abort.
+alex: i already opened a tiny PR for that check: PR #842 (onboarding: validate tokenizer vs weights, and CPU fallback on OOM). @linda can you review when you have a sec?
+linda: will review in ~30m. also add a link to the artifact manifest so SREs can inspect.
+jorge: for immediate mitigation, you can set env `ONBOARD_FALLBACK=cpu` for the runner to avoid killing the node. That will prolong onboarding time but prevent OOMs.
+sasha: diff shows tokenizer.json in quant-v2 still points to base tokenizer v1.7 while weights.ref points to v1.8 — mismatch happened during the sync job. copying v1.8 tokenizer over and re-run should fix.
+alex: re-run with `ONBOARD_FALLBACK=cpu` and replaced tokenizer — kicked off re-onboard job: job id onboard-1756321170.
+infra-bot: Job onboard-1756321170 queued on redwood-dedicated-2.
+kai: long-term: add preflight step that validates tokenizer/weights, memory estimate for KV cache (based on seq_len * hidden_dim) and rejects if node can't satisfy. That prevents noisy failures.
+linda: agree. also update the onboarding doc with recommended quant backend options and the safe fallback flag description.
+sasha: re-onboard job is running; initial load completed on CPU and then moved to GPU after quant chunks loaded — no OOM so far. running eval sanity prompts.
+alex: thanks all. marking this thread triaged for now. i'll add notes to the postmortem template and link PR #842. if evals show weird outputs i'll reopen. :thumbsup:

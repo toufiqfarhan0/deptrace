@@ -1,0 +1,73 @@
+customer-success
+
+lara_cs: Heads up — NimbusOps is stuck on onboarding. Their nightly CI (8 parallel runners) started failing with intermittent 429s and a few 401s during token refresh. Root cause unclear to them.
+
+sam_eng: Can you paste a short request/response snippet from their logs?
+
+lara_cs: From their CI log: 
+```\nPOST /v1/embeddings HTTP/1.1
+Host: api.redwood.ai
+Authorization: Bearer ephemeral_abc123
+Content-Type: application/json
+
+HTTP/1.1 429 Too Many Requests
+Date: Wed, 24 Mar 2026 05:10:02 GMT
+Retry-After: 6
+Content-Type: application/json
+
+{"error":"rate_limit","detail":"concurrent_preflight_limit"}
+```\nAlso a later entry: `HTTP/1.1 401 Unauthorized` while their token refresh service was rotating keys.
+
+jay_onboard: Sounds like a classic preflight + token storm pattern. If each runner does a preflight and an auth exchange at the same time, you multiply requests to our auth and preflight endpoints.
+
+emma_pm: NimbusOps has a trial account, default short-window quota, and a big demo next Wed. This is a renewal risk if we can't stabilise CI before the demo.
+
+sam_eng: Quick diagnosis checklist: 1) Are their runners minting ephemeral tokens independently? 2) Are they hammering preflight on cold start? 3) Are retries ignoring Retry-After?
+
+lara_cs: Answer: yes to #1 and #2; retries are custom JS code without exponential backoff.
+
+sam_eng: Immediate recommendations to give NimbusOps (quick wins):
+- Centralize token minting: have one leader per CI job mint and share tokens (short TTL ok).
+- Cache the token in a local file or ephemeral secret store accessible to other runners.
+- Stagger runner startup by 250-1500ms to avoid synchronized cold starts.
+- Honor Retry-After and use jittered exponential backoff.
+- If they require concurrency, CS can request a temporary dev-burst quota for the account.
+
+lara_cs: Example token-cache approach (pseudo):
+```
+// minimal leader-election pattern
+if (fs.existsSync('/tmp/nimbus_token')) {
+  token = fs.readFileSync('/tmp/nimbus_token');
+} else if (acquireLock()) {
+  token = mintToken();
+  fs.writeFileSync('/tmp/nimbus_token', token);
+  releaseLock();
+} else {
+  waitRandom();
+  token = fs.readFileSync('/tmp/nimbus_token');
+}
+```
+And a simple backoff sketch:
+```
+for attempt in 0..4:
+  resp = apiCall()
+  if resp.status == 429:
+    ra = resp.headers.get('Retry-After') or 2
+    sleep((2**attempt + random()) * ra)
+    continue
+  break
+```
+
+jay_onboard: I'll spin up a minimal sample repo showing server-side mint + token-file sharing and include an example GitHub Actions workflow using a single token issuer step.
+
+emma_pm: I've marked renewal risk high and scheduled an enablement touchpoint with NimbusOps tomorrow 14:00 UTC. Agenda: confirm token reuse, apply stagger, and run 3 clean CI cycles.
+
+onboard-bot: Ticket CS-ONBOARD-3304 created for NimbusOps onboarding: CI preflight 429s. Priority: high.
+
+lara_cs: I sent the mitigation checklist to the customer. They implemented token sharing and staggered starts; 429s dropped by ~95% in their next run but they reported two 401s during token rotation.
+
+sam_eng: For the remaining 401s: add a 30s grace window when verifying ephemeral tokens and make sure minted token TTLs overlap small amounts during rotation. If their mint service races, implement a mutex or central short-lived cache with TTL refresh.
+
+emma_pm: Follow-ups: 1) sam_eng to update onboarding docs with token-sharing pattern and backoff examples. 2) jay_onboard to open the sample repo PR. 3) lara_cs to monitor and close ticket after 48h of clean runs.
+
+lara_cs: Customer ran 5 consecutive CI jobs overnight with no 429s and a single transient 401 that resolved after a retry. I'll update CS-ONBOARD-3304 and mark for 48h monitoring. Thanks all! :party:

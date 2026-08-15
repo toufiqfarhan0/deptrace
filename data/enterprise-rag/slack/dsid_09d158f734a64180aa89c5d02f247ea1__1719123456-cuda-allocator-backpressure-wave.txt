@@ -1,0 +1,43 @@
+incidents
+
+devon: Observed sudden throughput drop on dedicated pool us-east-1 starting ~08:12 UTC. Worker restarts and occasional GPU OOMs. p50 stable but p95 jumped 2.4x. Investigating.
+
+maria: thanks. any recent runtime rollout? I saw a kernel selection tweak merged 6a7b8c last night.
+
+devon: yep that's the one. rolling back canary is my next step. before that, collecting profiles. attaching profiler snapshot.
+
+raj: can you paste the allocator logs? cuda malloc failures usually show up in dmesg or runtime logs.
+
+devon: pastelog:
+```
+[08:13:02] worker-27: cudaMalloc failed: out of memory, retrying
+[08:13:03] sched: evicting 1 prefix cache entries
+[08:13:03] worker-27: restart triggered (OOM)
+[08:13:05] runtime: chosen kernel=aten_mm_fast (fallback count=12)
+```
+
+kaya: fallback to aten_mm_fast is interesting — we added a cost model to prefer fused kernels; maybe the heuristic misrouted long-seqs to a memory-hungry path.
+
+maria: profiler shows persistent pinned memory growth on a subset of workers. not classic fragmentation but long-lived allocations from large-batch code path.
+
+raj: could be batching heuristic suddenly increasing batch size for certain client keys -> KV prefix cache pressure + pinned tensors.
+
+devon: confirmed: batching trace shows a spike in max_batch_size from 32->96 for a few request patterns. looks correlated with a new adaptive-window change.
+
+sre-bot: Incident created INC-2024-1423. Notifying on-call.
+
+maria: rolling canary back to previous commit on node group a3. monitoring memory and restart rate.
+
+devon: rollback started at 08:19 UTC. worker restarts dropped, OOMs ceased after 08:21 UTC, throughput recovering but p95 still ~1.2x baseline.
+
+raj: follow-up tasks: 1) revert adaptive-window by default, 2) add guard to cap max_batch for model families with high kv/prefix footprint, 3) add allocator observer to capture pin lifetime histogram.
+
+kaya: also add kernel-selection telemetry: log fallback counts per model-version. we missed rise in fallback earlier.
+
+devon: agreed. I'll open PRs. Will keep this thread updated with postmortem notes and perf diffs.
+
+maria: :thumbsup: good catch. adding to postmortem template: include batch-size distribution plots and pinned memory lifetime.
+
+devon: closing incident when p95 < 1.05x baseline for 30m. current last sample at 08:47 UTC shows 1.03x.
+
+sre-bot: Incident INC-2024-1423 resolved by devon at 08:52 UTC. Summary: adaptive batching heuristic increased batch sizes for certain traffic, causing increased pinned memory and kernel fallbacks -> GPU OOMs and worker restarts. Rollback restored stable behavior.

@@ -1,0 +1,65 @@
+partnerships
+
+maya: Quick handoff — we need to deliver the Cloud Partner IaC Accelerator to AcmeCloud by EOW. Main ask: Terraform modules + marketplace-ready templates (Azure & GCP) and a short ops runbook.
+
+liam: Thanks — can you share the list of required terraform modules? I can pick up the module CI/linters.
+
+maya: Core modules: network (vpc/subnets), compute (gke/gce or aks/vmss), storage (gcs/azblob), load-balancer/ingress, kms integration, and a minimal demo stack that wires them together. Also a tiny reference deploy with quantized model runtime config.
+
+sophia: For marketplace packaging we need: ARM + Bicep for Azure, Deployment Manager templates for GCP (or Cloud Build config), and a single-click deploy script. Marketplace metadata + screenshots too.
+
+raj: On the runtime side, we should include a preconfigured GPU nodepool example and a note on GPU drivers + container runtime. Add GPU instance sizing recommendations: p4d/p3-equivalents for AMPs.
+
+jules: FYI — AcmeCloud asked for Terraform 1.5 compatibility and module registry outputs. Also they prefer HCL module inputs to be minimal and documented.
+
+liam: Action for me: set up repo skeleton and GitHub Actions for module linting (tflint, checkov) + terraform validate. ETA: 48h.
+
+maya: Perfect. I will own the marketplace packaging and runbook. Plan: assemble templates, write the ops runbook (KMS keys, network peering, IAM), and coordinate screenshots. ETA: 72h.
+
+onboard-bot: Reminder: Partner onboarding checklist updated. Item assigned: "IaC accelerator: repo + marketplace packaging" to maya, liam. Due: 3 days.
+
+sophia: For demo credentials, use mock secrets in CI with Vault integration example. Include a short snippet for how to pass secrets to the container:
+
+```
+# example: deploy script env injection
+export REDWOOD_API_KEY="
+${VAULT:secret/data/partners/acme/api_key}"
+kubectl create secret generic redwood-creds --from-literal=API_KEY=$REDWOOD_API_KEY
+```
+
+raj: Also include an ops note on rolling updates and fallback routes. Suggest a canary strategy and fallback to smaller quantized model if GPUs aren't available.
+
+liam: Repo layout suggestion:
+- modules/network
+- modules/compute
+- modules/storage
+- modules/kms
+- examples/marketplace/azure
+- examples/marketplace/gcp
+- ci/ (github actions)
+
+jules: Can we add a short integration test that provisions a tiny cluster (spot-equivalent) and deploys a smoke endpoint that responds to /health? That helps partner QA.
+
+maya: Yes, include a lightweight terraform-targeted smoke test with a teardown. I'll draft a small health-check script.
+
+liam: I'll wire in tflint + terraform-docs generation so README for each module is auto updated. Also will add a sample variables.tf with defaults for quickstart.
+
+sophia: One more ask from AcmeCloud: include an explicit section on cost estimates (per-hour with example sizing) and a note on region compat.
+
+maya: Good call — I'll include a cost table in the runbook and call out recommended regions for GPU skus.
+
+raj: Who will handle the acceptance criteria with partner? I can take the demo call and run through the checklist.
+
+maya: Raj can own partner acceptance. Jules and Liam — please ping me in PRs for packaging before merging.
+
+jules: Will do. I'll draft the smoke-test and PR it tomorrow.
+
+onboard-bot: Checklist update: module skeleton created by liam (in-progress), marketplace examples by maya (pending), smoke tests by jules (pending).
+
+maya: Thanks team. I'll post a short release checklist when templates are pushed. @raj please block a 30m demo with AcmeCloud on Friday.
+
+raj: Scheduled 30m Friday 10:00 PT. Invite sent.
+
+liam: Starting repo now, will share the initial repo link here when ready.
+
+maya: Closing loop — keep updates small and frequent. :thumbsup:

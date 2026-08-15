@@ -1,0 +1,18 @@
+eng-platform
+
+Ashley: Quick question — designing console surface for automatic fallback decisions. Need to decide what 'evidence' we show to customers when a request is routed to a fallback model.
+Jon: +1. Minimal: reason, timestamp, chosen fallback model, original model id, region. Optional: telemetry link and a sampled prompt/response.
+Rashmi: Important: do not leak internal hostnames or debug paths. Also PII rules — only surface sampled examples with consent.
+Sam (ops): Can we add an `x-redwood-fallback-reason` response header? Apps can log that without relying on console.
+Jon: Good call. Proposal for header values: `model_unavailable`, `latency_sla_exceeded`, `quota_exhausted`, `runtime_error:OOM`. Keep concise.
+InfraBot: deploy 1767012400: rollout/fallback-trace v0.1 -> env:staging :rocket:
+Ashley: UX question — show the full decision tree inline or a short blurb with an "expand" for details? I'm leaning short blurb + expand.
+Aaron (PM): Short blurb for 90% of users. Expand reveals a timeline, sampled logs, and metric deltas (1h window) and a link to replay (sanitized).
+Rashmi: Telemetry naming: use metric/event `fallback.decision` with tags {reason, original_model, fallback_model, region, sampled}. That keeps things query-friendly.
+Sam (ops): Audit requirements: records immutable and queryable for 90d. Index by customer_id + request_id + rollout_id. Also include fallback.trace_id so we can join.
+Jon: Edge case: `quota_exhausted` on primary and fallback. UI should show "fallback attempted but rate limited" + policy (auto-retry/backoff). Provide link to escalation runbook.
+Ashley: Copy for the console: "Rerouted to fallback model (reason) — click for details and replay". Replay should only surface sanitized prompt; raw view requires audit role.
+Rashmi: Security: replay must mask PII or redaction must be enforced; viewing raw data should be limited to specific roles and logged.
+Aaron (PM): API addition: include `fallback.trace_id` in response to correlate header -> console -> logs. Also expose `fallback.sampled=true/false`.
+Jon: Sampling: default 1% system-wide, 100% for enterprise/compliance tenants (config flag). Keep sampling decision deterministic on request_id to avoid gaps.
+Ashley: I'll mock a console panel tonight and post a prototype in #design. Thanks everyone.

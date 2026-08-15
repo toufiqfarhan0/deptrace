@@ -1,0 +1,33 @@
+eng-runtime
+
+ana: quick note - after switching kernel-selector to fast-kern-2 on rtx nodes, small request host CPU jumped. seeing big preparse/tokenize time.
+
+ryan: repro on gtx?
+
+ana: only rtx so far. gtx fine.
+
+lee: flame snippet? small reqs = <64 tokens?
+
+ana: yes. perf top shows: preparse_worker 50% tokenization_fast, proto_unmarshal 18%, net writev 9%.
+
+ryan: did we also enable adaptive-mini-batch?
+
+ana: yes, auto minibatch enabled. suspect duplicate normalization between tokenizer and preparse when batcher merges fragments.
+
+lee: kvcache metrics?
+
+ana: short window: before miss=3.0%, after miss=11.0%, avg_seq similar.
+
+ops-bot: deploys/staging/fast-kern-2 done - 1739999500 by ana
+
+ryan: quick mitigations: add header bit NORM from tokenizer so preparse can skip, and disable adaptive-mini-batch for <=64 tokens.
+
+lee: also tune http2 framing; grpc path shows many small writev syscalls.
+
+ana: will open header-bit PR + canary change. if not improved in 12h, rollback kernel-selector.
+
+ryan: I'll run kvcache sim for alternative keying and post results.
+
+lee: attach flamegraph and syscall traces to this thread when ready.
+
+ana: uploaded flamegraph id fg-173999-01.

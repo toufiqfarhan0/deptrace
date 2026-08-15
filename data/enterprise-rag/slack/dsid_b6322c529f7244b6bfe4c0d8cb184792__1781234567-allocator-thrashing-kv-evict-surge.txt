@@ -1,0 +1,49 @@
+incidents
+
+sam: FYI seeing ~40% throughput drop on prod-serving-us-west-2 starting ~06:20 UTC. p50 OK but p99+ latency spikes and multiple worker restarts. Alerts from autoscaler.
+
+maria: Ugh. Which fleet/model? any recent deploys?
+
+sam: fleet=fleet-a1, model=falcon-40b-q8 (quantized). Logs show repeated: `CUDA out of memory when allocating 134217728 bytes` and `worker exited: aborting due to OOM`. Batcher queue length jumped at same time.
+
+jitendra: pulling profiler traces now. Initial look: huge allocation churn + high KV-cache eviction. Might be allocator thrash / fragmentation.
+
+nora: We did roll kernel-selector v2.4.1 w/ auto-fallback last night and a batching heuristic tweak (reduced max_batch_delay) at ~03:30.
+
+sam: timeline lines up with rollout. Hypothesis: fallback kernels allocate larger per-request workspace and the lower batch delay increased number of in-flight batches => more concurrent small allocations -> fragmentation.
+
+infra-bot: node snapshot i-0a1b2c: free_gpu_mem=150MB, largest_contig=48MB, fragmentation_ratio=0.68. GPU-resident free but no large contiguous block.
+
+maria: that largest_contig explains the OOM for any allocation >48MB even though total free looks non-zero. Also KV eviction rate spiked ~8x around 06:20 (eviction_heatmap attached).
+
+jitendra: profiler snippets:
+```
+# nvprof summary (samples)
+allocation_churn: 1.1M ops/min
+avg_alloc_size: 2.9MB
+coalesce_count: 320 -> dropped to ~40 during incident
+kernel_fallback_count: 112 -> 980 after 03:30 rollout
+```
+Shows many tiny alloc/free pairs, coalescing dropped, and fallback kernel usage exploded.
+
+nora: immediate mitigations: rolling back batcher.max_batch_delay to previous value, and disabling kernel auto-fallback for fleet-a1. Starting now.
+
+sam: can we also raise kv_cache.min_reserve or temporarily increase per-worker reservation to avoid churn?
+
+maria: created rollouts: revert batcher change at 1781235000, disable kernel-fallback at 1781235200. Also bumping kv_cache.min_reserve -> 200MB for fleet-a1 as a temporary config.
+
+ops-bot: triggered rolling restart on pool-a1 (max_unavailable=2) at 1781235400.
+
+jitendra: quick hotfix PR: reduce per-request temp buffer allocation by 25% and add opportunistic coalescing pass on free. PR #4523 -> staging. If we merge, should reduce fragmentation pressure.
+
+nora: good. post-rollback status check: p99 trending down, OOM logs dropping. eviction_rate back to ~1.2x baseline. Largest_contig recovering slowly as restarts free and coalesce.
+
+sam: status: throughput recovered ~70% of lost capacity, p99 still ~15% above normal. Watching for regressions.
+
+maria: adding new alerts: fragmentation_ratio > 0.6 and eviction_rate > 2x baseline. Also adding a perf test that simulates reduced batch delay + kernel-fallback to reproduce in CI.
+
+jitendra: long-term: we should add allocation-size-aware batching heuristics and a defragmenting coalesce pass in the allocator, plus metrics for contiguous free blocks. Filed infra ticket INFRA-1207.
+
+nora: nice work. We'll keep this thread open for final postmortem notes.
+
+sam: thanks everyone. filing incident on infra status page and will update postmortem once we confirm root cause. :thumbsup:

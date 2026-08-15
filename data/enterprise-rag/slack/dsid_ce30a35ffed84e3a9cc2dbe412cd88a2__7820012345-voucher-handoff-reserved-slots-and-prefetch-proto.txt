@@ -1,0 +1,57 @@
+eng-runtime
+
+joel: Quick postmortem notes from today's tail seen in staging. Pattern: lots of tiny late arrivals stealing coalesce slots, then waiting on KV warmups -> big latency regression at p95/p99.
+
+priya: yeah observed that. We also saw increased token burn on microbatches.
+
+dan: idea: instead of a binary "allow_late_join", introduce a voucher-based handoff. Tenants earn N vouchers per minute based on steady-state throughput. A queuelet can consume a voucher to jump to a handoff lane. Prevents spammy capture.
+
+joel: nice. How are vouchers allocated? static rate per tenant or adaptive?
+
+priya: adaptive: tie to token_consumption_rate and a minimal floor. So high-throughput tenants get more leeway; low-volume tenants still get a small baseline. Keep it cheap to compute in admission.
+
+dan: also add a short TTL on vouchers (e.g., 5s) so they don't accumulate. Implementation sketches: admission checks `if queuelet_age_ms > handoff_age_ms and tenant_vouchers > 0 then consume and route to handoff_queue`.
+
+joel: what about fairness within handoff_queue? We need headroom slots so handoff doesn't starve coalesce. Maybe maintain X reserved handoff_slots per GPU slice.
+
+priya: reserved slots + a capped concurrency per-tenant in handoff lane. That combo prevents a single tenant from dominating.
+
+dan: cost note: handoff microbatches will often miss KV cache. We should emit `handoff_miss_tokens` and track `tokens_per_request` so SRE/product can quantify dollar impact.
+
+ops-bot: fetch: latest staging trace link -> https://staging-traces/redwood/7820012345
+
+joel: another thought: make handoff lane aggressive about KV prefetch. On admission into handoff, trigger async kv_prefetch for the top-k keys (based on recent traces) so microbatches warm faster. This reduces penalty.
+
+priya: good but must be careful about extra read amplification. Prefetch should be sampled and bounded. Maybe only prefetch when predicted missing_prob > 0.6. We can estimate from per-tenant cache hit history.
+
+dan: control-plane change: need a small API to debit vouchers and expose `voucher_balance` metric. Also expose `handoff_accept_rate`, `handoff_eviction_rate`, `prefetch_triggered`.
+
+joel: rollout plan: feature flag `voucher_handoff_v1`. Start with 0.5% traffic for a day, collect: p50/p95/p99 latency, tokens_per_batch, GPU_util, voucher_spend_by_tenant.
+
+priya: quick pseudo for admission logic I'm prototyping: 
+```
+if queuelet_age_ms >= config.handoff_age_ms:
+  if tenant.vouchers > 0 and handoff_slots_available:
+    tenant.vouchers -= 1
+    route_to_handoff(queuelet)
+  else:
+    allow_late_join_if_within_coalesce_guard
+else:
+  normal_coalesce_path
+```
+
+joel: edge: when handoff_slots saturated, we fall back to original coalesce. We should emit `handoff_backpressure_count`.
+
+dan: tests: synthetic workload that alternates long streaming requests with tiny interactive ones. Measure p99 and token-cost delta across variants: no-handoff, naive-allow_late_join, voucher_handoff.
+
+priya: also add a denial metric so we can see tenants that consistently hit voucher limits; product may want to offer paid priority.
+
+ops-bot: action items created: RT ticket #INF-1543 (implement voucher counter), #INF-1544 (hand-off queue & slots), #INF-1545 (telemetry).
+
+joel: timeboxed PoC: dan + priya this week. I'll run the synthetic experiments Friday and post numbers. Sync Monday to decide whether to RFC.
+
+priya: ack.
+
+joel: oh — one more: consider a soft preemption path: if coalesce batch is blocked waiting for KV and includes a voucher-carrying queuelet, allow micro-evict of that queuelet to handoff lane mid-window. Complex but could cut tail. We'll leave for v2.
+
+(emoji): :rocket:

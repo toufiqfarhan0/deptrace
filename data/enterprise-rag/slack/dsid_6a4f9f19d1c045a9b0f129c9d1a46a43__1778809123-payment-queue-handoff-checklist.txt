@@ -1,0 +1,67 @@
+eng-oncall
+
+oncall-bot: :rotating_light: Incident/shift-handoff thread opened by maya — finalizing primary/secondary for the night and listing active alerts. Please ack and call out any coverage gaps.
+
+maya: hey team — i'm handing off in 30. I'm primary until 21:00 PST then ricardo takes primary. sam will be secondary for the first 2h, then lee takes over after 01:00.
+
+maya: open items before handoff:
+- payment-queue flapping (alerts firing intermittently) — currently mitigated by rate-limit rollback.
+- quantize-deploy job failed 3/5 attempts on staging, no customer impact yet.
+- a couple of noisy 5xx spikes from cache-tier for embeddings route.
+
+ricardo: ack. i'll be primary 21:00–03:00. can you paste the quickfix steps for the payment queue? i didn't see the runbook earlier.
+
+maya: paste below — these are the condensed steps i used (runbook link at the end). do in order: 
+1) check autoscaler buffer: `kubectl get hpa -n inference payment-processor` — if DesiredReplicas > Current and pods Pending, scale up node pool.
+2) pin fallback: edit route to fallback to `model-small-v2` to reduce token cost and pressure: `redwood route update payments --model model-small-v2 --priority low`
+3) roll back last throttling rule change: `redwood throttles set payments --reset`
+4) if consumer backlog grows: trigger consumer-respawn `./scripts/respawn_consumers --topic payments --count 5`
+
+maya: ops-runbooks-bot: https://confluence.redwood/inference/runbooks/payment-queue-resilience (canonical)
+
+ops-runbooks-bot: Linked runbook: https://confluence.redwood/inference/runbooks/payment-queue-resilience — contains postmortem checklist, metrics to monitor, dashboards and escalation contacts.
+
+sam: on the embeddings cache 5xxs — quick pointer: check redis cluster error-rate + hit/miss ratio. if redis errors, failover to read-replica with `redis-cli -h proxy failover` (see runbook). also consider temporarily disabling prefix caching in the inference layer config: `REDWOOD_PREFIX_CACHE=false` for the service and roll.
+
+lee: ack. i can pick up secondary at 01:00. any known customer impacts right now?
+
+maya: no active customer-facing incidents. payments alert is internal but could surface if backlog isn't drained by 22:30. quantize-deploy is staging-only. embeddings 5xxs have caused a couple of API retries but most requests auto-recovered. i'll annotate the dashboards.
+
+arjun: quick checklist I run on handoff (copy for next person):
+- open metrics: tokens/s, p95 latency, error-rate by route (payments, embeddings, gen).
+- check dedicated pool usage, GPU saturation, node group pending pods.
+- check SLO page for any degraded routes and open a P1 if customer impact.
+- confirm backups & KMS rotation not in progress for Private customers tonight.
+
+ricardo: noted. i'm going to subscribe to the payment alert channel and set a 30-minute watch timer.
+
+maya: also leaving two quick scripts in /ops/oncall-scripts: `drain-and-scale.sh` and `respawn_consumers` — use those if autoscaler is sluggish.
+
+maya: small nit — if you need to do an emergency model fallback, prefer `model-fallback-v1` that has been validated for latency; avoid older v0 variants unless you confirm tokenization differences.
+
+sam: thanks — one last question: if we need to force-failover the redis cluster, who do we tag? arjun or ops-db?
+
+arjun: tag @ops-db + me. ops-db is on pager tonight for infra changes.
+
+lee: FYI i'm adding a short runbook excerpt into the oncall notes channel so whoever picks up later has it pinned.
+
+oncall-bot: maya reacted with :white_check_mark: on the handoff.
+
+ricardo: i'm online and will take primary at 21:00. leaving a couple of pointers in thread for when things get noisy: 
+- quick prometheus query for backlog: `sum(kafka_consumers_lag{topic="payments"})`
+- check token-level costs: Console -> Billing -> Token cost by route -> filter payments.
+- if customer impact, run the emergency contact script: `./notify_customers payments` (will trigger support and post an incident stub).
+
+maya: handing off now — cheers and ping if anything odd within the first 30m.
+
+ricardo: thanks maya — good handoff. acked and will monitor.
+
+ops-runbooks-bot: Additional quick links pinned: 
+- embeddings cache runbook: https://confluence.redwood/inference/runbooks/embeddings-cache.json
+- emergency-contact script docs: https://confluence.redwood/inference/playbooks/notify_customers
+
+lee: leaving handoff note: coverage gap 23:30–00:15 (i'm in a meeting) — ricardo pls escalate to arjun if anything pops during that window.
+
+ricardo: noted. i'll escalate to arjun during that gap.
+
+oncall-bot: thread closed by maya (handoff complete).

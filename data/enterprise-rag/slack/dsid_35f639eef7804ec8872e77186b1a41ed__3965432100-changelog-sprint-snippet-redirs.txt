@@ -1,0 +1,30 @@
+docs
+
+maria: drafting a minimal changelog for tomorrow's docs push. items: fallback routing example, embedding-stream truncation on large payloads, one redirect, and tiny SDK snippet fixes. PR: https://github.com/redwood-inference/docs/pull/4382
+
+sam: prefer three terse bullets only. machine-parsable if possible. avoid marketing words.
+
+ana: added a compact node and python snippet in the PR. keeping them under 8 lines so the whatsnew box can render.
+
+leo: fixed a small typo in the rust example (iterator method) and pushed to the examples folder.
+
+maria: thanks. can you paste the node snippet here so i can sanity-check formatting?
+
+leo: ```js
+// fallback routing minimal
+const r = new Redwood(process.env.REDWOOD_API_KEY)
+const res = await r.generate({model: 'redwood-kitefish-v1', fallbacks: ['redwood-kitefish-v1-quant','gpt-compatible-fallback']})
+console.log(res.text)
+```
+
+sam: add a one-liner parenthetical after the snippet: (quantized fallback may tokenize differently; verify prompt & stop tokens). also link to quantization guide.
+
+maria: will add parenthetical + quantization link. also noting redirect PR #4383 for /docs/dedicated/autoscale -> /docs/dedicated/scaling under Known issues as "redirect in progress".
+
+ana: minor editorial: use verbs like "added", "fixed", "documented" in the bullets. no "improved".
+
+docs-bot: reminder: staging deploy scheduled for 09:30 UTC after LGTM.
+
+sam: i'm running a local build after maria updates the PR. aim to signoff by 07:30 UTC.
+
+maria: timeline confirmed. i'll update PR, request final LGTM, and merge if green. will ping when staging is up. :rocket:

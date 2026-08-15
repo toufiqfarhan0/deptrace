@@ -1,0 +1,98 @@
+eng-runtime
+
+alex_g: quick post — ran an end-to-end perf pass on prefix cache warmup + kernel bump last night, saw a surprising miss-rate increase on a subset of traffic.
+
+maria_s: can you summarize the delta? numbers?
+
+alex_g: baseline hit-rate on sample v1 (2w window) ~76%. after kernel selection change + batch heuristic tweak it dropped to ~58% for short prompts (<64 tokens). overall latency slightly improved but cost up due to regen.
+
+perf-bot: PROFILE 2961234569: top hotspots: kv_lookup 41.7% cpu, kernel_select 17.8%, tokenizer_normalize 9.4%, batch_scheduler 8.1%
+
+jonah_r: interesting — kv_lookup is taking the most time. is that miss-rate from normalized key mismatch or longer lookup latency?
+
+alex_g: digging in — two cohorts: (A) tokenizer version mismatch where token counts differ (v2 vs v3) -> canonicalization produced different prefixes; (B) system prompt changes and tool meta ordering created logically equivalent prompts but different keys.
+
+sasha_t: do we have examples?
+
+alex_g: example keys:
+```
+# raw payload
+system: "You are PaperBot v2"
+prompt: " Summarize the article.\n"
+tools: ["search","browser"]
+
+# naive key -> tokens differ because tokenizer v3 maps non-breaking spaces differently
+key_naive = 'v3|You are PaperBot v2|Summarize the article.\n|[search,browser]'
+```
+
+alex_g: our canonicalize produced different ordering for tools in some clients which exploded misses.
+
+maria_s: can we normalize tool order and strip system trailing newlines? that should be cheap.
+
+alex_g: did that in a branch + pinned tokenizer version in the key to tok:v2. also added unicode normalize NFC and collapse whitespace. quick pseudo: 
+```
+def canonicalize_prompt(prompt, system='', tool_meta=None, tok_version='v2'):
+    p = prompt.strip()
+    p = re.sub(r'\\s+', ' ', p)
+    p = unicodedata.normalize('NFC', p)
+    key = f"{tok_version}|{system.strip()}|{p}"
+    if tool_meta:
+        key += f"|tools:{','.join(sorted(tool_meta))}"
+    return hashlib.sha256(key.encode()).hexdigest()
+```
+
+jonah_r: nice. did that move the needle?
+
+alex_g: yes — on our canary traffic hit-rate for short prompts jumped from 58% -> 79% and median latency stayed ~same. CPU on kv_lookup dropped ~28%.
+
+perf-bot: PERF_DIFF 2961234585: kv_lookup p50 12ms -> 8.6ms, miss-rate short-prompts 42% -> 21%
+
+sasha_t: any regressions? we changed kernel selection too which originally improved tail latency. did canonicalization undo that?
+
+alex_g: good call. kernel_select still helps p99 for long contexts. problem was the coupling: kernel bump + changed batching heuristics increased batch size, causing more partial-prefix evictions during aggressive warmup. when canonicalization reduced misses, eviction pressure normalized.
+
+maria_s: what about warmup strategy? we saw a spike in cache churn at start-of-epoch with bursty traffic.
+
+alex_g: implemented a staged warmup ramp: small steady prefix-only warmup for first 30s, then gradual batch size increase over 3 mins, plus a fallback to legacy kernel if miss-rate > 40% for 60s.
+
+jonah_r: can you share the scheduler pseudocode?
+
+alex_g: sure — simplified: 
+```
+# warmup scheduler
+state = 'ramp_small'
+start = now()
+while now() - start < 180:
+    if state == 'ramp_small':
+        batch_target = 1
+        if now() - start > 30:
+            state = 'ramp_medium'
+    elif state == 'ramp_medium':
+        batch_target = 4
+        if miss_rate(window=60) < 0.25:
+            state = 'ramp_full'
+    else:
+        batch_target = conf.max_batch
+    if miss_rate(window=60) > 0.4:
+        kernel = 'legacy'
+    else:
+        kernel = 'opt-v2'
+    apply(batch_target, kernel)
+    sleep(2)
+```
+
+maria_s: looks sensible. any cost impact?
+
+alex_g: trivial on steady state. short-term warmup extends some requests hitting CPU but reduces re-gen costs. net cost down ~6% for the customer sample.
+
+perf-bot: ROLLING_METRICS 2961234600: net token regen down 14%, infra CPU up 3% during ramp windows
+
+sasha_t: action items?
+
+alex_g: 1) merge canonicalize key branch (tool order, unicode NFC, tok pin) 2) deploy warmup scheduler to canary 3) monitor miss-rate + p99 tail for 24h 4) follow-up: consider shipping a client-side key normalizer lib for consistency.
+
+jonah_r: +1 on client lib. also add a metric for 'canonicalization_mismatch' where token_count(raw) != token_count(canonicalized) so we can catch clients sending weird payloads.
+
+maria_s: I'll own the canary rollout and dashboards. will slack if we see >5% tail regressions.
+
+alex_g: thanks all — rolling the merge now. ping me if you want the raw flame graphs. :rocket:

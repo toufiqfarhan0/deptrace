@@ -1,0 +1,63 @@
+product
+
+elaine: Proposal: 'elastic-reserve' feature for Dedicated pools. Idea: temporarily reassign idle reserved units into an elastic buffer during predictable low-traffic windows to improve overall GPU utilization while preserving committed SLAs. Need to align on scope, safety, pilot customers, and launch criteria.
+
+mike: What signals trigger reassign? occupancy, queue length, token rate?
+
+elaine: Primary: 5m avg GPU occupancy. Secondary: pending queue < 5% of pool capacity. Rule: occupancy < 40% for 10m -> mark up to X% reclaimable. Also respect historical low-usage windows.
+
+tara: Preemption must be safe. We can't touch a tenant below their committed_min_units. Also require per-tenant opt-out.
+
+elaine: Exactly. Safety: floor = committed_min_units. Reassign only from headroom above that.
+
+sanjay: Ops idea: start opt-in pilot with small set, require 30s preempt notice and a graceful drain window. Also cooldown so we don't oscillate.
+
+chris: Observability needs: per-tenant rebalance events, preempt_count, p95 latency delta. Auto-rollback if p95 increases >5% within 15m.
+
+jo: Customers (Acme, Finly) want notification guarantees and billing clarity: 30s notice, and we won't bill for requests that fail due to our preemption.
+
+mike: Draft policy knobs: rebalance_enabled=true, min_floor_pct=0.8, idle_threshold_minutes=10, max_reassign_pct=0.2, preempt_notice_seconds=30, cooldown_hours=6, rollback_latency_pct=5.
+
+tara: Add cooldown so same pool can't be rebalanced more than once per 6h.
+
+elaine: Roadmap (phased):
+- M0 safety & policy: floor, cooldown, notice, basic config (2 sprints)
+- M1 runtime/scheduler hooks: reassign, drain, preempt notice (2 sprints)
+- M2 observability & billing: dashboards, event export, billing reconciliation, docs (1 sprint)
+- M3 pilot & canary: opt-in pilots (2 customers), iterate (1 sprint)
+
+mike: Rough engineering estimate: scheduler + runtime hooks ~3 sprints, metrics + dashboard ~1 sprint, billing reconciliation ~1 sprint. Total ~5 sprints. Blockers: scheduler API, billing mapping for transient shifts.
+
+sanjay: I'll own scheduler hook + cooldown enforcement. Need API shape from runtime.
+
+chris: I'll build dashboards, alerts, rollback automation, and test harness to simulate preemption during spikes.
+
+jo: I'll recruit Acme (2-week pilot) and Finly (4-week). They want event logs and a phone contact during pilot.
+
+elaine: Launch criteria proposals:
+- Utilization uplift: pilot reduces unused reserved capacity by >=15%
+- No regression: p95 latency delta <= +5% and 99th <= +10ms during pilot windows
+- Preemption incidence <2/day per pilot tenant unless requested
+- Billing reconciliation validated end-to-end for pilot tenants
+- Opt-out & config knobs available
+
+mike: Need a Console kill-switch and an API safe-mode rollback endpoint. Keep an audit log diff for reassignments.
+
+sanjay: Risks: oscillation, undetected latency tail regressions, billing complexity. Mitigations: cooldown, rollback automation, billing credit window for pilots.
+
+chris: Tests: synthetic spike/drain workloads, verify no failed requests during preempt, ensure rollback triggers on latency regression.
+
+jo: I'll get legal notes and confirm pilot contracts. Acme first.
+
+deploy-bot: RFC created: https://rfc.redwood.internal/r/elastic-reserve-2144
+
+elaine: Decisions: scope M0 safety rules + cooldown approved; opt-in pilot only; billing hooks required before wide rollout. I'll turn notes into RFC and JIRA epics.
+
+mike: Action items:
+- mike: attach RFC + config draft (ETA Tue)
+- elaine: schedule 30min alignment Wed 10am
+- sanjay: start proto scheduler PR next sprint
+- chris: deliver dashboard mockups this week
+- jo: confirm pilots & legal
+
+elaine: Thanks all, closing thread.

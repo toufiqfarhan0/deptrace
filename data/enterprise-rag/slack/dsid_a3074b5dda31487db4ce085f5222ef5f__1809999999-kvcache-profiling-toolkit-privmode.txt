@@ -1,0 +1,30 @@
+eng-runtime
+
+Alice M: Heads up—ran a full nsys capture of a failing KV-cache workload in a k8s pod and the trace is missing a bunch of GPU kernel entries. Not seeing the usual GEMM hotspots.
+Ben K: hmm, did you run the container in privileged mode? nvtoolkit/nsys often can't attach without /dev/nvidia* available.
+Alice M: Not privileged. I used the standard nvidia-container-toolkit setup (daemonset). Capture command: `nsys profile -o /tmp/run1 --sample=cpu -t cuda,osrt,linux` inside the pod.
+Carla R: If toolkit mounts are root-owned and the pod runs as non-root, nsight might fail silently. Check `dmesg` and container logs for "permission denied" on /proc/???
+Alice M: Good call — `kubectl logs` shows: "nsys: failed to open /dev/nvidia-uvm: Permission denied"
+Erik S: Oof. We saw similar with the KV cache profiling last month. That plus our batching heuristic change produced a kernel-selection regression: runtime picked int8-fallback kernels which are more memory-bound, so GEMM hotspots vanish.
+Priya G: Could be two issues: (1) capture permissions, (2) runtime choosing different kernels because sequence-length distribution changed. Did you capture the kernel timeline (perfetto) as well?
+Alice M: I tried perfetto container but it hung during trace upload. I suspect the container sandbox prevents binder/socket to perfetto collector.
+Ben K: Quick checklist: 1) run pod with `securityContext.privileged: true` or at least mount devices with `containerSecurityContext.allowPrivilegeEscalation: true`. 2) ensure hostPid/hostNetwork only if necessary. 3) check `nvidia-container-toolkit` version >= 1.12.
+Carla R: Also check file modes for `/var/lib/nvidia` and `/run/nvidia`. We had `root:root 700` which blocked the capture process when pod UID != 0. A workaround is `hostPath` mount with corrected mode or `fsGroup` on the pod.
+Alice M: Re-ran with `securityContext.runAsUser: 0` and `privileged: true` for a quick test. Now nsys shows kernels but timeline is still odd: KV-cache lookups show many small memcpy kernels between host and device.
+Erik S: That matches the batching heuristic regression IMO — too small batches cause frequent KV cache loads, which fragment GEMM into smaller ops. Metrics? lat p50/p99?
+Alice M: p50 token latency up 12%, p99 up 38% vs baseline. Kernel timeline: many `cudaMemcpyAsync` + `memset` spikes.
+Ben K: Can you paste the nsys summary?
+Alice M: `Device Kernel Time: total 1.2s; large_gemm: 600ms; memcpy: 520ms; small_matmul: 80ms`
+Priya G: small_matmul high count suggests kernel selection switched to a small-block path. Check the runtime's kernel selector inputs: sequence length histogram, kv cache hit rate, and batch size. Maybe the new heuristic lowered the threshold for tiled-kernel.
+Carla R: Also validate quantization profile. If runtime detected lower accuracy, it might choose a slower fallback kernel. Search logs for `kernel_variant` decision records (we log them at DEBUG).
+Alice M: Found logs: `kernel_selector: prefer:int8_fallback for model=redwood-3b, reason=cache_fragmentation>0.35`
+Erik S: There you go. That `cache_fragmentation` metric increased because the batching change created interleaved requests (mix short+long sequences) and prefix KV cache eviction.
+Ben K: Fix path: 1) Restore batching heuristic tweak (revert) to prove causality. 2) Add a guard: don't switch to int8_fallback unless measured throughput improves on current cache fragmentation. 3) In parallel, document required pod perms for trace tooling.
+Priya G: For the trace perms doc, include recommended `securityContext`, `volumeMounts` for `/run/nvidia` with `readOnly: false`, and `fsGroup: 998` (or configurable) so non-root profiling agents can access device nodes. Also add an example `DaemonSet` that runs a privileged tracer.
+Alice M: I'll attach the nsys export and a perfetto flame. Also added the small log snippet showing kernel_selector decision.
+deploy-bot: build/12345 finished for runtime@main — contains batching-heuristic-change (revert candidate).
+Carla R: Nice. After Alice posts the artifacts I'll run a local reproduce with a synthetic KV cache stress test and try the revert. If revert reproduces perf regression fix, we merge an adjusted heuristic with safeguards.
+Alice M: Uploaded traces to /shared/profiles/1809999999/. Links: nsys (tar): s3://redwood-profiles/1809999999/nsys.tar.gz, perfetto HTML: https://perfetto.redwood/team/1809999999
+Ben K: Great. Also add a short note to run `nsys profile --trace=cuda,osrt --capture-range=now:duration=30s` from the host namespace when possible — avoids toolkit sandboxing pitfalls.
+Priya G: I'll draft the KB for profiling in k8s describing: permission pitfalls, recommended daemonset, and how kernel selection ties to batching/KV behavior.
+Alice M: Thanks everyone, feel like we have a plan. Will follow up with the revert perf numbers.

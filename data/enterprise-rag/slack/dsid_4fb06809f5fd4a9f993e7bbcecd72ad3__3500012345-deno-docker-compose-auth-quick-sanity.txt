@@ -1,0 +1,32 @@
+devex
+
+Maya: quick sanity check — running the Redwood JS SDK inside a Deno app in docker-compose, getting a 401 from the API even though curl from my host with the same key works. anyone seen env vars not leaking into the Deno process?
+
+Ethan: two quick checks: 1) open .env and make sure the value has no quotes or stray whitespace: REDWOOD_API_KEY=abcd123 (no \"\" around it). 2) exec into the container and print the var: `docker-compose exec app sh -c 'printenv | grep REDWOOD_API_KEY'`
+
+Maya: thanks — compose snippet for context:
+```yaml
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      - DENO_ENV=production
+```
+.env: `REDWOOD_API_KEY=\"abc123\"` (uh oh — I had quotes).
+
+Ethan: yep the quotes will be part of the value. Also on Windows editors it's common to pick up CRLFs so you might have a trailing `\r`. Check with `cat -v .env` or `sed -n l .env` to reveal hidden chars.
+
+Kai: one other gotcha: are you manually setting Authorization as Basic anywhere? The SDK/API expects `Authorization: Bearer <KEY>` by default. If you do need Basic for some proxy, the correct base64 form for API key-as-username + empty password is `base64(\"APIKEY:\")` (note colon at the end). People often accidentally encode `\":APIKEY\"` or add extra whitespace.
+
+Maya: omg that explains it — I had a legacy snippet that did Basic with `echo -n \":$KEY\" | base64` (so I was encoding `:APIKEY`). switched to Bearer and started getting 200s.
+
+Ethan: nice. If you must keep Basic for some reason, here's a tiny curl sanity check you can run from inside the container to verify header bytes: `docker-compose exec app sh -c 'printf \"GET /v1/health HTTP/1.1\r\nHost: api.redwood.com\r\nAuthorization: Basic %s\r\n\r\n\" \"$(echo -n \"APIKEY:\" | base64)\" | nc api.redwood.com 80'` — that shows the raw header being sent.
+
+Maya: thanks — also saved a note: avoid `env_file` vs `environment` confusion. if you need to expand or build the var from other vars, use `environment:` entries.
+
+devex-bot: pro tip: SDKs will also pick up `REDWOOD_API_KEY` from process env. For Deno use `Deno.env.get('REDWOOD_API_KEY')` and trim `\r` if present: `const k = (Deno.env.get('REDWOOD_API_KEY') || '').replace(/\r$/, '');`
+
+Kai: final: if you see a 401 and your header looks correct, double-check the key hasn't rotated and that there are no accidental linebreaks in CI secrets. `echo -n $KEY | xxd` is useful to surface hidden bytes.
+
+Maya: fixed — removed quotes, switched to Bearer, and trimmed a stray CRLF from my .env. thanks y'all :heart:

@@ -1,0 +1,24 @@
+partnerships
+
+Maria P.: Heads up — Julia from EdgeCorp hit us: vendor portal failing to ACK incoming POs, PO-45219 is stuck. Partner says 401s after a key rotation. Can infra/marketplace ops confirm?
+Sam K.: Checking logs now. I see a burst of 401s from client_id=ef-portal-prod starting 2024-11-12T03:12:09Z. Same timeframe as a token rotate webhook.
+deploy-bot: auth-rotation-service deployed v2.14 at 2024-11-12T03:12:05Z by ci/cd (pipeline #8421) :white_check_mark:
+Aaron (Finance): How many POs affected and does this block invoicing? We have a weekly billing cut on Friday.
+Maria P.: Preliminary count: 12 POs stuck in "awaiting-ack" state, 3 are hardware/reseller orders, PO-45219 is highest priority (launch bundle).
+Li (Legal): If rotation caused late fulfillment, check the marketplace MSA/PO SLA redlines — liability and acceptance windows could matter. I'll pull the clause.
+Julia - EdgeOps (EdgeCorp): Sorry — we rotated keys as part of our scheduled script but forgot to push the new public key to your portal. We can re-enable the previous token for ~2 hours while we sync. We need a temporary backfill option from your side too (replay queue).
+Sam K.: We have a replay queue but it rejects if auth fails. If partner can re-enable old token we can reprocess. Can infra create a short-lived service token?
+Maria P.: @Sam K. can you escalate to infra? EdgeCorp partner is on PST and trying to avoid manual work.
+Sam K.: Pinging @infra-team. Minimal change path: accept a second active token for vendor webhooks (header X-Vendor-Auth). I can add a toggle behind a feature flag and flip it for 2 hours.
+Aaron (Finance): If reprocess works, we can unblock invoicing. If not, we'll need a manual wire release for the launch order — need confirmation by EOD.
+Li (Legal): I'll log a potential contract follow-up (rotation notice requirement) but agree: fix-first, paper-later.
+Julia - EdgeOps (EdgeCorp): We re-published the old token at 2024-11-12T03:45Z. Can you run replay for vendor ef-edgecorp / PO-45219?
+Sam K.: Running replay now: curl -X POST "https://marketplace.redwood.ai/internal/replay" -H "Authorization: Bearer <ops-token>" -d '{"vendor":"ef-edgecorp","po":"PO-45219"}'
+Sam K.: Replay accepted, status=queued. Watching ack stream...
+Sam K.: Ack received for PO-45219 at 2024-11-12T03:52:16Z :tada: — moving to "accepted". Replaying remaining 11 now in batches.
+Maria P.: Huge, thanks. Julia, please add rotation checklist step to push new pubkey to marketplace before toggling.
+Julia - EdgeOps (EdgeCorp): Will do — creating a ticket in our ops board and looping in release engineer. Apologies for the outage.
+Aaron (Finance): Confirmed: PO-45219 invoicing can proceed once settlement events hit. I'll mark hold cleared pending replay completion.
+Li (Legal): I'll draft a short addendum about rotation notice for partner MSA and send to partnerships for review.
+Sam K.: Closing loop: feature-flaged dual-token acceptance to be removed after 2024-11-12T06:00Z. I'll leave a monitoring alert pinned to the marketplace channel for 24h.
+Maria P.: :thumbsup: thanks everyone, great cross-team work.

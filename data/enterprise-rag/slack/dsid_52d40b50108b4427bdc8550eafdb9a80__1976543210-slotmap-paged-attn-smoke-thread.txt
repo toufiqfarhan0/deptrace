@@ -1,0 +1,40 @@
+eng-runtime
+
+maria: FYI I pushed a small allocator tweak to the paged-attn slotmap yesterday and perf CI is showing a regression on A100-80GB runs :thinking_face:
+devin: link to CI run https://ci.local/runs/6123 - throughput -7.8% on batching workload, tail p99 latency +11% :eyes:
+perf-bot: CI summary: throughput -7.8%, p50 -3%, p95 +5%, p99 +11% (compare vs baseline 1976500000)
+sam: do we have a profiler trace?
+maria: grabbing a nvprof-style stack from the failing run, short snippet below:
+```
+kernel: paged_attn_block_insert        48.2ms  (hot)
+kernel: kv_page_eviction               12.1ms
+kernel: slotmap_alloc_hotpath           9.8ms
+kernel: fused_flash_forward            3.4ms
+host: memcpy_h2d                       6.0ms
+```
+alex: interesting — block_insert is way up. any changes to locks or retry paths?
+maria: I moved slotmap to use a first-fit hole scan to reduce fragmentation, but the scan path takes a slow atomic per-slot which appears to serialize under mixed seq lengths causing backpressure on the insert hotpath. KV page churn also increased.
+devin: that would explain p99. Batching heuristics amplify it when many short requests interleave with one long prefix (we saw many seq-length skew cases).
+sam: can we short-circuit the hole-scan for common-case contiguous allocations and fall back to hole-scan rarely?
+alex: propose hybrid: keep a slab fast-path for >N contiguous slots, otherwise use slotmap hole-reuse with a small randomized probe window. pseudocode:
+```
+if (request_slots <= CONTIG_THRESHOLD) {
+  allocate_from_slab(); // lock-free fast-path
+} else {
+  probe_holemap(window=HOLE_WINDOW); // constrained atomic scans
+}
+```
+maria: config idea to tune without code change:
+```
+paged_attn:
+  slab_contig_threshold: 512
+  hole_reuse_window: 64
+  slot_scan_backoff_us: 50
+  eviction_lru_window: 256
+```
+devin: also change batching heuristic to consider seq-length variance, not just batch size. current packer groups by token_count which lumps mixed-lengths causing KV cache pressure. maybe packer should compute stddev(seq_len) and refuse to mix if > THRESHOLD.
+perf-bot: queued experiment job #7341 with new slab_threshold=512 + packer variance gating
+maria: I'll run microbench locally with a synthetic workload: 80% short (32), 15% mid (512), 5% long (4096) and measure allocate contention + eviction rate. will add telemetry counters: slotmap_contend_count, avg_probe_depth, page_frag_percent.
+sam: nice. also add a debug trace toggled by runtime flag so we can sample stack traces of block_insert when contention spikes.
+alex: long-term, we should consider migrating block-table to an epoch-based allocator that amortizes hole reclamation off the hot path. but that's a bigger change.
+maria: agreed — for now we'll try the hybrid fast-path + packer gating. i'll post results in this thread. thanks :thumbsup:

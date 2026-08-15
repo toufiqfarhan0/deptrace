@@ -1,0 +1,41 @@
+eng-platform
+
+Alejandra: heads-up — I'm going to propose a new guardrail for conditional rollouts in the console. Need buy-in on telemetry gating and UX before I file the RFC.
+Samir: ok, outline the problem first. what's failing today?
+Alejandra: two things: 1) people flip feature flags to 10% but forget to tie to quality metrics, so we surface regressions late. 2) console only supports percent-based rollouts, not predicate routing (eg route by customer tier or latency).
+Riya: totally. Percent-only is too coarse for per-customer SLAs. We should support route predicates + percent. 
+Ben: we also need safe defaults — a dry-run mode that records decisions without affecting live traffic. Helps validate routing expressions.
+Alejandra: exactly. Proposed shape: a rollout config with: `condition` (a boolean expression), `percent`, `slo_checks` array, `telemetry_gate` config. Example: 
+```yaml
+conditional_rollouts:
+  - name: low_latency_route
+    condition: "request.region == 'eu' && customer.tier == 'gold'"
+    percent: 20
+    telemetry_gate:
+      eval_window: 10m
+      metrics:
+        - name: p50_latency_ms
+          threshold: 200
+        - name: error_rate
+          threshold: 0.01
+    dry_run: true
+```
+Samir: love the example. A few questions: how do we evaluate the telemetry_gate? rolling windows? baseline comparison?
+Riya: we should compare against a baseline version (current active config) and require no statistically significant regressions on any metric in `slo_checks` for X windows. Also allow custom aggregation (p50/p95/median).
+Ben: and alerting — if gate fails, should auto-roll back percent to 0 or divert to fallback model? Both useful but need opt-in.
+Alejandra: propose opt-in policy: `on_gate_fail: [notify, rollback_percent, route_to_fallback]` with default `[notify, rollback_percent]`.
+ops-bot: :warning: config-lint: conditional_rollouts[0] — `percent` is missing or zero. Dry-run enabled.
+Samir: ops-bot lint is useful — but we should also warn about predicates that reference sensitive fields (customer.id, pii). Add a lint rule for disallowed attributes.
+Riya: console UX idea — show a simulated traffic preview for a sample set of request attributes so PMs can see expected winners/losers. Small table with counts and example IDs.
+Ben: telemetry gating needs to be cheap. If we backfill every request, costs explode. We should rely on sampled telemetry + pre-aggregated metrics from metrics pipeline. Team infra-ci: can we expose a joinable metric stream keyed by rollout id?
+infra-ci: yes, we can tag metrics with rollout_id and expose an aggregated window API. We'll need a small schema change but ok.
+Alejandra: nice. Decision items: 1) Add `conditional_rollouts` to runtime config schema. 2) Implement dry-run + simulated preview in console. 3) Telemetry gate backed by aggregated metrics, comparison vs baseline. 4) Lint rules for predicate safety.
+Samir: timeline? I can take schema + lint rules. Riya can design preview UX. Ben, you own rollout executor behavior (rollback/fallback). Alejandra will draft RFC.
+Riya: I'll sketch UI flows by EOD tomorrow.
+Ben: I'll spike the executor behavior — small PoC that supports `on_gate_fail` actions.
+Alejandra: thanks. I'll post RFC draft in #eng-platform tomorrow morning. If no objections within 48h we ship a pilot to dark traffic then dry-run. :thumbsup:
+ops-bot: deploy-bot: config-change detected by Alejandra — new draft posted to /rfc/conditional-rollouts (dry-run).
+Samir: quick question — should we allow nested rollouts (multiple conditions in order)? e.g., region rule then high-tier rule.
+Riya: yes, ordering matters. We'll expose explicit `priority` and allow `match`/`break_on_match`.
+Ben: one more: quota interactions. If route predicates change token allocation, quotas should be recomputed deterministically. Add a reconciliation step in rollout executor.
+Alejandra: noted. I'll add quotas section to the RFC. Ok team, thanks — will ping once RFC is up.

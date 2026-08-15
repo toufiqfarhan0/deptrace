@@ -1,0 +1,53 @@
+dsid_a40aba7eb0054fba96411d76e726dd4a
+
+marta: Heads-up — the auth header example on /v1/generate still only shows `Authorization: Bearer <token>`. For private deployments our SDK examples use `X-Api-Key`, and support is getting tickets. Link: https://staging-docs.redwood.com/reference/generate
+
+sam: Ah yeah, that was left from the hosted-first copy. We should show both `Authorization` and `X-Api-Key` and call out which one is preferred where. Also update the curl + Go snippets.
+
+emily: I can take this. Quick question: prefer `Authorization: Bearer` as primary and `X-Api-Key` as alt, or show them side-by-side?
+
+marta: Side-by-side + a one-line note: "Hosted API: prefer Authorization; Private/Dedicated: X-Api-Key is common due to gateway mappings". Also mention `REDWOOD_API_KEY` env var in examples.
+
+sam: Sounds good. When you update snippets, please make sure Go example includes `os.Getenv` import and uses `req.Header.Set` (not Add).
+
+emily: Creating PR now. Will update curl, Python and Go. Draft snippet for Go (will include in PR):
+```go
+package main
+
+import (
+  "net/http"
+  "os"
+)
+
+func main() {
+  req, _ := http.NewRequest("POST", "https://api.redwood.com/v1/generate", nil)
+  req.Header.Set("X-Api-Key", os.Getenv("REDWOOD_API_KEY"))
+  // ...send request
+}
+```
+
+alex: small nit: add one-line comment showing `Authorization: Bearer <token>` alternative. Also wrap the env var example for clarity.
+
+emily: done — pushed changes to PR. Preview link: https://github.com/redwood-inference/docs/pull/4123/files
+
+docs-bot: @emily opened PR #4123: "docs: include both auth header examples and update SDK snippets" — preview: https://deploy-preview.redwood.com/4123/v1/generate#auth-headers
+
+emily: PTAL @marta @sam. I also added a short callout under "Private deployment notes" about API gateways that might rewrite Authorization headers.
+
+marta: LGTM. One more tiny request — add a migration note for Dedicated customers: "If you previously relied on `Authorization` rewrites, map to `X-Api-Key` in your gateway config". One sentence under the callout is fine.
+
+emily: Added the migration sentence and updated the Go snippet to show the Authorization alternative:
+```go
+// alternative for hosted deployments
+req.Header.Set("Authorization", "Bearer "+os.Getenv("REDWOOD_API_KEY"))
+```
+
+sam: :thumbsup: Tests look good for the docs generator. No broken examples in the preview.
+
+emily: Merged PR #4123. Deploy triggered.
+
+docs-bot: PR #4123 merged by emily at 3135790185. Docs deploy started: docs-deploy/789. Live preview: https://docs.redwood.com/reference/generate#auth-headers
+
+support-bot: FYI — ticket #4532 that referenced the old example has been resolved after the docs update.
+
+marta: thanks everyone — closing this thread.

@@ -1,0 +1,80 @@
+support
+
+customer-jane: Hey team — starting ~2024-05-20T11:31Z some of our calls to /v1/generate returned 502s (~15% of requests). SDK retries didn't help. Sample X-Request-Id: 6f7c9b2a. Any quick checks we can run?
+
+lydia: thanks — can you paste the exact curl you used and the failing response body (or a truncated header dump)?
+
+customer-jane: minimal repro we used:
+```
+curl -v https://api.redwood.ai/v1/generate 
+  -H "Authorization: Bearer sk-live-xxx" 
+  -H "Content-Type: application/json" 
+  -d '{"model":"redwood-1","prompt":"hi"}'
+```
+Failing snippet: `HTTP/2 502\ncontent-type: application/json\n{\"error\":\"upstream connect error or connection reset by peer\"}`
+X-Request-Id: 6f7c9b2a
+
+ben: oncall — I see a deploy completed at 2024-05-20T11:29:55Z (ingress-bot). Asking for traceroute + dig/nslookup from your egress so we can compare DNS/paths. Also roughly how many concurrent connections from your side and are you behind NAT/CGNAT?
+
+customer-jane: we're behind CGNAT (carrier NAT) on mobile clients; ephemeral ports limited. Traceroute looks normal. dig +short api.redwood.ai @8.8.8.8 returned:
+```
+198.51.100.12
+198.51.100.13
+```
+But we also saw a quick flip where the A record changed and our client stack retried immediately.
+
+lydia: noted. eng-runtime — could be related to the recent cert rotation + edge resolver behavior. Past incidents show rapid A-record rotation + low resolver TTL -> clients hit nodes with different cert sets and see handshake timeouts. Can you pull edge logs for 6f7c9b2a?
+
+ingress-bot: deploy job: ingress-edge/v2 finished, cert-rotation job kicked at 2024-05-20T11:30:05Z, certs pushed to subset of nodes 11:30:06-11:30:18Z
+
+samir: grabbing logs now. From edge logs for 6f7c9b2a: several TLS handshake timeouts and early TCP resets. Relevant snippets:
+```
+[11:31:08] conn from 198.51.100.12:52344 -> accepted
+[11:31:08] tls: ClientHello, SNI=api.redwood.ai
+[11:31:09] tls: ServerHello -> error: tls: handshake timeout
+[11:31:09] backend: upstream connect failed: dial tcp x.x.x.x:443: connection reset
+```
+Also seeing DNS resolver returning SERVFAIL sporadically for the same region around 11:30:50-11:31:10.
+
+ben: two hypotheses: 1) cert rotation was phased and some nodes didn't get the full chain -> handshake fails; 2) client retries across very short DNS TTLs and CGNAT remaps source ports/ips so retry hits a different node without warmed cert/cached keys. The IPv6 path shows additional fallbacks.
+
+lydia: customer can you run this focused repro?
+```
+curl -v --resolve api.redwood.ai:443:198.51.100.12 https://api.redwood.ai/v1/generate -H 'Authorization: Bearer sk-live-xxx' -d '{"model":"redwood-1","prompt":"test"}'
+openssl s_client -connect api.redwood.ai:443 -servername api.redwood.ai -tlsextdebug -brief
+```
+Send the s_client output if it hangs or shows an abrupt reset.
+
+customer-jane: here's openssl output — it stalls after ClientHello, then socket closed:
+```
+CONNECTED(00000005)
+write to 0x7f...: TLS 1.3, ClientHello
+*** Received fatal alert: Internal Error
+---
+no peer certificate available
+```
+We also captured that our client saw the endpoint rotate IP during retries; TTL on some resolvers was 1s for a short window (looks like provider-side DNS low TTL).
+
+samir: that matches. I pulled edge metrics: cert-rotation window overlapped with a resolver TTL shrink to 1s in one of our DNS caches. Result: some clients observed A-record flip while rotation in progress; because of sticky source NAT and ephemeral port exhaustion some flows landed on nodes that hadn't loaded the new cert chain yet, producing handshake timeouts and 502s. Also saw a handful of connections fallback to IPv6 which hit a different backend cluster with older certs.
+
+ben: mitigation applied: 1) increased authoritative resolver TTL to 30s in the affected region, 2) paused immediate IP rotate during cert swap (forced atomic swap on LB), 3) enabled connection draining and prior cert chain fallback for 5 minutes post-rotation, 4) added a fast path in edge to accept both chains during handover.
+
+lydia: customer — can you retest for a few minutes? We also reviewed your billing spikes and will credit failed token usage for the incident window.
+
+customer-jane: retested — over 12 minutes failures dropped to ~0.5% (was ~15%). Looks much better. Thanks for the quick mitigation.
+
+samir: root cause summary we will include in the postmortem: cert rotation happened concurrently with an anomalous low TTL on some caches; combined with CGNAT and client retry behavior this caused retries to land on nodes without the updated cert chain leading to TLS handshake timeouts surfaced as 502s.
+
+action items (assigned):
+- eng-runtime: implement atomic cert swap to avoid partial-serving window (samir)
+- dns: enforce min TTL 30s for edge A records and add monitoring for drops (ben)
+- sdk: add retry jitter/backoff guidance and SNI pinning example for customers (lydia)
+- support: issue billing credit for 2024-05-20 11:30-11:40 UTC (lydia)
+
+customer-jane: appreciated. Please link the postmortem and any SDK guidance. :thumbsup:
+
+ben: will post a short incident note in #postmortems and link here when ready.
+
+samir: will follow up with a short runbook entry for cert rotations and DNS TTL checks.
+
+lydia: closing the thread when postmortem link posted. Thanks everyone.

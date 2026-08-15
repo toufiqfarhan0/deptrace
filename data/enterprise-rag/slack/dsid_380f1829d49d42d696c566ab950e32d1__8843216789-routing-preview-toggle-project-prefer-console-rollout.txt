@@ -1,0 +1,54 @@
+eng-platform
+
+jessica_dev: thinking out loud — we should prefer project-scoped keys for routing by default, and expose an opt-in console toggle for org-scoped fallback. project attribution is just too important for billing and quotas.
+amir_platform: +1 for attribution. question: how do we handle legacy org keys during rollouts without breaking dashboards?
+jessica_dev: plan idea: introduce a `routing.preference` flag at org level that defaults to "project-prefer" for new customers, and for existing orgs default to "legacy" until they opt-in. console shows a banner.
+sol_ops: operational concern — if we split routing behavior, quota enforcement may see double-counting unless we canonicalize attribution upstream. need a migration step.
+navin_reliability: agree. we should emit a `attribution.mode` tag in traces and metrics so downstream jobs can reconcile. telemetry-bot: Heads-up: adding `attribution.mode` will increase metric cardinality. propose we sample the detailed tag to 1% by default and ramp.
+claire_pm: UX note: console toggle should have 3 states: Prefer project, Prefer org, Legacy (exact previous behavior). Explain differences in a tooltip with billing/quotas impact.
+amir_platform: for rollout we can do a phased approach: 1) backend support + internal config flag, 2) dark launch with routing decisions logged but not enforced, 3) opt-in via console for a small subset, 4) enforce and flip defaults for new orgs.
+jessica_dev: +1. what metrics do we watch in the dark launch?
+navin_reliability: watch: attribution mismatch rate (route decision vs stored owner), quota denial rate delta, billing attribution delta, 95p latency for auth path, and error spike ratio. Add a new dashboard tile.
+amir_platform: also add a heatmap of project vs org token usage over time to detect org keys still in heavy use.
+sol_ops: config snippet for dark-routing logging: 
+```json
+{
+  "routing": {
+    "mode": "dark",
+    "log_decision": true,
+    "sample_rate": 0.01
+  }
+}
+```
+jessica_dev: nice. deploy-bot: can we schedule a canary across 5% of requests in us-west first?
+deploy-bot: `canary started` — 5% us-west, tag=auth-routing-dark, version=v2.2026-03-23 :rocket:
+amir_platform: once canary starts, telemetry-bot, please emit sampled spans with `attribution.mode` and `routing.decided` fields.
+telemetry-bot: Roger. sampling policy applied: 1% detailed spans, aggregated counters at 100%.
+navin_reliability: we need an automated rollback condition: if quota-deny-delta > 0.5% for 5m or billing-attribution-delta > 2% for 10m, auto-revert canary.
+claire_pm: also add a quick link in the console rollout modal to revert to Legacy for that org — customers can self-rollback while we investigate.
+amir_platform: one API design point: should `routing.preference` be part of org metadata (mutable) or a separate feature flag system? mutable org metadata is simpler for UI, but flags give gradual targeting.
+jessica_dev: prefer org metadata with a thin feature-flag shim internally so we can target percent rollout without changing the org record for every canary.
+sol_ops: auth path implementation detail: when a key is presented, we resolve both claims — `project_id` (if present) and `org_id`. if `project-prefer` yields a project owner we route there, otherwise fallback to org. make sure we cache negative lookups for short TTL.
+amir_platform: caching negative lookups — watch for stale ownership after migration. include an invalidate webhook when project mappings change.
+navin_reliability: telemetry-bot: add `negative_lookup_hit` metric. helps tune TTL.
+telemetry-bot: added `auth.routing.negative_lookup_hit` counter and `auth.routing.decision_latency_ms` histogram. default labels: {mode, region, org_id_sampled}.
+claire_pm: wording for console banner: "Routing preference updated: project-scoped attribution reduces cross-customer billing noise. Click to opt-in or learn more." Keep it non-technical.
+jessica_dev: quick patch: document migration steps in internal playbook and add runbook for billing reconciliation. also notify finance before flipping defaults for new orgs.
+sol_ops: small UX ask — when user toggles to project-prefer, show a preview modal with projected quota and billing deltas (estimate).
+amir_platform: good idea. we can compute estimates from 30d usage metrics. add `preview` API: `GET /orgs/:id/routing/preview`.
+jessica_dev: outstanding risks?
+navin_reliability: risk list: cached ownership divergence, metric cardinality bloat, surprise billing shifts, quota thundering during cutover. mitigation: sampling, preview modal, staged canary, runbooks.
+claire_pm: OK, next steps: Amir to draft rollout plan + timeline, Navin to own dashboard widgets and rollback rules, Sol to prototype preview API, Jess to update docs and playbook. owners?
+amir_platform: I got rollout doc, will post PR in 24h.
+navin_reliability: will add dashboard tiles and alert rules today.
+sol_ops: will spike on preview API tomorrow AM.
+jessica_dev: thanks all. final note: call out cost savings opportunity in the doc — project caching + reduced fallback should lower token cost by ~5-8% for typical workloads. mention in PR. :thumbsup:
+deploy-bot: canary status: `5% us-west` healthy at 10m. no alerts triggered.
+telemetry-bot: sample span payload example: ```{
+  "trace_id": "abc123",
+  "attribution.mode": "project-prefer",
+  "routing.decided": "project",
+  "auth.key_id": "k_XXXX",
+  "region": "us-west-2"
+}```
+jessica_dev: bookmarking this thread for the rollout PR. will ping when PR is up. :wave:

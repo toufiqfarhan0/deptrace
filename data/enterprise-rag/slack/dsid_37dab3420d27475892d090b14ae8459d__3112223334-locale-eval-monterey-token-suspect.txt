@@ -1,0 +1,40 @@
+eng-ml
+
+sana (evals): Heads up — onshore bring-up of monterey-v1-q5 (int5-ish) showing weird drop on our subtitle translation suite for zh+ar mixed inputs. BLEU -5 on fullset :thinking_face:
+emma (eng-ml): ouch. is this only on quantized weight or also fp16 baseline?
+sana (evals): baseline fp16 is fine, monty-v1-fp16 -> baseline BLEU is stable. regression appears after our q5 export pipeline.
+lucas (quant): I ran a quick compare: q5 export with layernorm folding + kernel fusing. Per-token ppl spikes on lines with mixed CJK + RTL punctuation.
+sana (evals): repro snippet (original -> reference -> model outputs):
+```
+src: "第5章 — الفصل ٥: مقدمة\n"
+ref: "第5章 — الفصل 5: مقد言"
+monterey-v1-fp16: "第5章 — الفصل ٥: مقد言"
+monterey-v1-q5: "第5章 — الفصل 5: مقد言\n"
+```
+emma (eng-ml): i see a change in the Arabic numerals normalization and a stray halfwidth vs fullwidth hyphen around the bidi boundary. Could be tokenizer detok mismatch.
+dmitri (serving): any kernel-level warnings in the runtime logs when serving q5? we saw some KV cache alignment warnings earlier with mixed bidi.
+kai (infra): ci-bot log: `EXPORT_PIPELINE: monterey-v1 -> q5 (fold_ln=true, fuse_kernels=true) SUCCESS` no warnings there. runtime logs for canary show `kvcache: align mismatch at seq 12` twice around the same request id.
+sana (evals): good catch. here's the tokenization dump for that input:
+```
+# tokenizer tokens (fp16)
+['第', '5', '章', ' ', '—', ' ', ' ', 'فصل', ' ', '٥', ':', ' ', 'مقدمة']
+# tokenizer tokens (q5)
+['第', '5', '章', ' ', '—', ' ', '\u200e', 'فصل', ' ', '5', ':', ' ', 'مقدمة']
+```
+lucas (quant): that looks like ZWNJ / LTR mark insertion during quantized normalization step. we have a small heuristic that tries to normalize numeric digits to ascii inside RTL spans — maybe it misfires post-folding. :eyes:
+marie (solutions): customer impact: subtitles from partner X that mix Chinese chapter headers + Arabic translations will show numeric flip/spacing oddities in released captions. We should prioritize.
+emma (eng-ml): hypothesis: tokenization normalization logic (pre-tokenizer) behaves differently if byte-level whitespace gets re-encoded after quantized tokeniser weights are changed. Also kvcache alignment warnings point to a shift in produced token IDs vs kv offsets.
+lucas (quant): immediate repro plan: run `python tools/repro_token_alignment.py --model monterey-v1 --export q5 --input test/mixed_zh_ar.srt` and diff token ids + kv offsets between fp16 and q5.
+sana (evals): ran that locally, attaching shortened diff: `id_shift at idx 6: fp16 id=12345, q5 id=0` (0 is delimiter). That explains missing grapheme.
+kai (infra): canary rollback is staged. I recommend pausing q5 rollout for monterey-v1 in hosted region eu-west-1 while we triage. I'll flip routing to fp16 for new requests.
+dmitri (serving): ack. pausing. also adding more logging for kv index and decoder token stream for mixed-orientation requests.
+lucas (quant): next steps from quant team: bisect export steps (fold_ln, fuse_kernels, normalize_digits) to isolate which transform causes insertion of LTR marker and id 0. I'll attach a small test harness.
+sana (evals): can we also run eval subset that isolates subtitle-like lines (chapter headers, numerals, punctuation) and check quality metrics (BLEU / chrF) before unpausing?
+marie (solutions): please add a quick note to the partner channel + CS: "we detected subtitle formatting regressions on the q5 variant, FP16 remains default while we fix". I'll draft a short blurb.
+ci-bot: deploy rollback: monterey-v1-q5 routing -> fp16 (eu-west-1) executed by kai at 3112223350
+emma (eng-ml): thanks all. lucas, ping me when you have the bisect result. sana, please post the small eval subset results here. we'll track in a short follow-up meeting. :calendar:
+sana (evals): will do — uploading subset metrics now, baseline vs q5 delta details in the follow-up thread.
+lucas (quant): starting bisect now, ETA ~2h. suspect `normalize_digits` toggle. if confirmed, we can revert that transform in q5 exports until we fix the logic.
+marie (solutions): noted. keeping partner notified.
+sana (evals): thanks everyone — summary: regression on mixed CJK+RTL numerals/punctuation after quant export, kv cache alignment warnings observed, rollback in eu-west completed. action items: bisect export transforms (lucas), add kv/token debug logs (dmitri), run focused subtitle eval subset and upload metrics (sana).
+emma (eng-ml): :thumbsup:

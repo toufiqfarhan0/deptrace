@@ -1,0 +1,67 @@
+eng-runtime
+
+ajay: Heads-up — running a focused dry-run for the mixed-capacity preemptible strategy at 15:30 PT. Goal: validate failover to warm GPUs when ~10% of spot nodes are evicted in us-west2. We'll do phased waves (5% -> 10% -> optional 20%). Need someone oncall for routing/logs. ops-bot will orchestrate.
+
+ops-bot: Scheduled: preempt-dryrun-us-west2 at 2026-04-07T15:30:00-07:00. Run ID: run_20260407_ajay. ETA 30m.
+
+tess: I'll be there for metrics — will watch cache-hit, p95, and fallbacks dashboards.
+
+maria: I can watch inference routing and model fallbacks. Ready to flip canary to fallback models if errors spike.
+
+ben: I'll own autoscaler / warm pool sizing. Confirm we have 4 spare warm GPUs in us-west2?
+
+ajay: yes — warm pool = 4 p4d-sim nodes reserved. Plan: 1) taint a subset of spot nodes to simulate eviction 2) wait 60s for runtime drain/prefix attempts 3) verify traffic routes to warm pool and on-demand 4) observe cache hit and latency. Commands below.
+
+ajay: ```
+# simulate eviction
+kubectl get nodes -l nodepool=spot-usw2
+kubectl taint nodes <node> preemptible=true:NoSchedule
+# drain gracefully (grace period controls KV dump window)
+kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --grace-period=60
+```
+
+maria: Note — runtime prefix persistence TTL = 60s by default; if we drain too fast we will lose KV cache for longer sequences. Recommend 5% waves first.
+
+ben: Confirmed: warm pool autoscale policy will add 2 on-demand nodes at 70% GPU util.
+
+tess: Dashboards I'm watching: /dash/gpu/p95-latency, /dash/cache/hit, /dash/requests/fallbacks. Slack alerts wired to this thread.
+
+ajay: Success criteria: 1) <5% relative increase in p95 latency; 2) error-rate increase <=1% absolute; 3) prefixes recovered within 120s; 4) no customer jobs dropped (no API 5xx spike). Abort if criteria violated.
+
+maria: Also capture cost delta simulation and annotate run metadata.
+
+ops-bot: Run started. Eviction wave 1: tainting 2 nodes (~5%).
+
+tess: seeing p95 +8% vs baseline, cache hit down 92% -> 76%.
+
+ben: autoscaler launched 1 on-demand node, warm pool at 25%.
+
+ajay: wave 2 in 5m — tainting additional 2 nodes.
+
+ops-bot: Eviction wave 2 complete.
+
+maria: Runtime triggered fallback to smaller quantized model for long sequences; latency increased for those traces but error-rate within tolerance so far.
+
+tess: p95 now +12% — that's over our 5% threshold. I'm tagging incidents and pausing the run.
+
+ajay: Pausing. Rolling back taints to let nodes rejoin.
+
+ops-bot: Rollback executed (untaint + cancel drain where possible).
+
+ben: One inference job hit deadline and was dropped (job_id=job_3245). Maria, can you check the worker logs and whether client retried?
+
+maria: Logs show GRACE timeout on worker; client retried after 30s. Two prefixes weren't immediately restored; kv-cache sync lag ~45s. Suggest increasing drain grace to 180s next run.
+
+tess: After rollback, p95 returned to baseline within ~90s and cache hit recovered to 90%.
+
+ajay: Retro notes / action items: 
+- Set drain grace to 180s for next run (owner: ben)
+- Update runbook to slow waves and gate on cache-hit thresholds (owner: tess)
+- Implement fallback throttling: avoid model swap when cache drop >15% (owner: maria)
+- Add synthetic job generator to detect dropped requests during runs (owner: ajay)
+
+ben: I'll size warm pool +2 nodes and bump autoscaler threshold to 80% to reduce noisy on-demand spins.
+
+maria: Can we add a canary policy that pins latency-sensitive customers to on-demand during scheduled windows? lower blast radius for critical traffic.
+
+ajay: Good idea — include in next run roadmap. Thanks all. We'll re-run a targeted dry-run next Tuesday 15:30 PT. :thumbsup:

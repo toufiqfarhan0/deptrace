@@ -1,0 +1,21 @@
+new-hires
+
+Jayden K: hey team — first day on Platform! laptop showed up (MacBook M3, yay) but VPN won't connect. getting: 'VPN tunnel error 619'. can someone from IT help? also curious where to grab stickers :grinning:
+
+Aisha (People Ops): welcome Jayden!! :tada: adding Eli from IT and Zoe (your buddy). we ordered a sticker pack for your desk — should be on your delivery list if you signed the swag form. if not, i'll follow up.
+
+Eli G - IT: hey Jayden, sorry about the VPN. quick checklist: 1) Confirm MDM enrollment under System Settings > Profiles. 2) try the captive fix: open the VPN app, clear saved networks and retry. if that fails, paste the exact error and i'll remote in. can you run: ```scutil --nc status "Redwood VPN"``` and paste output?
+
+Jayden K: thanks Eli — running that now. output: 'Disconnected' then 'Authentication failed'. i did enroll the device but didn't approve remote management alerts? not sure.
+
+Samir R: welcome! i'm on infra oncall today so happy to help with jumpbox perms if you need them. if Eli needs to remote in, tell me the device serial and i'll whitelist it for the day.
+
+Zoe L: hi hi buddy hello :wave: i'm your onboarding buddy. quick tips: join #devex for SDK help, #eng-runtime for model-serving chats, and come to the 1pm team lunch — ramen's on me. also i'll drop a sticker pack at your desk.
+
+Eli G - IT: okay looks like MDM didn't push the cert. Jayden — can you open System Settings > Privacy & Security > Profiles and click 'Approve MDM'. if you don't see it, reply and i'll initiate a manual re-enroll.
+
+Jayden K: found it and approved. retrying VPN... connecting... ✅ connected. thank you!!
+
+mdm-bot: MDM: device enrollment confirmed for Jayden K at 5172469300.
+
+Jayden K: awesome. appreciate everyone. will ping Samir if i need jumpbox perms. and excited for stickers + lunch :stuck_out_tongue:

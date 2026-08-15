@@ -1,0 +1,45 @@
+eng-runtime
+
+support-eng: FYI customer ACME (prod) reports p99 spike ~2.4s on chat.generate since 03:00 UTC, also intermittent 502s.
+
+sophia: saw alert. p95 fine, p99 jumped. linked traces: https://apm.redwood/trace/abcd1234
+
+raj: any config changes last night? deploy-bot pushed runtime 2024-11-07-rt1 at 02:50
+
+deploy-bot: deploy finished: runtime/2024-11-07-rt1 -> canary 10% -> success
+
+maria: rolling back compileflag sdpa_autoswitch=true on canary? I think heuristic flipped to SDPA for long-seq and we got kernel fallback thrashing.
+
+raj: repro steps from customer: curl -H "Authorization: Bearer x" -d '{"model":"gpt-large","inputs":"<~16k tokens>"}' https://api.redwood/v1/generate -> p99 high
+
+sophia: quick check: metrics query:
+
+```
+sum by (kernel) (rate(inference_latency_bucket{le="+Inf"}[5m]))
+```
+
+showed increased invocations on sdpa_fallback kernel with high tail latency.
+
+jim: I think autoswitch logic started pick SDPA for long seq but compile flag mismatch caused FlashAttention kernels to be recompiled and then fallback frequently.
+
+maria: mitigation options: 1) disable sdpa_autoswitch on control-plane (fast) 2) pin canary back to prev runtime 3) increase canary traffic to reproduce then rollback.
+
+sophia: I vote disable autoswitch first (low risk). Raj pls push flag rollback: `curl -XPOST https://controlplane/flags -d '{"sdpa_autoswitch":false}'`
+
+raj: doing it now.
+
+ops-bot: flag change accepted: sdpa_autoswitch=false by raj at 03:05 UTC
+
+sophia: monitoring p99 now. also adding temporary rate-limit to customer to protect cluster: `POST /admin/limits`.
+
+maria: creating support ticket INC-2024-1937, linking traces and repro. also adding a note to run kernel-compatibility check for next deploy.
+
+raj: after flag flip p99 dropped from 2400ms -> 520ms at 03:10 UTC. customer notified.
+
+support-eng: communicated with ACME, they're seeing improved latency. keeping open for 2h to watch for regressions.
+
+sophia: next steps: bake change into rollout playbook, add telemetry for autoswitch thrash count, and add unit to kernel selection tests.
+
+jim: will open PR to add hysteresis to autoswitch and require kernel-compat pass before enabling on canary.
+
+support-eng: thanks all :thumbsup:

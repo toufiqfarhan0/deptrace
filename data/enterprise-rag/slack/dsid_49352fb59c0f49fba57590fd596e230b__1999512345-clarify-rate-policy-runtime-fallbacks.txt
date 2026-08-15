@@ -1,0 +1,40 @@
+eng-platform
+
+sam: Quick question — thinking of simplifying per-org rate policy to RPM + concurrency cap and removing TPM. Runtime-wise: how do we handle very short spikes and UX expectations?
+
+ingrid: I worry about edge cases, TPM helps with microbursts. But maybe we can emulate TPM by making RPM token-weighted with a short sliding window.
+
+yusuf: Runtime note: router should enforce concurrency, token-service enforces token-weighted RPM. If we fold TPM into RPM we need a fast-path counter to avoid 429 storms on sudden tiny spikes.
+
+hana: Burst credits are useful. Proposal: keep burst credit bucket (token-based) + RPM(token-weighted) + concurrency cap. Burst bucket refills slowly so it prevents sustained overuse.
+
+chris: sample policy sketch:```json
+{
+  "org_id": "org-123",
+  "rpm_tokens": 60000,
+  "concurrency": 20,
+  "burst_tokens": 3000
+}
+```Remember sequence-length weighting: decode tokens should subtract from buckets.
+
+sam: Good call on token-weighting. For console/metrics we should surface both request-rate and token-rate so customers understand limits.
+
+ingrid: UX: show "effective capacity" = min(rpm_tokens / avg_seq_len, concurrency*throughput). Simple chart + explanation.
+
+yusuf: Implementation detail: keep sharded counters in router with consistent hashing by org, fallback to central token-service for rare misses. Also add backpressure header for clients: `X-Rate-Limit-Advice: slow-down|fallback=<model-id>` so SDKs can auto-retry with fallback.
+
+hana: Rollout plan idea: opt-in beta orgs, enable burst tokens by default for legacy orgs, gather telemetry for 2 weeks, then enforce. Coordinate with CS for proactive messaging.
+
+ratebot: ratebot: updated policy for org-123: rpm=60000 tokens, concurrency=20, burst=3000 tokens. :white_check_mark:
+
+chris: Also need an admin header to bypass for e2e tests: `X-Internal-Override: true` gated by internal keys.
+
+sam: Next steps — I'll write a short RFC with runtime contract + console mockups. Call out: token-weighted RPM, burst token bucket, concurrency cap, router header for fallback. Anyone pairing on prototype?
+
+ingrid: I'll take the console mockups.
+
+yusuf: I'll prototype the router counters next week and PR a simple bench.
+
+hana: I'll draft rollout and CS messaging.
+
+sam: Thanks — putting tasks in the board. :thumbsup:

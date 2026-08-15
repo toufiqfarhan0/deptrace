@@ -1,0 +1,46 @@
+docs
+
+Marin: FYI I opened a docs PR to refresh the model-catalog entry for zephyr-aurora v1.2. Main items: add int8 variant docs, per-variant limits table, migration note, and updated SDK snippets (py/node/go/curl). PR: https://github.com/redwood-inference/docs/pull/4250
+Elliot: nice. Quick check: runtime expects options.quantize_profile (string) not a boolean. Variant names are: zephyr-aurora-v1.2-fp16, zephyr-aurora-v1.2-int8, zephyr-aurora-v1.2-longseq.
+Priya: I'll drop bench numbers into the PR comment. Suggest we include p50/p95 for 512/2048 and note where the longseq fallback kicks in.
+Marin: good call. Also spotted the model-card template links to /docs/old/compat that 404s. I'll replace with /docs/compatibility/matrix and leave a redirect note.
+Docs Bot: Template scan: stale link found in model-card template -> /docs/old/compat. Recommend /docs/compatibility/matrix. Also flag: missing code-block language on one snippet.
+Elliot: add a brief sentence about routing fallback: "If a request exceeds a variant's max_context, the router will attempt a compatible longseq variant when available; expect higher latency and possibly higher token-cost." Reference runtime issue #2118.
+Marin: adding that + a quick changelog line: "Model card: zephyr-aurora v1.2 1 - int8 variant + per-variant limits + longseq routing note".
+Elliot: sample SDK snippets (please use these):
+```python
+from redwood import RedwoodClient
+client = RedwoodClient(api_key="${RW_KEY}")
+resp = client.generate(
+    model="zephyr-aurora-v1.2-int8",
+    input="Translate to French:\nHello world",
+    options={"quantize_profile": "int8", "max_tokens": 128}
+)
+print(resp.text)
+```
+```js
+import Redwood from '@redwood/inference'
+const client = new Redwood({ apiKey: process.env.RW_KEY })
+const r = await client.generate({ model: 'zephyr-aurora-v1.2-int8', input: '...', options: { quantize_profile: 'int8', max_tokens: 128 } })
+console.log(r.text)
+```
+```go
+client := redwood.NewClient(os.Getenv("RW_KEY"))
+res, err := client.Generate(ctx, redwood.GenerateRequest{
+    Model: "zephyr-aurora-v1.2-int8",
+    Input: "Summarize...",
+    Options: map[string]interface{}{"quantize_profile": "int8", "max_tokens": 128},
+})
+if err != nil { log.Fatal(err) }
+fmt.Println(res.Text)
+```
+Curl quick-check:
+```bash
+curl -sS -X POST https://api.redwood.ai/v1/generate -H "Authorization: Bearer $RW_KEY" -H "Content-Type: application/json" -d '{"model":"zephyr-aurora-v1.2-int8","input":"...","options":{"quantize_profile":"int8","max_tokens":128}}'
+```
+Priya: pasted bench numbers in the PR comment: 512 p50 fp16 30ms / int8 36ms; 2048 p50 fp16 72ms / int8 95ms. Notes: int8 shows small degradation on >2k context for some prompt shapes and some int8 requests fall back to longseq variant at 4096 depending on batch shape. CSV uploaded.
+Marin: adding a DRAFT bench table and labeling quality note as DRAFT until Priya's regression tests are merged.
+Elliot: tiny nit: table header should show per-variant max_context (int8: 4096, fp16: 8192, longseq: 16384). That avoids confusion.
+Docs Bot: Lint results: markdown table column mismatch fixed in branch. Missing language markers added to code blocks.
+Preview Bot: preview build ready: https://deploy-previews.internal.redwood/4250 (staging) :white_check_mark:
+Marin: thanks all 1 - will merge after one more look from Priya on the bench table and after CI passes. Adding the changelog entry post-merge. :thumbsup:

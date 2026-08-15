@@ -1,0 +1,23 @@
+docs
+
+Hannah Lee: Heads-up: staging docs build failed after merging #1204 — anchor-check found `#regex-\\n-handling` referenced from /docs/processing/strings.html and the generated anchor is `regex-%5Cn-handling` so link-check errs.
+Hannah Lee: Build log: ```Error: Anchor not found: regex-%5Cn-handling referenced from /docs/processing/strings.html```
+Tomás Rivera: Whoa, someone added a backslash escape in the heading? Which file changed? @Priya any edits in that area?
+Priya Kapoor: That was me. I edited the heading to clarify "Regex \\n (newline) handling" and used a literal backslash: `## Regex \\n handling` to show the escape. Didn't realize slugify encodes the backslash. Sorry.
+Tomás Rivera: Docusaurus/MkDocs will URL-encode the backslash as `%5C` which explains why the existing link `#regex-\\n-handling` doesn't match. We should avoid raw backslashes in headings or add an explicit id.
+Hannah Lee: We have a bunch of cross-doc links to that anchor from the SDK examples and migration guide. Easiest fix is to add an explicit id to the heading like `{#regex-newline}` and update linking docs to reference that id.
+Priya Kapoor: I'll open a PR to: 1) change heading to `## Regex \\n handling {#regex-newline}` 2) update the three links that point to the old slug, 3) add a docs CI rule to fail on headings containing backslashes or other escape chars without explicit ids.
+Tomás Rivera: Also grep for other backslash occurrences: `rg "\\\\" docs -n` (double-escaped for the shell). Could be more examples where authors used literal escapes.
+Priya Kapoor: Found 2 more files with backslashes in headings: docs/faq/escape-characters.md and docs/sdk/js/strings.md. I'll add ids there too.
+doc-ci-bot: label added: docs-review. reviewers requested: Tomás Rivera, Hannah Lee.
+Hannah Lee: Quick review: LGTM, but please include a small note in CONTRIBUTING that shows how to represent escapes in code blocks vs. headings (e.g., put `\\n` in inline code or examples, but not in headings).
+Tomás Rivera: For the CI check, we can use a small script: `scripts/ci/heading-safety-check.sh` that fails if a heading contains `\\` or `%` sequences without `{#...}`. Add it to the PR.
+Priya Kapoor: Added the script and updated the docs workflow to run it before link-check. Also updated CONTRIBUTING with the note. PR: https://github.com/redwood-inference/docs/pull/1217 — adds ids, fixes links, adds heading-safety-check.
+doc-ci-bot: running CI for PR 1217...
+doc-ci-bot: \u2714 heading-safety-check passed, \u2714 build succeeded, \u2714 post-build markdown link-check passed.
+linter-bot: pre-commit hook added: scripts/pre-commit/heading-safety runs locally on commit and warns about backslashes in headings.
+doc-ci-bot: PR #1217 merged by Priya Kapoor.
+deploy-bot: :white_check_mark: deploy/docs-staging succeeded (build 467). Site available at https://staging.docs.redwood.ai.
+Hannah Lee: Verified links on staging; migration guide references now point to `#regex-newline`. Good catch.
+Tomás Rivera: Filed follow-up issue to expand the heading-safety-check to catch other escape sequences (tabs, unicode escapes): https://github.com/redwood-inference/docs/issues/262.
+Priya Kapoor: Will pick that up next sprint. Closing thread — thanks folks! :tada:

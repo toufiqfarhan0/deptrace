@@ -1,0 +1,69 @@
+support
+
+Support-Maya: Customer on Dedicated (VPC) reports intermittent 403s after moving service behind an NLB + internal NAT. They see auth failures only for some requests, looks timing-dependent. Repro steps: attached.
+
+Eng-SRE-Joe: Can you paste the exact curl you used and the logs from the gateway? 403s usually mean Authorization header missing or duplicated.
+
+Support-Maya: Here are the repro steps I gave them (shortened):
+```
+# from customer's app host (behind NLB)
+curl -v -H 'Authorization: Bearer <token>' https://private-api.customer.svc.example.com/health
+# sometimes returns 200, sometimes 403
+```
+
+Support-Maya: Customer captured the gateway request lines — their gateway (Envoy) is seeing either no Authorization header or TWO Authorization headers (one blank). Example from access log: "authorization": "", "authorization_1": "Bearer REDACTED" — that looked odd.
+
+Eng-Infra-Arun: That smell like header reassembly/mangling across a TCP proxy chain. NLB in TCP mode + proxy-protocol + an intermediate NAT can cause the client to open a TCP connection that gets reused and upstream proxies to re-emit headers. Do we have any known header normalization filter missing in the dedicated L7 gateway?
+
+Eng-Platform-Priya: We recently shipped a change to Envoy that avoids stripping connection-unsafe headers on keepalive reuse; that could interact badly with proxy-protocol. Filing quick hypothesis: NLB (TCP) is delivering proxy-protocol, our edge listener expects plain TLS or ALPN HTTP/1.1, and when connections are reused the header frame boundaries can get mis-parsed leading to an empty header entry plus the real one.
+
+Eng-SRE-Joe: Can we get a raw tcpdump from customer showing the TLS handshake + first HTTP request bytes? If we see two Authorization headers at the bytes level, that's on client side or an upstream proxy; if not, it's our gateway reassembly.
+
+Support-Maya: Customer uploaded a pcap snippet. I pulled the HTTP payload after decrypting via customer-provided debug cert (they consented). Here is the relevant portion they pasted: 
+```
+GET /v1/foo HTTP/1.1\nHost: private-api.customer.svc.example.com\nAuthorization: \nAuthorization: Bearer abcdef12345\nUser-Agent: curl/7.68.0\n\n```
+So there is an empty Authorization header followed by a real one.
+
+Eng-Infra-Arun: That confirms something upstream is inserting an empty header field. Likely candidate: an internal TCP LB or a TLS terminator that rewrites headers on connection reuse. Does the customer have any haproxy/edgeproxy or F5 in front of NLB?
+
+Support-Maya: They have an internal haproxy instance that performs SNI-based routing before the NLB. They said they migrated some keepalives to persistent connections last week.
+
+Eng-Platform-Priya: Repro hypothesis: client sends Authorization once, haproxy in front normalizes and forwards, NLB in TCP mode with proxy-protocol hands off to our internal NAT, on connection reuse haproxy forwards an extra empty header (maybe due to a bug in header concatenation when switching from HTTP/1.1 chunked/keepalive). Envoy then sees both and treats the empty one as authoritative for some header resolution code path -> results in auth plugin rejecting.
+
+Eng-SRE-Joe: Two corrective actions to test: 1) ask customer to set NLB to TLS termination (ALB) or switch to ALB/HTTP mode temporarily to see if behavior stops; 2) add a temporary Envoy header sanitizer at edge to collapse multiple Authorization headers, prefer non-empty. I can prepare an Envoy config snippet.
+
+Eng-SRE-Joe: Config snippet to drop empty auth headers (experimental):
+```
+# envoy Lua filter pseudo config
+inline_code: |
+  function envoy_on_request(request_handle)
+    local h = request_handle:headers():get('authorization')
+    if type(h) == 'table' then
+      -- keep the first non-empty value
+      for i,v in ipairs(h) do
+        if v and v ~= '' then
+          request_handle:headers():replace('authorization', v)
+          return
+        end
+      end
+      request_handle:headers():remove('authorization')
+    end
+  end
+```
+(This is a quick workaround while we root-cause upstream.)
+
+Support-Maya: I asked customer to test switching to ALB/HTTP and to try the above filter. They applied the filter in their gate preview and reported their 403 rate dropped to 0 within 30 minutes.
+
+Eng-Infra-Arun: Good signal. Will follow up with a packet-level root cause: my bet is haproxy appending CRLF + empty header when rewriting request on reuse. We should also add a defensive sanitizer in our default gateway for Dedicated/Private to handle multi-hop TCP chains.
+
+Support-Maya: Customer thanks the team, asked if Redwood can add an official note to the Dedicated onboarding doc about NLB+TCP caveats and recommend ALB/HTTP for header preservation.
+
+Eng-Platform-Priya: Agreed — open a docs ticket and a short KB. Also I'll add a small bullet to the dedicated default envoy bootstrap to include the Lua sanitizer behind a feature flag (so Private customers can opt in).
+
+deploy-bot: Created ticket REDWOOD-ENG-9812 (add Authorization header sanitizer + docs)
+
+Support-Maya: Closing loop with customer and marking as resolved. Will attach the pcap and the customer's confirmation to the support case.
+
+Eng-SRE-Joe: Follow-up action: schedule a postmortem with Eng-Infra + Platform to see if we should enable sanitizer by default for Dedicated.
+
+Support-Maya: Thanks everyone :raised_hands:

@@ -1,0 +1,63 @@
+eng-releases
+
+alisa: Heads-up: deploying rwinference/frontend 2.4.1 at 11:30PT. Preflight SLO gating checks first — want everyone to eyeball the dashboards. tagging @ryan @sara @mike
+
+deploy-bot: Deployment scheduled: rwinference/frontend@2.4.1 -> canary (zone us-west2). Run `preflight_checks --slo`
+
+ryan: I'll kick off the preflight script now.
+
+ryan: `/preflight run --target frontend --slo-thresholds 'p99_latency:120ms,error_rate:0.5%'`
+
+oncall-bot: Preflight started at 1812345678. Services checked: frontend, embed-service, routing. Alerts: none so far.
+
+sara: Dashboard shows a small p95 blip earlier today, but p99 steady. I'm worried about embedding retries causing 5xxs during rollout.
+
+mike: which route? /v1/generate or /v1/stream?
+
+sara: /v1/generate. I'll tail logs: `gcloud logging read 'resource.labels.service_name="frontend" AND severity>=ERROR' --limit 50`
+
+ryan: Preflight output:
+```
+SLO check: frontend
+p50: 20ms
+p95: 85ms
+p99: 112ms (threshold 120ms) OK
+5xx_rate: 0.12% (threshold 0.5%) OK
+kv-cache hit: 72%
+```
+
+deploy-bot: Canary gate: PASS — no blocking SLO regressions. Suggest pin model to v2.4.1-quant for canary subset. Would you like to proceed with 5% canary? /deploy confirm or /deploy hold
+
+alisa: Hold — let's pin the SDK timeout tweak first. @ryan can you add `timeout_ms: 3500` to canary config?
+
+ryan: Pushed change to infra repo, small patch: `timeout_ms=3500`. Running preflight again.
+
+oncall-bot: Preflight re-run done. p99 now 108ms. 5xx 0.09%.
+
+sara: Looks good to me. :thumbsup: Recommend 5% canary for 15 minutes with realtime SLO watch. If p99 > 150ms or 5xx > 0.7% cut.
+
+mike: I'll make a quick dashboard delta alert: `if p99 > 150ms for 3m -> alert` and `if 5xx > 0.7% for 1m -> rollback`
+
+alisa: ok deploying canary. /deploy-bot run
+
+deploy-bot: Deploy started. Canary targets: 5% traffic -> frontend instances in us-west2. Canary window: 15m. Monitoring channel: #eng-oncall (this thread).
+
+ryan: rolling. watching logs.
+
+oncall-bot: Canary metrics live: p99=111ms, 5xx=0.08%. No alerts.
+
+oncall-bot: Alert: 5xx increased to 0.9% for 30s. Rule: canary-5xx-threshold. Severity: warn.
+
+mike: seeing spike, correlating with embed-service timeouts. Rolling back feature flags? Checking.
+
+sara: Could be KV cache eviction after canary instances warmed. Increasing cache TTL on canary to 60s.
+
+ryan: rolling back canary to 0% as precaution.
+
+deploy-bot: Canary rollback initiated. All canary traffic reverted. Rollback completed at 1812345899.
+
+alisa: Good call. We'll investigate further; schedule a postmortem if we can't pinpoint. Reverting version pin. Thanks.
+
+sara: filing follow-up ticket: INTERNAL-4321 — embed-service retry tuning + cache warmup.
+
+mike: noted. I'll re-run preflight once fixes are up.

@@ -1,0 +1,41 @@
+incidents
+
+pagerduty-bot: PAGER: metering-service DELAYED window detected for 2026-03-17T02:00Z. Severity: P2. Notifying on-call.
+alice: acked, jumping on it :rotating_light:.
+alice: quick surface check — ingest lag ~18m, token counter delta +4.2% since 02:05.
+ben: billing on deck, I can see overage flags in the shadow stream for ~120 customers. digging into emitter/proxy logs.
+carla: SRE checking infra (kafka consumers, emitter pods). any restarts?
+alice: question — is this a true spike or duplicate emission? need to confirm before customer comms.
+ben: initial scan suggests duplicate counts from proxy retries. sample from logs: 
+```
+2026-03-17T02:06:12Z proxy: req_id=abcd token_count=124
+2026-03-17T02:06:12Z proxy: retry req_id=abcd token_count=124
+```
+ben: looks like idempotency keys not honored on retry path.
+dave: CS — we already have two tickets flagged: "unexpected overage" and one asking why invoice spiked. marking them high priority.
+emily: product here — please pause billing for affected window until we confirm. We should tag impacted customers with temporary credit.
+alice: @ben can you mute the shadow overage alert stream so we don't get noise while we triage?
+ben: muting shadow alerts now (muted: shadow-metering-alerts). launching reconcile dry-run: `python tools/reconcile_tokens.py --window \"2026-03-17T02:00:00Z/2026-03-17T03:00:00Z\" --dry-run`
+carla: observed an emitter service restart at 02:05:08 which aligns with the proxy retry spike. kafka consumer lag remained ~low, so data duplication at ingress seems plausible.
+alice: proposed mitigation: 1) temporarily set proxy retries=0 for 10m, 2) run reconcile + dedupe, 3) hold invoices and prepare credits if dedupe reduces counts.
+ben: applied proxy change (retries=0) at 02:12Z. starting reconcile (dry-run). preliminary results show duplicates ~3.8% for that window.
+ben: reconcile snippet: 
+```
+window_start=2026-03-17T02:00:00Z duplicates=937 total=24700 dup_rate=3.79% 
+```
+ben: creating a hotfix to dedupe by `req_id` in the billing aggregator, will warm-roll to 3 pods.
+dave: drafting customer message: "We detected anomalous usage counts during a short window and will not apply charges while we confirm. We'll follow up with any necessary credits." Will hold send until confirm.
+emily: also open ENG follow-up to add gateway idempotency and add telemetry.
+carla: created ENG-5234: "gateway: ensure idempotency keys on retry path".
+alice: ETA mitigation target 30m from now, will update in 15.
+pagerduty-bot: alice acknowledged incident at 6129301115
+ben: reconcile finished (non-dry). applied dedupe patch, aggregator rolled to 3/3 pods. monitoring ingestion/flags.
+ben: overage flags in shadow down 90% over last 10m. ledger counts moving toward expected.
+dave: holding outbound invoices for affected customers until EOD. CS queue updated.
+emily: please add estimated customer impact (count of invoices, estimated refund amount) to the postmortem.
+alice: booking postmortem for tomorrow 09:30. tagging ownership: billing/infra/sre/devex.
+carla: leaving a followup note for runbook updates (add proxy retry kill-switch and clearer alarms).
+ben: quick note — customers with flags list saved to /data/incident/6129301111/flagged_customers.csv
+dave: will use that list for comms once we finalize wording.
+alice: great work. closing updates when metrics stable.
+carla: :white_check_mark:

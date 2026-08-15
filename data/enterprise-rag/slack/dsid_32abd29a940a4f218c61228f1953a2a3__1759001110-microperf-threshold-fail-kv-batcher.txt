@@ -1,0 +1,40 @@
+eng-runtime
+
+mira: FYI CI microbench failed on PR #5234 — decode_small_seq latency jumped above threshold. CI link: https://ci.redwood/example/5234/artifacts :frowning_face:
+perf-ci-bot: microbench 'decode_small_seq' result: baseline=0.83ms current=0.93ms (+12.0%) threshold=+5%
+kai: that's sizable for a microbench. PR touched kernel selection heuristics and the batching coalescer, right?
+mira: yep, changes in PR: update kernel selector (prefer fused attention on nvll) + new aggressive coalescing for small sequences.
+sam: can we get a bisect? i'll run quick git bisect locally and post results.
+perf-ci-bot: relevant test: infra/tests/perf/decode_small_seq.py -> sample_size=2000, seq_len=32, batch_sim=even
+kai: ran a quick local bisect, earliest bad commit: abcdef1 (2025-11-02) — message: "batcher: enable aggressive coalescing for short seqs"
+lee: that commit also toggled a kernel selection flag that prefers int8-simd kernels on CUDA 12; could be interplay between batching and kernel perf for short sequences.
+mira: uploading flamegraphs and perf traces -> https://perf.redwood/example/5234/trace.zip
+ops-bot: artifact uploaded: flamegraph.svg (size=1.8MB)
+kai: top of flamegraph shows CPU time moved into `batch_coalescer::coalesce()` and `kv_cache::lookup_batch()` — latency is now dominated by coalescing overhead when many short requests are merged
+sam: interesting, kv cache lookups shouldn't scale linearly. maybe coalesce merges many small KV queries into one hot loop causing lock contention.
+mira: here's a snippet from the debug log around coalescer: ```
+[2025-11-02T14:22:41Z] coalescer: merged 48 reqs -> coalesced_size=1536 tokens, wall_ms=9.8
+[2025-11-02T14:22:41Z] kv_cache: lookup_batch start, keys=48
+[2025-11-02T14:22:41Z] kv_cache: lookup_batch end, wall_ms=6.1
+```
+lee: 6.1ms inside KV lookup on CPU for small keys is suspicious. likely lock or memory copy pattern introduced.
+perf-ci-bot: repro command used for CI microbench: `python -m infra.perf.run --test decode_small_seq --runs 2000 --seq 32`
+kai: quick experiment: toggling the coalescing threshold back to previous value (only coalesce when pending <= 8) makes the microbench numbers return to baseline locally.
+sam: can you paste the before/after numbers?
+kai: before (master@good): 0.83ms | after (HEAD with aggressive coalesce): 0.93ms | after (coalesce <=8): 0.85ms
+mira: that's pretty convincing. I also profiled kernels — fused attention perf unchanged; the delta is pre-kernel. So likely coalescer/KV interplay.
+lee: agree. we should avoid rolling this behavior to canary until root cause fixed. marking the release hold.
+sam: i'll open a revert PR for commit abcdef1 with a note to rework coalescing logic (will include perf tests).
+mira: filing tracking issue: https://issues.redwood/RT-1127 — add unit tests for concurrent kv_cache lookups + microbench guardrails
+ops-bot: release pipeline: canary_deploy blocked by tag: release/2025.11.5 (reason: perf regression)
+kai: quick mitigation we can push: change coalescer config defaults for short-seq workload: ```
+batch_config:
+  max_batch_size: 32
+  max_coalesce_pending: 8
+  short_seq_threshold: 64
+```
+sam: that config change is low-risk, i'll put a small PR to tweak defaults and run CI microbench.
+mira: action items: sam -> revert PR or hotfix config; kai -> add KV contention debug logs; lee -> dig into locking patterns in kv_cache; i'll coordinate perf runs and update RT-1127.
+lee: also want to run a matrix: (coalesce_on/off) x (kernel_selector=v1/v2) x (cuda12/cuda11) to see interactions.
+sam: opening PRs now, will post links when ready. :thumbsup:
+mira: thanks team — keeping release on hold until we validate. will update once CI passes or revert lands.

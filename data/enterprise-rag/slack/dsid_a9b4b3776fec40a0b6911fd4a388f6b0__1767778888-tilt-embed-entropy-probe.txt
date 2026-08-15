@@ -1,0 +1,39 @@
+eng-ml
+
+maria: quick heads-up — tilt-v2 embeddings bring-up looks... weird. running standard holdout recall@10 vs saffron baseline and noticing entropy increase + cluster wobble :thinking_face:
+peng: can you paste the numbers?
+alisa: saw something earlier where int8 pushed cluster tightness out, maybe quantization bias?
+maria: baseline saffron: recall@10=0.88, avg_cosine=0.73, token_entropy=2.1
+maria: tilt-v2 fp16: recall@10=0.86, avg_cosine=0.71, token_entropy=2.3
+maria: tilt-v2 int8 (per-channel): recall@10=0.80, avg_cosine=0.68, token_entropy=2.9 — that's the entropy jump
+ken: 2.9 is large. what dataset + cutoff?
+maria: eval set = wiki-mini-holdout (10k queries), top_k=10, cosine sim on L2-normalized vectors, seed=42 for sampling.
+peng: did you rerun with different seeds? could be sample noise for tail queries
+maria: reran with seeds 42/7/99: recall@10 = 0.80 / 0.81 / 0.79, entropy stable ~2.85-2.95
+alisa: any differences in embedding norm distribution? maybe int8 clipping causing magnitude bias
+maria: histogram attached in notebook (see link) — mean norm fp16=1.01, int8=0.86, std shifted down
+ken: that norm collapse could explain cosine downswing. we use cosine after l2 norm so magnitude shouldn't matter unless quantization changes relative directions
+peng: could be subspace-wise distortion: quantization error larger for certain heads -> angular drift for long-tail queries
+maria: ran PCA/UMAP quick: many small clusters blurred, silhouette dropped 0.12 -> 0.04. cluster centers moved ~0.08 cosine distance avg
+ops-bot: build-embed-eval job #4821 finished: artifacts at s3://redwood-evals/tilt-v2/1767778888/
+devbot: finished eval step: ./run_eval.sh --model tilt-v2 --quant int8 --dataset wiki-mini-holdout --seed 42 --out tilt_int8_eval.json
+alisa: can we try symmetric per-tensor vs per-channel quant? also try clamp-aware calibration (max=99.9th pct)
+maria: scheduled both: per-tensor int8 and per-channel int8-perchannel-calib. will post results in ~15m
+ken: also try calibration using pooled-heads (calib on aggregated activations) — saw wins on other models
+peng: parallel idea: run small A/B in canary (10% traffic) but only if we can restore to saffron fallback on drop
+alisa: keep prompt-preservation eval too — sometimes cosine/recall loses but downstream rerank unchanged. add a reranker sim test.
+maria: good call. adding reranker pass and a downstream FAQ match binary metric.
+maria: results: per-tensor int8: recall@10=0.78, entropy=3.1; per-channel calibrated int8: recall@10=0.82, entropy=2.6
+peng: per-channel calibrated looks promising — still below fp16 but closer
+ken: what's the latency/cost delta? quant helps cost but not if quality regresses too much
+maria: latency p50 down 18%, cost/unit down ~28% for int8; per-channel calib same latency.
+alisa: we should run a small quality regression test on production queries (anonymized) before canary. also check multilingual anchors.
+maria: on multilingual holdout: recall@10 drop bigger (fp16 0.84 -> int8 0.77). but per-channel calib brings to 0.81
+peng: OK. next steps: 1) run more seeds + longer holdout 2) try clamp-aware quant mapping 3) generate per-layer activation histograms and kld for each head 4) draft canary rollback plan to saffron fallback
+ken: I'll add rollout policy (canary 1%, 10%, 50%) with auto-rollback on recall@10 drop >0.03 or degradation in reranker precision@5
+maria: created ticket INF-5423 with results + artifacts link. tagging @eng-oncall to eyeball rollout policy
+ops-bot: ticket INF-5423 created by maria — https://redwood.atlassian.net/browse/INF-5423
+peng: awesome. thanks team. let's keep tilt on hold until per-channel calibrated int8 validated on larger holdout
+alisa: also add a lightweight embedding drift alert to console with token_entropy and silhouette thresholds
+maria: noted. will follow up with PR for eval harness and add the canary config. :thumbsup:
+peng: thanks — ping when PR ready and when INF-5423 has the canary config attached.

@@ -1,0 +1,62 @@
+eng-infra
+
+ashley: Heads-up — we started seeing a cluster-wide uptick in NVIDIA Xid errors in the A10 pool this morning. Xid 13 and 31 are the majority; appears concentrated on nodes serving tenant queues (search-heavy batches). Anyone already looking? :eyes:
+
+matt: I saw the alerts. Quick note: Xid 13s look like ECC/DRAM parity issues in dmesg on node-3 and node-7. 31s show up as GPU hangs during decode on high-batch requests.
+
+jia: Poked node-3. Pulled the kernel logs and nvidia logs. snippets below: 
+```
+[ 12345.678901] NVRM: Xid (13, 0x80a00001) 
+[ 12345.679012] NVRM: GPU at 0000:3b:00.0: GPU has fallen off the bus.
+[ 12345.679123] nvidia: probe of 0000:3b:00.0 failed with error -110
+```
+and from nvidia-smi pmon: 
+```
+# gpu   pid  type    sm   mem   enc   dec   command
+0  2345  C      89%  75%   0%    60%   /usr/bin/decoder_worker --batch=8
+```
+
+sophie: Good captures. On a few nodes I also see temperature spikes ~88–90C around the same timestamps, but fans were at 100% already. Could be cooling or a bad card.
+
+ashley: Any correlation by tenant/queue? searchly was mentioned — are they the only heavy batchers?
+
+matt: Not only them. We correlated Xid occurrences with the batch-size=8 decode queues across three tenants: searchly, image-index, and recommender-lite. Smaller batch jobs (<=2) haven't triggered.
+
+jia: Quick mitigation I pushed: rolled a routing rule to route decode-heavy traffic to the newer A10 pool (pool-beta) and throttled batch size to 2 for legacy pool. Also set a canary to fallback model to CPU-based runner for >3s latencies.
+
+ops-oncall: infra-bot created incident INC-20231107-482: "A10 Xid 13/31 spike — decode batch correlation" and paged oncall.
+
+matt: Triage notes: 
+- Xid 13: memory/ECC related; persistent on a subset of cards -> likely hardware fault.
+- Xid 31: GPU hang during decode kernel under sustained SM utilization; could be driver or firmware exacerbated by thermal/ecc noise.
+- Xid 48 observed once on node-9 — illegal instruction in CUDA kernel (suspiciously tied to an older driver).
+
+sophie: Actions proposed: 
+1) Schedule immediate cordon+drain for nodes with repeated Xid13 in last 24h (node-3, node-7, node-12).
+2) Collect full diagnostics before reboot/replacement: ```sudo journalctl -u nvidia-driver -k -n 500 > /tmp/nvidia-journal.log``` and copy /sys/class/drm/card*/error and /var/log/messages.
+3) Run memtest for GPU if available or swap in spare card to confirm.
+4) Ensure firmware/driver parity: list of drivers across pool: `470.199.02` on old nodes vs `525.60` on new pool.
+
+jia: I grabbed diagnostics from node-3: ECC counters incremented rapidly on GPU0, and after a soft reset Xid13 persisted. Swapped PCI slot to confirm, error stayed tied to the physical card -> plan replacement.
+
+ashley: Replacement cadence: if we see >3 Xid13 in 24h on same slot/card, auto-create replace ticket and start spare swap. Cost note: replacing cards and extra cross-zone routing will increase Dedicated usage cost for the week — FYI to finance.
+
+matt: Short-term mitigation to keep user impact low: 
+- Route batch decode traffic away from affected nodes (jia's rule).
+- Introduce per-tenant batch cap of 4 for decode ops during incident window.
+- Add auto-fallback to lower-precision quantized variant when a node returns Xid errors to reduce SM pressure.
+
+ops-oncall: Logged follow-up tasks: 
+- INC ticket with node list + diagnostics (attached).
+- HW replace request to vendor for 3x A10 cards.
+- Driver upgrade trial on a canary node (525.x series) to validate if Xid31 drops.
+
+ashley: One more data point — telemetry shows a spike in prefix cache misses right before some of the Xid31 hangs; might be a memory bandwidth pattern causing decode kernels to stress the card differently. Please add perf counters capture for next repro.
+
+sophie: Will add a perf trace hook and enable continuous ECC counter alerting. Also putting node-7 into replacement flow now.
+
+matt: TL;DR: combination of high-batch decode workloads + older driver/firmware + a handful of marginal cards => Xid13 (ECC/hw) and Xid31 (hang under load). Replacement + routing + driver testing is the plan.
+
+ashley: Great, keep updates here. If we see unknown Xid codes show up (48/79/etc.) escalate to HW vendor immediately. :thumbsup:
+
+ops-oncall: Acknowledged, will post postmortem once vendor completes replacement and we validate driver canary.

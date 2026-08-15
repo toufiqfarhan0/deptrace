@@ -1,0 +1,36 @@
+devex
+
+elaine: Hey team, onboarding friction report — customer can't make their first successful call. Quickstart CLI exits with a vague error: "Request failed (402)" and SDK throws an auth/permission error. They signed up via SSO invite and never saw the billing prompt. Can someone help triage?
+
+alex: Can you paste the exact CLI command and raw response body?
+
+elaine: Sure — they ran the starter curl: 
+```
+curl -X POST https://api.redwood-inference.test/v1/generate 
+  -H 'Authorization: Bearer sk_test_XXX' 
+  -H 'Content-Type: application/json' 
+  -d '{"model":"redwood-1", "input":"hi"}'
+```
+Response: 402 Payment Required, body: `{\"error\":{\"message\":\"workspace_incomplete\",\"code\":\"billing_required\"}}`
+
+sam: Ok that body is useful. The CLI maps 402 -> generic message right now so users see "Request failed (402)" which is terrible. We should render the server's `error.message` and include the onboarding URL. Filing a dev task.
+
+maria: Short-term: customers can finish setup by going to https://console.redwood-inference.test/onboarding and adding billing or accepting terms. For orgs created by SSO invites, the billing flow sometimes doesn't auto-redirect — common gap. (cc @elaine)
+
+devex-bot: Known issue: DEVEX-724 (onboarding redirect omitted for SSO-invite flows). Workaround doc: https://go.redwood/onboard-ssogap :warning:
+
+alex: Repro steps? I'll try to reproduce locally with an SSO-invite test org. If confirmed, we should change the CLI/SDK to display the server-provided error and a link: `onboarding_url` if present.
+
+jordan: I'll open a small API change PR: include `onboarding_url` and `onboarding_required` boolean in error payload when org state != completed. Also propose a new SDK error subclass WorkspaceOnboardingRequired so integrators can surface a CTA.
+
+sam: Nice. Also add telemetry tag so we can count how many first-call failures are onboarding gated. Might be a big slice.
+
+elaine: Customer confirmed adding billing fixed it — they made first successful call after upgrading. Can we update the quickstart docs to call this out (SSO invites may require manual billing completion) and mention the workaround link?
+
+maria: I'll update the docs and ping marketing for a small note in the quickstart. :thumbsup:
+
+alex: I couldn't repro locally — looks like the redirect logic only fails if the inviter org has `auto_redirect=false`. Jordan's API change will make this detectable.
+
+jordan: Filed REDWOOD-1221 PR template + changelog note. Will add unit tests for SDK error mapping.
+
+elaine: Thanks all — saving this thread for follow-up. If anyone wants to pair on the CLI change I can help tomorrow. :pray:

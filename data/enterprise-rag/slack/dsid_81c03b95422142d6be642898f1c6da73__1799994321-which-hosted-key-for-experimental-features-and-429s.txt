@@ -1,0 +1,42 @@
+new-hires
+
+alex: Hey team — first week here. Quick q: I'm trying out an experimental feature flag and using my hosted API key, but I'm hitting 429s almost immediately when doing streaming tests from my laptop. Which key should I be using for experiments vs staging, and is there a recommended local setup to avoid these 429s?
+
+devx: Welcome! :wave: Short answer: use the sandbox key for local/dev experiments. Hosted keys are metered and prioritized for prod traffic, so they hit rate limits faster.
+
+alex: Got it. Is the sandbox unlimited? Or do I need to request something? I tried the sandbox but streaming seems flakier.
+
+devx: Sandbox isn't unlimited — it's higher-burst but lower overall quota. For streaming dev work, either: 1) use sandbox + local dev-proxy (run `dev-proxy --auth $SANDBOX_KEY`) or 2) request a temporary hosted bump if you need sustained throughput. For quick tests sandbox should work fine.
+
+linda: To request a hosted bump, file a ticket in #support or ping me and I can route it. Include: rough token/sec, duration, and whether it's streaming or batch.
+
+sam: Another tip — streaming from a laptop often triggers per-IP throttles. If you run into repeated 429s, run through the dev proxy (it multiplexes and keeps connections warm) or ssh into a devbox in the same VPC.
+
+alex: Thanks. Any particular header or retry guidance for 429s? I saw some 429s with zero retry-after header.
+
+devx: We generally return `Retry-After` for quota 429s but not for very short per-second buckets. Best practice: exponential backoff with jitter, and bump to a higher-granularity backoff if you see repeated 429s. Example pseudo: 
+```retry = 0
+while retry < 5:
+  try_request()
+  if status == 429:
+    sleep((2**retry) * 0.2 + random())
+    retry += 1
+  else:
+    break
+```
+
+devx: Also double-check you're not mixing hosted and sandbox keys in the same app flow — that can cause confusing quotas. If you need persistent streaming for experiments, ask for a short-lived hosted quota bump and mark it in the ticket.
+
+alex: Where's the docs page for the sandbox/dev-proxy?
+
+devx: Docs: https://docs.redwood.ai/dev-keys and the dev proxy README: https://github.com/redwood-inference/dev-proxy (internal). There's a quickstart in the docs for streaming with `--keepalive` flag.
+
+infra-bot: [system] Note: IP whitelist changes can take up to 10 minutes to propagate.
+
+alex: Good to know — thanks everyone. I'll try sandbox + dev-proxy and open a support ticket if I still need more throughput.
+
+linda: If you paste the ticket link here I can expedite. Also cc @devx for config checks. :thumbsup:
+
+sam: Ping me if you want a devbox to test from — I can spin one up for you for a couple hours.
+
+alex: Appreciate it!

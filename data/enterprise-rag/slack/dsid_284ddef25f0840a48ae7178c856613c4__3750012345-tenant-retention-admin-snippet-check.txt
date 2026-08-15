@@ -1,0 +1,14 @@
+docs
+
+Ivy: opened a tiny PR to clarify tenant TTL examples and add a single admin-API curl snippet + a short Node export example: https://github.com/redwood-inference/docs/pull/721
+Connor: Nice. Legal requested we avoid absolute phrasing like 'we retain X' and instead use 'default retention period (for example, 90 days)'.
+Ivy: Updated wording to: 'Default retention periods are guidance; enforceable retention is determined by customer contract, compliance obligations, and applicable law. Dedicated/Private customers may override via the admin API.'
+Legal: LGTM. Add a brief sentence that tools for pseudonymization/redaction are available but not guaranteed to remove every identifier.
+Ivy: Added pseudonymize helper and the admin curl example:
+```
+curl -X POST https://api.redwood.com/admin/tenants/acme/retention -H 'Authorization: Bearer <token>' -d '{"ttl_days":180}'
+```
+docs-bot: link-checker: found 1 broken link in docs/export-playbook.md -> https://internal.company/export-guidelines (404)
+Connor: I pushed a link update to https://docs.redwood.com/export-playbook#guidelines and a tiny Node streaming example in commit 4c2d.
+Ivy: Thanks — merged after docs CI passed. Closing thread.
+docs-bot: deploy-notice: docs.main updated (build 1447) - checks passed

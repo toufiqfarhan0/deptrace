@@ -1,0 +1,58 @@
+eng-oncall
+
+Priya Singh: Quick handoff — wrapping up night shift, leaving the bridge to Ben for the next 4h. TL;DR: embeddings queue p99 spike (backpressure), KV eviction chatter on primary, tokenstore retries up. Customers: a small set of EU customers seeing elevated 5xxs (~C2 impact), most traffic degraded but intact. Active mitigations below.
+
+incident-bot: [ALERT] INC-8273 embeddings-queue-p99 spike -> Triggered at 02:11 UTC. Affected service: embeddings-worker, segment eu-west-1. Current alert groups: embeddings:p99 > 1500ms, tokenstore:retries > 5% 5m. PagerDuty: paged @oncall-primary. (https://redwood/ops/incidents/INC-8273)
+
+Ben Cho: I'm taking primary. thanks @Priya. I see the runbook notes you left — will keep prim/sec sticky for now. My first steps: 1) confirm autoscale on embeddings-worker in eu-west-1, 2) enable rate-limit slice for non-paid customers, 3) keep read-only fallback off unless eviction worsens.
+
+Marco Li: I'm secondary. I'll own KV eviction watch and scaling for the prim cache tier. I pre-warmed 2 extra primsec pods in eu-west about 10m ago; leaving them up for the handoff. Commands I ran:
+```
+# scale embeddings workers (k8s)
+kubectl -n inference scale deploy/embeddings-worker --replicas=12 --context=eu-west-1
+# prewarm primsec pods
+kubectl -n cache rollout restart sts/primsec-cache --context=eu-west-1
+```
+I also set eviction threshold to 0.82 (was 0.9) for aggressive GC; monitoring.
+Alice Rivera: Customer-impact quick note: 7 customers in EU on priority plan reported increased latency and some 503s between 01:58–02:20 UTC. Ticketing: I created support tickets and added 'impact:C2' label. On call-support has the ticket list. Suggested comms: initial advisory to affected tenants saying 'we're mitigating', ETA 30-45m for stabilization.
+
+Diego Ortiz: If we need to failover to a different region for embeddings, we need to coordinate DB tokenstore readswrites — that's non-trivial. I'm available for escalation but heads up I'll be out for ~30m starting now; reachable on SMS for urgent.
+
+OpsBot: Runbook pointer: embeddings queue spike runbook -> https://redwood/runbooks/embeddings-queue-spike. Recommended play: scale workers, enable transient rate-limits, check prefix cache hitrate. See step-by-step and rollback commands.
+
+Priya Singh: State of mitigations left for you @Ben/@Marco: 
+- Autoscale: triggered and bumped to 12 replicas (eu-west).
+- Cache: prewarm done; eviction threshold lowered.
+- Rate-limits: opted for soft rate-limit at 20% of baseline for non-paid keys (temp) — reduces load without breaking critical flows.
+- Tokenstore: retries up; increased connection pool on tokenstore-proxy (patched).
+- Observability: trace sampling bumped to 50% for embeddings to get more context.
+
+Runbook snippets I left in the thread:
+```
+# quick soft rate-limit (gateway)
+redwoodctl gateway rate-limit set --scope nonpaid --qps 1000 --region eu-west-1
+# bump tokenstore pool
+redwoodctl service update tokenstore-proxy --conn-pool=300 --region eu-west-1
+```
+
+Ben Cho: Noted. My immediate next checks: dashboards (p99, queue depth), connection errors, hot shards. I'll keep read-only fallback as a last resort. If p99 doesn't drop below 800ms in 20m, I'll open for failover discussion.
+
+Marco Li: I'll watch KV eviction metrics and let you know if tail drops appear. If evictions continue, plan B is to promote the warmed secondary cache (short downtime) — need sign-off from eng-sre.
+
+Priya Singh: Coverage gaps: APAC night oncall is not online for next 6h — if traffic reroutes to apac, we have limited hands there. Also no infra-oncall until 06:00 UTC; escalate to SRE lead if we need infra-level DB changes.
+
+Ben Cho: Acknowledged coverage gap. I'll keep PagerDuty escalation path ready: SRE lead @Diego (sms), Eng PM on-call, and CSM on standby for comms.
+
+incident-bot: [UPDATE] INC-8273 - mitigation actions recorded by Priya Singh. Alert status: ongoing -> investigating. Next automatic update in 10m.
+
+Priya Singh: Handoff checklist items for Ben: 
+- Primary/Secondary: Ben (primary), Marco (secondary).
+- Active alerts: embeddings:p99 spike, tokenstore retries, kv-evictions (low->med).
+- Mitigations in flight: scale workers, prewarm cache, soft rate-limits, tokenstore pool bump.
+- Runbooks: embeddings queue runbook, kv-eviction runbook (links above).
+- Customer impact: 7 EU customers tagged C2; support tickets created.
+- Escalation: SMS Diego, engage infra-oncall if DB ops needed.
+
+Ben Cho: Got it. I'll post a brief status update to #incidents and call out affected customers and ETA once p99 improves. If anything changes I'll ping here and escalate. :thumbsup:
+
+Priya Singh: Thanks team. If nothing else, I'll sign off in 15m. Leaving logs + links pinned in the incident ticket. Good handoff. :wave: 

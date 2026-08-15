@@ -1,0 +1,36 @@
+docs
+
+sara: Quick thread to finalize the relnotes + migration snippet for the next patch. Need: 1) 1-paragraph feature blurb for schema-first structured output, 2) tiny Node/Python examples, 3) a 3-row mapping table, 4) known-issue note about top-level arrays.
+aj: I can draft the mapping table and Python example. Confirming parameter is `structured_output` now?
+sara: Yes. Also mention rename from `response_format`. Keep examples minimal.
+ben: I'll grab the Node snippet from examples repo and trim it. Found an outdated anchor in relnotes page, doc-bot flagged it.
+doc-bot: link-scan: detected 1 broken internal anchor -> /docs/sdk#old-client (404). Suggest replacing with /docs/sdk#initializing-client.
+nina: Good catch. I'll run the preview link-check after PR.
+aj: Python snippet:
+```py
+# minimal Python
+import os
+from redwood import Redwood
+client = Redwood(api_key=os.environ['RW_API_KEY'])
+resp = client.generate(model='redwood-1', structured_output={'type':'json'}, prompt='Summarize')
+```
+
+ben: Node snippet:
+```js
+// minimal Node
+const { Redwood } = require('@redwood/inference');
+const client = new Redwood({ apiKey: process.env.RW_API_KEY });
+const res = await client.generate({ model: 'redwood-1', structured_output: { type: 'json' }, prompt: 'Summarize' });
+```
+
+sara: Mapping table (3 rows):
+| old | new | notes |
+|---|---|---|
+| response_format | structured_output | rename + stricter validation |
+| createClient() | new Redwood() | init API updated |
+| n/a | schema-first examples | docs added |
+
+nina: I'll run `scripts/link-check.sh --subset releases` once PR is open. One known issue note: top-level arrays may fail validation; workaround: wrap arrays in an object like `{ items: [...] }`.
+sara: Perfect. Ben, please open the PR and wait for Nina's link-check before merging. Aim to merge today for PM announcement tomorrow.
+
+ben: Opening PR now and will hold for link-check. Thanks.

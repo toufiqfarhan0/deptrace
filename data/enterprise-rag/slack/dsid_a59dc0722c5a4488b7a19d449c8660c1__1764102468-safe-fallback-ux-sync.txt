@@ -1,0 +1,17 @@
+eng-platform
+
+mike: Quick sync  proposal for autoswitch "safe-fallback" UX. Do we show exact trigger thresholds to users?
+anya: No raw numbers. Show simple reasons: "latency spike", "increased error rate", "model OOM". Technical tab for engineers.
+soph: Also expose a short timeline: switched -> samples collected -> re-eval. Include a small badge if output format may change.
+mike: How about audit? We need operator actions + auto-decisions persisted. retention default 90d.
+ops-bot: ops-bot: deployed autoswitch_safe_v1 by @mike at 1764102650.
+anya: Telemetry: every decision event should include decision_id, policy_snapshot, sample_rate, why_suppressed flag. Redact inputs by default.
+soph: UI copy suggestion: "Automatically switched to a lower-latency model due to increased errors. See details." (non-technical).
+mike: Hysteresis: default cooldown 10m, re-eval window 5m. Prevents thrash.
+anya: Permissions: only Dedicated/Private get full payload download. Hosted gets aggregated CSV export (no prompt content).
+soph: Example policy snippet for docs:
+```json
+{"policy":"autoswitch_safe_v1","triggers":["error_rate_1m","latency_p95"],"cooldown_seconds":600,"re_eval_seconds":300,"sample_rate":0.01,"expose_reason":"summary"}
+```
+mike: Follow-ups: @soph can you mock the timeline UI, @anya will update telemetry schema, I'll draft a short FAQ copy for console.
+dev-ops: I'll add RBAC on export button and ensure 2FA for permanent overrides.

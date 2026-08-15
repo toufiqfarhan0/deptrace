@@ -1,0 +1,12 @@
+random
+
+maya: Lighting poll — how do you angle your desk lamp to avoid Zoom glare but keep skin tones warm? drop pics if you want lol :sun_with_face:
+simon: I tilt mine up at ~45° and use a diffuser (I duct-taped a coffee filter to a clip lamp). no glare, soft forehead highlights. pic: https://files.slack.com/files-pri/T12345-F54321/clip-lamp-diffuser.jpg :thumbsup:
+devon: Mine was causing camera flicker whenever the ceiling fan was on. fixed by switching camera shutter to 1/60. Logitech C920 settings: `exposure=auto->manual`, `shutter=1/60` — fewer strobe artifacts.
+zoe: @devon oh interesting — I kept blaming my ISP. Tried your tweak, less flicker! also moved lamp behind monitor slightly. pic: https://files.slack.com/files-pri/T12345-F98765/zoe-desk.jpg :sparkles:
+alex: Quick tip — point a lamp at the wall behind your monitor, bounces light back and makes a softer fill. cheap trick that looks pro.
+maya: love the coffee-filter diffusers. also small poll: would anyone be interested in a 10-min photoshoot sesh after Friday retro to update profile pics? react with :camera: if yes.
+ops-bot: Reminder: Virtual Happy Hour at 5pm Friday — bring your best home-office lighting (and a beverage).
+simon: :camera: count me in. also sending a tiny DIY schematic later for the clip-diffuser.
+devon: posted my mini-schematic: ``clip -> coffee filter -> rubber band -> tape`` (easy teardown for renters).
+zoe: also shoutout to @alex for the bounced-wall tip, my lighting looks less like a horror movie now :joy:

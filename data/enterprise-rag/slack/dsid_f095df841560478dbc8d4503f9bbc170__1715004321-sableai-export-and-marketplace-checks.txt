@@ -1,0 +1,32 @@
+partnerships
+
+Morgan: Quick heads-up — SableAI wants us to onboard their open 8B model to the cloud marketplace + hardware SKU bundling. Legal flagged export control and model provenance. Need distro terms, embargo window, and marketplace asset checklist. Who can own vendor contract edits?
+
+Alex: I can take licensing. Need to confirm license flavor (permissive vs copyleft) and any 3rd-party checkpoints. @Sanjay you'll need the BOM for GPUs and quant notes.
+
+Sanjay: Got it. I'll pull performance reports + quant artifacts. Do we have a canonical 'open-model marketplace addendum' we can reuse?
+
+Alex: We have addendum v1.2 we can start from. Snippet:```
+ADDENDUM: Redistribution and Export Compliance
+Vendor certifies model weights and training data provenance.
+License: <TYPE> (insert permissive/reciprocal)
+Export: Parties will comply with applicable export control laws; vendor will notify of any restricted-country constraints within 48 hours.
+```
+
+Lena: For announcement timing, Product prefers a soft beta in marketplace then GA. Recommend 2-week embargo after joint PR. Need co-marketing approval flow and logo specs.
+
+Priya: On infra: we have FP16 and int8 artifacts; will provide a reference runner and KV-cache guidance. Please supply a SHA256 checksum + provenance manifest for the weights. Also recommend enabling prefix caching for long-context workloads.
+
+partners-bot: Checklist created: [X] License verified  [ ] Export review  [ ] BOM + hardware SKUs  [ ] Checksums + provenance  [ ] Marketing assets  Link: https://redwood.internal/partnerships/sableai-checklist
+
+Morgan: Alex — can you confirm export-review ETA? Sanjay — please drop BOM by EOD tomorrow. @Lena — confirm co-marketing contact. :wave:
+
+Alex: Export review queued with Compliance. ETA ~48h. If flagged we’ll escalate to Security & Legal.
+
+Sanjay: BOM posted at /files/bom-sableai-2024.csv — includes GPU SKUs, memory configs, and estimated throughput at 1k token windows. Rough numbers in the file header.
+
+Lena: Co-marketing contact is Taylor @ SableAI. I'll ping them for logo (PNG/SVG), 1024x1024, and a 2-sentence blurb. Proposed beta window: 2024-06-10 -> 2024-06-24.
+
+Priya: Also, we'll need a test prompt set from SableAI for quality regression checks once we enable int8. Can someone request that from Taylor?
+
+Morgan: Great. Plan: hold marketplace listing until Compliance signoff. Alex will mark export review done, Sanjay posts BOM, Lena collects assets, Priya prepares eval harness. Thanks all. :thumbsup:

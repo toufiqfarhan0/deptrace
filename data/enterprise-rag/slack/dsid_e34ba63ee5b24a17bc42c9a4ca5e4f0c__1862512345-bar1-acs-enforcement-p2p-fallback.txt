@@ -1,0 +1,46 @@
+eng-infra
+
+samir: heads-up — after pushing kernel 6.4.13 to us-west2 we've started getting multi-GPU init failures on Ampere boxes. ~10% of A100 hosts report peer access disabled.
+deploy-bot: kernel-rollout us-west2 finished 1862512345 :white_check_mark:
+maria-sre: can you paste a quick topo and any pci/dmesg snippets? also how widespread is this (racks/hosts)? :thinking_face:
+samir: sample topo from a failing host:
+```
+$ nvidia-smi topo -m
+        GPU0    GPU1    CPU Affinity
+GPU0     X     NV2      0-23
+GPU1    NV2      X      0-23
+NV2 = NODE
+```
+app error: cudaDeviceEnablePeerAccess returned 35 (peer access disabled)
+we're seeing it in 5 racks, ~40 hosts.
+alex-ops: pasted truncated dmesg from one affected node:
+```
+[ 5123.123456] pcieport 0000:3b:00.0: BAR 1 size mismatch: host=64M device=16M
+[ 5123.123460] pcie_acs: ACS policy mismatch, disabling P2P between functions
+[ 5123.123465] nvidia: disabling peer access on device 0000:3b:00.0 due to ACS
+```
+jonathan: sounds like the kernel tightened up PCI ACS or BAR assignment during init; previous kernels let firmware re-map windows that enabled BAR1-based peer mappings.
+maria-sre: if P2P gets disabled NCCL falls back to network -> big perf regression and extra cluster hours. need a quick impact estimate for queued multi-gpu jobs.
+samir: observed in NCCL logs:
+```
+NCCL WARN p2p not available, falling back to IB/TCP
+NCCL INFO transport: tcp
+```
+end-to-end latency up ~5-7x for our multi-GPU infer shards; autoscaler is reacting and spinning more hosts in other regions.
+alex-ops: short-term mitigations we considered:
+- rollback kernel to 6.4.11 in us-west2 (fast restore but disruptive)
+- apply setpci at init to expand BAR window (hacky, may break on reboot)
+- cordon/drain affected hosts and mark them single-gpu only
+- update scheduler to avoid packing multi-gpu workloads on nodes without NVLINK
+maria-sre: cost snapshot: last 24h we lost ~1.8k GPU-hours of multi-GPU throughput; ballpark $13k in extra infra if traffic shifts. I'll run a more precise model.
+infra-bot: incident INC-2026-2850 created for ampere P2P regression (severity: high)
+jonathan: I'll open a vendor ticket with Nvidia and include full lspci -vv, firmware versions, and kernel config. need to know if firmware change interacts with ACS enforcement.
+samir: proposed runbook:
+1) immediate: cordon affected hosts (no multi-gpu), add label "p2p-disabled" so scheduler avoids multi-GPU placements
+2) tonight: canary rollback kernel on one rack to validate behavior change before wider rollback
+3) short: if rollback fixes, pause kernel rollout and notify platform teams
+4) long: add PCI/BAR/ACS checks into kernel rollout preflight and a kube node e2e that verifies NVLINK/p2p via topo -m
+alex-ops: I'll run a canary rollback on rack-9 at 1862516000 and post results. will also test a setpci re-window on a disposable node.
+maria-sre: I'll own the cost analysis and scheduling tweaks. tagging oncall SRE and product runbook owners. :triage:
+jonathan: noted. collecting logs for vendor and will sync with firmware folks. if rollback proves necessary we should prepare a communications plan for customers.
+samir: thanks everyone. if you see more hosts flip to p2p-disabled, drop host-id in this thread. keeping ops chatter tight here. :thumbsup:

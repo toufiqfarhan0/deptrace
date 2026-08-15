@@ -1,0 +1,63 @@
+eng-runtime
+
+maya: quick heads-up — ran an nsys capture on the fused-attn path for the 8k-seqlen regression. seeing repeated small mmap/io map ops interleaved with fused kernels, looks like IO mapping is adding serialization.
+
+raj: can you paste the timeline view? is this the nvml/cuMemcpy or something else?
+
+maya: timeline snip (condensed):
+```
+--- time ---   kernel/event
+0.00ms        fused_attn_forward (32us)
+0.03ms        cuMemMap/IOMap (18us)
+0.06ms        fused_attn_forward (29us)
+0.10ms        cuMemMap/IOMap (21us)
+0.13ms        kv_write_small (45us) -> stalls following
+```
+Looks like a ~20us IO op between many sub-100us kernels causing SM underutilization.
+
+leo: interesting — this smells like the kernel selector falling back to an "mmap-backed KV" write path for small writes. we recently flipped the batching threshold so more requests hit the fused path but with smaller per-request KV updates.
+
+perf-bot: nvprof counters:
+Dram Reads: 4.2GB
+Dram Writes: 3.1GB
+L2 Hit: 68%
+SM Occupancy avg: 24% during the spike
+Kernel concurrency drops to 1 between IOMap calls.
+
+raj: did you capture the perfetto flame? that would show CPU-GPU sync boundaries too.
+
+maya: yes -- perfetto shows CPU thread issuing cuMemMap calls synchronously right after kernel completion. looks like code is doing per-request kv->device mapping instead of amortizing mappings across batch.
+
+leo: root cause hypothesis: new batching heuristic reduces per-batch size for tail requests, but we still call kv_mmap per-request in the fused path. older path kept a persistent device mapping and wrote directly into mapped pages. when request size is tiny, the overhead dominates.
+
+maya: repro steps I used:
+1) start server w/ FEATURE_FUSED_ATTn=1
+2) synthetic client with many short contexts (avg 12 tokens) concurrent=128
+3) capture nsys: `nsys profile --output=run3 --sample=none --trace=cuda,cudnn`
+4) perfetto UI + nvprof counters
+
+raj: quick mitigation options:
+- change kernel selector to prefer persistent-mapped kv for <=4KB writes (cheap)
+- batch map/unmap outside request hot loop (move to batch commit)
+- add async cuMemMap worker thread to avoid CPU-side blocking
+
+leo: I can prototype selector tweak. small change: if write_size <= 4096 && batch_count >= 4 -> use mapped-write path. should reduce cuMemMap frequency.
+
+maya: can you also try toggling KVCACHE_PREFETCH=0? I suspect prefetch combined with small writes is thrashing mapping state.
+
+leo: will run two captures: baseline + selector tweak. ETA ~2h. posting config and results here.
+
+perf-bot: scheduled job: nvprof-run-3132109876-1 queued by leo
+
+maya: thanks — prioritized since this impacts p99 latency on small-chat workloads. tagging @eng-runtime for visibility :eyes:
+
+raj: after prototype, let's run A/B against traffic replay and check token-cost delta; if good, roll as hotfix to canary.
+
+maya: noted. action items:
+- leo: prototype selector tweak + capture (2h)
+- maya: prepare perfetto + traffic replay setup
+- raj: draft canary rollout plan if improvement >10% p99
+
+leo: on it. will drop the capture link & raw nsys timeline when done.
+
+maya: :thumbsup:

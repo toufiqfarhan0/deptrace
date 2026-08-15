@@ -1,0 +1,39 @@
+finance
+
+nora-billing: Heads-up — Helix Health invoice INV-7423 payment failed (card declined). Attempted yesterday 16:02 UTC. Customer on file: helix-billing@helix.health. Need recommendation: auto-retry schedule or ask for wire?
+
+payments-bot: Automated decline webhook: {code: "card_declined", decline_code: "insufficient_funds", network: "visa", last4: "4242", attempt: 1, gateway_tx: "gw_9a7b"} :eyes:
+
+sam-finops: Can we see how many attempts left before we hit retry cap? Also confirm whether this is a recurring subscription or one-off invoice.
+
+nora-billing: It's a monthly committed invoice — not subscription charging on a card every month; invoice generated for usage overage. Retry cap is 3 attempts in Stripe by default. This was attempt 1.
+
+maria-ops: Suggestion: schedule two automated retries next 12 and 36 hours, then escalate to manual outreach + wire instructions if still failed. Also confirm whether billing profile has ACH enabled — customers sometimes prefer ACH for enterprise invoices.
+
+lucas-sales: I'll message the customer now to let them know we're retrying and offer wire/ACH proactively. Please don't retry until I post the customer reply — avoid duplicate attempts while they pull card.
+
+nora-billing: Agreed. Drafting the customer note below — Lucas, feel free to copy/edit: 
+
+"Hi Helix billing team — we attempted to process payment for invoice INV-7423 but the card was declined. We'll schedule up to two automatic retry attempts in the next 48 hours, but if you'd prefer we can accept payment via wire or ACH to avoid further retries. Reply which you prefer and we'll follow up with instructions. — Nora, Finance"
+
+sam-finops: LGTM. If they pick wire, finance will provide instructions and mark invoice as awaiting_wire (do not auto-cancel). If they pick ACH, send microdeposit guidance and set the payment method to pending.
+
+nora-billing: For reference, wire instructions we use for urgent fallbacks (do not paste publicly):
+
+Redwood Inference, Inc.
+Bank: Redwood Community Bank
+Routing: 021000021
+Account: 5566778899
+Reference: INV-7423 / Helix Health
+
+maria-ops: I'll add a temporary hold on automated retries in Stripe until Lucas confirms customer outreach (manual hold flag: stripe.metadata.retries_paused = true).
+
+lucas-sales: Customer replied: "Thanks — we'll initiate a wire today. Please send instructions." I'll paste their PO in thread when I have it.
+
+nora-billing: Sending wire instructions now and marking invoice as awaiting_wire in our billing system. Also creating internal ticket FIN-1874 to re-run reconciliation once payment clears.
+
+payments-bot: Payment method updated: invoice INV-7423 status -> awaiting_wire; webhook sent to accounting.
+
+sam-finops: Thanks — once funds settle, we should run usage reconciliation and mark the committed overage as paid. Also capture cost allocation tag for the customer.
+
+nora-billing: Closing loop: retries paused, customer chosen wire, wire instructions sent, internal ticket FIN-1874 created. I'll update when we receive confirmation of payment. :thumbsup:

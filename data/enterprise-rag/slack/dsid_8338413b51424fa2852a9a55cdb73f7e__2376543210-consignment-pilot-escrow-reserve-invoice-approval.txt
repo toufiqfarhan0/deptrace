@@ -1,0 +1,31 @@
+finance
+
+Jamal (Sales): Hey finance — quick ask. Pilot customer NordCo wants a consignment arrangement for our RDW-EDGE-Lite SKU for a 6-week evaluation. They only want to pay for consumed units and be invoiced at the end of the pilot. Can we approve special pricing + consignment vs. prepaid? Need one-off discount ~35% on consumed units. cc @Priya
+
+Priya (Finance): Do we have precedent? Consignment affects revenue recognition and collections risk. Need expected consumption, ARR impact, and whether they will accept a deposit or reserve invoice.
+
+Alex (Revenue Ops): Short answer: doable with an MSA addendum, but Finance needs either a deposit or a reserve invoice and RevOps sign-off. 35% is high for a short pilot — what's list price and expected consumption?
+
+Jamal (Sales): List price SKU RDW-EDGE-Lite = $9,000 each. Will ship 2 units for the pilot, conservative consumption estimate = 1 unit consumed. Proposal: 35% discount applied to consumed units only; invoice net 30 after consumption; unconsumed units returned at no charge within 7 days.
+
+Tess (Legal): Need consignment clause + clear return window + liability limits. Also include prohibition on resale. I'll draft an addendum; prefer at least a minimal deposit but can accept reserve invoice mechanics.
+
+Priya (Finance): If no deposit, we want a reserve invoice for full amount and then credit consumption to avoid collections risk. For accounting, this is consignment inventory — recognize revenue on consumption only. Approvers: Finance director + RevOps. Please fill the consignment request form: `https://redwood/sales/consignment-request` and attach expected consumption + contract snippet.
+
+Jamal (Sales): Form submitted. Ticket FIN-8921. Attached: expected consumption = 1 unit, requested 35% discount on consumed units, invoicing in EUR (customer in Germany), net 30.
+
+billing-bot: Ticket FIN-8921 created by Jamal. Workflow: finance-review -> legal -> dir-approval.
+
+Priya (Finance): Provisional stance: OK to approve 35% discount on consumed units only, subject to (1) 25% deposit OR reserve invoice mechanism + escrow; (2) RevOps confirms no policy conflicts; (3) FX/currency exposure handled (we prefer billing in EUR but will record in USD at spot and hedge via Qpaper). If RevOps confirms by EOD I'll mark APPROVED-PENDING-ESCROW.
+
+Alex (Revenue Ops): RevOps signoff: no channel conflict, no SKU carveouts. Marking _revops-approved_ :white_check_mark:. Will log in the revenue ops tracker.
+
+Tess (Legal): Drafting addendum now. If escrow isn't available, language will require return within 7 days and reversal credit for unconsumed units. Also adding a clause preventing resale and requiring notice of consumption metrics.
+
+Priya (Finance): Escalating to Lina for final sign-off.
+
+Jamal (Sales): Looping @Lina (Finance Director) for final approval — any preferences on reserve vs deposit?
+
+Lina (Finance Director): I'm okay with pilot consignment with a 25% reserve invoice (or deposit) and 35% discount on consumed units only, provided Legal signs the addendum and RevOps confirms the SKU rules. Approved with those controls. Please route contract back to Legal for signature.
+
+Jamal (Sales): Thanks everyone — proceeding with addendum and scheduling signature. I'll update FIN-8921 with contract and invoice instructions.

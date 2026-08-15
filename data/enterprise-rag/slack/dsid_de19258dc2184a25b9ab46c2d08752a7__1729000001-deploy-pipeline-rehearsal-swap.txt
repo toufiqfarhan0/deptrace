@@ -1,0 +1,24 @@
+eng-releases
+
+Alex G: Heads up — asking to swap my 11:00 deploy into the 10:15 window. CR still pending on metric-exporter but low-risk.
+Maya S: Which services are in this bundle?
+Alex G: model-runtime + inference-proxy. small config tweak + one guarded migration.
+Chris L: @Alex G I can take 11:00 if you want to move into 09:30 instead?
+Alex G: 09:30 is tricky for me. 10:15 would be ideal. Thanks for the offer though.
+Taylor R: Quick safety check — rollback procedure confirmed? last proxy rollback had a schema fallback issue.
+Alex G: Yep — rollback tested. Command: `kubectl rollout undo deployment/inference-proxy -n prod`. Migration guarded by MIGRATION_SAFE env flag (set to 0 to disable).
+Chris L: @Alex G pls add CODEOWNER tag to the PR so it doesn't stall CI.
+Alex G: Done. pinged @Maya S for final LGTM.
+deploy-bot: Scheduled change registered: inference-proxy -> 2024-05-14T10:15:00Z (calendars updated). :robot_face:
+Maya S: LGTM on runtime. Canary perf stable, no regressions.
+Chris L: I can swap slots — I'll take 09:30 open slot and move my 10:30 to 11:00. Updating calendar.
+Jamal P: I'll own smoke for the 10:15 slot. Will run checks +10m after deploy. Smoke checklist: - /live & /ready OK - tail logs for errors (10m window) - trace sampling throughput normal - embedding latency within baseline
+Taylor R: Leave a curl test snippet we can run post-deploy please:
+curl -sS https://api.redwood.example/health | jq .
+Alex G: Plan summary: Alex swaps into 10:15, Chris shifts to 11:00, Jamal runs smoke at ~10:25, Maya watches canary metrics. I'll be on-call 10:15-11:15. Deploy steps are in the PR description with exact commands and the rollback tag.
+Chris L: Calendar updated + PR comment added about release tag.
+Jamal P: Smoke results: all green. small transient 503 at t+2m but no persistent failures. Traces look clean. Posting logs snippet in #support if needed.
+Alex G: Thanks — rolling forward now. If anything odd I will roll back and tag release v2024-05-14-001.
+Maya S: Running a quick staging canary pass now, will report if anything pops.
+Chris L: All set on my side. Good run-through — nice and quiet. :thumbsup:
+Alex G: Appreciate the swap and coverage. Closing handoff, will update release notes after rollout.

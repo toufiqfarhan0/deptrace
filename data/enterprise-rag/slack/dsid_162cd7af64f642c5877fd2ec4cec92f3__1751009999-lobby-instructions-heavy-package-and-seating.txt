@@ -1,0 +1,16 @@
+people-ops
+
+Alex: Quick one — two partners dropping by at 10:30 for a demo. Do they need pre-registered badges or can they check in?
+Reception: Pre-registration saves time but same-day walk-ins are fine. Please send full names + company to reception@redwood.com and we’ll have temp badges ready.
+Sora: Also can we reserve two spots in Collab Row? I couldn't block guest seats in the desk app.
+People Ops: We can reserve 2 visitor seats in Collab Row once we have names. Note: guest Wi-Fi SSID is Guest-Redwood (24h). If they need demo access to internal staging, include email addresses for a 48h Okta guest account.
+Alex: One of them wants to ship a demo case this morning. Any special address or where heavy crates go?
+MailRoom: Ship to: "Redwood Inference - Front Desk
+Attn: Alex (Partner demo)
+[Office street address]". For items over ~25lb mark as RECEIVING and route to the receiving dock. Fragile items: mark "FRAGILE" and include tracking in the email to reception@redwood.com.
+Reception: For courier drop-offs, ask them to ring buzzer "Lobby B" and sign in with the desk. We can hold packages in secure storage until pickup.
+PackageBot: package_notice: DHL consignment expected 2025-06-15 09:20, weight 32lb, flagged for receiving dock.
+Sora: Ugh that’s heavy — will the courier need a ramp?
+MailRoom: If pallet or >50lb, schedule a receiving window so dock staff can assist. For single heavy boxes (25-50lb) we can accept but recipients should collect promptly.
+Alex: Thanks — sending names + tracking now.
+BadgeBot: visitor_precheck: 2 guests pre-registered by Alex. Badges queued at 10:22.

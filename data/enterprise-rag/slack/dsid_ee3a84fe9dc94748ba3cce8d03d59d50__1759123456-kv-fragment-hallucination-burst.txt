@@ -1,0 +1,32 @@
+eng-ml
+
+lina: Heads-up — saw intermittent hallucination bursts on canary (model: redwood-open-3b-awq-actq, group-size dynamic). Started ~14:23 UTC. Short outputs produce nonsense tokens for ~12-20 tokens then recover.
+sam: repro steps?
+lina: Using our longprompt harness + streaming. Query: system prompt + 6k user context. I can paste logs.
+lina: ```
+[2026-03-18T14:23:11Z] serve: group_switch idx=47 -> 48, kv_frag_offset=16384
+[2026-03-18T14:23:11Z] decode: token=... logp spike, entropy drop
+[2026-03-18T14:23:11Z] cache: prefix_mismatch=true
+```
+matt: interesting — looks like KV fragment boundary aligns with group switch. Could be AWQ group merge race.
+anya: can you run a quick bisect? disable dynamic group and run 50k requests? I can spin a job.
+lina: kicked off job with flags: `--awq-group-autoscale=off --awq-fixed-group=32 --act-quantiate=on` (job id: canary-8421)
+deploy-bot: started job canary-8421 on pool gw-canary-3, 8 workers
+anya: quick results: with fixed group=32 the bursts disappear across 2k samples. With fixed group=16 we still see rare spikes.
+sam: suggests try act-quant off to see if activation quant contributes
+lina: ran matrix: group=32/16 x actq=on/off x prefix_len=4k/6k. Summary:
+lina: - group=32 actq=on prefix=6k: halluc bursts 0/2000
+lina: - group=16 actq=on prefix=6k: bursts 7/2000
+lina: - group=32 actq=off prefix=6k: bursts 1/2000
+lina: - group=32 actq=on prefix=4k: bursts 0/2000
+lina: so seems group-size crossing + long prefix increases risk; actq increases but not sole cause.
+matt: hypothesis: when grouping changes mid-seq the KV cache offsets used by AWQ runtime don't realign, causing decode mis-index; actq amplifies because activations quantization reduces noise margin
+anya: can we add an invariant check in runtime: if group-switch happens, validate kv_offset % expected_stride == 0, and if mismatch, force re-encode of prefix or fallback to fp16 path.
+sam: agreed. Also add telemetry counter `awq.kv_fragment_mismatch` and a sampling hook to save the problematic key-value cache slice for replay.
+lina: opened GH issue: rwinf/serving#4125 with minimal repro and logs. assigning to @matt and @eng-runtime
+matt: I'll prototype a fallback that invalidates cache on mismatch and forces decode sanity check.
+anya: QA will run extended canary once patch is up. ETA 24h.
+lina: thanks all. filing postmortem note.
+qa-eng: will add prompt sets to regression harness.
+sam: :thumbsup: 
+deploy-bot: canary canary-8421 completed: 2000 samples processed, 0 failures (with fixed group=32)

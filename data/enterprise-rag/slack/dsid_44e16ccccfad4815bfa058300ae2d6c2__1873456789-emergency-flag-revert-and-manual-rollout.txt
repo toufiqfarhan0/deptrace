@@ -1,0 +1,41 @@
+incidents
+
+deploy-bot: Canary deployment for service `runtime-inference` (v3.4.1 -> v3.5.0) reporting 8% 5xx error rate in eu-west-1 canary slice. Health dropped below threshold. Autoscale/traffic routing not yet triggered.
+incident-bot: Paging oncall: @ops-oncall — high-severity degraded canary (service: runtime-inference). Runbook: /runbooks/deploy-rollbacks.md -> follow rollback verification.
+sarah: seeing the spike too, logs show lots of `context length exceeded` errors from the new tokenizer shard.
+raj: tagging infra — might be related to the new tokenization binary shipped in v3.5.0. Can we flip feature flag for tokenizer-v2? Flag key: `feat/tokenizer-v2`
+leo: on it. Preparing quick kill-switch. If we flip, we need to check kv-cache compatibility.
+maria: customer-impact: ~120 requests/min failing for some production tenants in eu-west-1; latency up ~200ms on average. Partial degradation so far. No alerts from other regions.
+ops-oncall: I'm pausing canary traffic routing to europe region right now. Command I ran: `redwood route traffic runtime-inference --region eu-west-1 --percent 0 --from canary`
+sarah: nice, that should stop new canary sessions. But existing sessions still failing. We should flip the feature flag immediately.
+leo: flip command in LaunchDarkly console is slow. Using quick API: `curl -X POST -H "Authorization: Bearer $LD_API" https://ld-api.launchdarkly.com/api/v2/flags/prod/feat/tokenizer-v2/off`
+raj: also preparing rollback plan if flag flip doesn't clear the errors. Manual rollback steps: 1) promote previous stable (v3.4.1) to canary 2) gradually shift traffic 3) monitor errors/latency.
+maria: ETA on flag flip? Some customers are opening support tickets.
+leo: flipping now.
+leo: (reacts :arrow_forward:)
+leo: done — flag `feat/tokenizer-v2` set to OFF for prod.
+sarah: seeing immediate reduction in 5xx errors for new requests, but some backfilled failures continuing.
+ops-oncall: rolling a manual rollback to v3.4.1 in eu-west-1 canary to be safe. Command: ```
+kubectl -n production set image deploy/runtime-inference runtime-inference=registry.redwood.com/runtime-inference:v3.4.1
+kubectl -n production rollout status deploy/runtime-inference
+```
+raj: started the rollout undo. Watching pods come up.
+leo: log tail snippets: ```
+2029-06-12T14:34:31Z runtime-inference-5cb9f logs: tokenizer: shard init OK
+2029-06-12T14:34:34Z runtime-inference-5cb9f logs: request ok
+2029-06-12T14:34:35Z runtime-inference-7d3b2 logs: Tokenizer error: context length exceeded
+```
+sarah: after rollback traffic is rebalanced, error rate dropped from 8% to 0.4% in ~3 minutes. Latency back to normal.
+maria: pinged affected tenant owners and CS to say mitigation in progress. No data loss reported, just degraded responses.
+ops-oncall: can confirm rollout status: `rollout/replicas 5/5 available`. Canary health green.
+incident-bot: Incident state: mitigated -> partial mitigation complete. Recommend verification window of 30 minutes before closing.
+raj: propose short postmortem action items: 1) revert tokenizer change in monorepo until compatibility tests added 2) add canary gate to run tokenizer unit tests on representative corpora 3) add automatic flag fallback when 5xx > 2% for >2m
+sarah: adding to backlog and assigning follow-ups. I'll open a PR to revert the tokenization binary and add tests.
+leo: also recommend we add a fast feature-flag toggle CLI for emergency flips (with audit) so we don't rely on console latency.
+maria: tracker ticket created: INC-2029-0423 — customer notifications & follow-up.
+ops-oncall: I'll keep the rollback in place and watch for any regressions. If stable for 30m, we can close the incident and schedule a careful re-release with more vetting.
+raj: one last verification snippet I ran: `curl -s -H 'Authorization: Bearer $TOKEN' https://api.redwood.ai/v1/generate -d '{"prompt":"hello"}' | jq '.error'` -> null
+sarah: good. closing loop with CS and marking SEV2 -> resolved once verification window passes.
+incident-bot: Handoff: @maria will coordinate customer comms, @sarah to lead the revert PR, @leo to draft flag-cli design, @raj to own canary gating tests.
+leo: quick note: add monitoring alert refinement so temporary bursts don't auto-trigger flag flips — we want to ensure it's sustained.
+maria: thanks everyone. I'll post summary to #postmortems and link the rollback runbook for next time. :thumbsup:

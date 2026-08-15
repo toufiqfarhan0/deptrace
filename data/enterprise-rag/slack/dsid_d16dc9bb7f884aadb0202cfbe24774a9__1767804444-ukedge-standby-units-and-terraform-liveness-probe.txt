@@ -1,0 +1,43 @@
+eng-infra
+
+maria: Quick capacity check — we're scheduling a latency sweep for uk-edge serving (model: redwood/gptx-13b-hf-8k, seq=2k). Need 4 H100-highmem nodes for ~2 hours tonight 22:00-00:00 UTC. Can vendor bump our standby slice or should we plan a preemptible fallback? Ticket INF-2791.
+
+jon: pinged vendor via partner channel, they asked if the terraform lock/plan will block deployment. Did you open the infra PR?
+
+maria: opened PR #7257 — tiny change to quota labels and a reserve resource. needs infra LGTMs. plan looks fine locally. snippet of the resource we add:
+```hcl
+resource "redwood_compute_reservation" "uk_edge_burst" {
+  region = "europe-west2"
+  gpu_type = "h100-highmem"
+  count = 4
+  labels = { project = "latency-sweep" }
+}
+```
+
+alice: I'm finishing a pager rotation but can take a look. do you have the `terraform plan` output? I need to confirm no destructive changes. :hourglass: 
+
+maria: plan summary pasted — adding 1 resource, no deletes: `+ redwood_compute_reservation.uk_edge_burst (new)` and a small IAM binding tweak. Also left a `gcloud` fallback cmd in the ticket: 
+```bash
+gcloud compute reservations create uk-edge-burst --zone=europe-west2-b --machine-type=a2-megagpu-32g --count=2
+# fallback to preemptible for the rest
+```
+
+vendor-bot: Partner update — we can immediately provide 2 H100 nodes from standby pool. Additional 2 are available as a short-term allocation (ETA ~90 minutes). We cannot change tenant label mapping in-flight.
+
+frank: suggestion — run the sweep with a mixed pool: 2 dedicated H100 + 2 preemptible H100, set batch_size=1 for the sweep to keep tail latency stable. Add this small change to canary route config:
+```yaml
+route: /bench/latency
+pool: uk-edge-burst
+pool_fallback: preemptible-uk-h100
+batching: { max_tokens: 64 }
+```
+
+jon: I'll queue a quick follow-up PR to adjust the autoscaler policy to allow `burst: true` for that pool so the 2 extra nodes can be attached if vendor confirms. linking to PR in INF-2791.
+
+alice: reviewed the tf plan, nothing destructive — LGTMe. leaving a small comment about the label format. :thumbsup:
+
+maria: thanks — if vendor provides only 2 by 22:00 we'll run a reduced sweep and reschedule the full run for tomorrow morning. updating INF-2791 with the contingency plan. @sre-oncall FYI for eviction alerts.
+
+sre-oncall: noted. I'll add a temporary alerting rule for pod evictions and a simple webhook to #release-war-room during the window. also monitoring GPU driver logs. :eyes: 
+
+maria: done — thanks everyone. will post final confirmation once vendor ETA hits and PR is merged.

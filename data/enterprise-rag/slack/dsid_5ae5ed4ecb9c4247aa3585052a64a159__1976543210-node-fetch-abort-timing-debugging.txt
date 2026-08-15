@@ -1,0 +1,58 @@
+1976543210
+
+jess_support: Heads up — customer reported a burst of duplicate POSTs and some 502/504 spikes after upgrading to the TS/Node SDK v1.4.0. They say retries + AbortController are involved.
+
+lia_customer: Repro steps I ran locally: short script that does a POST to our inference endpoint in a tight loop, using the official SDK config: retries=4, backoff=(50-500ms), and passing a shared AbortSignal from a single AbortController that times out at 2s. Sometimes the server shows the same request processed twice (same payload), and logs show multiple attempts sent almost simultaneously.
+
+lia_customer: Minimal repro code:
+
+```js
+import fetch from 'undici'; // customer uses undici directly in repro environment
+import { RedwoodClient } from '@redwood/inference';
+
+const client = new RedwoodClient({ apiKey: process.env.KEY, retry: { maxRetries: 4, baseDelayMs: 50, maxDelayMs: 500 } });
+
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 2000);
+
+async function send() {
+  await client.request('/v1/generate', {
+    method: 'POST',
+    body: JSON.stringify({ prompt: 'hello' }),
+    signal: controller.signal,
+  });
+}
+
+for (let i = 0; i < 10; i++) send().catch(e => console.log('err', e.message));
+```
+
+lia_customer: Node v20.8.0, undici 5.16.0 (global fetch polyfilled), SDK @redwood/inference v1.4.0.
+
+matt_eng: Thanks — couple quick q's: did you include any Idempotency-Key header in the POSTs? If not, server will happily process repeats. Also can you paste the server logs for the duplicate IDs?
+
+lia_customer: No idempotency header in the repro. Server logs show two different request IDs processed ~60ms apart, same body. Client logs show two outgoing attempts but identical timestamps (looks like retries fired without waiting).
+
+alex_sdk: This rings a bell. There's a bug in the v1.4.0 retry middleware where if a caller passes an external AbortSignal, we reuse that signal across retry attempts instead of creating a fresh AbortController per attempt. If the signal is aborted mid-retry window, it can cause the runtime to cancel the inflight attempt but not prevent a concurrent retry from being scheduled, which in combination with how undici streams body data can lead to multiple identical outgoing attempts.
+
+alex_sdk: Short checklist/workarounds:
+- Add an Idempotency-Key header for POST workloads until we patch.
+- Avoid sharing a single long-lived AbortController across multiple requests; create a new controller per request.
+- Upgrade to patch release 1.4.2 (contains the retry->new AbortController per try fix).
+
+matt_eng: To reproduce locally try: remove idempotency header, run the attached repro with SDK 1.4.0 and undici 5.x. You should see 2+ outbound requests for one logical call when the original attempt times out. Also try toggling network throttling to force timeouts.
+
+lia_customer: I tried with a new controller per request and the duplicates stopped. Can someone confirm the fix details/PR?
+
+alex_sdk: Confirmed — PR #4567 fixes this by cloning signal semantics and buffering small JSON bodies for safe retries. Patch released as v1.4.2. Install with: `npm i @redwood/inference@1.4.2`. The change also adds a guard: we won't retry POST by default unless an Idempotency-Key is present.
+
+jess_support: Noted for KB — we should proactively message customers on SDK v1.4.0 who do POST-heavy workloads. Lia, thanks for verifying.
+
+lia_customer: After upgrading to 1.4.2 and re-running the repro, duplicates are gone and latency spike is gone too. Thanks! :tada:
+
+deploy-bot: Deployed hotfix candidate to canary (canary-1) for 24h monitoring — https://ci.redwood.example/builds/4567
+
+matt_eng: I'll follow up and add a short doc blurb in the SDK troubleshooting section about AbortController/retries and recommending idempotency for unsafe methods.
+
+alex_sdk: Filed follow-up issue to add explicit runtime warning when caller passes an external signal to a request with retries enabled.
+
+jess_support: Great, closing this thread unless anything else pops up. :white_check_mark:

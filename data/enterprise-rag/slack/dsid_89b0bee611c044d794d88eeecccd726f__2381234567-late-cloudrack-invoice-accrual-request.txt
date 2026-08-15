@@ -1,0 +1,31 @@
+finance
+
+maria: FYI vendor CloudRack just uploaded a late invoice for Q4 usage: total $72,456 received today. Need guidance on month-end accrual vs deferral. PDF attached to thread.
+arjun: Do we know the exact service/date coverage? invoice header says Oct-Dec but line-level months missing.
+sasha: quick skim — lines show Hosted API usage $52,000 and Dedicated reserved capacity $20,456, but vendor combined some months. No per-month split on file.
+maria: My initial thought: accrue the portion that covers Dec for month-end close and defer anything that clearly belongs to future periods. But need a reliable estimate for hosted usage in Dec.
+ben: Agreed. For accounting, we should recognize expense when incurred. For hosted usage estimate we can pull Dec usage export and prorate if needed. Dedicated is usually fixed monthly charge — if invoice includes future months then that portion is a deferral.
+it-invoices-bot: Invoice saved to /invoices/vendor/cloudrack/2381234567.pdf :page_with_curl:
+sasha: I can run the usage query now. Which billing bucket to use? hosted-prod.us-east-1?
+maria: Yes, run hosted-prod.us-east-1. If you can post the CSV here that'd be great. If our estimate differs from invoice by >10% we should flag for vendor clarification and adjust next month.
+ben: Note FP&A sign-off required for provisional accruals >$50k. @lisa can you sign off on a provisional JE if we need to book one today?
+lisa: I can approve a provisional accrual up to $75k pending final recon. :thumbsup:
+maria: Thanks. Draft JE (provisional) below — will include vendor ref and "Q4-LateVendor" memo:
+
+```
+Date: 2026-03-31
+Dr: Cloud Services Expense - Hosted       58,900
+Dr: Cloud Services Expense - Dedicated    13,556
+Cr: Accrued Expenses                      72,456
+Memo: CloudRack invoice 2381234567 - provisional accrual
+```
+
+I'll adjust numbers once Sasha posts the usage export and vendor confirms month splits.
+arjun: For clarity — this is cost-side only (no revenue impact). We'll track as COGS variance for the month and include in monthly close notes.
+sasha: Query done — hosted Dec estimate = $58,900 (CSV uploaded: /reports/usage/hosted-dec-2381234567.csv). Breakdown by product in the CSV.
+maria: Great — that aligns with the hosted line. Dedicated line on invoice is 20,456 though, vendor hasn't split months. I'll ask vendor for per-month breakout; until then we can provisionally allocate 13,556 to Dec and defer the remaining 6,900 if vendor confirms it's for Jan.
+ben: Recommended approach: post provisional accrual JE as above to close books, then post a correcting entry next month if vendor provides a different monthly split.
+lisa: Confirming I will sign the final JE once vendor confirms the allocation. For now approval granted for provisional JE.
+maria: Assigned actions: @sasha chase vendor for line-level monthly breakdown and attach vendor response here; @arjun prepare the reversal/deferral schedule and GL templates. Tagging monthend/close.
+it-payables-bot: Payment hold placed on invoice 2381234567 pending coding confirmation.
+maria: Target — JE submitted to GL by EOD 3/31. Will update thread with final numbers when vendor responds. Thanks everyone. :raised_hands:

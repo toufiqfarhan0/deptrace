@@ -1,0 +1,44 @@
+eng
+
+sasha: Quick sync — I'm sketching an update to the API gateway routing rules so we can do model selection by route + headers. main goals: let product teams pin versions, let infra route to cheaper quantized variants, and provide graceful fallbacks when compatibility constraints fail. thoughts?
+
+eric: Sounds good. important: keep header overrides explicit and opt-in. we don't want silent model swaps for teams. maybe `x-redwood-model-alias` + `x-redwood-model-pin`?
+
+sasha: yeah that's the idea. proposal: priority order = explicit pin header > route-config alias > user org default. fallback header `x-redwood-suggested-fallback` can be returned when we downgrade.
+
+maya: example rule i'd like: path `/v1/summarize` + header `x-client-tier: free` -> alias `summarize-small` (cheaper). paid -> alias `summarize-pro`. also allow `?model=...` query to be ignored unless `x-allow-query-model: true`.
+
+chen: question on compatibility: how do we detect when a model alias is incompatible with a request? e.g., a streaming-chat-only model vs a non-streaming text generation request. we should reject with a clear error, not silently convert semantics.
+eric: agree. runtime should validate capability set per model. if incompatible, options: 1) reject 409 with body {"error":"incompatible_model","allowed": [...]}, 2) auto-fallback to next compatible alias if route config allows `fallback: auto`, or 3) route to a remote fallback region. default should be reject unless team enables fallback.
+sasha: code sketch for route config (Pseudocode):
+
+```
+route: /v1/generate
+match: method: POST
+headers: {"x-client-tier": ["free","paid"]}
+actions:
+  - alias: generate-big (paid)
+  - alias: generate-small (free)
+  - pin: none
+  - fallback: {enabled: true, order: [generate-small, generate-big]}
+capabilities_required: ["streaming","chat-completions"]
+```
+
+maya: telemetry ask: tag traces with `route_id`, `model_alias`, `pin_source` (header|route|org-default), and `fallback_used` boolean. this will help us track quality regressions when autoswitching.
+
+chen: quotas: per-route token budget should be respected before per-org. if a pinned model would exceed route budget (because it's expensive), we should fail fast with 402-ish or return `x-quota-allowance` header showing remaining. otherwise teams will be surprised by monstrous bills.
+eric: also need admin console UX: when someone pins a version in the Console, show the effective resolution chain (org default -> route alias -> pin header -> final model). show warnings if pin prevents autoscaling/burst fallback.
+sasha: good note. UX: expose a preview mode that simulates routing decisions for a sample request (headers + path + query) so teams can see what model will be chosen.
+
+maya: operational detail: add `x-routing-decision` response header for internal logs (not what end-user sees) with short token like `route=routes/453;alias=summarize-small;pin=header;fallback=false`. helpful for support.
+
+chen: about version pinning: pin strings should be normalized, e.g., `summarize-pro@2026-01-12` or `summarize-pro:sha1234`. runtime should verify model compatibility at pin-time (and refuse pin if incompatible with route capability constraints).
+eric: we should also allow pin lifetimes: `pin-ttl` so teams can do short experiments without manual unpin. default TTL maybe 7d for console pins, header pins ephemeral for single request.
+sasha: ops concern: sudden traffic pinned to older heavy model could blow budget. plan: when a pin is applied, we run a safety check (estimated cost delta). in console require a confirmation if estimated cost > 2x baseline. for header pins (dev/test) we'll log and rate-limit.
+
+maya: small nit: support header canonicalization e.g., `X-Redwood-Model-Alias` vs `x-redwood-model-alias`. accept either.
+
+deploy-bot: deploy queued: feature/route-model-selection -> canary in us-east on 2026-03-12T15:00Z :eyes:
+
+eric: i'll draft the RFC with these items: rule precedence, capability checks, telemetry fields, quota interactions, UX preview, and runtime safety checks. assigning to @sasha for initial config schema.
+sasha: on it. i'll start a short RFC and link a preview UI mock in #product once it's up. thanks all :thumbsup:

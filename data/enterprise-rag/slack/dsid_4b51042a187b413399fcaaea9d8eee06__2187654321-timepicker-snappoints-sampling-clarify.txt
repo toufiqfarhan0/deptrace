@@ -1,0 +1,29 @@
+design
+
+Elena Morris: Dropping a compact thread on timepicker snap points + sampling affordances. Trying to avoid surprise data when folks drag ranges. Figma: https://figma.com/file/latency-snaps
+Jae Kim: Love the idea of 'snap presets' (now/last 1h/24h/7d). Quick question: should picking a preset implicitly change sampling?
+Carlos Vega: My vote: no implicit changes. Instead show a transient banner: 'Preset selected — current preview sampling: 10%'. Let users change in the same flow.
+Marta Ivanov: UX flow thought: if they explicitly choose a sampling preset (e.g., "Full 100%"), we persist it to the session. But auto-presets from URL or dashboard should be non-persistent.
+Elena Morris: Good. Also debating microcopy for the sampled badge. Options: 'Sampled view — 10%' vs 'Preview (10% sampled)'. Which reads clearer to non-technical?
+Jae Kim: "Preview (10% sampled)" feels explicit. Put it in the top-left of the card as a subtle ribbon, not blocking the title.
+Carlos Vega: Accessibility: ensure that ribbon has role="status" and is announced when the sampling changes. Use aria-live polite.
+Marta Ivanov: On timepicker snaps: when users drag and release near a snap, should we snap with a small animation? I think yes, helps discoverability. Respect prefers-reduced-motion.
+Elena Morris: Agreed on animation but keep it 120ms max. Also add a micro-interaction where the sampler pill pulses once when sampling changed by >50%.
+Jae Kim: Heatmap binning question: if we keep bin count constant, p95 can smooth differently depending on range. Maybe expose a 'binning mode' toggle: 'fixed bins' vs 'relative bins (per-pixel)'.
+Carlos Vega: Oof, that might be confusing for PMs. Recommend hiding 'advanced' behind a tooltip link 'why p95 changes' which opens a short explainer modal.
+Marta Ivanov: For that explainer, include a tiny gif showing same data at 1h vs 7d and callout: 'p95 depends on aggregation window and sampling'.
+Elena Morris: On keyboard: make sure snap presets are tabbable and the focused preset is visually distinct. Proposed CSS snippet:
+```
+.snap-pill:focus {
+  outline: 2px solid var(--focus-500);
+  transform: translateY(-1px);
+}
+```
+a11y-bot: Accessibility scan: suggested additions -> add aria-pressed on preset buttons, and ensure the sampled ribbon has an accessible name: aria-label="Preview sampled at 10 percent". Contrast OK for ribbon background + text. :a11y:
+Jae Kim: Performance note from infra: if users toggle to 100% on long ranges, we should show a cost estimate tooltip: 'Estimated tokens: ~2.3M — may take up to 30s'.
+Carlos Vega: Nice safety. Also add a small 'Confirm' step for >1M tokens for Dedicated customers to avoid accidental heavy queries.
+Marta Ivanov: Copy for long-range banner: 'Large range selected — showing a sampled preview to keep charts responsive. Change sampling to view full data.' Buttons: 'Change sampling' (primary) and 'Keep sampled'.
+Elena Morris: Final design asks: 1) add persisted session preset when user selects in dropdown 2) show sampled ribbon with aria-live 3) animation for snap + reduced motion 4) cost estimate modal for full fidelity on big ranges. I'll update Figma and attach the GIF and aria snippets.
+Jae Kim: LGTM, will add notes to the component spec about server-side pre-aggregation and token estimation API.
+Carlos Vega: I'll follow up with a short paragraph for docs: "Why p95 sometimes changes when you zoom".
+Marta Ivanov: Thanks team — ping me when figma is updated and I'll do a quick a11y pass.

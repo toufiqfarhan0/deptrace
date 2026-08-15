@@ -1,0 +1,87 @@
+incidents
+
+oncall-bot: :rotating_light: INCIDENT ALERT — elevated GPU-related errors observed in eu-west-1 (host: gpu-az3-45). Spike in 5xx for /v1/generate starting 2024-10-16T09:00:34Z. Paging on-call.
+
+sara: I'm on it. Looking at metrics now, alert looks real. Opening logs in Kibana.
+
+kevin: Pulling host telemetry. I can already see PCIe AER reports and some packet loss on that node since ~09:00.
+
+maria: infra-eng FYI 1. ECC corrected errors climbing on gpu-az3-45; kernel logs showing PCIe AER entries.
+
+james: Which customers are affected? Need to surface if this impacts any paid SLAs.
+
+sara: finbot-prod shows most impact 12% error rate over last 5m. A couple of smaller tenants have blips. No SLA breaches yet but trending upward.
+
+cloud-support-bot: Created cloud-provider ticket #CP-20241016-3492. Notified provider ops. They reported an automatic host reboot at 09:02:14Z; services came back but errors persisted.
+
+kevin: Building a rough timeline:
+- 09:00:34Z alert fired (5xx uplift)
+- 09:01:10Z our autoscaler began rescheduling GPU pods off the node
+- 09:02:14Z provider-initiated host reboot for gpu-az3-45
+- 09:04:00Z partial recovery but intermittent errors continued
+- 09:08:50Z provider triggered a second reboot attempt
+- 09:10:30Z we proactively drained remaining GPU pods from the host
+
+maria: Posting kernel log tail that I grabbed (sanitized):
+``nOct 16 09:00:58 gpu-az3-45 kernel: pcieport 0000:03:00.0: PCIe Bus Error: severity=Corrected, type=Physical Layer, id=00e0(Receiver ID)
+Oct 16 09:01:02 gpu-az3-45 kernel: NVRM: Xid (PCI:0000:03:00): 79, pid=4321, GPU ID=00000000
+Oct 16 09:01:04 gpu-az3-45 kernel: Kernel panic - not syncing: fatal exception
+```
+
+sara: The kernel panic line might be from the provider's reboot sequence, could be a red herring. The AER/PCIe corrected errors are notable though.
+
+kevin: Nvidia telemetry before we drained: ECC volatile errors on GPU0 jumped quickly.
+``n$ nvidia-smi -q -d ECC
+GPU 0000:03:00.0
+  ECC Errors
+    Volatile: 14
+    Aggregate: 14
+```
+
+james: Did the autoscaler movement incite cache cold misses which prolonged latency after pods moved? That could explain why errors and latency lasted post-reboot.
+
+sara: Yes, prefix/KV cache miss rate spiked when pods were rescheduled. That kept latency high despite pod restarts.
+
+maria: Hypotheses (tracking in-thread):
+- H1: Noisy neighbor causing PCIe congestion (evidence: AER corrected messages, bursts of PCIe traffic visible)
+- H2: Degrading GPU hardware (evidence: Xid 79 GPU errors, ECC increase)
+- H3: Driver/kernel bug triggered under our workload (evidence: kernel panic line in logs)
+- H4: Cloud host firmware/microcode regression (evidence: provider notes recent rollout in the AZ)
+
+kevin: Prioritizing H2 and H4 for immediate follow-up. Mitigation steps Iem executing: 1) collect full dmesg and nv-host logs (started), 2) evacuate remaining GPU pods (done), 3) pin finbot-prod to reserved-dedicated pool to reduce customer impact (in progress).
+
+sara: Draft support note for customers: "We experienced transient GPU host instability in eu-west-1 causing elevated latency and intermittent 502s for some customers. Affected workloads were migrated and the cloud provider is investigating host reboots and PCIe errors. We will follow up with an RCA." Anyone want to tweak?
+
+james: Add that wem opened provider ticket CP-20241016-3492 and requested hardware capture. Also note which customers were moved to reserved pool.
+
+cloud-support-bot: Provider reply (CP-20241016-3492): "We observed multiple corrected PCIe AER events on host gpu-az3-45. Host was cycled by platform. We're running hardware diagnostics and advise reprovisioning or replacing PCIe riser / NIC if errors persist. ETA: 2h."
+
+maria: Can someone dump the list of pods on that host between 08:50-09:05? I need to cross-check log artifacts.
+
+kevin: Excerpt of pods found:
+``npod/redwood-gen-5  -> node gpu-az3-45
+pod/finbot-infer-2 -> node gpu-az3-45
+pod/exp-rerank-1  -> node gpu-az3-45
+```
+
+sara: Action items (in-thread):
+- [sara] keep finbot pinned to reserved pool and coordinate comms 1 in progress
+- [maria] upload full host dmesg, nv-host logs, ECC counters to S3 1 in progress
+- [kevin] drive cloud-provider coordination and request hardware swap if errors continue 1 contacted provider
+- [james] update support ticket and customer comms 1 queued
+
+kevin: Quick mitigation note: enabled auto-fallback routing for critical routes to dedicated pool to avoid cascading failures while host is unstable.
+
+sara: Handoff to night on-call: @kevin at 09:30Z. Im staying on for 30m to hand over context.
+
+kevin: Taking first responder. Night summary: provider investigating corrected PCIe AER events and host reboots; wem evacuated workloads and migrated high-QPS customers to dedicated pool. Risk: recurrence in same AZ.
+
+cloud-support-bot: Provider update: isolated failing PCIe switch; scheduled physical replacement for host batch. Replacement window: within 4 hours.
+
+maria: Artifacts uploaded: s3://redwood-incidents/2024-10-16/gpu-az3-45-dmesg.log
+
+sara: Thanks team. Im updating the incident doc and will post a short customer-facing entry in the timeline.
+
+kevin: Leaving runbook note: if we see reappearance of corrected AERs after reprovision, initiate full AZ node pool drain and escalate to provider ops for hardware replacement.
+
+ops-bot: Incident status changed to: mitigated -> monitoring. Handled by kevin (oncall).

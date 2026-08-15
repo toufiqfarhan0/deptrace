@@ -1,0 +1,63 @@
+eng-runtime
+
+maya: heads up — after the NF4 rollout for customer-facing Llama-variant models we are seeing a reproducible throughput drop (~25%) and KV memory spikes on a small subset of requests. Noticed it right after the kernel selection change that started preferring the 'fast-4bit' kernels for short seqs.
+
+arjun: can you paste the perf trace / flamegraph? short note: is this across all instance types or specific GPU family?
+
+maya: flamegraph attached (snippet below). The interesting piece is kernel switch churn at step ~1200 where we go from nf4_fast -> fp4_slowpath -> nf4_fast repeatedly. Looks like batched requests with varying seq len are triggering fallback thrash.
+
+maya: ```
+# perf trace excerpt
+kernel_lookup: model=llamaX v=2.1 seq=64 -> kernel=nf4_fast id=0x12
+kernel_lookup: model=llamaX v=2.1 seq=1024 -> kernel=fp4_slow id=0x7f
+invoke_kernel: id=0x12 time_ms=1.8
+invoke_kernel: id=0x7f time_ms=9.4 (alloc+kv-touch)
+kv_cache: evict start slot=4096 size=256
+kv_cache: mem_usage before=3.9GB after=5.6GB (temp surge)
+```
+
+lin: that alternating kernel path is suspicious. Could be kernel-selection policy using max_seq of batch instead of per-request decision. If we pick kernel by batch max_seq we force many short requests onto slowpath.
+
+devon: telemetry shows 92% of affected batches have mixed seq lens (one short + one long) and batching heuristics currently coalesce by arrival time only.
+
+arjun: so two failure modes: (1) kernel selection using batch-level seq causing slowpath for short requests, (2) KV cache fragmentation/eviction due to slowpath allocating larger scratch buffers. both amplify memory and latency.
+
+perf-bot: perf-alert: model=llamaX service=redwood-hosted region=us-west-2 metric=throughput_drop pct=24.6 window=30m incident_id=perf-1923456789
+
+maya: quick repro command I used: `ab-run --concurrency 2 --seqs 64,1024 --model llamaX --quant nf4` — that reproduces the kernel thrash in ~2 minutes.
+
+lin: can we change kernel selection to be request-specific inside the batch? I know runtime has a per-token kernel hint interface but we disabled it for multi-request coalescing.
+
+devon: there is a pragmatic toggle: prefer per-request kernel choice when seq_stddev(batch) > 200 or when mixed-sequence flag set. We could rollout as a config flag to canary.
+
+maya: I tried flipping the toggle on a single node and saw throughput for mixed batches recover to baseline and KV spike disappeared. But that node then had slightly worse tail-latency for uniformly long seq workloads.
+
+arjun: tradeoff is expected. We should scope to specific model families where mixed seq is common for now. Also need to verify calibration table lookup for nf4/ fp4 — I saw a couple of entries returning fallback kernels because quant-calib confidence < 0.7. That increases slowpath use.
+
+devon: calibration telemetry: most weird cases are where customers passed dynamic prefix prompts (chat + tool calls) so effective prefix length varies. Calibration buckets were computed on static sequences and missed these patterns.
+
+maya: action plan suggestion:
+- roll config toggle to per-request-kernel for canary group (10% traffic) for llamaX
+- run quick calibration sweep including mixed-prefix traces and update confidence thresholds
+- add batching heuristic: avoid coalescing sequences when stddev(seq_len) > 200 unless latency SLOs allow
+- add KV-slot compaction metric and alarm (we saw >10% slot fragmentation)
+
+lin: +1. also add unit test for kernel_lookup to ensure kernel id mapping remains stable across seq boundary conditions (edge at 512/1024/2048).
+
+perf-bot: perf-check scheduled: canary=10% rollout duration=2h, rollback_if_throughput_drop>10% or kv_mem_spike>500MB
+
+sre-bot: incident created: INC-2026-1923456789 assigned=eng-runtime oncall severity=high summary="NF4 rollout kernel selection -> throughput drop & KV surge"
+
+arjun: who wants to own the canary? I can handle the config rollout and telemetry dashboards. Maya, can you do the calibration sweep and produce before/after kernel usage stats? Lin, please add the unit tests and help draft the batching-rule change.
+
+maya: I'll run calibration and post results in this thread. starting with seed set of 500 mixed-prefix prompts and synthetic sampling. ETA 3h.
+
+lin: will pick up the tests + batching rule PR. will try to keep default behavior unchanged unless canary stable.
+
+devon: I'll run a memory microbench to quantify KV extra allocation size for fp4 slowpath vs nf4_fast on a8g/rtx-series and post numbers.
+
+maya: thanks. if anyone sees the incident page please add logs under /var/logs/serving/kernel-lookup for nodes 10.0.12.{4,7,11}.
+
+arjun: bookmarking — let's reconvene after initial canary run. :thumbsup:
+
+maya: rough ETA for first canary metrics: 40m. posting updates as they come.

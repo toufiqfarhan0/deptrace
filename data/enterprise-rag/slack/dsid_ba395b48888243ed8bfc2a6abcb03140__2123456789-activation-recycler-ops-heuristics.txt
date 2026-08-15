@@ -1,0 +1,71 @@
+eng-runtime
+
+miles: FYI pushed a quick experiment to the activation recycler. Holding freed activation/logits buffers for 500ms instead of 100ms.
+
+miles: Early results: transient OOMs while rolling canary -> down ~60%, but p95/p99 token latency on short seq workloads increased a bit.
+
+tara: Can you paste the perf numbers? curious about p50 too and memory churn.
+
+eng-bot: Canary run summary: model=resnet-ish-llm-7b, workers=8
+```
+OOMs: 100 -> 40 (per hour)
+p50 token latency: 3.2ms -> 3.4ms
+p95 token latency: 9.8ms -> 11.2ms
+recycler_reuse_rate: 12% -> 38%
+memory_frag_ratio: 0.22 -> 0.15
+```
+
+anya: Interesting. Reuse rate up is good. But that p95 jump looks like the recycler is holding onto buffers needed by concurrent batches. Did you scope by sequence length or batch size?
+
+miles: Not yet. It's global TTL for now. I wanted to see the worst-case signal first.
+
+kevin: If recycler window is global, you'll get head-of-queue interference. Suggest split by (seq_len < 128) vs >=128 and also tag by logits vs activations.
+
+miles: Good call. I'll try per-class TTL. Also suspect kernel selection: when a large request wakes up and needs a different kernel path (FP16->INT8 shim) we might be incurring copy/alloc cost while buffers are pinned. Observed more small synchronous allocs in the trace.
+
+tara: Do we have traces that correlate alloc failures with kernel-switch events? Can we add a label in traces: alloc_reason={kv_cache, kernel_swap, batch_grow, recycler_reuse}?
+
+eng-bot: Added a trace flag 'alloc_reason' to canary run 2123456890 (next run).
+
+anya: For heuristics I'd propose:
+- base_ttl(ms): 100
+- small_seq_ttl: 250
+- large_seq_ttl: 50
+- logits_short_ttl: 400
+- max_pinned_per_worker: 4
+- soft_eviction_threshold: 0.8 * worker_gpu_mem
+These are conservative. We can auto-tune from reuse_rate vs p95 cost.
+
+kevin: Also add a fast-path: if a batch scheduling decision selects a kernel variant that would reuse pinned buffers (same layout/dtype), bump its priority; otherwise pre-evict low-reuse buffers. Avoid full evict unless OOM imminent.
+
+miles: I like the max_pinned_per_worker cap. Right now a single noisy request can inflate pinned set. I'll sketch the per-class TTL logic + cap.
+
+tara: Can we measure 'effective_reuse' as: bytes_reused / bytes_requested over sliding 30s? That should drive adaptive TTL: increase TTL when effective_reuse > 20% and p95 stable, otherwise shrink.
+
+miles: Plan:
+1) add per-class TTL & max_pinned cap (canary branch).
+2) emit recycler metrics: recycler_reuse_rate, pinned_count_by_class, bytes_reused, bytes_evicted, alloc_reason histogram.
+3) re-run canary with kernel-switch tracing on.
+4) run two canaries A/B: A uses static per-class TTLs; B uses adaptive TTL driven by effective_reuse.
+
+anya: Also add a microbenchmark that simulates mixed seq length arrivals to stress head-of-queue interference. We should rule out scheduler-induced hotspots first.
+
+kevin: Could also try opportunistic packing: if recycler has buffers that exactly match upcoming batched request shapes, we should prefer them — reduces new allocs and avoids eviction churn. That requires cheap shape-indexing on recycler.
+
+miles: Yep. I'll add shape-index mapping (hash of dims+dtype) but keep a fallback LRU chain.
+
+tara: Any perf regression rollback plan? If p95 goes > +10% we automatically revert recycler window to 100ms across prod and alert oncall.
+
+miles: Will add automated rollback in the rollout policy and a canary window of 30m.
+
+eng-bot: Note: created issue INF-4672 with the experiment plan and metrics list.
+
+anya: Great. Assignments?
+
+miles: I'll implement per-class TTL + max_pinned cap and shape-index. ETA EOD tomorrow.
+
+tara: I'll wire metrics/dashboards and the canary jobs.
+
+kevin: I'll build the microbenchmark and a small simulator for adaptive TTL logic.
+
+miles: Thanks — will update thread with canary ids once started. :thumbsup:

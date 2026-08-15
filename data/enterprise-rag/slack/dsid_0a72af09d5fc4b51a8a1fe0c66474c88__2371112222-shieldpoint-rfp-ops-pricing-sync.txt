@@ -1,0 +1,23 @@
+sales
+
+eva (AE): Quick sync — ShieldPoint RFP follow-up. They asked for a one-week POC, per-tenant VPC isolation, HSM wrap details, and a capability matrix for procurement. Need owners.
+
+tomas (solutions): I'll own capability matrix + pricing bands. Do we include quantized perf numbers or attach as appendix?
+
+nidhi (security): Attach appendix. I'll fill the security questionnaire and include BYOK/HSM notes. Also flag: NDA required before sharing keys.
+
+ashwin (eng-sre): Ops: we can do VPC peering or PrivateLink. For pinning throughput we recommend reserved pods; sample config: pod_type:reserved, count:3, gpu:a100x4. Need their cloud account ID and a non-overlapping CIDR.
+
+eva (AE): They estimated 20M tokens/mo and want 95th <= 150ms. Tomas, can you do a ballpark cost and a reserved vs hosted scenario?
+
+tomas (solutions): Will do. Draft pricing + small spreadsheet link when ready.
+
+nidhi (security): Uploading qna and DPA language — will add runbook note for minimal logging during POC.
+
+legal-bot: Reminder — use secure share for NDA and signed docs. :lock:
+
+eva (AE): Owners: tomas -> matrix/pricing, nidhi -> security Qs/DPA, ashwin -> provisioning. I'll package and send once NDA is confirmed.
+
+ashwin (eng-sre): Blocker: their CIDR 10.0.0.0/16 overlaps our staging. Ask them for a /20 alternative. I can provision 48 hrs after CIDR/account ID are provided.
+
+eva (AE): I'll ask procurement now. Thanks team :thumbsup:

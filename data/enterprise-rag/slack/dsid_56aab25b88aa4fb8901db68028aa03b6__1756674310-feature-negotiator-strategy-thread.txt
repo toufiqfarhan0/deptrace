@@ -1,0 +1,32 @@
+architecture
+
+marta: Quick follow-up from the ABI minimization RFC — thinking we should explore a tiny "feature-negotiator" protocol instead of shipping full manifests to every runtime. The idea: control-plane sends a compact capability vector + version, runtime adapts locally. Pros: much smaller wire format, faster fallbacks, simpler private deploy MV. Cons: negotiation logic moves into adapters.
+kevin: sounds promising. question: where do secrets/KMS creds live in that flow? if adapters need to decide based on capability bits, they might also need to pull keys or claim access.
+sam: agree with kev. also telemetry: if adapter behavior diverges per-capability we need to tie quality metrics back to the capability vector for regression alerts. otherwise optimize/break silently.
+marta: good points. envisioning capability vector as small bitmask + opt-in metadata url for >tiny cases. auth still controlled by control-plane but runtime can fetch a short-lived claim: e.g. control-plane issues a signed token scoped to capabilities (TTL short). adapters validate token locally, then pull any extra secrets from customer KMS only when needed.
+alex: can we keep a canonical compatibility fallback? flow: if negotiator version mismatch -> fall back to compatibility-mode v0 (the old full-manifest path). That keeps safe rollback.
+kevin: careful: fallbacks amplify attack surface. need to ensure fallback path has same auth constraints. Also rate-limiting and quota enforcement must be preserved across both flows.
+marta: agreed — fallback must be identical policy-wise. we can encode policy id into the token so runtime enforces same quotas/role checks.
+sam: telemetry implementation detail: include capability vector in traces and per-route metrics. small change to our tracing lib, add tag: redwood.capvec=v1. Also add lineage id for rollout correlation.
+kevin: what about private deployments where control-plane is customer-managed? they might not accept signed tokens from our control-plane. we need a mode: allow local-signing or pre-shared signing key distribution for private. That increases ops complexity but is doable.
+alex: tradeoff: either we add PKI/bootstrap logic for private or we keep manifest-heavy older approach for private only. Which do we prefer long-term?
+marta: long-term we want same UX across hosted/dedicated/private. I'm leaning PKI bootstrap with explicit rotation steps in onboarding docs. Short-term we can gate private to old manifest until we ship the bootstrap UX.
+ops-bot: deploy-bot: canary rollout scheduled for negotiator v1 -> staging at 2025-10-12T22:00Z, production tentative after perf signoff.
+sam: perf question: do we expect lower latency? sending bitmask vs JSON blob should reduce payload and parsing time, but the bigger win is fewer secret fetch roundtrips thanks to scoped tokens. we should bench 3 scenarios: full-manifest, vector+token, vector+local-kms.
+kevin: also simulate failure modes: missing token, expired token, PKI mismatch. define SLOs for negotiation handshake (e.g., complete in <15ms median).
+alex: ops/rollback: add feature-flag to force compatibility-manifest path per-tenant. that lets SRE flip if something odd in prod.
+marta: action items: 1) sam to prototype trace tagging and perf bench plan (owner: sam). 2) kevin to draft token schema + bootstrap PKI proposal (owner: kevin). 3) alex to add tenant-level flag and temporary manifest fallback (owner: alex). 4) docs + onboarding note for private PKI (owner: marta). I'll sketch the capability format:
+```
+# example capability vector (text format, tiny)
+ver:1
+bits: "GEN_CHAT|EMBED|CACHE_PREFIX|LOW_LATENCY"
+policy_id: "billing-v2"
+sig: "<signed-token-ref>"
+```
+marta: not final, but shows intent: human-readable list for debugging, compact binary mapping in wire format.
+kevin: question on sig: should sig be embedded or referenced? referencing reduces token size but adds 1 fetch. prefer embed for hosted, ref for private maybe.
+sam: can we make traces show which path was used (embed/ref) so we can correlate fetch latencies?
+marta: yes — add redwood.negotiator.path tag.
+alex: timeline: prototype in 2 sprints, canary in staging mid-next-cycle. i'll open tickets.
+kevin: +1 to tickets. also add security review milestone for PKI bootstrap.
+marta: thanks all. small ask: try to keep messages in your tickets on scope/rollback plan. i'll collate into a short RFC addendum. :thumbsup:

@@ -1,0 +1,43 @@
+eng-ml
+
+ash: Heads-up — planning to onboard lotus-3b-compact into the model catalog tonight during the 11pm PST quiet window. Who can own the pin + smoke?
+
+kevin: I can own pin + smoke. Need the exact artifact path and rollback tag.
+
+maria: Artifact: s3://redwood-models/lotus/3b/compact/v12.tar.gz. Rollback tag is v11 (already in registry). I will finish smoke prompt set in ~30m.
+
+jules: I can run the canary traffic configuration. Proposal: 5% traffic for 30m, then 25% for 30m if green, then full swap.
+
+ash: (noted) ops — can we reserve a slot in dedicated-pool-3 (slot-42) for the canary window? @kevin what's your ETA to be ready to pin?
+
+kevin: ETA ~45m. Smoke plan: run 10 seed prompts (quality + safety checks) and an automated latency sweep. Thresholds: fail if >2/10 failed quality or median latency >120ms. I'll attach smoke results.
+
+maria: smoke prompts drafted here: https://internal-redwood/evallist/lotus/smoke-v12.json (read-only). Will also baseline embeddings at /evals/lotus/baseline-v11-emb.json.
+
+orch-deploy-bot: Deployment reservation confirmed for dedicated-pool-3 at 2026-03-18T23:00:00-08:00 (11pm PST). Canary slot: slot-42.
+
+jules: Canary config snippet (will apply after pin):
+```yaml
+model: lotus-3b-compact
+pin: catalog:v12
+canary:
+  traffic_pct: 5
+  duration_minutes: 30
+health_checks:
+  - latency_p95_ms: 200
+  - error_rate_threshold: 0.02
+```
+
+ash: Rollback playbook: immediate alias swap to v11 if either: >2% error rate sustained for 10m OR p95 latency increases by 50% vs baseline for 10m. Kevin to initiate rollback and alert #eng-oncall.
+
+kevin: I'll be oncall for the window. Will also add a temporary tracing flag to capture kv-cache hits for first-run analysis. If I don't respond within 5m during rollout, escalate to @ash and @jules.
+
+maria: NOTE: disable new-quantization (q8) for first run to reduce confounding variables. We'll enable in a follow-up once quality stable.
+
+jules: ack. I'll push the canary plan to the catalog and set monitoring alerts (latency p95, tok/sec, error_rate).
+
+ash: Thanks all. If anything blocks, DM me. :thumbsup:
+
+dev-sre: deploybot: Canary started at 2026-03-18T23:05:12-08:00. Smoke running.
+
+dev-sre: deploybot: Smoke passed 12/12 prompts, median latency 98ms, p95 170ms, error_rate 0.0% — holding at 5% for 30m then ramp per plan. :tada:

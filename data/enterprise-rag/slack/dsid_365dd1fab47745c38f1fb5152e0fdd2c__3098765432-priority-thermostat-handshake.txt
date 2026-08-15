@@ -1,0 +1,61 @@
+product
+
+alana: Quick sync — we need to lock launch criteria for Tenant QoS next sprint. Who owns capacity pins and security gating? cc @devin @mina @sam
+
+devin: I can own runtime readiness. Main risk is model variants for low-latency tier. Need dedicated GPU slots for end-to-end perf tests. Can we get ETA on capacity? :hourglass:
+
+mina: Infra can reserve a burst pool but need month lead. If this is next sprint we should plan for shared-prewarm first. What size of pool? how many concurrent lanes? @alana
+
+alana: Target: 500 qps peak for pilot, 50 qps steady. Burst 1k for short spikes. Acceptance: tail P95 < 120ms for gen and < 40ms for embeddings, no data leakage, canary pass.
+
+jordan: SRE from my side — call window for canary should be 4 hours with traffic ramp 5% -> 20% -> 50%. We'll monitor error budget and abort at >3% 5xxs over 10m. Opsbot will annotate metrics.
+
+opsbot: deploy-bot: canary-config uploaded: prod_canary_thermostat_v1
+
+sam: Security note: HSM slots must be scheduled for key wrapping during canary. Also need audit log retention enabled for pilot tenants. If we use customer-managed KMS, pre-reqs take 2 weeks.
+
+lily: From UX: any regression in short responses (truncation) hits the product. We should lock prompt templates and add a deterministic fallback message for timeouts.
+
+devin: Runtime notes — we'll serve quantized variant q4 for cost, but fall back to fp16 if quality regression > 0.5 BLEU-ish equivalent (we'll use eval set). Also adding KV cache warmers.
+
+mina: Proposed infra plan: Week1 reserve shared burst pool (2x A10s), Week2 provision reserved capacity (4x H100) if pilot goes green. Need 2 ticket approvals.
+
+alana: Decision log: Can we write a minimal gating checklist? I'll draft.
+
+alana: Checklist draft:
+- Capacity reserved (shared burst) by Week1
+- Canary config + ops annotations by Eng-SRE
+- HSM/KMS approved or fallback to Redwood-managed KMS
+- Prompt templates frozen
+- Eval set pass (quality delta < 0.5 on core prompts)
+- Rollout policy: 4h canary, 3-step ramp, auto-rollback on SLO breach
+
+devin: LGTM. One ask: runtime needs a dedicated endpoint name for canary -> /v1/tenant-qos-canary
+
+jordan: I'll add monitoring: latency P95, P99, 5xx rate, token cost, memory GC spikes. Alert thresholds into PagerDuty if canary breaches.
+
+sam: Flag: compliance team needs a quick architecture diagram for customer-managed keys. @mina can you drop a stub?
+
+mina: Yep, will add network flow + KMS stub today.
+
+lily: Also add acceptance test for truncated responses and a UX fallback sample.
+
+alana: Great. Owners: Product (alana) acceptance, Runtime (devin) implementation, Infra (mina) capacity, Security (sam) gating, SRE (jordan) monitoring. Next sync Friday 11am. :calendar: 
+
+devin: I'll post the canary config snippet here.
+
+devin: ```
+canary:
+  name: tenant-qos-canary
+  steps:
+    - percent: 5 duration: 15m
+    - percent: 20 duration: 1h
+    - percent: 50 duration: 2h
+  rollback_on:
+    5xx_rate: 0.03
+    p99_latency_ms: 400
+```
+
+jordan: Ack, will wire alerts. I'll also add a short runbook for rollback steps.
+
+alana: Thanks everyone. If no objections by EOD tomorrow we'll lock and open tickets. :white_check_mark:

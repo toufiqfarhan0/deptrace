@@ -1,0 +1,43 @@
+docs
+
+maria: Heads-up — PR #3427 (docs) is green but Netlify preview shows 504s for large asset shards. Images under /assets/media/ keep timing out in the deploy log. Anyone seen this pattern?
+samir: I saw similar last month when we hit the 10s build timeout for large tar extraction. Link to logs? :eyes: 
+maria: https://app.netlify.com/sites/redwood-docs-deploy/deploys/5a6b7c8d — logs show repeated "fetch asset shard" timeouts and then "error waiting for build-image". The preview page loads CSS but missing images.
+netlify-bot: deploy failed — Build failed: timed out after 15m
+lee: Hmm. Could be S3 signed url chunking causing parallel fetch storms. Another theory: mkdocs-photogrid plugin generating multiple >2MB files in a single dir and Netlify's CDN cold-pop misses? Not sure.
+jules: Can we reproduce locally by running the production build? Try: 
+```
+# from repo root
+pip install -r docs/requirements.txt
+cd docs
+mkdocs build --clean
+python -m http.server 8000 --directory site
+```
+If local build completes but assets are present, it's likely Netlify infra throttling.
+maria: Local build passes and serves images fine. So this points to preview infra.
+samir: Two options: 1) quick workaround — move big images to external CDN and update links in the PR (fast but annoying), 2) tweak Netlify build to increase timeouts / avoid parallel asset fetches.
+lee: Netlify won't let us change the build image timeout. But we can change the build to upload fewer, smaller artifacts: enable image optimization step in the pipeline (resize + WebP). We could add an optional GH Action that runs on docs PRs to build and upload optimized assets to S3 and rewrite asset URLs via a temporary base_url.
+maria: For the immediate PR, can we do a manual re-run on Vercel to get a working preview for reviewers? Vercel handles static assets differently.
+jules: I can trigger a Vercel preview (I have perms). If reviewers need to approve today, let's use that. I'll post the Vercel link when ready.
+netlify-bot: deploy queued — canceled by user
+samir: For longer term, I opened an infra ticket to add an image optimization step to our docs CI and to add a 'docs-preview' artifact cache in S3 so Netlify only pulls small manifests. Ticket: INFRA-512
+maria: Cool. For PR merging policy: since previews are flaky, can we do reviewer + CI green (unit + lint) and then merge midday when Netlify quota is less busy? @samir can you coordinate the merge window?
+samir: Yes. Let's aim for 12:30pm PT tomorrow. I'll ask reviewers to prioritize. Also leave a note in PR description: "merge during midday window due to preview asset prewarming".
+jules: Vercel preview up: https://redwood-docs-pr-3427.vercel.app — images look good there. Tagging @lee @maria for visual check.
+lee: Looks good. I'll leave the code review comments (small alt text and one link fix) but won't block on preview infra. :+1: 
+maria: Thanks — marking PR as ready for merge during the midday window. We'll follow up on INFRA-512 to avoid manual steps.
+samir: I'll add a short local-debug snippet to the PR description so contributors can repro fast: 
+```
+# quick local debug
+cd docs
+pip install -r requirements.txt
+mkdocs build --clean && python -m http.server 8000 -d site
+# open http://localhost:8000
+```
+Also mention pushing optimized images to `docs/assets/cdn/` if needed.
+maria: Perfect. @jules can you add the Vercel link to the PR and cc the reviewers?
+jules: Done. PR updated with Vercel preview and local-debug notes. I'll also paste the basic mkdocs/docker fallback command for Windows folks:
+```
+docker run --rm -p 8000:8000 -v %cd%/docs:/docs python:3.10 bash -c "pip install mkdocs mkdocs-material && mkdocs serve -a 0.0.0.0:8000"
+```
+maria: Great, closing the thread — we'll track Infra ticket for the long-term fix. :sparkles:

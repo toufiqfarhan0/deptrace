@@ -1,0 +1,34 @@
+eng-infra
+
+alex: FYI seeing a big spike in failed GPU launches in ap-southeast1 starting ~01:12 UTC. Attach timeouts correlate with local NVMe iops climbs.
+maria: u/I what's the error? logs?
+alex: paste from scheduler logs: `attach timeout waiting for device (i/o queue depth=1024)`, and driver prints a lot of `nvme: slow io completion` around the same window.
+jon: hmm that lines up with the ephemeral-cleaner cron that runs at 01:00 in that region. It scans /scratch and aggressively trims hotfiles.
+lee: can we confirm with `iostat -x` on affected host?
+alex: ran quick sample on gnode-apse1-12: 
+```
+Device            r/s     w/s   rkB/s   wkB/s  rrqm/s  wrqm/s %util
+nvme0n1         1200   3400  10240  27680    0      0    98.3
+```
+maria: %util ~98 and bursty wkB/s spikes. That will block small io and KV cache updates, causing our attach path to stall.
+jon: is the cleaner doing large sequential deletes/writes?
+alex: yes, cleaner opened many files and called `fallocate` / `ftruncate` patterns then fsyncs. Looks like a recent cleaner config change increased concurrency from 4->24.
+lee: can we do an emergency throttle? Either reduce cleaner concurrency or snooze it for ap-southeast.
+ops-runner: deploy-bot: created rollback PR for cleaner concurrency to 4 -> https://git.internal/r/cleaner/PR-413 (manual merge required) :robot_face:
+maria: short-term: suggest adding a per-region maintenance-snooze flag in housekeeping so we don't run heavy tasks during GPU batch windows. That could avoid CPU/IO & attach collisions.
+jon: agree. For immediate mitigation I'm going to patch the cron in ap-southeast to `SLEEP=180 && run-cleaner` so it staggers and reduces simultaneous io.
+lee: also bumping NVME IO scheduler for scratch mount to `mq-deadline` might help latency for small writes during scrub. Any objections?
+alex: +1. Cost note: this temp mitigation will increase cleaner runtime (more wall time) but reduces GPU attach failures which cost us lost capacity and vCPU waste.
+maria: tracking: open incident ticket INF-2026 with root cause 'cleaner concurrency bumped causing local nvme iops saturation -> gpu attach timeouts'.
+jon: tagging oncall: @lee @alex please follow up with a proper rollout: revert concurrency change, add region snooze config, and add iops-based circuit breaker to cleaner (stop if %util > 85).
+lee: I'll file the repo PRs today and add a metric alert: `nvme0n1.util > 85% for 30s` -> paging SRE.
+ops-runner: automation note: adding circuit breaker will need a small feature flag to avoid impacting private/enterprise customers with different policies.
+alex: for telemetry, capture `nvme* util`, cleanspeed (files/sec), attach latency histogram and correlate for 72h. We'll need to show cost delta.
+maria: thanks team. I'll coordinate customer comms for any impacted Dedicated capacity customers in ap-southeast1.
+jon: quick checklist for followup: 1) patch cron (done) 2) rollback concurrency (PR open) 3) add snooze config (spec) 4) observability + circuit breaker 5) postmortem.
+lee: assigning tasks in INF-2026 and will update this thread when PRs merge. :thumbsup:
+sre-bot: Incident INF-2026 created and linked to this thread. Severity: P2.
+alex: closing loop — initial mitigation (cron stagger) reduced attach failures from ~15m failure rate to near-zero after 01:40 UTC. Monitoring to confirm no regressions.
+maria: great, keep an eye on cost / GPU utilization; we need to measure if backlog reduced or if we spilled capacity to other regions.
+jon: will run a rollout plan for circuit breaker next week during low traffic window.
+lee: thanks all.

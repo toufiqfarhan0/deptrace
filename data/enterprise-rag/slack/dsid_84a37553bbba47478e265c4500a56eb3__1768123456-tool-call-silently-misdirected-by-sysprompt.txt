@@ -1,0 +1,61 @@
+customer-success
+
+Priya: Customer reported function calls failing after yesterday's prompt tweak. They see schema validation errors from the payment tool: `expected number got string` and the args contain `\"$5\"`. Repro steps below.
+
+Alex: Can you paste the API request/response logs?
+
+Priya: Sure — snippet:
+```
+Request to /v1/generate
+{
+  \"messages\": [
+    {\"role\":\"system\", \"content\": \"Examples: Charge $5 -> {\\\"amount\\\": \"$5\"}\"},
+    {\"role\":\"user\", \"content\": \"Charge 5 USD to card\"}
+  ],
+  \"functions\": [
+    {\"name\":\"charge_card\",
+     \"parameters\": {\"amount\": {\"type\": \"number\"}, \"currency\": {\"type\": \"string\"}}
+    }
+  ]
+}
+```
+
+Priya: Response (tool call) -> validation_error: `amount must be number` payload: `{\"amount\":\"$5\", \"currency\":\"USD\"}`
+
+Jon: I think the system examples still include the dollar sign which causes the model to copy `$5` as a string. That will break schema validation which expects numeric.
+
+Sam: Yep. Customer had aggressive retry logic so failed toolcalls retried -> doubled token usage -> unexpected billing spike :grimacing: 
+
+Priya: Customer provided a minimal repro curl:
+```
+curl -X POST https://api.redwood.ai/v1/generate -H 'Authorization: Bearer <REDACTED>' -H 'Content-Type: application/json' -d '{
+  \"messages\":[
+    {\"role\":\"system\",\"content\":\"Assistant should follow these examples: example: charge 5 -> {\\\"amount\\\": 5}\"},
+    {\"role\":\"user\",\"content\":\"Charge 5 USD to card\"}
+  ],
+  \"functions\": [{\"name\":\"charge_card\",\"parameters\":{\"amount\":{\"type\":\"number\"},\"currency\":{\"type\":\"string\"}}}],
+  \"model\":\"redwood-small\"
+}'
+```
+
+Alex: Interesting — system prompt shows a fewshot that uses `5` but we still see `$5` in the payload. Could be that an older example with `$5` is sticky in the customer's system (multi-example shadowing).
+
+Priya: Customer says they edited the system prompt via Console; sticky examples sometimes get re-inserted by orchestration during rollbacks.
+
+Jon: I can see a config rollback at 2026-03-10T16:02:17Z in orchestration logs — older system config re-applied. Attaching trace excerpt in ticket.
+
+SupportBot: Incident created: INC-4321 — rollback caused user-facing function schema failures.
+
+Sam: Quick mitigation: add a sanitization shim in the function adapter to coerce strings like `\"$5\"` or `\"5 USD\"` -> numeric 5 for `amount` param when schema expects number. Also add a model response transform to strip currency symbols before validation.
+
+Alex: Good temporary fix. Long term we should: (1) attempt smart coercion before rejecting at schema enforcement layer, (2) detect symbolized-number patterns in system/fewshot examples and block canary rollouts with a warning, (3) add an Optimize eval to catch this pattern during model onboarding.
+
+Priya: I'll mark this P1 — customer reports failed payments and token/billing surge. They accepted shim as temporary.
+
+Jon: Assigning to eng-inference and eng-platform. Please triage, coordinate rollback/patch, and confirm impact. @Sam can you open a PR with adapter sanitization + unit tests?
+
+Sam: On it. I'll include tests that simulate `$`-prefixed strings and non-coercible values to ensure we don't silently accept bad inputs.
+
+Alex: Also update function docs/examples to show numeric-only examples for numeric params and advise formatting currency at the tool-level (metadata) instead of in param values.
+
+Priya: Thanks — I'll update the customer with INC-4321 link and paste the repro. :thumbsup:

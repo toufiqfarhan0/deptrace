@@ -1,0 +1,47 @@
+docs
+
+tess: quick sync 52 i'm opening a tiny PR to clarify the FAQ for tier attribution and to tweak the "Quota burn by tier" dashboard panel. goal: reduce customer confusion when they set request-level tiers.
+
+ahar: sounds useful. what are the doc changes exactly?
+
+tess: 1) new FAQ entry that explains precedence: request header > app default > account default; 2) updated example snippets to use `X-Billing-Tier` as the canonical header name in this FAQ (keeps it separate from the other pages that use X-Usage-Tier/X-Quota-Tier); 3) grafana panel change to show per-tier 5m rate instead of cumulative, and a short migration note.
+
+rico: i'm a bit worried about introducing another header name. can we add a cross-ref note that X-Billing-Tier is equivalent to X-Usage-Tier for historic requests? avoids breaking customer search.
+
+tess: good point 52 added cross-ref: "X-Billing-Tier is an alias of X-Usage-Tier for FAQ and SDK examples; both are accepted by the API."
+
+pm-anna: product thumbs-up on the FAQ wording but please add a one-line example showing how 429s look when the tier is lower than account default (customers misread the error).
+
+tess: added short 429 example: `{\"error\":\"quota_exceeded\", \"scope\":\"tier\", \"retry_after\": 60}` and sentence: "a 429 with scope=tier indicates request-level tier exceeded its allowance; check header and daily reset (00:00 UTC)."
+
+ahar: can you paste the new SDK snippet? i'd like to confirm it follows our style guide. keep it tiny.
+
+tess: snippet included in PR branch: https://github.com/redwood/docs/pull/6032 - node example below:
+```
+// node (SDKv4)
+const Redwood = require('@redwood/inference');
+const client = new Redwood({ apiKey: process.env.RW_KEY });
+const resp = await client.generate({
+  model: 'open-7b',
+  input: 'Summarize billing tiers',
+  headers: { 'X-Billing-Tier': 'silver' }
+});
+```
+
+rico: looks fine. please ensure we run snippet tests and that fixtures include header assertion.
+
+docs-ci-bot: running lint, snippet-tests and linkcheck on PR #6032.
+
+ahar: for the dashboard change, what UID and exact migration note will we publish? ops will want that.
+
+tess: panel UID G-burn42, migration note: "If you copied the panel before 2026-04-01, replace `sum(billing.quota_consumed)` with `sum by (tier) (rate(billing.quota_consumed[5m]))` and update title to 'Quota burn rate by tier (req/min)'. No backend schema change required."
+
+pm-anna: add a short line in the FAQ about batching effects on reported per-request cost; stakeholders flagged this in support.
+
+tess: added batching note and an example: "Batching groups small requests; per-request cost may appear higher in single-request heatmaps if batching is enabled."
+
+docs-ci-bot: linkcheck found one broken internal anchor in an older billing guide; auto-patched and pushed to branch. all checks green at 3337778920.
+
+ahar: thanks. let's merge after CI. ric o and support will be notified for downstream dashboards.
+
+tess: merged and will post a short announcement to #customer-docs after the site rebuild. closing thread.

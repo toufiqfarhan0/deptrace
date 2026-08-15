@@ -1,0 +1,48 @@
+eng-ml
+
+Aisha: Drafting a compact model bring-up checklist focused on chat templates, tool-calls, and strict structured output. Sharing draft below, please +1 or edit.
+Liam: Nice. Can you include quick quant comparisons and a simple function contract?
+Aisha: Yup. Draft checklist:
+- smoke on target hw (FP16/int8), no OOM
+- perf baseline p50/p95 and throughput at loads 1/4/100
+- quality: unit prompt suite + 200 open prompts
+- quant runs: FP16 vs 8-bit schemes, note kernel mismatches
+- structured output tests + JSON schema validation
+- tool-call contract + safe fallback on invalid returns
+- observability: token breakdown + parse-error logging
+- rollout: canary -> 5% -> 50% with auto-rollback
+Ravi: Add eval metrics: EM, F1, ROUGE, factuality via QA, and a human sampling plan.
+Sofia: For prompts, enforce explicit RESPONSE_SPEC and separators. Example system line:
+```
+SYSTEM: You are Redwood Assistant. Return only the JSON described in RESPONSE_SPEC.
+RESPONSE_SPEC:
+- answer: string
+- actions: [{name:string,args:object}]
+- metadata: {sources:[string],conf:float}
+```
+Liam: Function metadata example we hand to model:
+```
+{"name":"search_docs","description":"search internal KB","parameters":{"type":"object","properties":{"q":{"type":"string"},"k":{"type":"integer"}},"required":["q"]}}
+```
+Nora: Validation flow: if model returns function call, run JSON schema validator. On failure: (1) attempt repair prompt, (2) if still invalid, fallback to stable model or human.
+Aisha: Structured output single-line example:
+```
+{"answer":"Short summary","actions":[{"name":"open_ticket","args":{"title":"inference bug","prio":"P3"}}],"metadata":{"sources":["kb/42"],"conf":0.81}}
+```
+Sofia: Add sanitizer stage: strip non-JSON prefixes/suffixes, remove backticks, log raw payload + parse error id.
+Liam: Quant experiments should keep a CSV per-run: model,backend,qscheme,cal_samples,EM,F1,p50_ms,tokens_s. Compare deltas vs baseline.
+Aisha: Minimal auto-eval harness:
+1) 500 unit prompts asserting keys
+2) 200 open prompts for ROUGE/BERTScore/factuality
+3) latency sweep across replica sizes
+4) quant variant comparison and delta table
+Ravi: Priority order: correctness on unit prompts -> latency SLO -> quantized cost delta <20% and EM regression <2% -> rollout hooks.
+Aisha: Rollout rules:
+- canary 5%: rollback if EM drop >1.5% or p95 >20% increase
+- if JSON parse fail rate >2% in canary -> route to stable + create ticket
+- have a "format-repair" microflow: tiny model tries to repair output and revalidate
+Nora: Human review sampling: 0.1% or 1000 examples/mo whichever smaller.
+Sofia: SDK should surface raw model text + function confidence to console for debugging.
+Liam: I'll add CI job that runs unit suite and quant comparison on model-ops PRs.
+Aisha: Thanks, will convert this to a short doc in docs/onboarding and open a PR in ~2h. @deploy-bot remind me.
+deploy-bot: Reminder set for 2 hours — will ping #eng-ml then :robot_face:

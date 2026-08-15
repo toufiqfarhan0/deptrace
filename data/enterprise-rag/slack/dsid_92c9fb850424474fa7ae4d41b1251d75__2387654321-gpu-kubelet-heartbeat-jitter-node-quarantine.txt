@@ -1,0 +1,81 @@
+eng-oncall
+
+incident-bot: INCIDENT P1 · infer-pool-west1 nodes flapping (NotReady / kubelet restarts). Auto-page to #eng-oncall. Impact: increased 5xx and latency for inference API routes hitting infer-pool-west1.
+
+Mira Patel: saw the page, oncall here. initiating triage. @Raj are you able to pull node kubelet logs?
+
+Raj Singh: pulling logs now. early signal: kubelet restart loop + container runtime OOMs on gpu nodes. putting snippets below.
+
+Raj Singh: logs:```
+Mar 15 21:10:32 node-igw-03 kubelet[1234]: E0315 21:10:32 kubelet_kubelet.go:121] runtime: failed to allocate device memory: failed to allocate 4294967296 bytes: out of memory
+Mar 15 21:10:33 node-igw-03 systemd[1]: kubelet.service: main process exited, code=exited, status=137/OUT_OF_MEMORY
+Mar 15 21:10:34 node-igw-03 kernel: [123456.789] Out of memory: Kill process 98765 (server) score 987 or sacrifice child
+```
+
+Mira Patel: ok OOMs on gpu nodes. Is this single node or a subset? any GPU driver crashes?
+
+Raj Singh: currently 4 nodes in infer-pool-west1 showing repeated kubelet restarts over last 12m. dmesg shows repeated CUDA/DRIVER faults on two of them. stack traces indicate `nvlddmkm` and driver timeouts.
+
+Raj Singh: snippet:```
+[  +0.000000] NVRM: GPU at 0000:65:00.0: GPU has fallen off the bus.
+[  +0.000123] NVRM: Xid (PCI:0000:65): 79, GPU has fallen off the bus
+```
+
+Evan Lopez: I'm taking over triage (handing off from Mira). I see autoscaler tried to replace nodes and caused churn -> kubelet backoff -> pods restarting -> observed crashloops for inference runtime.
+
+Evan Lopez: immediate mitigation plan: 1) cordon problematic nodes 2) drain and evict inference pods to other healthy nodes / fallback region 3) scale up dedicated fallback pool and flip routing for affected customer routes 4) gather core dumps.
+
+Mira Patel: +1. start with cordon/drain. Raj, can you run `kubectl cordon` on node-igw-0{1..4} and drain safe? Add `--ignore-daemonsets --delete-local-data`.
+
+Raj Singh: running now. commands:```
+kubectl cordon node-igw-03
+kubectl drain node-igw-03 --ignore-daemonsets --delete-local-data --force --grace-period=30
+```
+
+ops-bot: @Raj action recorded: cordon/drain started for node-igw-03. ETA for pod eviction ~45s.
+
+Raj Singh: drain completed for node-igw-03, pods rescheduled to infer-pool-west1-b and infer-pool-eu-west fallback nodes. one pinned customer pod failed to reschedule due to nodeAffinity; filing quick patch to relax affinity.
+
+Evan Lopez: I'm pushing a temporary routing override to send traffic away from infer-pool-west1 for high-QPS keys. curl to control plane:```
+curl -X POST https://api.redwood-inference.internal/v1/admin/routing/override -H 'Authorization: Bearer $ADMIN_TOKEN' -d '{"source_pool":"infer-pool-west1","target_pool":"infer-pool-west1-fallback","keys":["cust:acme","cust:beta"]}'
+```
+
+ops-bot: routing update accepted. traffic for 2 customer keys now routed to infer-pool-west1-fallback.
+
+Mira Patel: customer impact check: Observability shows 3 customer keys with elevated 5xxs, but error spike is reducing after routing override. cc @SRE-Team for driver investigation.
+
+SRE-Team: copying driver folks @Raj — please capture `nvidia-smi -q` and `journalctl -u kubelet -n 200` and upload to the incident runbook. Might be driver regression after last node image rollout.
+
+Raj Singh: captured output and uploaded: link=https://internal-artifacts/reports/2387654321/nv-snapshot.txt (internal). `nvidia-smi` shows one GPU in ECC 0, one GPU showing no response.
+
+Mira Patel: do we need to rollback the node image? last rollout was image v2026-03-14-gpu-optimized.
+
+Evan Lopez: hold on rollback until we confirm root cause. Quick mitigation is stable: cordon remaining bad nodes, force kubelet restart with `systemctl restart kubelet` after driver unload on nodes we can access.
+
+Raj Singh: attempting controlled reboot on node-igw-04 after draining. If reboot doesn't clear `nvlddmkm` errors, escalate to infra to reinstall GPU driver.
+
+Mira Patel: update: customer-facing metrics improving. one customer still seeing sporadic 429/503 for long requests - likely graph cache prefetched. We'll create a temporary higher timeout.
+
+Evan Lopez: created rollback plan and an incident task list in the runbook: 1) stabilize traffic (done) 2) quarantine nodes (in progress) 3) collect traces + core dumps 4) optionally rollback image if driver proven (blocked) 5) postmortem owner: Mira Patel.
+
+Raj Singh: node-igw-04 reboot finished, kubelet back up, GPU responded again. marking node uncordon after health checks.
+
+ops-bot: Uncordon record: node-igw-04 passed health checks, uncordoned.
+
+Mira Patel: status check — infer-pool-west1 healthy nodes: 6/10 (was 2/10). API latency trending toward normal. Any ongoing restarts?
+
+Raj Singh: two nodes still flapping (node-igw-01 & 02). logs show intermittent `Xid 79` GPU faults. we've quarantined them and set node scheduling to NoSchedule. assigning infra run to reinstall GPU driver tomorrow in maintenance window.
+
+Evan Lopez: paging note: reduce noise, cancel redundant PD alerts for same cluster. @ops-bot can you silence PD for infer-pool-west1 for 30m?
+
+ops-bot: PD schedule updated — silenced for infer-pool-west1 for 30 minutes.
+
+Mira Patel: handoff: I'm keeping incident open for follow-up (postmortem, driver rollback plan). Evan you can mark as mitigated and move to monitored.
+
+Evan Lopez: marking incident as mitigated, moving to monitored state. Actions assigned: Mira = postmortem + owner, Raj = driver logs + reproduce, SRE-Team = infra fix plan.
+
+Mira Patel: thanks team. quick notes for postmortem: consider adding GPU driver health probes before node joins pool, add autoscaler backoff threshold to avoid thrashing when multiple nodes fail, and add route-level fallback policy to automatically shift keys after X% 5xx.
+
+incident-bot: INCIDENT UPDATE · mitigated -> monitored. Incident owner: Mira Patel. Postmortem required.
+
+Mira Patel: thumbs up. I'll start the PM template and ping for review tomorrow. :thumbsup:

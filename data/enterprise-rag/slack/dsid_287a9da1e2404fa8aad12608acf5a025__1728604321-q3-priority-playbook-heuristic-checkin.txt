@@ -1,0 +1,62 @@
+product
+
+Maya: Quick sync — we need a final approach for normalizing RICE scores for Q3 planning. Current problem: a few infra/cost items have huge reach numbers and are crowding out high-impact UX/customer-work. Options: 1) percentile-normalize Reach, 2) z-score normalize across the quarter, 3) rank-based scoring. Need decision by EOD Fri so roadmap recalcs can happen.
+
+Sam: Can you paste the raw distro? would help to see numbers.
+
+Ben: Quick sample snapshot from the sheet (raw):
+```
+projA: Reach=12000 Impact=8 Confidence=0.8 Effort=20
+projB: Reach=300  Impact=9 Confidence=0.9 Effort=5
+projC: Reach=8000 Impact=6 Confidence=0.6 Effort=10
+projD: Reach=50   Impact=7 Confidence=0.7 Effort=4
+```
+These are skewed — projA and projC dominate purely on Reach.
+
+Olivia: This is exactly what we saw in design reviews. UX work generally has lower absolute reach but high impact on retention/CSAT. If we leave Reach raw, we systematically deprioritize UX.
+
+Maya: Right. Proposed heuristic (2-step):
+1) Clamp Reach at the 90th percentile to reduce outliers.
+2) Convert clamped Reach into percentile rank 0..1 within the quarter, then scale to 1..10.
+3) Keep Impact on 1..10 but apply a small multiplier for customer-facing signals (x1.2) if a ticket references direct customer ROI.
+4) Compute Score = (Reach_scaled * Impact * Confidence) / Effort.
+Rationale: keeps RICE shape but prevents single huge Reach from dominating.
+
+Ben: I prototyped the formula. Example using the sample above after clamp/percentile:
+```
+# pseudo results after clamp+percentile -> Reach_scaled
+projA Reach_scaled=10 Impact=8 C=0.8 Effort=20 => Score=(10*8*0.8)/20=3.2
+projB Reach_scaled=2  Impact=9 C=0.9 Effort=5  => Score=(2*9*0.9)/5=3.24
+projC Reach_scaled=8  Impact=6 C=0.6 Effort=10 => Score=(8*6*0.6)/10=2.88
+projD Reach_scaled=1  Impact=7 C=0.7 Effort=4  => Score=(1*7*0.7)/4=1.225
+```
+Note projB (small reach but very high impact/confidence/low effort) surfaces higher than projA now.
+
+Ruth: From GTM angle this seems good — we want high-leverage UX/customer changes to appear. A couple asks: how do we surface the multiplier for "customer-facing"? needs clear audit trail for Sales/CS.
+
+Maya: We'll add a flag column "customer_facing=true/false" and show both raw and normalized scores in the doc. All changes logged in the sheet comments.
+
+Sam: Two engineering notes: 1) Effort is still fuzzy — should we move from t-shirt to storypoints? 2) Could we apply a log transform to Reach instead of clamp? might be simpler.
+
+Olivia: Concern with log: it compresses spread but doesn't preserve ordinal differences as cleanly as percentile ranks in small sample sets. Percentile is easier for stakeholders to understand.
+
+Ben: Implementation complexity is low either way. I prefer percentile+clamp because it's deterministic quarter-by-quarter and avoids tuning a log base. Also makes cross-quarter comparisons explicit (we're normalizing per-quarter intentionally).
+
+Maya: Quick poll — react with :thumbsup: if you support percentile+clamp approach, :white_check_mark: if you prefer z-score, :thinking_face: for log transform, :eyes: if you'd like more time. Need majority.
+
+Sam: :thumbsup:
+Ben: :thumbsup:
+Olivia: :thumbsup:
+Ruth: :thumbsup:
+Maya: thanks. prio-bot: please record vote summary.
+
+prio-bot: Recorded votes: 4 thumbs up, 0 z-score, 0 log, 0 needs time.
+
+Maya: Decision: adopt percentile-normalize Reach with 90th percentile clamp for Q3. Action items:
+- Maya: update prioritization playbook doc with formula + examples (by tomorrow noon).
+- Ben: push script that recalculates scores in the shared sheet and write a small viz (before EOD Fri).
+- Sam: update roadmap board to reflect new ranking and flag any conflicts for engineering review (Mon).
+- Olivia: flag any UX initiatives that still look low after recalculation for escalation.
+- Ruth: prepare a 1-slide note for leadership explaining the change and why (customer bias fix).
+
+Maya: We'll re-evaluate at end of Q3 and consider switching to a rolling z-score if distribution becomes stable. Thanks everyone — closing thread. :rocket:

@@ -1,0 +1,13 @@
+postmortems
+
+Priya K: Quick follow-up on INC-426 postmortem. We need owners for: dedupe grouping, threshold tuning, and paging policy doc. Aim EOW for PRs + sims.
+Ben: Ill take dedupe grouping. Planning to move from host->region grouping, add exceptions for critical services. Will run impact sim.
+Lina: Ill own threshold tuning. Will run 30d spike analysis and propose 95/98 percentiles with sustained window gating.
+Priya K: Add rollback criteria: if page volume increases >10% post-deploy, revert within 24h.
+Ben: noted. Simulation script will output paged vs suppressed counts. Sharing results in the tracker.
+Oncall Bot: New action created: PMT-990 assigned to Ben (dedupe) and PMT-991 to Lina (thresholds).
+Lina: Question on suppression windows: prefer staggered cooldowns (10m -> 30m -> 1h) vs fixed 1h. Thoughts?
+Priya K: Staggered cooldowns look safer. Keep max suppression <=1h unless incident lead approves extension.
+SRE Bot: Runbook reminder scheduled: monthly alert-sweep on 2026-04-01 10:00 UTC.
+Ben: I'll open PR by Thu with migration plan and changelog entry. Lina: aiming for threshold PR by Fri.
+Priya K: Great. I'll update the postmortem action tracker and ping during standup tomorrow. Close thread when PRs linked.

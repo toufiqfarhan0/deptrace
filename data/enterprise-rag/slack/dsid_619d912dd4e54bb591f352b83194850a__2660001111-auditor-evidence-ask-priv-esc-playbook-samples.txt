@@ -1,0 +1,51 @@
+eng-security
+
+Alex Chen: Hey team — external auditor asked for evidence of recent RBAC change approvals, audit log exports showing no privileged drift, KMS rotation history, and the incident triage artifacts for CVE-2025-0107. Need a bundle we can hand over. Can we list exactly what we can pull by EOD?
+
+Mira Patel: We have PR approvals (redwood-iam) + terraform apply logs. For chain of custody include the PR diff, approval comments, and the apply run output. Also have entitlement review snapshots from quarterly reviews.
+
+Samir Rao: Logs side: our audit-index in ES tags events as `rbac_change` with actor, before, after, request_id. I can run an export. Sample query: 
+```
+search index=audits event_type=rbac_change | table _time actor resource before after request_id
+```
+I'll dump results to CSV and redact any service account email addresses per policy.
+
+Jay O'Neil: For KMS: we can provide key version history (rotation timestamps), IAM policy snapshots for each key, and requester logs. @Mira — are KMS op logs in the SIEM with key_id?
+
+Mira Patel: Yes — key_op logs have fields: key_name, operation, requestor, ip, request_id. I'll extract a 12-month slice and anonymize requestor emails as auditor requested. Also include a mapping doc that shows which CMKs protect customer data vs envelope keys for model artifacts.
+
+AuditorBot: Reminder: Evidence bundles should include a manifest (md5 sums) and a README describing extraction queries and any redactions.
+
+Alex Chen: For the vuln triage, auditor wants the ticket timeline and proof of mitigation for CVE-2025-0107 where we saw anomalous API access. We should include timeline, comms, mitigation steps, and rollback notes. @Samir can you paste the runbook snippet we followed?
+
+Samir Rao: Runbook excerpt: 
+```
+- Triage: isolate suspected instance and block ingress
+- Rotate keys: rotate CMK and rotate service-account keys used by the process
+- Invalidate sessions: revoke tokens and force refresh for users/services
+- Contain: remove compromised artifact and redeploy from trusted build
+- Postmortem: create ticket and link to audit exports (INF-3921)
+```
+I'll include sanitized logs showing the revoke API calls and the rotation operations.
+
+Mira Patel: Also add evidence of the automated canary rollback that coincided with the change — deploy bot logs, and 24h traces from the tracing service centered on the event window. I'll export traces and the deploy webhook logs with timestamps.
+
+Priya Kumar: Quick auditor clarification — can you include a sample of 'break glass' emergency access logs and the subsequent approval notes? Prefer CSV with columns: time, actor, resource, justification, approval_ticket.
+
+Alex Chen: Good call, Priya. We'll include emergency access records and link the post-event approvals.
+
+Jay O'Neil: Action items: 1) Samir — export RBAC change CSV for last 18 months + sanitized runbook logs. 2) Mira — export KMS ops (12 months), key policy snapshots, PR approvals, and traces. 3) Alex — assemble evidence bundle, add README with queries and md5 manifest, redact as required. 4) Provide secure share link and ETA to auditor. Target: submit tomorrow AM.
+
+Alex Chen: Thanks all — I'll compile and ping when the bundle is ready. Any objections to redacting user emails to firstinitial.lastname@redwood.example? :thumbsup:
+
+Mira Patel: :thumbsup: sounds good.
+
+Samir Rao: Working on the export now, will post CSV link in this thread when ready.
+
+AuditorBot: Evidence checklist updated: RBAC CSV, PR approvals, terraform apply logs, KMS rotations, emergency access CSV, runbook excerpt, traces, manifest.
+
+Alex Chen: Will include an index file mapping each item to control IDs (SOC2 CC6, ISO A.9.2.3 etc.) and a short control narrative.
+
+Priya Kumar: Thanks — that mapping is helpful. Please let us know if anything needs redaction approval.
+
+Alex Chen: Will do.

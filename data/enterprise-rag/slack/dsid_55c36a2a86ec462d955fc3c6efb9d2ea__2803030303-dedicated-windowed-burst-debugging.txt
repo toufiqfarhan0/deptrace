@@ -1,0 +1,91 @@
+support
+
+Lydia (support): Hi team — ACME account is seeing 429s and large tail latency bursts on their Dedicated pool even though their committed QPS (300) is far below the pool capacity. Customer timeline and sample headers attached. Escalating for triage.
+
+Marta (sre): Can you paste an example request + response headers and a short repro? Also which region/pool id?
+
+Lydia (support): Pool: ded-eu-3, reserved_pool_id=rp-9821. Sample response header from client: `HTTP/1.1 429 Too Many Requests`
+`x-request-id: 01F8X2KQ0`
+`x-rate-limit-remaining: 0`
+`x-reserved-pool-available: 212`
+`x-reserved-pool-capacity: 1200`
+
+Lydia (support): Customer says their traffic is very bursty with many short streaming calls (~200ms each) from thousands of users, but average QPS is ~150. They see 429s during traffic spikes and also 200s with 1.5-2s latency occasionally.
+
+Sam (account): They purchased Dedicated monthly with SLA for p95 latency 300ms and committed throughput 300 QPS. They report outages to their ops team. We temporarily disabled rate limiting for a test window earlier which reduced 429s.
+
+Carl (eng-runtime): Initial hypothesis: token-bucket accounting mismatch between the per-connection/streaming token allocations and the reserved-pool burst window. Streaming requests allocate tokens in small increments; if the limiter's smoothing window is misaligned with pool refill cadence, short bursts can exhaust the effective headroom even if the pool shows available capacity.
+
+Marta (sre): Helpful logs if you can get them — request id + limiter debug for rp-9821 around those timestamps. Example logging command we added earlier: `grep 01F8X2KQ0 /var/log/runtime/requests.log | tail -n 40`
+
+Lydia (support): Customer provided a short log excerpt: 
+
+```
+01F8X2KQ0 request start client_conn=10234 stream_chunks=5
+limiter: reservedpool=rp-9821 tokens_available=212 tokens_requested=300 window_ms=10000 bucket_rate=1200/60s
+limiter: granted=120 tokens remaining=92
+response: 200 latency_ms=180 path=/v1/generate model=rw-medium
+01F8X2KQ1 request start client_conn=10240 stream_chunks=1
+limiter: reservedpool=rp-9821 tokens_available=92 tokens_requested=1200 window_ms=10000
+limiter: denied -> 429
+```
+
+Lydia (support): So you can see one request gets partial grant and then a following short request is denied. Customer believes these denials correlate with many parallel short streams.
+
+Carl (eng-runtime): That log is telling: the limiter allowed a fractional grant (granted=120) but the next request tried to allocate a full allocation and saw the remaining bucket as 92. Two things to check: (1) our per-request allocation granularity for streaming vs non-streaming (are we reserving a full token slab at start, or incremental per-chunk?), and (2) the refill cadence for the reserved pool tokenbucket (refill tick size + refill interval). If refill interval is coarse (e.g., every 10s) and streaming churn is high, effective instantaneous capacity drops.
+
+Marta (sre): Repro steps request from eng: a short load generator that mimics their pattern — many concurrent connections, each sending short streaming calls (~200ms), mean QPS 150 but peak microbursts of 600 QPS for 10–30s. Can we get a small script?
+
+Carl (eng-runtime): I'll make a stress repro. Quick PoC generator (run from k8s job) — clients = 200, each does loop: open stream, send prompt (~500 tokens), close, sleep random(0.2-1s). Use this curl snippet to mimic: 
+
+```
+for i in $(seq 1 200); do
+  (curl -s -H "Authorization: Bearer $KEY" -X POST https://dedicated.eu.redwood.ai/v1/generate -d '{"prompt":"x","max_tokens":512, "stream": true }' &)
+done
+```
+
+Carl (eng-runtime): I'll instrument the limiter to dump per-request allocations and pool state for the repro.
+
+Lydia (support): Customer also captured metrics screenshot — the reserved pool token gauge shows ~20% free during the spike. They are confused why we deny if there is free capacity.
+
+Marta (sre): Possible explanations: (A) headroom vs instantaneous allocation: some tokens are reserved for in-flight long-running requests and not immediately consumable; (B) per-tenant fairness or per-connection soft limits; (C) accounting bug causing double-counting when streaming chunks finalize. We'll confirm with runtime traces.
+
+incidents-bot: Incident created: INC-2028 "ACME dedicated 429 bursts" assigned to eng-runtime on-call.
+
+Sam (account): Customer asks for a temporary mitigation while you debug — options? They want minimal changes first.
+
+Carl (eng-runtime): Short-term mitigations we can propose to customer: 
+- Increase reserved pool headroom for next 48h (temporary capacity bump);
+- Enable rate-smoothing for their pool (reduce token allocation granularity, i.e., grant smaller per-request increments less often) — might lower p95 slightly;
+- Encourage client-side jitter/backoff (add small random delay before retrying).
+
+Marta (sre): Operational action items: capture traces for these request IDs, collect limiter telemetry from ded-eu-3 for time window 2803030250 - 2803030370, and run Carl's repro in staging against a mirrored pool.
+
+Lydia (support): I offered customer a temporary +25% reserved capacity and requested a 24–48h maintenance window. They accepted. Please confirm when we can flip.
+
+Carl (eng-runtime): I'll run repro and attach logs. Early note: if streaming allocation is doing a pre-commit of full token slab at connection start, we should change to per-chunk incremental budgeting to avoid headroom starvation. That change needs careful testing (affects KV/cache sizing).
+
+Marta (sre): On-call will watch for new 429s after the capacity bump. If 429s persist, we escalate to product for config changes to the limiter.
+
+Lydia (support): Next steps summarized: 
+- Carl: create repro + limiter debug patch (ETA ~3h)
+- Marta: pull production traces + watch pool after bump (ETA ~1h)
+- Sam: send customer confirmation and ETA for temporary +25% capacity bump (done)
+- Lydia: collect more request ids and any client-side logs from ACME ops for the next 6h
+
+Carl (eng-runtime): Logging note for triage: include these fields in dump -> `request_id, reserved_pool_id, tokens_granted, tokens_requested, grant_reason, window_ms, client_conn_id`. That will make root cause obvious.
+
+Lydia (support): Thanks — I'll update the ACME ticket with this plan and mark as high priority.
+
+Marta (sre): I'll keep the channel updated and ping when I have the traces.
+
+Carl (eng-runtime): quick addendum after initial repro run: reproduced burst-deny pattern in staging when using streaming with 50ms per-chunk pacing. Patch WIP: change streaming allocation to incremental commit and reduce refill interval from 10s -> 1s for reserved pools (config flag guarded). Will open PR and link here when ready.
+
+Lydia (support): Great. Please paste PR link. Once validated we can schedule a canary.
+
+incidents-bot: INC-2028 status updated -> on-call triage in progress.
+
+Marta (sre): Observed after capacity bump: number of 429s dropped by ~80% in first 15 minutes, but some denials still correlate with very high concurrent short streams. Keep working on incremental allocation patch.
+
+Lydia (support): Update to ACME: temporary bump applied; we're deploying a targeted runtime fix; we'll monitor for 24h and then revert bump if stable. Customer thanks the team and will provide more logs if any reoccur.
+

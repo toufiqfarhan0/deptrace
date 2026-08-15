@@ -1,0 +1,60 @@
+sales
+
+Lena (solutions): quick heads-up — running a small POC with Meridian Bank. hitting intermittent 429s during streaming handshake. anyone seen this pattern with our sdk + short-lived creds?
+Rafi (eng): which path is 429ing — the /handshake endpoint or websocket auth?
+Lena (solutions): looks like initial sse handshake (POST /v1/stream/handshake) — client does oauth exchange then posts a signed init. fails ~1/100 requests during burst.
+Tom (runtime): we saw similar when token refreshes overlap with queueing on the ingress layer. backpressure + short retry windows can push you over the per-client rate limiter. are they reusing a shared ephemeral token across many connectors?
+Lena (solutions): yes — the client shares one ephemeral token across 8 parallel connectors (customer wanted simplified creds).
+Ivy (presales): pricing question: if they have retries and multiple connections, will they be billed for duplicate tokens/handshake attempts? want to include rough cost in POC deck.
+Tom (runtime): billing attaches to accepted streams / tokens usage. failed handshakes generally don't bill tokens but if they reconnect and stream tokens are issued we'll count those sessions. duplicate retries that succeed will increase usage.
+Rafi (eng): quick mitigation suggestions: 1) rotate to per-connector short-lived tokens (staggered TTL), 2) implement exponential jitter on client retries, 3) reduce handshake rate via local client-side queue.
+Lena (solutions): can you share a minimal client retry pattern we can hand to their engs? they want a 1-pager.
+Tom (runtime): paste below — super tiny pseudocode they can adapt:
+```
+max_retries = 5
+backoff = 0.2  # seconds
+for attempt in range(max_retries):
+  resp = post('/v1/stream/handshake', body)
+  if resp.status == 200:
+    break
+  if resp.status == 429:
+    sleep(backoff * (2 ** attempt) * (1 + random()*0.5))  # jitter
+    continue
+  else:
+    raise Exception(resp)
+```
+Rafi (eng): additionally, if they must share a token, set a small token TTL (30-60s) and use distributed token minting with a leader elected per node to avoid thundering herd.
+Ivy (presales): security questionnaire point — customer asks if ephemeral tokens can be rotated centrally (KMS) and audited. how do we normally recommend?
+Tom (runtime): yes: recommend issuing ephemeral tokens from a customer-managed service account, recorded in their KMS/audit pipeline. Redwood's private mode supports keystone integration via our token broker so operator can require HSM signing.
+Lena (solutions): status: Meridian wants a canary tomorrow. their infra is strict on SSO and audit. block: they need an example of per-connector token rotation + a short runbook for oncall if 429 rate rises.
+Rafi (eng): I'll draft a runbook — short checklist:
+- verify token TTL and issuance pattern
+- enable client jitter/backoff
+- enable connection-level circuit-breaker at 50% error threshold
+- fallback to lower-qps model variant if token errors persist
+- collect logs: handshake latency, 429 count, token_id header
+
+Tom (runtime): also add a quick k8s sidecar snippet if they're deploying connectors in k8s — sidecar that does token minting + per-pod leader lock. small example:
+```bash
+# sidecar: mint token and write to /tmp/ephemeral_token
+while true; do
+  if try_acquire_lock; then
+    token=$(curl -s -X POST https://auth.example.com/mint -H "Authorization: Bearer $SA")
+    echo "$token" > /tmp/ephemeral_token
+    sleep 30
+  else
+    sleep 5
+  fi
+done
+```
+Lena (solutions): perfect. Ivy — want me to attach these snippets to the SOW / pricing appendix?
+Ivy (presales): yes please — also need a short blurb for compliance: "ephemeral tokens recommended for streaming; recommend per-connector rotation and KMS-backed signing for regulated workloads."
+Lena (solutions): done — I'll slot that into the POC SOW. question for legal/security: do we need any extra contractual language for token rotation responsibilities?
+Rafi (eng): typically we include responsibility matrix: customer owns credential issuance and key material in Private; Redwood operates token broker (optional) in Dedicated/Hosted with audit logs on request.
+deploy-bot: deploy requested by @Lena (solutions): canary/poc-token-rotation-runbook -> cluster/alpha (status: queued) :hourglass_flowing_sand:
+Tom (runtime): last note on observability — add these metrics to their dashboard: handshake_attempts.total, handshake_429.total, token_renewals.total, connector_active.count. those will make it obvious if the pattern recurs.
+Lena (solutions): thanks team. action items: Rafi — runbook + checklist by EOD, Tom — k8s sidecar + retry snippet PR, Ivy — update SOW + pricing blurb. I'll ping Meridian after docs are in. :thumbsup:
+Rafi (eng): on it.
+Tom (runtime): will open small PR with snippet and link once CI passes.
+Ivy (presales): I'll draft the pricing paragraph and estimate incremental cost for a worst-case 2x reconnect scenario.
+Lena (solutions): closing the thread once PR+runbook+SOW are attached.

@@ -1,0 +1,35 @@
+eng-platform
+
+Jess Rivera: quick sync — we need to finalize the metrics that will feed the "failover impact matrix" in the Console. thinking latency by location + traffic split + failover counts. want infra/runtime input on feasibility and cardinality limits.
+Sam Liu: SGTM. list what you want exactly and we'll check cost. cardinality is the main risk (route x model x region x pool).
+Anya Patel: +1. from runtime: we already emit per-request tags: region, az, route_id, model_family, pool. but we only store full traces for sampled requests. aggregations are cheap if we roll them up at scrape time.
+Mike O'Connor: important Q: do we need per-route p99 in the dashboard, or is per-service sufficient? per-route will explode metrics.
+Jess Rivera: product wants per-route for top 20 routes by traffic, and per-service/region aggregation for everything else. UX will let user filter to 'top routes' or 'all routes aggregated'.
+Ruth Chen: infra question: can we compute traffic_split_percentage at ingestion? current counter is requests_by_pool{region,route}. we can derive split as: rate(requests_by_pool[5m]) / rate(requests_total[5m]) — cheap.
+Sam Liu: correct. implement as recording rule in Prometheus: 
+```
+- record: infra:requests_by_pool:ratio5m
+  expr: sum by (pool, region, route) (rate(requests_total[5m])) / sum by (region, route) (rate(requests_total[5m]))
+```
+This keeps cardinality bounded to existing labels.
+Anya Patel: for latency histograms, we should expose p50/p95/p99 as recording rules too. keep histogram buckets at runtime, then rollups to quantiles in Prom.
+Mike O'Connor: what about cross-region failover impact? we need to correlate a failover_event with delta in latency and traffic shifts. naive approach: mark failover_event with labels (from_region,to_region,route), then have dashboard panels compute before/after deltas using timeShift or compare queries.
+Jess Rivera: exact — product wants a matrix view: rows = affected route (or service), cols = region of origin, cell shows delta_p99 and traffic_shift_pct. also a timeline sparkline for 1h.
+Ruth Chen: sounds fine. storage note: to compute deltas we can keep a 1h moving window aggregate at 1m resolution. that's an extra series but bounded.
+Sam Liu: we should also add a sampling flag for low-traffic routes: only compute per-route p99 if requests_total > 10r/min. otherwise show aggregated. avoids explosion.
+Anya Patel: agree. we'll implement this in the recording rules and tag series with sample=low or sample=full.
+Mike O'Connor: alerting — suggest alerts for: failover_event_count > 0 and delta_p99 > 200ms for top routes. separate severity for aggregated vs per-route.
+Jess Rivera: UX ask: add a canary toggle to overlay traffic split for current rollout (canary vs prod) and a 'fall back' checkbox to show how traffic shifted when we flipped routing. product wants to replay that on-demand.
+Ruth Chen: replay requires us to store recent routing policy changes in timeline DB — we already log policy_change events to EventDB with ts & reason. exposure in the dashboard should be an event layer we can fetch.
+Sam Liu: next steps/actions:
+- infra/runtime: sketch recording rules + sampling threshold (owner: Sam, Anya) — due EOD Fri (1768200000)
+- eng-platform: dashboard skeleton + matrix visual + canary overlay (owner: Jess, Mike) — due Tue next week
+- product: provide top-20 routes list + acceptance criteria for 'impact' (owner: Ruth) — due Mon
+- follow-up sync: quick 30m on Mon to review recording rule diffs and cardinality estimate.
+Jess Rivera: thanks all. if anyone has objections to sampling threshold (10r/min) or the list of labels (region, az, route, pool, model_family) call it out now. otherwise we'll proceed. :thumbsup:
+DevInfra Bot: CI check on prometheus/rules PR will run automatically once Sam opens the branch.
+Sam Liu: I'll open the PR today and include a cardinality table.
+Anya Patel: I'll add the recording rule examples to the PR description.
+Mike O'Connor: I'll start a dashboard draft in Grafana and link it in the PR.
+Ruth Chen: noted. I'll export the top routes and upload to the product folder.
+Jess Rivera: perfect. closing thread for now — will post the meeting invite for Mon.

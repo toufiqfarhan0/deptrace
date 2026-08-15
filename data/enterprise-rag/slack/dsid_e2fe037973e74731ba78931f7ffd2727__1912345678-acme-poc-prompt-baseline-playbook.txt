@@ -1,0 +1,30 @@
+sales
+
+Maria (AE): Quick sync — ACME POC scoping. They want prompt inventory, baseline evals, acceptance criteria (latency & accuracy), and answers to basic security Qs. Can we confirm owners and a 4-week timeline? Kickoff target: Wed 2026-05-12.
+Devon (Solutions Eng): I can own prompt inventory + baseline prompt engineering. Need customer to share example intents, success scenarios, and any guardrail rules.
+Kevin (ACME): I can share ~25 real user prompts and 10 edge cases by Mon. Will redact PII before upload.
+Sam (ML Eng): For baseline I recommend: 30 canonical prompts, 5 adversarial/negative tests, and 3 eval suites (correctness, hallucination rate, latency). Baseline infra: dedicated small GPU pool or hosted with caching. Ballpark latency: 120–300ms/token depending on model/kv cache.
+Priya (Customer Success): Proposed acceptance criteria draft: 1) >=95% top-intent match on canonical eval set, 2) hallucination rate <5% on adversarial set, 3) p95 latency <250ms, p99 <400ms under expected QPS, 4) no PII exfiltration on 0/30 redaction tests. Thoughts?
+Devon (Solutions Eng): Those look reasonable. For prompts: please include user goal, expected system output, and any guardrail phrases. Example prompt snippet to upload: ```
+1) "Summarize this support ticket for priority routing" -> short summary + 2 action items
+2) "Extract refund intent and amount" -> JSON {"intent":..., "amount":...}
+3) "Rewrite customer message in brand voice" -> friendly, 50-70 words
+```
+Maria (AE): Action items: Kevin to upload prompt CSV to shared doc; Devon to create baseline prompt templates; Sam to create eval harness and rough cost estimate; Priya to finalize success criteria with legal on data handling.
+Kevin (ACME): Uploaded draft sheet: https://redwood.app/sheets/ACME-POC-prompts (private link). Added labels: intent, expected_output_schema, adversarial_flag.
+Devon (Solutions Eng): Got it, pulling now. I'll standardize into 30 canonical prompts and produce 5 variations per prompt for robustness tests.
+Sam (ML Eng): Cost/time note: running full eval (30 prompts x 5 variations x 3 model variants ~450 runs) on dedicated pool: ~2-3 days of runs, estimated infra cost $900-$1,500 for the run depending on concurrency. Hosted paygo likely ~20-30% higher per-token but no reserved commit.
+Priya (Customer Success): Timeline check: Week 0 (kickoff + prompts), Week 1 (baseline engineering + small-scale runs), Week 2 (full evals + refinement), Week 3 (customer validation + acceptance). Is 3 weeks enough or do we keep 4?
+Maria (AE): Let's keep a 4-week window to allow legal/security questionnaire pickup and any model rollback work.
+infra-bot: Test cluster provisioned: rwinf-poc-acme-01 (region: us-west-2). Credentials shared with devon/sam/priya.
+Devon (Solutions Eng): I'll seed the KV/prefix cache config and run a smoke test tomorrow.
+Kevin (ACME): Quick Q on privacy: We need KMS control for keys and audit logs retained 90 days. Is that supported in the private deployment?
+Sam (ML Eng): Yes — Private supports customer-managed KMS + exportable audit logs. For hosted we can enable tenant-level audit but not customer KMS.
+Maria (AE): Price delta note for proposal: Dedicated reserved 1-month commit vs hosted paygo — estimate ~15% lower infra cost if they take minimal 1-month reserved capacity; I'll add exact numbers to SOW after Sam's run cost.
+Priya (Customer Success): I'll start drafting acceptance test checklist and share a pre-filled test matrix by EOD Fri. :thumbsup:
+Devon (Solutions Eng): Marking owners: prompt inventory (Kevin/Devon), baseline prompts (Devon), eval harness (Sam), acceptance criteria (Priya).
+Maria (AE): Great — I'll update the presales tracker and SOW draft. Everyone ok if I lock kickoff on Wed 2026-05-12 10am PT?
+Kevin (ACME): Works for us. Looking forward.
+Devon (Solutions Eng): Confirmed. I'll present the prompt baseline and quick demo at kickoff.
+Sam (ML Eng): I'll bring initial latency/cost slides.
+Maria (AE): Thanks all — closing thread for now, will reopen with kickoff notes.

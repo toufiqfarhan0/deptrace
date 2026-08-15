@@ -1,0 +1,15 @@
+partnerships
+
+nora: quick sync 1 to design a tiny cross-cloud terraform module for marketplace partner onboarding. must include marketplace manifest generation, example Helm deploy, and a single var to toggle private networking.
+
+lee-partners: keep interface minimal. add example for OIDC-based service accounts and a checklist for publishing.
+
+tim-infra: will scaffold providers.tf, pin provider versions, and add a terratest smoke job. suggest outputs: cluster_id, ingress_url, manifest_path.
+
+docs-bot: draft guide created at /docs/marketplace/quickstart-publishers (please review).
+
+nora: timeline: prototype by end of week (2110007200). owners: tim infra (module + CI), lee (partner checklist), nora (announce).
+
+lee-partners: legal note: SBOM + contact email required for listings. we'll supply a template.
+
+nora: perfect. keeping scope small for alpha. we'll iterate after partner feedback. thanks!

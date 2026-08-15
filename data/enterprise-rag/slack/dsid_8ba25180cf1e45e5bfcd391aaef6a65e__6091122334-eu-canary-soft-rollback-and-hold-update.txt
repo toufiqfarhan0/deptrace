@@ -1,0 +1,40 @@
+eng-releases
+
+olivia: Flagging an incident - EU ingress lat tails and autoscaler jitter. I'm pausing the 1.42 rollout promotions for EU until we understand.
+
+deploybot: HOLD placed: release=1.42.0 scope=eu-promote reason=ingress-latency-2034 by=olivia :warning:
+
+maria: copy. is that just blocking traffic promotions or the entire pipeline?
+
+olivia: it stops canary->region promotions only. CI/builds still run. No fleet-wide rollback yet.
+
+sam: seeing a burst of 503s on the canary since 12:17 UTC. If we leave canary in place we might keep generating noisy alerts. Thoughts on soft rollback?
+
+ben: ops + svc-owner chiming in. soft rollback of canary to 1.41.7 makes sense to quickly reduce noise and give SRE time to investigate. Avoid mass rollback unless root cause indicates release-wide regression.
+
+maria: agree. i'll mark the release notes and notify support on-call.
+
+ara: SRE note: we're investigating ingress LB config and connection saturation. rolling back canary will help isolate whether it's code or infra.
+
+deploybot: Soft rollback command available:
+```
+deploy rollback --release 1.42.0 --to 1.41.7 --scope canary --note "ingress 503s"
+```
+
+olivia: executing soft rollback now, i'll post followups. re-evaluate in 15 minutes and decide next steps (lift hold vs expand).
+
+sre-bot: incident-2034 created: ingress p99 spike. Runbook linked: https://runbook.redwood/ingress-spike.
+
+ben: i've paused scheduled backfills and nonessential cron jobs for EU to reduce noise for the next 30m.
+
+maria: updating confluence / release doc: https://confluence.redwood/release/1.42.0 with hold + rollback actions and contact list. adding a short blurb for release-notes owners.
+
+olivia: rollback completed. traffic reverted to 1.41.7 for canary. preliminary dashboards show p99 improving but still noisy. keeping promotion hold until stable (+30m).
+
+sam: confirmed lower 5xx rate from canary hosts. leaving hold is contingent on 30m stability and no new infra alerts.
+
+ara: continuing root-cause probe into LB queues and autoscaler thresholds. will post a short RCA draft if we confirm infra cause.
+
+maria: copy, i'll keep the release changelog updated and draft a short internal note for customers if we need to delay the EU GA.
+
+olivia: thanks everyone. Will call an ad-hoc if metrics degrade. Otherwise plan to lift the hold after stability window and re-run canary with throttled traffic ramp and additional logging. :thumbsup:

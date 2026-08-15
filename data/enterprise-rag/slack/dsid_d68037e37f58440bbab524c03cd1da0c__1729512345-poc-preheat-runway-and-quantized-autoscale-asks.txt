@@ -1,0 +1,51 @@
+sales
+
+maya: SOCBank signed the POC — 4 week run. They expect bursty traffic (short spikes ~200 qps, sustained ~50-70 qps). Asking what reserved GPU footprint + autoscale we recommend and how pricing compares to pay-as-you-go. Also attached security questionnaire (KMS/HIPAA).
+
+patrick: congrats! do they want hard SLAs or just guidance for the POC?
+
+maya: POC only but CIO will evaluate for a commit if latency < 120ms p95 and cost delta < 30% vs their current infra. Security answers need to be backfilled this week.
+
+devon: for 200 qps spikes we usually size around 2 reserved A100-equivalents (packed) with autoscale to 4 for bursts depending on model. If models are quantized 4-bit we can probably do 3 reserved + burst. need model names to be exact.
+
+li: model names? they listed: open-llama-13b and an instruction-tuned 7b. 13b quantized to int4 should hit ~12-14 tps per GPU for chat-like 1-2k token sessions. math: ~200 qps => ~15 GPUs if no batching, but with continuous batching and KV cache warmup we can drop that a lot.
+
+patrick: can you give a short bullet estimate I can share with procurement? they asked for an upfront commit delta vs on-demand.
+
+devon: rough estimate (ballpark) — assuming mixed qps + batching + kv cache warm:
+- Reserved: 3x A100-equivalent (handles steady 60 qps with headroom)
+- Burst/Autoscale: up to 6x for 200 qps spikes
+- Expected p95 latency: 80-140ms depending on sequence length
+- Monthly cost delta vs on-demand: ~20-35% cheaper for heavy sustained usage (depends on commit term)
+
+maya: perfect — can you drop that in a short snippet I can paste? procurement likes numbers.
+
+devon: pasted —
+```
+POC sizing (recommended):
+- Reserved capacity: 3x A100-equivalent GPUs (steady throughput ~60 qps)
+- Autoscale policy: scale-out when queue_depth > 50 for 30s, max burst to 6 GPUs, scale-in after idle 2m
+- KV cache warmup: preheat using traffic replay for first 1 hour to achieve 60-75% cache hit
+- Quantization note: int4 for 13B reduces GPU memory and increases throughput ~1.8x
+Estimated cost delta vs on-demand: ~-25% (sustained workload)
+```
+
+patrick: thanks. on the security side — questionnaire asks about KMS integration and key lifecycle. who owns that answer?
+
+security-reviewer: we can answer KMS integration: Redwood Private supports customer-managed keys via KMS/HSM, we provide audit logs and rotation guidance. For HIPAA: we need BAAs — confirm legal path if they require.
+
+maya: will flag procurement to confirm BAA need. Also they asked about on-prem option for sensitive traffic — is that tied to Reserved plan?
+
+li: Private deployment is separate license (Private control plane + customer VPC). For POC we can do a VPC peering proof: short term we can tunnel telemetry off and use dedicated capacity in same region. That adds setup time (~2-3 days) and extra security review.
+
+patrick: potential enterprise blocker: CIO wants a written fallback if autoscale fails to reach burst in 30s. Ops-bot any recommendations? :thinking_face:
+
+ops-bot: Suggestion — configure hedged routing: if autoscale fails, fallback to lower-cost hosted model (smaller transformer) for non-critical requests, and queue with graceful degradation for interactive flows. Add spike-protection throttles.
+
+devon: actionable: add canary route that re-routes 20% of traffic to smaller model when queue_depth > 200 and raise alerts. also pre-warm additional GPUs at schedule windows (cron preheat) for predicted spike times.
+
+maya: amazing. last ask — can we include a 1-paragraph justification in the quote about why 3 reserved instead of 2? procurement wants rationale.
+
+devon: one-liner: 3 reserved gives steady-state buffer for KV cache regeneration, maintenance windows, and reduces cold-start queueing; 2 reserved + aggressive autoscale risks transient latency spikes during cache repopulation.
+
+maya: great — i'll bundle this and send to SOCBank procurement. will update channel after their security follow-up. :thumbsup:

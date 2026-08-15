@@ -1,0 +1,50 @@
+sales
+
+michael: Heads up — big bank POC starts Mon. They insist on a zero-trust proxy pattern into our Private control plane. Need a short network handoff: recommended connectivity (PrivateLink vs peering), minimal firewall rules, and any obvious enterprise blockers. Who can own this checklist?
+
+devon: I can take it. Quick clarifying Qs: are they expecting cross-account PrivateLink (AWS) or a same-account VPC peering setup? Also need to know whether they require egress IP preservation for allowlists.
+
+michael: Cross-account PrivateLink preferred by their security team, but they asked us to confirm latency tradeoffs + any extra NAT/eip requirements. They also have a vendor allowlist process — need exact IPs/hostnames.
+
+anya: @michael @devon quick summary from infra side: PrivateLink = least collateral attack surface (no route table changes in customer VPC) and aligns with zero-trust. Peering works but requires route management and potentially transitive routing controls if they use TGW. Major blockers we see:
+- Customer policy forbids cross-account route propagation in some banks (peering/TGW becomes a hard no)
+- App teams often block outbound ephemeral ports; we try to avoid those requirements.
+
+anya: Minimal firewall/SG example (share with cust):
+```
+# Outbound from customer app subnets to Redwood Private endpoints
+Allow TCP 443 -> vpce-<redwood-vpce-id>.execute-api.<region>.amazonaws.com (HTTPS to control plane)
+Allow TCP 443 -> <model-serving-vpce-hostname> (if using regional model endpoints)
+# If using NAT for egress to external S3/artifacts
+Allow TCP 443 -> 52.34.12.34/32, 52.34.12.35/32 (Redwood egress IPs - example only)
+```
+Notes:
+- We prefer customers whitelist the endpoint DNS (CNAME) instead of IPs when allowed; if they require IPs we provide a small set of stable egress IPs for Private deployments.
+- No inbound ports required to customer VPC for PrivateLink; all connections initiated by customer resources to the VPCE.
+
+devon: For pricing / presales angle: Private deployment has an onboarding effort + monthly infra footprint. For a short POC recommend Dedicated reserved pool if they want to avoid on-prem setup — cheaper onboarding and faster time-to-value. I can draft a 1-pager with cost buckets (control plane + per-GPU reserved cost + network egress) if that helps procurement.
+
+michael: Yes — procurement will ping us for numbers. Can you include any delta for cross-account PrivateLink (certs, endpoint setup time) vs peering?
+
+anya: Setup notes for PoC (rough timeline):
+- PrivateLink: 1–3 days for endpoint setup + security review (customer approval windows vary)
+- Peering + route updates: 1–2 days if they own the accounts, but if it needs NetOps change board could be multi-week
+
+ops-bot: Incident runbook / docs: https://redwood.internal/runbooks/private-deploy-networking — contains checklist, sample CFN/YAML for vpce service, and IP export script.
+
+devon: Enterprise questionnaire blockers we've hit before (so you can pre-empt):
+- "Do you terminate TLS inside our VPC?" -> For Private deployments, control plane endpoints are TLS; key material stays customer-managed for HSM/KMS integrations when requested.
+- Data residency / egress -> Provide list of regions and egress IPs; we can support regional-only deployments to avoid cross-region egress.
+- Monitoring / flow logs -> Customers often require VPC Flow Logs retention; recommend enabling and sharing sample retention/access pattern.
+
+michael: Perfect. Can you assemble a 1-page handoff for the customer's NetOps with the firewall snippet + quick pros/cons and send to me by EOD? I'll attach it to the SOW and security questionnaire.
+
+anya: Will do. One more pragmatic tip: ask their infra to run a curl test from the target subnet:`curl -v https://vpce-<redwood-vpce-id>.execute-api.<region>.amazonaws.com/health` — if that returns 200 we're green.
+
+devon: I'll include the pricing deltas and timeline bullets.
+
+michael: super helpful — thanks everyone :thumbsup:
+
+anya: created a short Confluence page draft and pinged ops-bot to attach the runbook link. I'll post link here when live.
+
+ops-bot: Confluence draft: https://redwood.internal/confluence/display/POC/zero-trust-proxy-privatelink-handoff (permissions = sales + netops + solutions).

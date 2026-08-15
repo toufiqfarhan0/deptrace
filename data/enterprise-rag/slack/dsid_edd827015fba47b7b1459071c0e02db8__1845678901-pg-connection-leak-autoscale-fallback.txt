@@ -1,0 +1,59 @@
+eng-oncall
+
+incident-bot: PagerDuty ALERT fired: PD-2468 — pg-primary connections > 1024 for 6m (severity: P1). Link: https://pagerduty.com/incidents/PD-2468 :rotating_light:
+
+pagerduty: Incident PD-2468 created by rds-monitor. Trigger: connection_count_threshold. Affected services: api-backend, batch-jobs.
+
+oncall-mike: acked. I'm on it, starting investigation.
+
+sre-sofia: joining. any region-specific signal?
+
+oncall-mike: metrics show spike in us-west and eu-west. connections ~1180 on primary, p95 latency up ~40ms. 5xx rate from 0.2% -> 8% on api-backend.
+
+platform-rui: first step: rate-limit non-critical endpoints and throttle internal batch traffic. runbook: https://runbook.internal/redwood/db/connection-saturation
+
+oncall-mike: applying quick rate-limit to /analytics and /batch-upload via gateway: `kubectl patch configmap gateway-proxy -n prod --patch '{"data":{"rate_limits":"/analytics:50","/batch-upload:10"}}'`
+
+eng-carol: FYI I saw a leaking job in batch-jobs that opens DB cursors and doesn't close on error. I have a patch but holding for canary.
+
+oncall-mike: scaling api-backend to relieve queueing: `kubectl scale deployment api-backend --replicas=35 -n prod` — doing now.
+
+sre-sofia: also restarting pgbouncer to flush idle sockets: `kubectl rollout restart statefulset/pgbouncer -n db`
+
+platform-rui: temporarily lowering app DB pool size to avoid new connections stomping PG: set `DB_POOL_SIZE=80` on api-backend and batch-jobs, then restart pods. This prevents thundering new conns when we restart workers.
+
+oncall-mike: applied env var and restarted pods (rolling). command used: ```kubectl set env deployment/api-backend DB_POOL_SIZE=80 -n prod && kubectl rollout restart deployment/api-backend -n prod```
+
+incident-bot: PD-2468 acknowledged by oncall-mike :white_check_mark:
+
+pagerduty: PD-2468 will escalate to infra-sre in 9m if not resolved.
+
+eng-carol: rolling restart of batch-jobs to pick up fix for leaked cursors: `kubectl rollout restart deployment/batch-jobs -n prod` — starting canary (1 pod).
+
+sre-sofia: watching metrics — connection count dropping: 1180 -> 720 after canary restart. 5xx -> 2.3%. good sign.
+
+platform-rui: applying a safer long-term mitigation: enabling read-replica routing for non-critical reads to reduce primary load. patch: `kubectl apply -f k8s/db-proxy-read-routing.yaml -n prod`
+
+oncall-mike: quick check: `SELECT count(*) FROM pg_stat_activity WHERE state='active';` shows ~310 active conns now.
+
+eng-carol: canary looks stable, promoting deployment to full fleet. `kubectl rollout status deployment/batch-jobs -n prod` -> success. Patch includes cursor close and retry backoff.
+
+sre-sofia: connection count steady around 320, 5xx back down to 0.4%. ETA to close incident if no regression: 20m.
+
+oncall-mike: tagging customer impact: ~2.5% of requests in EU/US saw 502/503 between 14:03-14:15 UTC. Noting affected customers: internal list updated in incident ticket.
+
+platform-rui: added temporary alert to watch for connection leak regression and increased retention for DB connection metrics to 1h.
+
+pagerduty: PD-2468 status: acknowledged -> in-progress.
+
+eng-carol: I'll open a follow-up PR to add additional connection telemetry and a test for cursor cleanup.
+
+oncall-mike: handoff: I'm going offline in 30m, @platform-rui please be on deck for night shift.
+
+sre-sofia: handing off to rui. rui, will DM runbook highlights and current mitigations.
+
+platform-rui: taking over monitoring. I've set an autopager if connection_count > 900 for 5m.
+
+incident-bot: PD-2468 resolved by oncall-mike via PagerDuty at 1845678999. Resolution note: batch job leak fixed, pgbouncer restart, temporary rate-limits and pool size adjustments.
+
+oncall-mike: resolving thread. summary: root cause = cursor leak in batch-jobs; mitigations = patched job (deployed), pgbouncer restart, lowered app pool size, scaled api-backend, enabled read-routing for non-critical reads. customer impact low-medium, partial transient errors; follow-up action item created: ENG-4523 (add telemetry + end-to-end test). :white_check_mark:

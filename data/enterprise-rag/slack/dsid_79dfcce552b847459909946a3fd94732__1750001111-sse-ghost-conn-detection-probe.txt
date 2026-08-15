@@ -1,0 +1,50 @@
+support
+
+lia-support: FYI escalated from ACME — mobile clients see stream stop mid-response, then reconnect and append duplicate tail. Customer says this happens after ~60s idle. Request id: req_9b3f2c.
+
+sam-sre: thanks — can you paste the full client logs + the X-Request-Id from the server logs? also what infra in front (ALB / Cloudflare / nginx)?
+
+lia-support: logs attached in thread: client shows reconnect sequence: 
+  CONNECT -> data... -> stalled -> reconnect (Last-Event-ID: 42) -> receives remainder and duplicate chunk. Server side shows: 
+  2026-06-01T12:02:14Z req_9b3f2c write error: write EPIPE
+  ALB disconnect: idle timeout
+
+mira-frontend: this reads like ALB idle timeout killing idle TCP. mobile often sits behind flaky cellular NATs so app-level keepalive needed. what are we sending as keepalive now?
+
+lia-support: current code does only server-side comment pings on some routes but frequency is 60s. No explicit TCP keepalive tweaks.
+
+tobi-eng: quick primer: there are 2 layers to defend against dead connections:
+  - TCP-level: SO_KEEPALIVE / kernel tcp_keepalive_* (packets from OS)
+  - App-level: SSE comment pings (lines starting with a colon) or `event: ping` messages so clients can detect liveness.
+
+sam-sre: repro steps I used locally: 
+  1) run a simple SSE endpoint that streams tokens with 1s gaps\  2) put ALB with default 60s idle timeout in front\  3) pause stream for 65s -> ALB tears TCP, backend gets EPIPE -> client reconnects and consumes resumed tail via Last-Event-ID. Duplicate tail if server re-emits partial chunk that wasn't flushed.
+
+mira-frontend: minimal client mitigation: handle duplicate fragments idempotently (use event id), reconnect backoff, and prefer Last-Event-ID resume semantics. But customer wants server-side change.
+
+tobi-eng: recommended fixes: 
+  - increase ALB idle timeout to >= 350s for streaming endpoints (if possible)\  - implement app-level comment pings every 15s: send `:\n\n` or `event: heartbeat\ndata: {}\n` so proxies see activity\  - tune proxy/nginx: `proxy_read_timeout` and `proxy_send_timeout` to > idle timeout\  - enable SO_KEEPALIVE on serving sockets and set tcp_keepalive_time=60, tcp_keepalive_intvl=10, tcp_keepalive_probes=6 on hosts where allowed\  - ensure flush semantics: buffer flush after each SSE chunk so partial tokens don't linger (call `response.flush()` after write).
+
+lia-support: sample SSE comment ping snippet I sent customer: 
+```
+// pseudocode sent to them
+setInterval(() => {
+  // send a comment line to keep proxies alive
+  res.write(': keepalive\n\n')
+  res.flush()
+}, 15000)
+```
+
+sam-sre: also a safer server change: add a lightweight `event: ack` that clients reply to with a small POST (or websocket ping) to confirm path works. If client can't POST (mobile NAT), comment pings still better.
+
+mira-frontend: added note: ensure Last-Event-ID handling is strict — only replay complete events, never re-emit partial token fragments. Use event ids per message chunk.
+
+lia-support: next steps for support: propose config changes to customer (ALB timeout + comment pings), offer a small SDK patch to mobile to dedupe by event id, and open an eng ticket to default server behavior to 15s comment pings + flush.
+
+sam-sre: created ENG ticket: INF-2143 to add server-side periodic comment pings, socket SO_KEEPALIVE, and flush after chunks. assigning to @tobi-eng and copying @mira-frontend. :eyes:
+
+deploy-bot: deployed a staging change for INF-2143 to staging at 2026-06-02T09:10:00Z — server now emits comment pings every 15s for streaming routes.
+
+mira-frontend: I'll coordinate a small mobile SDK patch to dedupe Last-Event-ID duplicates and ship a patch to ACME for validation.
+
+lia-support: customer accepted the config path and will test with ALB timeout bump + our staging flag. marking as triaged. :white_check_mark:

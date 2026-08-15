@@ -1,0 +1,64 @@
+eng-runtime
+
+marco: Heads-up — on master I'm seeing gradual memory growth during long-context sessions (8k+ tokens). Heap keeps drifting upward across requests, not reclaiming between turns. Suspect our KV cache keying is creating lots of near-duplicate entries.
+
+yana: Which build and allocator? jemalloc or tcmalloc? Any flamegraphs?
+
+marco: Running with jemalloc. Quick heap summary from a 30m run:
+- total heap ~1.9GB -> 2.6GB
+- ~430MB attributed to 'kv_entries'
+- unique kv keys spike throughout run
+
+sam: We started namespacing keys per session in PR #1422 to avoid cross-tenant collisions. Could that be inflating unique keys if session_ids differ per short-lived client?
+
+elaine: Right — current key = f"sess:{session_id}:prefix:{prefix_text}". If client creates ephemeral session_ids (e.g., s-<uuid> per request) reuse drops to zero.
+
+kyle: Two quick ideas: 1) canonicalize prefix keys (hash the token sequence) so identical prefixes map even across session IDs, 2) coalesce contiguous prefix ranges into a base key + offset deltas to avoid storing full duplicated KV blobs.
+
+marco: I like canonicalization. But we still need absolute KV positions for the attention offsets. Coalescing pointers would solve duplication if we can map offsets cheaply.
+
+sam: Minimal repro script that shows exploding keyspace (run against local runtime):
+
+```python
+for i in range(2000):
+    session = f"s-{i}"  # simulating ephemeral sessions
+    prompt = base + ' ' + history[i % 5]
+    client.generate(prompt=prompt, session_id=session)
+```
+
+This yields ~1800 unique keys after a short run.
+
+perf-bot: perf/loadbench run 1809876520: kv_unique_keys per-min: 1200 -> 2100, mem_growth +9% after 1k requests :mag:
+
+elaine: Proposal: change keying to key = sha1(token_ids) and maintain a registry mapping (session_id -> list of (key, offset_base)). Storage shape: {key: shared_kv_blob, refs: [{session, offset_base, ref_count}]}. When session evicts, decrement refs; evict key only when refs==0 or TTL.
+
+kyle: Implementation note: storing refs introduces some overhead but reduces blob duplication massively. Also need fast lookup for (session, prefix_tokens) -> key; we can keep a small LRU per-session directory pointing to shared keys.
+
+marco: Benchmark plan:
+1) Implement sha1-keying + shared registry (opt-in flag)
+2) Add metrics: kv_unique_keys, kv_shared_hit_ratio, kv_blob_duplication_factor
+3) Run 4h long-context load with mixed ephemeral+sticky sessions and compare memory growth
+
+sam: Concern: We must preserve pointer semantics for KV offsets. Suggest storing KV as chunked segments (64-token chunks) so offsets become (chunk_id, intra_offset). Coalescing then reuses overlapping chunks rather than full-blob copies.
+
+elaine: Also add unit tests: simulate slightly-shifted prefixes (prefix + 1 token) to ensure we still read correct KV ranges when relying on chunk reuse.
+
+kyle: I'll prototype the registry data structures tonight.
+
+marco: Great. I'll draft the metrics PR and schedule a 4h benchmark on staging. If this reduces kv_unique_keys by >50% and flattens mem growth we'll roll to canary.
+
+perf-bot: noted run: 1809876582 scheduled for staging, 4h.
+
+sam: On it — will also scan recent client libs to ensure they aren't creating ephemeral session_ids by default.
+
+kyle: Opening WIP PR: #1498 with chunking + sha1 keying.
+
+elaine: I'll add tests and load scripts. :thumbsup:
+
+marco: Thanks — keep updates here. If anyone sees regressions in latency due to registry lookups, call it out immediately.
+
+sam: Quick note — if registry lookups become hot, we can shard by key_hash to avoid locks.
+
+kyle: acknowledged, will design lock-free read path.
+
+marco: Awesome. Closing for now, will post results after staging run.

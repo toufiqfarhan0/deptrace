@@ -1,0 +1,52 @@
+eng-platform
+
+alex: Noticed something odd on the latency dashboard for /v1/generate — p99 dropped below p95 around 09:10 UTC. p50 steady.
+
+sam: I see it too in prod. region-specific dashboards look fine. Could be merge/aggregation issue.
+
+maria: Any recent routing changes? weight shifts can change which samples are present in the rollup.
+
+jen: I pushed a routing weight update during canary at 2024-09-12T09:10, moved backup pool weight 10%->30%. deploy-bot posted confirmation.
+
+deploy-bot: routing-policy-service deployed rev=cb4f9 env=prod at=2024-09-12T09:11Z :white_check_mark:
+
+alex: Dashboard query (simplified) used by the widget:
+
+```
+SELECT pctl(0.5, latency_ms) AS p50, pctl(0.95, latency_ms) AS p95, pctl(0.99, latency_ms) AS p99
+FROM service_latency
+WHERE route='/v1/generate' AND window='5m'
+GROUP BY route
+```
+
+sam: Thats the issue — UI rollup collapses sample_origin earlier in the pipeline. If client-side instrumented samples are much faster than server-side, a naive merge can invert percentiles.
+
+maria: Can we show provenance in the UI? Even a small badge 'samples: client/server' with counts would help reduce operator confusion.
+
+jen: Product wants a quick mitigation: add a legend chip that says "sample_origin" and show counts per origin in hover. Backend fix for the aggregation is a separate ticket.
+
+alex: Ran split queries: p99(server)=470ms, p99(client)=130ms. But combined p99=140ms due to algorithmic merge — confirms weighted-merge bug.
+
+sam: This matches a tdigest merge behavior I flagged. Our merge path drops the 'weight' field when compacting, so counts are treated equally during final quantile computation.
+
+ops: Can we mute the noisy SLO alerts tied to p99 for a bit while you remediate? It's spamming oncall.
+
+deploy-bot: muted SLO-alerts for /v1/generate by maria at 2024-09-12T10:05Z
+
+sam: Plan: open PR to preserve weights during tdigest merge + add regression tests using extreme-distribution vectors. Estimate: 3 days to land and canary.
+
+jen: UX task: add sample_origin badge + tooltip explaining rollup semantics. Quick patch for console (no backend change) should be deployable tomorrow.
+
+maria: Ops will hold the mute until we see the fix in canary. Also collecting sample request ids and example traces to attach to the fix ticket.
+
+alex: filed ticket INF-2147 with initial notes, will drop links to PR and traces there.
+
+sam: Starting draft PR now, will tag @alex and include unit tests showing p99 inversion case.
+
+jen: I'll schedule a 30min postmortem to capture rollout timing, routing diff, and dashboard UX follow-ups.
+
+alex: Action items recap: sam -> tdigest-weight-preserve PR; frontend -> sample_origin badge + counts; ops -> keep mute until canary green; jen -> postmortem and communicate to SRE. I'll update INF-2147 with links.
+
+ops: Confirmed last sample pull at 2024-09-12T10:40Z. Keeping alerts muted until PR lands to canary and sample-origin chip is in prod.
+
+alex: Thanks all. Closing thread; will append PR and deploy notes to the ticket. :thumbsup:

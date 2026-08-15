@@ -1,0 +1,51 @@
+eng-platform
+
+morgan: Heads-up — planning a soft flip of the tenant rate-cap config for EU region tonight (02:00 UTC window). Goal: enable per-tenant soft limit (non-enforced) so we can monitor behavior before hard enforcement. Who can flip and own rollback if we see >5% error uplift?
+
+ash: I can take the flip at 02:00 UTC. Can we keep it to 10% traffic first, then 50% after 15m if metrics look good? :+1:
+
+devon: Agreed on staged ramp. I will own smoke checks and dashboards (latency, 5xx rate, queue length). Will post check list in thread.
+
+morgan: Thanks. Plan:
+- 02:00 UTC: flip flag to soft=true with traffic_slice=10%
+- 02:15 UTC: review dashboards, if OK -> traffic_slice=50%
+- 02:30 UTC: optional increase to 100% if stable
+- Rollback: set soft=false and traffic_slice=0% and revert config map entry to previous commit
+
+morgan: Quick checklist for devon: can you validate these queries exist in the dashboard?
+- `service.errors.count(region="eu",tenant=~".*") by (tenant)`
+- `service.latency.p95(region="eu")`
+
+devon: Yup, all present. I'll add a dedicated panel for tenant outliers and a quick-run Grafana snapshot before flip.
+
+sanjay: I'll be on-call during the window and can handle urgent rollbacks. Also worth noting: CDN prefetched tokens may keep some clients sending above limits for ~2m after flip.
+
+kate: Are safe defaults set so new tenants get the old quota? We don't want onboarding to be affected.
+
+morgan: Yes — default_quota remains unchanged. This flag only enables soft per-tenant cap evaluation. New tenants unaffected.
+
+ash: Command I'll run (ops CLI):
+```
+opsctl feature-fg set tenant_ratecap.soft=true --region eu --meta "softflip-stage:10"
+```
+Then: `opsctl route set-traffic --feature tenant_ratecap --pct 10 --region eu`
+
+morgan: Good. Devon, post your smoke checklist (paste in thread).
+
+devon: Smoke checklist: 1) Run synthetic load against 3 mid/high tenants, assert p95 < 400ms; 2) check 5xx < 0.5% cluster-wide; 3) validate queue depth < 30; 4) check prefix cache hit-rate unaffected. I'll run these at +8m and +22m.
+
+kate: Pinged security for a quick FYI. No expected change but want audit entry.
+
+deploy-bot: Deployment window scheduled: 02:00 UTC — tenant_ratecap.soft toggle (initiated by ash). Reminder: annotate PR #4123 in audit log.
+
+ash: I'll annotate and paste command output here. If anything looks off I will immediately set `tenant_ratecap.soft=false` and `opsctl route set-traffic --feature tenant_ratecap --pct 0 --region eu` then call Sanjay.
+
+morgan: Final: flip owner = ash, smoke owner = devon, rollback owner = sanjay. I'll be on Slack for coordination. If no objections, proceed as planned. :white_check_mark:
+
+kate: No objections from my side. Good luck!
+
+devon: Snapshot link will be posted ~5m before window.
+
+ash: Ready to flip. Posting in thread when I run commands and including command outputs.
+
+morgan: Thanks team — keep the thread updated with outputs and the Grafana snapshot.

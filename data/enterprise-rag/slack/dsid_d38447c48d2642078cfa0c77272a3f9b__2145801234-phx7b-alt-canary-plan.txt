@@ -1,0 +1,38 @@
+eng-ml
+
+Anya: Quick async sync: prepping phoenix-7b-alt-v2 for Dedicated canary. Need confirmations on weights location, tokenizer behavior, and quant variant for initial canary.
+Samir: weights uploaded -> s3://redwood-models/phoenix-7b-alt/v2/weights.tar.lz4
+Samir: checksum -> s3://redwood-models/phoenix-7b-alt/v2/weights.sha256.txt
+Luca: ran a quick tokenization sweep on the finetune export. Found inconsistent BOS handling: some samples lack BOS while the export script also added a separate special token. This causes misaligned KV caching on prefix replays.
+Anya: can you paste the tokenizer config you saw?
+Luca: snippet:
+```
+{"bos_token": null, "add_bos_token": false, "cls_token": "<cls>", "special_tokens": {...}}
+```
+Luca: for our serving we need add_bos_token: true (we always assume canonical BOS present for prefix caching). I'll prepare a small fix to the tokenizer save step.
+devops-jen: ops plan: we'll rsync from the s3 path to /mnt/models/phoenix/7b-alt/v2 on the dedicated nodes. Expected size ~13.8GB, should finish ~9m after start.
+Anya: quant discussion: we have three contenders: GPTQ-4 (highest accuracy on long-form), AWQ-4 (best latency), and FP8-amp (experimental, promising token cost). Need an ops-safe canary choice.
+Luca: eval numbers (calib subset 2026-03-01):
+- FP16 baseline: EM 85.0
+- GPTQ-4: EM 83.9
+- AWQ-4 (symmetric): EM 83.2
+- FP8-amp (mixed): EM 82.7
+Luca: notes: GPTQ wins by ~0.9 EM on long QA but AWQ reduces tail latency ~18% and halves CPU fallbacks. FP8 still noisy on some safety prompts.
+Samir: infra note: current dedicated runtime has optimized AWQ kernels on the main GPU fleet. GPTQ is supported but runs through a slower codepath until gptq kernels land (~10 business days). FP8 requires runtime feature toggle + perf testing.
+ops-bot: canary-id created -> phoenix-7b-alt-v2-canary-2145801234
+Anya: proposal: start with AWQ-4 (iter-calib) as the first canary variant, route 5% traffic for 72h, autoscale min=2 for the canary pool. Collect EM vs FP16, P95 latency, token cost. Rollback triggers: EM drop >1.0 absolute OR P95 latency increase >15% OR error-rate spike >0.5%.
+devops-jen: can set the 5% route + autoscale. Need a cache-warm plan to avoid cold-KV spikes.
+Luca: cache-warm plan: run prefix replay over top-500 production prompts (from last 30d anonymized list), generate KV snapshot and upload to s3://redwood-cache-warm/phoenix-7b-alt/v2/canary/kv.tar.lz4. Suggest running replay right after weights sync.
+Samir: I can run the replay and push KV snapshot. Will kick rsync -> start replay -> push snapshot. ETA: weights sync + replay = ~120m.
+Anya: checklist before canary kickoff:
+- weights present + checksum verified ✅ (Samir)
+- tokenizer saved with add_bos_token=true ✅ (Luca will push fix)
+- KV snapshot uploaded ✅ (Samir to push)
+- quant variant: AWQ-4 iterative-calib chosen ✅ (tentative)
+- canary routing (5%)/autoscale set ✅ (devops-jen)
+- monitoring: dashboards for EM delta, P95, token cost, error-rate ✅ (Anya wiring alerts)
+Anya: approvals needed: @Luca @Samir please ack the AWQ canary plan so ops can proceed.
+Luca: ack. OK to proceed with AWQ-4 iterative-calib. I'll monitor accuracy cohorts and safety prompts closely during the 72h window.
+Samir: ack. I'll start the rsync + prefix replay now and post logs/manifests to the canary artifact bucket.
+devops-jen: ack and will schedule the route change. I'll also pin a temporary rollback job if thresholds hit.
+Anya: thanks all — I'll post a short status update when canary flips and a mid-run check at 24h. :thumbsup:

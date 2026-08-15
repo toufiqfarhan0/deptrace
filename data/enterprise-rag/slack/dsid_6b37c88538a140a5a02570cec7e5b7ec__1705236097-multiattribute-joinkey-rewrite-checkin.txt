@@ -1,0 +1,55 @@
+eng-platform
+
+alex: heads up — i'm proposing a schema tweak for quota storage: materialize a deterministic multi-attribute join_key (org|route|region) instead of relying on route_id alone. goal is to make console queries for per-tenant + cross-route aggregates much cheaper and avoid high-cardinality fanouts. any blockers?
+
+maria: sounds promising. which console queries will change? dashboards? alerting?
+
+alex: main consumers: per-route quota dashboards, billing rollups, and the console p99 query that joins metrics->route meta. also any analytics exports that group by route. the idea: new column join_key text, populated on write as md5(org||'|'||route||'|'||region) to keep stable length.
+
+raj: big concern is backfill cost. rough numbers? how many rows will need rewriting?
+
+alex: estimate ~1.2B telemetry rows in hot partitions across last 90d. streaming the join_key on writes is cheap, but backfill will be heavy. proposed approach: dual-write writes to add join_key downstream, run shadow read adapter for console, then backfill incrementally with rate limits.
+
+jen: agree with dual-write + read-adapter. we should also add a compatibility read path: console queries try join_key first, fall back to route_id if null. That gives gradual rollout and easier rollback.
+
+alex: plan sketch: 
+1) add nullable join_key column (no index) and add dual-write in ingest service (feature-flagged).
+2) deploy console read-adapter to prefer join_key when present; keep route_id fallback.
+3) run controlled canary traffic for 48h and compare counts.
+4) start backfill in small parallel workers throttled by RPS; monitor CPU and DB io.
+5) once backfill >= 95% for 90d window, create index on (join_key, time DESC) using CONCURRENTLY.
+6) after index build and validation, flip queries to use join_key only and drop fallback.
+
+raj: what about index build cost? concurrent index still spikes io. suggest a maintenance window and incrementally build across shards. also consider creating a partial index on time range first.
+
+jen: partial index sounds good. example SQL snippets: 
+```sql
+ALTER TABLE telemetry ADD COLUMN join_key text NULL;
+-- dual write in ingest:
+-- UPDATE telemetry SET join_key = md5(org_id || '|' || route_id || '|' || region) WHERE id = $1;
+-- backfill job example (pseudo):
+INSERT INTO backfill_queue (pkey) SELECT pkey FROM telemetry WHERE join_key IS NULL AND time >= NOW() - INTERVAL '90 days' LIMIT 10000;
+
+-- partial index example:
+CREATE INDEX CONCURRENTLY IF NOT EXISTS telemetry_joinkey_recent_idx ON telemetry (join_key, time DESC) WHERE time >= NOW() - INTERVAL '30 days';
+```
+
+maria: how will this affect telemetry retention and metrics in console? alerts currently trigger on route_id grouping. will we need to migrate alert configs?
+
+alex: alerts stay as-is via readadapter for 30d. ops: we'll provide a migration helper that maps old route-based alerts to join_key equivalents. recommend communicating to SRE & CS.
+
+deploy-bot: scheduled backfill job queued: backfill/2024-01-18T12:30Z (job id bf-3231) - estimated runtime 36h with throttle 2k rows/s.
+
+raj: we should add a budget estimate for DB egress and IO, and a kill-switch. also run a couple of dry runs on staging with live-ish data.
+
+jen: agreed. i'll draft the runbook for dual-write flag, read-adapter toggle, backfill kill-switch, and index window. ping me for validation steps.
+
+alex: thanks — i'll open the PR for schema + ingest dual-write today and add the staging job. will post metrics diff after canary. :thumbsup:
+
+maria: nice plan. please tag me on the PR for dashboard impacts.
+
+alex: tagging done: @maria @raj @jen. will also add a short note for product about potential 1-2% query latency bump during index builds.
+
+jen: one last note — let's capture a migration metric: percent_of_reads_using_join_key (console telemetry) so we can prove correctness during rollout.
+
+alex: added to checklist. thanks all.

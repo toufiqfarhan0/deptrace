@@ -1,0 +1,95 @@
+eng-sre
+
+kevin: heads-up — ran a quick internal load test against the api-gateway and started seeing 429s and a couple of 502 spikes once we hit bursts. test script attached below.
+
+sasha: ok can you paste the exact repro steps and the client config? was this using a single api key or many keys?
+
+kevin: single key (dev-key-42), simulating a single-customer burst. used k6 with 200 concurrent VUs ramping up over 30s, fixed duration 3m. headers: Authorization: Bearer <dev-key-42>, x-project: internal-loadtest.
+
+maria: single-key bursts are expected to hit per-key RPM quota — did you hit our token-bucket limit or global limiter?
+
+kevin: looking at logs — limiter responded with 429 from rate-limiter (rl-service) saying "quota_exhausted". stack traces show requests still queued in frontend for ~120ms before 429.
+
+ashley: can you paste the k6 command and a sample of the 429 payload? also we need timestamped logs to correlate to quota windows.
+
+kevin: command:
+```
+k6 run --vus 200 --duration 3m script.js --http-debug=1
+```
+429 body (trimmed):
+```json
+{"error":"rate_limit_exceeded","retry_after":12,"scope":"api_key"}
+```
+
+dev-load-bot: note: test flagged high request burst from key dev-key-42 at 2026-11-12T15:12:08Z (project internal-loadtest).
+
+maria: good, so quota_exhausted + retry_after indicates per-key token-bucket with small burst capacity. what's current per-key config?
+
+kevin: checked config in config-store: `per_key: { rate: 600, burst: 100 }` (meaning 600 RPM, burst 100 tokens). But our test effectively did ~2400 RPM for ~15s during ramp.
+
+ashley: that explains it. 600 RPM sustained but burst capacity only 100 tokens — if you consume 2400RPM for a short window you'll see immediate exhaustion. We should document expected burst behavior better.
+
+maria: for internal defaults we need sensible guardrails — proposal: default per-key rate 300 RPM, burst 200, and optional elevated tiers for dedicated customers. Thoughts?
+
+kevin: downstream switchover also showed 502s when queue depth spiked on the runtime side (gpu-pool-3). That looks like transient backpressure + HTTP upstream timeouts. logs:
+```
+[2026-11-12T15:12:22.123Z] frontend: enqueue request, queue_len=1024
+[2026-11-12T15:12:22.345Z] runtime: accept request, queue_depth=128, worker_wait=40ms
+[2026-11-12T15:12:24.789Z] runtime: reject request, reason=timeout, code=502
+```
+
+ashley: runtime timeouts need review too. But for rate-limit calibration we should isolate limiter behavior first. Can you re-run with a distributed multi-key test? single-key is useful but real customers may distribute across keys or routes.
+
+kevin: will run a matrix: single-key burst, many-keys even distribution, and route-heavy (chat vs embedding). Suggest sets: 1 key @ 2.4k RPM for 30s; 50 keys @ 120 RPM each; 200 keys @ 30 RPM each.
+
+maria: agree. Also include 95th/99th token latency metrics and limiter debug headers in responses (`x-rl-remaining`, `x-rl-reset`, `x-rl-scope`). Otherwise ops can't tell which limiter fired.
+
+kevin: added response headers via a test flag. sample response headers we saw:
+```
+x-rl-scope: api_key
+x-rl-remaining: 0
+x-rl-reset: 12
+```
+
+dev-load-bot: FYI: billing noticed a jump in preview account usage during last internal run — flagged to finance.
+
+ashley: billing team — if we do multi-key synthetic tests, please ensure test keys are excluded from billing or put under internal billing bucket. We had a support ticket where a customer triggered our live billing when they ran their own test.
+
+maria: ops note: when limiter returns retry_after we should map that to `Retry-After` header and ensure SDKs backoff; currently some client libs ignore and hammer again.
+
+kevin: observed a customer repro in support case: they rotated API key and then started getting 401s intermittently during the test run. root cause: edge cache still forwarding old token for ~30s while key revocation propagated. stack snippet:
+```
+edge-cache: token cache TTL=30s
+auth-service: revoke(key-123) propagated to control-plane immediately
+edge nodes still had old token, auth check returned 401 intermittently
+```
+
+ashley: that's critical. For coordinated tests we should disable key revocations or ensure no rotations mid-test. Also add a test preflight that validates token acceptance across N nodes.
+
+maria: action items: 1) kevin re-run matrix and upload raw logs + limiter debug headers; 2) ashley open a runtime ticket for queue timeouts and increase per-worker backlog; 3) infra to add a synthetic-test billing exemption flag; 4) product to draft default sane limits doc (300 RPM / burst 200) and a tier for Dedicated customers.
+
+kevin: starting reruns now. I'll post results as separate threads per matrix case with timestamps. also including the k6 script here for reproducibility:
+```js
+import http from 'k6/http';
+import { sleep } from 'k6';
+export default function () {
+  http.get('https://api.redwood-inference.internal/v1/generate', {
+    headers: { Authorization: 'Bearer <key>' }
+  });
+  sleep(0.2);
+}
+```
+
+pagerduty-bot: incident pre-check: no current SRE on-call escalation. If runtime ticket is critical please assign immediately.
+
+ashley: thanks. kevin once you have the multi-key matrix results include: requests/sec, 50/95/99 latencies, 5xx rate, 429 rate, and `x-rl-*` histogram. We'll use that to pick default buckets and burst config.
+
+kevin: will do. one more note — during the initial run the client SDK retried 3 times on 429 without exponential backoff which made the spike last longer. we should patch SDKs to use exponential jitter and a ceiling matching `retry_after`.
+
+maria: +1. Also add a doc snippet for customers: "If you expect short bursts > 2x your per-key RPM, use multiple keys or request a burst uplift via support." Keep default conservative to avoid noisy-neighbors.
+
+kevin: uploading first matrix (single-key burst) results now: saved as s3://redwood-test-results/internal/loadtests/1799502468/single-key-burst.json — I'll share parsed graphs in ~20m.
+
+ashley: perfect. we'll triage runtime and quota slides after graphs. good catch on the auth/billing edges.
+
+kevin: thanks all, posting updates in follow-up threads. :thumbsup:

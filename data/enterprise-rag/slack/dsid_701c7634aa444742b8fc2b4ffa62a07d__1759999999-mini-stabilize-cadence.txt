@@ -1,0 +1,9 @@
+product
+
+maria: proposal: one-week stabilize sprint: fix top 3 regressions + one flaggable UX tweak. Agree?
+sohail: agree. pick embeddings p99, streaming disconnects, quota miscount. UX = prompt templates behind flag.
+cassie: telemetry: embeddings spike affects 5 orgs incl one enterprise. rate-limit tied to proxy rule.
+alex: owners + rollback steps needed up-front.
+emma: can wireframe prompt template in half day.
+maria: plan: PRs by Wed, canary Fri, 48h monitor, full rollout next Mon. owners create sprint cards now.
+deploy-bot: canary started for thread 1759999999 on prod-1 :rocket:

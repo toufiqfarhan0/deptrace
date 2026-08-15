@@ -1,0 +1,41 @@
+postmortems
+
+nina.j: RCA published for the model routing mismatch incident -> https://docs.redwood.com/postmortems/model-routing-mismatch-1830. Short summary: a label mismatch in the routing table sent ~7% of traffic to an experimental decoder variant that had a hidden tokenizer change. Caused elevated 5xxs and downstream client errors for ~22 minutes.
+
+alvaro.m: Oof. Do we have the immediate mitigations listed?
+
+nina.j: Yep. From the doc: 1) emergency rollback of the routing rule (done) 2) blacklist the experimental variant from prod routing 3) notify impacted customers (devex has a draft) 4) add preflight label checks to CI.
+
+tracey.k: I pushed a small CI check to my branch to compare routing labels against model metadata. Will open PR shortly.
+
+product-ryan: For product, we need a short timeline we can share with execs. Can someone paste the ETA on fixes?
+
+nina.j: Timeline in doc "Action Items (owner, ETA)": - CI preflight label check (tracey.k) 026-04-04; - Automated rollback on rule mismatch (alvaro.m) 026-03-29; - Canary traffic cap + stricter canary checks (product-ryan) 026-03-30; - Customer comms final (legal-amy + devex) 026-03-28.
+
+alvaro.m: I'll take the rollback automation. Plan: watch for 5xx spike + routing delta >0.5% -> auto-disable rule and rollback to last-known-good. Will add telemetry hooks.
+
+legal-amy: I'll review the customer note, please @devex (cc product-ryan) when draft ready. Avoid admitting internal labels in the note, stick to impact and remediation.
+
+ops-bot: Action: follow-up sync scheduled 2026-03-29 09:00 UTC 0mins 0Channel: #postmortems 0Link: https://meet.redwood.com/rca-1830
+
+incident-bot: RCA published by @nina.j 026-03-27T14:12:14Z 0Severity: P2 0Duration: 00:22:10 0Tags: routing, model-labels, tokenizer
+
+tracey.k: PR posted: https://git.redwood.com/r/tracey/model-routing-checks. It adds: ```- verify routing labels match model manifest
+- fail fast on unknown labels
+- alert to #eng-platform```
+
+product-ryan: Thanks. We'll prep an exec one-pager and loop in sales for impacted accounts.
+
+nina.j: Please also add unit tests to model onboarding to prevent silent tokenizer changes. Doc has a checklist for model-onboard and rollout process updates.
+
+alvaro.m: Noted. I'll include a post-deploy verification that runs sample tokenization checks against canary traffic for 10k requests.
+
+legal-amy: Draft review ETA: 2026-03-28 12:00 PDT.
+
+nina.j: Closing note: the key lessons are stronger label validation, stricter canary caps, and automated rollbacks. The doc includes 7-day and 30-day verification checkpoints. Please update the action items in the doc as you complete them. :thumbsup:
+
+product-ryan: Will do. Marking this thread as tracked for the weekly leadership sync.
+
+tracey.k: I'll drop smoke test results into the postmortem doc after CI PR merges.
+
+nina.j: Thanks all. If anything slips on ETA ping me here and we'll triage.

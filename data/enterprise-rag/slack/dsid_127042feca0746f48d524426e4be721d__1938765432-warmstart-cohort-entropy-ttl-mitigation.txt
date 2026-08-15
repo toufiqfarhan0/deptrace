@@ -1,0 +1,53 @@
+eng-runtime
+
+Maria: quick heads up — after the kernel-selector bump in 2.3.0 we're seeing increased GPU-side fragmentation + a couple of OOMs on ded-llrg (p4d) during warm-start traffic. reproducible on canary. :frowning:
+
+Aj: can you paste the minimal repro or the profiler output?
+
+Maria: put a short dump from the runtime profiler below. this is from the 10:12 UTC failure window on canary: 
+```
+kv_cache: entries=1_120_432  hits=0.61  misses=0.39  approx_memory=28.7GB  fragments=46%
+gpu_alloc: peak=47.3GB  resident=45.9GB  avail=2.1GB
+batcher: avg_batch_size=8  latency_p90=68ms  kernel_chosen=flash_attn_v2
+reclaims: soft_evicted=1_234  hard_evicted=0  compact_ops=0
+```
+
+Cheng: interesting — fragments=46% is high. suspect slab bucket sizing changed when we switched kernel paths (different workspace/threading alters allocation sizes). compact_ops=0 means we never triggered compaction.
+
+Sasha: are TTLs low for warm-start keys? if keys are short-lived we may be thrashing. what's current KV TTL?
+
+Maria: default KV TTL for prompt_cache is 30m in canary. we saw the worst spikes when warm-start rate was ~600 qps with many unique prefixes (~entropy high).
+
+Leo: two quick options: 1) revert kernel-selector to previous heuristics for canary, 2) push a soft-evict threshold and trigger compact-on-evict. revert gives immediate safety. soft-evict gives long-term fix.
+
+Aj: for short-term mitigation we can reduce GPU cache allocation per process by 15% (low risk) + bump soft_eviction_ratio to 0.75. that will avoid OOM while we debug.
+
+Maria: agree. I'm seeing that key entropy is dominated by unnormalized prefixes — lots of small variations. proposal: normalize prefix by trimming to 128 chars and canonicalize whitespace before hashing (reduce unique keys).
+
+Cheng: +1 for normalization. also we should change keying to `sha256(normalized_prefix + model_id + quant_tag)` instead of current `sha256(prefix + model)` — quant tag makes collisions safer across variants.
+
+Sasha: any perf impact from trimming? we do an extra normalize step but it's cheap relative to tokenization. worth it if hit-rate improves.
+
+InfraBot: deploybot: rollback of canary kernel-selector scheduled -> initiating at 11:05 UTC.
+
+Maria: thanks. after rollback we'll run two experiments in parallel: A) normalize+trim keying on a subset (10% traffic) B) enable compact-on-evict + soft_eviction_ratio=0.75 on another 10%
+
+Aj: I'll open an issue and assign owners. created GH issue: https://github.com/redwood-inference/runtime/issues/4321 — title: "warmstart: high kv fragmentation after kernel-selector roll; keying+evict proposals". owners: @Maria, @Cheng, @Aj.
+
+Leo: timeline? can we have mitigations in staging by EOD and prod canary tomorrow morning?
+
+Maria: staging patch for soft-evict + reduced GPU cache alloc is in PR #5172 (small config changes) — link: https://github.com/redwood-inference/runtime/pull/5172. planning canary tomorrow 09:00 PT.
+
+Cheng: for analysis I'll add more counters: per-slab free_frag_bytes, compaction_triggers, and per-key normalized_entropy metric. will post dashboards.
+
+Sasha: also add a perf test that simulates warm-start traffic with high prefix entropy — we need a reproducible harness. I can sketch one.
+
+Aj: quick checklist added to the issue: revert kernel-selector if regression persists, ship soft-evict config, enable key normalization, add compaction trigger, add perf harness, monitor hit-rate and fragmentation dashboards.
+
+Maria: thanks all. leaving notes on the incident timeline and monitoring thresholds in the GH issue. if we still see OOMs after soft-evict we'll escalate to full rollback. :eyes:
+
+Leo: ping me if we need a capacity bump or to move traffic between regions.
+
+InfraBot: deploybot: rollback completed on canary at 11:06 UTC.
+
+Maria: updating thread — post-rollback preliminary numbers look better: fragments down to ~22% and misses down 7% on canary. will keep watching. :thumbsup:

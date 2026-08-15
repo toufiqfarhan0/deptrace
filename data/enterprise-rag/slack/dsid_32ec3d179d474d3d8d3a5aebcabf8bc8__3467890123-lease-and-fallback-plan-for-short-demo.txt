@@ -1,0 +1,30 @@
+eng-infra
+
+Mara: quick ask — demo next Wed–Fri (Apr 16–18) needs 4x H100s in us-west2 for interactive inference. 8h/day, ~2 concurrent sessions. Can we get a short lease/borrow or a burst reservation? budget tag `Q2-demo`
+Alex: how many total hours across the 3 days? peak concurrency?
+Mara: roughly 24 hours total (8h/day). peak 2 concurrent, occasional spikes to 3 for load testing. prefer H100s but can accept fallback if needed.
+Sven: current pool: 2x H100 in dedicated, 2x on spot. weekday daytime eviction risk is medium-high. short options:
+- borrow 2x H100 from vendor for 72h (procurement lead time ~48–72h)
+- fallback 2x A100-80GB (lower perf)
+- hybrid: 2x reserved H100 + 2x A100 fallback
+Mara: hybrid sounds OK. procurement lead time: can we get the 72h borrow approved in time?
+procurement-bot: lease request LR-2345 submitted to VendorX. Estimated approval window: 48-72 hours. Request includes tags: [Q2-demo, demo-usw2].
+Kai: opened infra PR to auto-tag billing and apply `demo-usw2` labels: https://git.internal/redwood/infra/pull/456 — pinging for review (Alex, Sven).
+Alex: on it. quick note — add autoscale.min = 1 so we don't starve the rest of the pool during the demo.
+Sven: will also add a routing priority so canary traffic prefers reserved pool and falls back to fallback_pool. snippet below I plan to push:
+```hcl
+resource "redwood_routing_policy" "demo_hybrid" {
+  name = "demo-usw2-hybrid"
+  preferred_pool = "dedicated-h100-usw2"
+  fallbacks = ["fallback-a100-usw2", "spot-h100-usw2"]
+  concurrency_limit = 3
+}
+```
+Mara: networking check — can someone confirm egress and VPC peering for the demo namespace? we need external callbacks to customer telemetry endpoints.
+oncall-bot: temporary firewall rule `fw-demo-usw2` created and VPC peering with `telemetry-prod` established. Tag `demo-usw2` added to the subnet. Monitoring alert thresholds for the demo lowered to 10% error to reduce noisy pages.
+Kai: once procurement clears I'll run the smoke: `./scripts/smoke-demo.sh --region=us-west2 --model=gpt-large` — leaving it here for whoever triggers.
+Alex: scheduling a 1h canary on Monday 10:00 UTC (will allocate 1 H100 + 1 fallback A100 to verify infra). @Mara please confirm final time with PM.
+Mara: locking Monday 10:00 UTC for canary. I'll update the customer runbook and add rollback steps. thanks all :thumbsup:
+Sven: i'll follow up with a small rollback playbook and a quick telemetry checklist before canary.
+Kai: ping me if PR review is blocking the lease automation, I can fast-track.
+Mara: awesome — marking this thread resolved for now, will re-open if procurement stalls. 

@@ -1,0 +1,27 @@
+partnerships
+
+alex: Starting a new thread to coordinate a Nimbus joint benchmark for the marketplace listing. Main signals: tokens/joule (perf/W), sustained throughput, and p99 tail latency. Need runbook, power validation, legal check, and co-marketing timeline.
+
+emily: Love it. Can we aim to show both cloud (p4d) and partner private rack numbers side-by-side? marketing likes comparative visuals.
+
+raj: Kernel-tune question 7— if Nimbus provides a tuned kernel, can we ship it in the AMI or link to it? distro compatibility matters.
+
+nimbus-biz: We can provide tuned kernel packages and a prebuilt AMI. Legal flags: we cannot bundle closed-source kernel blobs without consent; we can host the binaries on our partner portal and provide install scripts.
+
+samira: Drafted a minimal run matrix, ops will run power-calibrated sweeps. I'll own the runbook and repo PR.
+
+samira: ```
+models: redwood-serve-mini, llama-2-13b
+seqs: 128, 512
+batches: 1,4,8
+variants: baseline-kernel, nimbus-tuned-kernel, kv-cache-on, kv-cache-off
+metrics: tokens/s, tokens/joule, p99_lat_ms
+```
+
+kevin: PDUs with metering are required for perf/W. @tim please provision metered PDUs on partner rack and provide sensor IDs.
+
+tim: On it. Will set up 2 PDUs (rack-3, rack-7) and create S3 bucket for CSV uploads. ETA 36h.
+
+sarah: I'll kick off legal & marketplace policy review. Reminder: marketplace policy forbids auto-downloading executables; hosting partner binaries behind a documented download link is OK. Also need co-marketing logo approvals.
+
+bench-bot: bench_schedule created: id=nb-2026-05-14-01, planned_start=1893696000

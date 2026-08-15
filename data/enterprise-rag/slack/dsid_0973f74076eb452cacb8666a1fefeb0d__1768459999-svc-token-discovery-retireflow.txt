@@ -1,0 +1,64 @@
+eng-security
+
+devin: Ran our repo static scanner and it flagged a KMS-wrapped blob in git history under libs/crypto/utils.py. not in current tree but present in an older commit.
+
+maria: ugh. can you paste the lines and commit id? do we know if that key had prod access? @sre-oncall please watch. :eyes:
+
+devin: commit 2f8b3a4, snippet:```
+# found: aws:kms:...base64blob...
+def load_key():
+    return b'...base64...'
+```
+No obvious annotations. scanner confidence medium.
+
+alex: if it's KMS-wrapped then the raw key material shouldn't be exposed, but wrapped objects can be used if someone has unwrap rights. need to check which KMS key and grants. devin can you `git show 2f8b3a4:libs/crypto/utils.py` and grep for kms key id?
+
+devin: running quick grep now:```
+$ git show 2f8b3a4:libs/crypto/utils.py | sed -n '1,120p'
+# kms_key_id: arn:aws:kms:us-west-2:123456789012:key/abcd-ef01-2345
+wrapped = b"BASE64BLOB=="
+```
+
+maria: ok that's our staging KMS key arn. but still need to assume blast radius until we confirm access. action plan: 1) rotate key/grant, 2) revoke any service principal that unwrapped recently, 3) enable audit events for Decrypt/GenerateDataKey on that key.
+
+alex: I'll start with a deny-overwrite on the key grants and schedule a rewrap. On AWS we can create a new key, re-encrypt any live material, update configs. I'll also add a key policy restriction for kms:Decrypt to only specific roles.
+
+devin: quick checklist I'm running through:```
+- identify commits referencing this key (git log --all -S 'kms_key_id: 123456789012:key/abcd-ef01-2345')
+- collect last access from CloudTrail for that CMK (Filter: EventName=Decrypt OR GenerateDataKey)
+- list principals with Allow on key policy and grants
+```
+
+maria: perfect. also add a short audit alert: any Decrypt on that key in the last 30d -> create incident. we didn't have that alert on staging key. set it to notify eng-security and oncall.
+
+sre-oncall: I've acked and enabled a temporary alert rule. if we see any Decrypt, page me + maria.
+
+devin: found one principal: arn:aws:iam::123456789012:role/service-ci-runner used in a build job two months ago. It's allowed via a grant. No Decrypt events in last 7 days but older ones exist.
+
+maria: revoke that grant now and revoke any active session tokens for the role. alex, you can create a short-lived deny grant while we rotate. devin, patch CI to use new key once created.
+
+alex: doing a grant revoke now:```
+$ aws kms retire-grant --grant-id XXXXXX --key-id abcd-ef01-2345
+# then update key policy to remove role ARN
+```
+Will also create new key abcd-ef01-2345-2 and add only the deploy role.
+
+vault-bot: Secret rotation initiated for service: svc/ci/deploy (triggered by maria) — rotation job queued.
+
+devin: pushing a small PR to update libs/crypto to reference vault-transit instead of embedding wrapped blob. will include migration notes.
+
+maria: add a short postmortem note in #postmortems after we finish, include timeline and detection tuning. we should also add a commit-scanning pre-commit hook for KMS ARN patterns.
+
+alex: I've scheduled the key rewrap and policy update, ETA 30m. will post updates.
+
+sre-oncall: watching cloudtrail and alerting. nothing new in past 10m.
+
+devin: PR up: https://git.company/repo/pull/432 - replaces blob with vault call and adds tests.
+
+maria: nice. once rotation is done, run a full token sweep for orphaned credentials and mark the incident resolved. thesepoint items: owner=maria, infra=alex, dev=devin.
+
+alex: rotation complete, policy updated, removed role from key policy. re-encrypted live material to new key.
+
+vault-bot: svc/ci/deploy rotated successfully at 1768460400.
+
+maria: thanks. closing loop: filing incident doc and adding scanner rule to bump confidence for KMS ARNs. :white_check_mark:

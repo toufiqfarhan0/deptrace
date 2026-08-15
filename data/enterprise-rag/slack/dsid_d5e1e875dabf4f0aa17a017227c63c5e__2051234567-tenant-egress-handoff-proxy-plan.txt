@@ -1,0 +1,25 @@
+architecture
+
+maria: quick sync — i'm proposing a light-weight per-tenant egress proxy in customer VPCs as the primary handoff to our control plane. goal: preserve src IP where possible, minimize central NAT, and allow graceful failover to public relay if peering is down.
+alex: short list of tradeoffs pls. sounds like another agent to run in tenant?
+maria: yes sidecar or tiny agent VM. responsibilities: mTLS handshake to relay, prefix/KV cache warmup, local caching of responses for short TTLs, detect peering health. must be minimal footprint.
+chen: how do we preserve source IP? with peering we can keep 1:1, but with NAT/bastion relays we lose it. are we relying on proxy to rewrite headers?
+samir: idea: keep two modes. 1) direct-route (peering) — packet-level preservation, no SNAT. 2) tunnel-mode — when peering unavailable, agent opens outbound mTLS tunnel to regional relay and proxies, in which case we add X-Forwarded-For plus signed origin assertion.
+lucy: signed origin assertion is important for auth/authorization. we should include per-request attestation (short-lived JWT) from agent, bound to tenant cert.
+maria: agreed. handshake flow i'm imagining: agent bootstraps with customer-managed cert (or Redwood-issued via CA). agent establishes mTLS with relay, does mutual cert validation, then obtains a session token scoped to tenant+cidr. requests proxied include X-Redwood-Attest:<sig>.
+chen: operationally, peering down detection needs to be quick but not flappy. suggest health checks + BGP/route-watch signals if peered. if flaps, avoid switching to tunnel for transient blips.
+alex: what about DNS? customers expect internal hostnames to resolve privately. in tunnel mode we need to rewrite DNS or use split-horizon — messy.
+maria: plan: keep DNS resolution local to VPC for private endpoints. Agent will only intercept outbound calls destined to our service domain (e.g., *.redwood-inference.svc) and route them via peering if route exists, else via tunnel. no DNS surgery required.
+samir: fallback ordering: peering -> regional relay (mTLS) -> public API (over internet). we should prefer lower-latency regional relay rather than central one. and telemetry must tag which path served the request.
+lucy: security: require customer to provide allowed egress cidr list and a signed policy for agent to accept. also pin relay certs (cert bundle) for extra safety.
+ops-bot: deploy reminder: when rolling this out, we need canary customers with simple cidr footprints, and a kill-switch to force tunnel-only or peering-only.
+chen: metrics: path, rtt, request count, preserved_src_ip boolean, attest_verification, agent_uptime. add alerts for >5% tunnel fallback rate across customer.
+alex: for performance, agent should support connection multiplexing and keepalives to relays, and allow batching for small embeddings to reduce per-token overhead.
+maria: rollout proposal: 1) design doc & security review 2) implementation spike for mTLS handshake + attestation 3) local canary with internal test VPC 4) 2 customers in staging 5) gradual rollout with metrics gates (latency, fallback_rate, error_rate).
+samir: one more ops concern — when agent aborts mid-request during failover, ensure idempotency or safe retry. we should add request idempotency tokens at ingress.
+lucy: agree. also add retention policy for attest logs (30d) and scrub PII.
+maria: ok i'll update the RFC notes with these bullet points and add a healthcheck/state machine diagram. tagging @alex @chen for follow-ups on DNS and attestation formats. :thumbsup:
+ops-bot: ticket created: INFRA-8421 "tenant egress proxy: design followups" (link: https://redwood.atlassian.example/browse/INFRA-8421)
+alex: thanks — i'll volunteer to draft the attestation JWT claim set and sequence diagrams.
+chen: i'll take the peering detection/route-watch pieces.
+maria: perfect, will add owners to the RFC and schedule a 30m follow-up on monday.

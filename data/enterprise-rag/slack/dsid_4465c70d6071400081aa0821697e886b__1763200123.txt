@@ -1,0 +1,66 @@
+incidents
+
+incident-bot: :rotating_light: PAGE FIRED for service=auth-service severity=high — 1763200123
+pagerduty-bot: PagerDuty incident PD-18942 created and routed to oncall (shreya). Escalation policy: auth-tier.
+shreya: acked — looking
+shreya: saw spikes in 401s, seems to start ~1763199900 (a bit before the page).
+shreya: putting notes here so we have a single source.
+alex: on it if you need extra hands, switching to my laptop.
+maria: FYI customer support starting to get tickets complaining about login failures and token errors.
+shreya: logs show repeated JWT validation errors: "kid mismatch" and "invalid signature" across multiple regions.
+shreya: `/service/auth-service: /validate` returning 401 with message "invalid_token: key id not found"
+shreya: tagging infra to check key rotation job. @tj can you check key-rotation-service?
+tj: I'm seeing a failed run of key-rotation at 1763199800, job error: exit code 1, "write permission denied" to secrets-store.
+tj: maybe deploy of infra change earlier today touched KMS role. rolling back policy now.
+alex: can we temporarily fallback to last-known-good signing key from cache to restore validation?
+shreya: yes, auth-service has a cached JWKS for 15min. We can extend TTL and allow validation from cached key while we fix rotation.
+maria: support flagging customers: SSO customers impacted and oauth flows. High-priority tickets: AcmeCorp, BrightHealth.
+shreya: mitigation plan: 1) extend JWKS cache expiry to 1h (hotfix), 2) restart auth-service instances to pick up cache change, 3) fix rotate job perms, 4) rotate keys safely and validate.
+alex: I can put the cache-extension hotfix in prod config. Will push a small config-only deploy (no binary changes).
+shreya: please post the exact commands you run. Need reproducible steps in incident log.
+alex: running:
+```bash
+# increase jwks cache TTL from 15m to 60m
+kubectl set env deployment/auth-service JWKS_CACHE_TTL=3600 -n prod
+kubectl rollout restart deployment/auth-service -n prod
+```
+alex: applied env change, starting rollout.
+incident-bot: deploy-bot: rollout started for deployment/auth-service (3 pods updated)
+tj: infra rollback of KMS role policy applied at 1763200455, permission write to secrets-store restored.
+shreya: verifying key-rotation logs now.
+tj: key-rotation job succeeded at 1763200510. New keys pushed to secrets-store.
+shreya: checking auth-service metrics — 401 rate decreasing after cache TTL change and pod restarts. Good.
+pagerduty-bot: PD-18942 acknowledged by shreya — escalation halted.
+maria: contacting affected customers with mitigation note + ETA for full validation. Drafting message to send in 30m.
+alex: can we also enable temporary fallback signer on validation path (server accepts previous KID)? might be risk but helps traffic.
+shreya: we have to be careful — fallback allowed only if signature validators verify against previous public keys and audit logs are enabled. I'll enable fallback for 30m.
+shreya: enabling fallback now via feature flag service.
+incident-bot: feature-flag service: flag auth.accept_previous_kid set to true for prod (actor=shreya)
+shreya: monitoring for unusual sign-ins. No increase in suspicious activity so far.
+shreya: next: validate new keys are published to JWKS endpoint and all regions pulling updated set.
+tj: confirmed propagate to S3-backed JWKS at 1763200780, edge caches TTL updated.
+alex: load-tests for token validation replay show <1% error now.
+maria: support updated customers: sent initial mitigation note to AcmeCorp and BrightHealth, offering 2hr follow-up.
+shreya: timeline:
+- 1763199800: key-rotation job failed (permissions)
+- 1763200123: pager fired
+- 1763200200: ack + triage started
+- 1763200300: cache TTL hotfix rolled out
+- 1763200455: infra policy rollback applied
+- 1763200510: rotation job succeeded
+- 1763200780: JWKS published and propagated
+- 1763201000: error rate falling below normal
+shreya: impact: login and token-validate calls failed for ~20-40 minutes in some regions; estimated 5% of auth traffic experienced 401s during window.
+alex: follow-up actions:
+- create postmortem template entry (I'll start)
+- add an alert rule to detect key-rotation job failures separately from generic job failures
+- add runbook step to fallback to cached keys and feature-flag path
+shreya: assigning follow-ups: alex -> postmortem draft, tj -> tighten deployment permissions + add unit test for rotation job, maria -> customer comms summary.
+shreya: handing off to oncall-next (tj) at 1763201300 — still monitoring, but the incident is mitigated.
+tj: ack handoff, I'll stay on until metrics stable.
+pagerduty-bot: PD-18942 status changed to resolved by shreya at 1763201400 (note: resolved=mitigated, follow-ups created).
+maria: closing support loop: customers updated and offered credits where SLA breached.
+shreya: will write a short incident summary and upload logs to the incident doc.
+alex: thanks everyone.
+incident-bot: incident-closure reminder: please publish postmortem within 48h and link to PD-18942.
+shreya: closing thread, moving to postmortem doc.

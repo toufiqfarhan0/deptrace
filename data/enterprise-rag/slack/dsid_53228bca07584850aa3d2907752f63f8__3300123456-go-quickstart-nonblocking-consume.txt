@@ -1,0 +1,55 @@
+devex
+
+Ravi: Quick question: our Go onboarding sample returns Result() after streaming, but a customer hit a hang when they cancel the ctx during the initial handshake. Repro attached. Anyone know the recommended SDK pattern?
+
+Olga: Which quickstart? The tiny one in examples/quickstart/generate.go?
+
+Ravi: Yep. Minimal pattern:  
+```go
+iter, err := client.Generate(ctx, req)
+if err != nil { return "", err }
+for tok := range iter.Stream() { out += tok }
+return iter.Result(), nil // can block if ctx canceled early
+```
+
+Ben: Seen that. Two practical fixes we use internally: (A) spawn a goroutine to forward tokens to a channel and select on ctx.Done(), then call iter.Close(ctx) on cancel; (B) create a new Generator/transport for the retry (safe but higher overhead).
+
+Ravi: Can you paste the small non-blocking pattern?
+
+Ben: Sure, compact version:  
+```go
+func consumeSafe(ctx context.Context, iter sdk.Iterator) (string, error) {
+  tokCh := make(chan string)
+  done := make(chan struct{})
+  go func() {
+    for t := range iter.Stream() { tokCh <- t }
+    close(done)
+  }()
+  var out string
+  for {
+    select {
+    case <-ctx.Done():
+      iter.Close(context.Background()) // force cleanup
+      return "", ctx.Err()
+    case t := <-tokCh:
+      out += t
+    case <-done:
+      return iter.Result(), nil
+    }
+  }
+}
+```
+
+Olga: This is great for quickstart. From SDK side we should add: Iterator.Close(ctx) and ResultWithContext(ctx) so callers don't rely on indefinite blocking. Also mention auth-refresh races in the docs (401 mid-handshake -> reconnect).
+
+Ravi: Agreed. I'll update the quickstart to show consumeSafe + note about generator-per-retry tradeoffs. 
+
+QA-bot: Issue filed: #5281 "go-quickstart: show non-blocking stream consume + call out ctx cancel hang".
+
+DevExBot: PR opened: https://github.com/redwood-inference/sdk-go/pull/305 (contains quickstart update + small sample). CI: linux/amd64 pass, darwin flake.
+
+Ben: Small SDK proposal: add Iterator.Close(ctx) and ResultWithContext(ctx) in 0.11.1, keep existing Result() but add deprecation note. Also add a short section to streaming FAQ with examples (close-on-cancel, generator-per-retry).
+
+Olga: I'll draft the SDK change PR after quickstart lands. Also add a unit test that simulates a mid-handshake 401 to validate Close unblocks.
+
+Ravi: Thanks all. Once PR lands I'll update the onboarding guide and include a brief migration note. Closing this thread after SDK change is merged. :tada:

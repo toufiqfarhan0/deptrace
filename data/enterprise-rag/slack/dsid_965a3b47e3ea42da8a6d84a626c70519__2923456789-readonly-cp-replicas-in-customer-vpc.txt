@@ -1,0 +1,66 @@
+architecture
+
+meena: quick follow-up from the RFC — thinking about an alternative pattern: run read-only control-plane replicas inside customer VPCs (or their MGMT accounts) to serve console reads and local telemetry dashboards. sync would be one-way from central cp -> replica, encrypted + signed. intent is lower latency for console and resilience during transient central outages. thoughts?
+
+jordan: sounds interesting. main concerns: secrets + auth surface. can the replica serve any write or admin action? if so that's a non-starter.
+
+meena: replica would be strictly read-only: model of metadata + routing hints + non-sensitive telemetry. no secrets, no RBAC token issuance. writes still go to central control plane.
+
+lee: implementation notes: lightweight postgres read replica is heavy. prefer a small service exposing an indexed snapshot (etcd or sqlite) that we push via signed snapshots over S3/gcs + verify by sig. keeps footprint small.
+
+nina: how do we handle KMS/keys? if we push signed snapshots we still need to verify signatures in customer VPC — that implies we either ship our public key or run an HSM-backed verification proxy.
+
+meena: plan was to ship our signing public keys; verification is local. no private keys leave central. we can rotate keys and push rotation manifest with snapshots.
+
+shiv: audit / compliance question: customers in regulated sectors will want full audit trail of what data is present in replica and when it changed. can we attach per-snapshot provenance + central audit id?
+
+meena: yes. snapshot manifest includes commit id, timestamp, changed-keys list (hashes), and central audit-id. we can expose a compact change log.
+
+jordan: latency/resync: what's acceptable staleness? console users will be unhappy with stale canary metrics. do we provide configurable TTL and fallback to central?
+
+lee: we should design replica to allow TTL config per resource type: routing hints TTL=10s, organization metadata TTL=60s, dashboards TTL=30s. old data served with a warning badge and on-click revalidate via central API.
+
+meena: fallback strategy: if replica misses or verification fails, console falls back to central with exponential backoff and shows an offline banner.
+
+ops-bot: deploy: staging/experimental flag added: cp-replica-optin for early customers — toggled via org feature flag. :white_check_mark:
+
+nina: data residency: some customers want CONTROLPLANE data to never leave their account — read-only replica still receives central-originated metadata. does that violate residency?
+
+shiv: good call. we need an opt-out / local-only mode where snapshot is generated from a local agent that subscribes to central deltas but persists only in-customer network (no central snapshot stored). more complex but needed for some enterprise deals.
+
+lee: edge-case: what if a customer VPC is air-gapped? then we need an offline packaging flow (signed tarball delivered over secure transfer). supportable but will increase ops.
+
+meena: rollout plan idea: 1) start with hosted-read-only replicas in vendor-managed accounts for low-latency console in regions, 2) opt-in customer VPC replicas for non-sensitive metadata, 3) local-only agent for residency customers + airgap.
+
+jordan: security checklist request: list of guarantees we provide (no secret leakage, signature verification, replay protection, key rotation, read-only attest). I'll draft and we can include in RFC follow-up.
+
+nina: sync protocol sketch (lee you can refine):
+```
+# snapshot manifest
+{
+  "version": "1",
+  "timestamp": "2026-07-15T12:00:00Z",
+  "signer": "cp-signer-v2",
+  "signature": "base64...",
+  "objects": [ {"type":"org","id":"o-123","hash":"..."}, ... ]
+}
+```
+local verifier: verify signature, check signer revocation list, apply diffs atomically.
+
+lee: looks good. also add monotonic sequence number and optional merkle root for selective verification.
+
+shiv: ops question: how do we monitor replica health without leaking sensitive usage to central? maybe heartbeat only with status codes (ok, stale, verify-fail). payload minimal.
+
+meena: agreed. minimal telemetry: replica_id, seq_no, status_code, last_applied_ts. no resource details. encryption in transit.
+
+jordan: SLA implications: if we advertise local read availability, we need an SLO around sync lag and verification times. recommend not promising <100ms for first phase.
+
+meena: yep. defaults: eventual consistent, target <5s for most metadata in cloud-on-cloud path; document higher for cross-account and airgapped flows.
+
+nina: will add KMS/rotation notes and interaction with customer-managed KMS to the RFC follow-up.
+
+meena: thanks all. action items: jordan draft security guarantees, lee prototype snapshot verifier + sequence, nina KMS and rotation notes, shiv ops runbook for airgap and opt-in. ops-bot please create tracking ticket.
+
+ops-bot: created ticket INFRA-3782 "cp-readonly-replicas-in-customer-vpc" and linked to RFC-2026.
+
+meena: perfect. we'll sync next Tuesday in arch sync. :calendar:

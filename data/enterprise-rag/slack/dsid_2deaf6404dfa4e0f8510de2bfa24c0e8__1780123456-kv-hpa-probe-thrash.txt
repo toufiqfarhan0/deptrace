@@ -1,0 +1,103 @@
+eng-oncall
+
+oncall-bot: P1 ALERT — sustained 5xx spike from serving cluster: kv-cache write/read latency climbing, autoscaler oscillating. Pager: @Alex H @Maria P :rotating_light:
+
+Alex H: I’m on it, paging Jordan for runtime assist. Any customer-facing impact yet?
+
+Maria P: seeing 3x median token latency for a subset of requests to model-replica-3. Most errors are timeouts (upstream 504) and batch overflow.
+
+Jordan S: joining. tl;dr: KV cache entries are growing without bound for some prefixes — continuous-batch is grouping long-lived chat sessions into giant batches, increasing memory use and causing pod OOMs + HPA thrash.
+
+Sam C: CS note: Pilot-tenant "pilot-retail-1" reports timeouts on inference -> degraded checkout feature. They flagged about 2% of requests failing, but tail latency spikes to 6s.
+
+Alex H: Good to know. Can we put a short-term mitigation: reduce continuous batch max-size and enforce per-prefix max-batch? Also consider disabling prefix-KV caching for the affected pool.
+
+Jordan S: Agreed. Recommending these steps now:
+1) scale up min replicas by +2 to absorb current load
+2) set HPA target CPU to 60% (was 50%) to reduce oscillation window
+3) temporarily set continuous_batch.max_concurrent_batch_size=64 (was 512)
+4) disable prefix_kv cache for pool `serving-pool-a`
+
+Maria P: I can run the config change for continuous batch and cache toggle. Will apply a conservative change first.
+
+Alex H: I'll bump min replicas in k8s. Jordan, can you prepare a revert plan?
+
+Jordan S: Revert plan: restore flags, remove forced min replicas, and fluster-scale back down once queue depth normalizes for 30m. Also will watch KV cache histogram (kv.cache.size_p50/p95/p99).
+
+Maria P: Applying runtime config (hotpath). Command: 
+```
+# runtime-admin API (internal)
+curl -sX POST https://runtime-admin.internal/config -H 'Authorization: Bearer $ADMIN' -d '{"pool":"serving-pool-a","continuous_batch.max_concurrent_batch_size":64,"prefix_kv.enabled":false}'
+```
+
+Maria P: response: 200 OK. Changes pushed to 6 pods in pool.
+
+Alex H: Scaling min replicas now: 
+```
+kubectl scale deploy/serving-pool-a --replicas=10 -n inference-prod
+```
+
+Alex H: done. New desired replicas=10. HPA still attached but min overridden.
+
+oncall-bot: DeployBot: rollout started for deploy/serving-pool-a by Alex H.
+
+Jordan S: Observing metrics: KV cache size p95 dropping from 1.2M -> 120k over the last 2m. Batch queue depth per-pod dropped from ~1800 -> ~120. Good sign.
+
+Sam C: Customer update: told pilot-retail-1 we’re investigating, mitigation in progress, will follow up in 30m if fully mitigated. They’re OK for now.
+
+Maria P: Noting a new pattern in the logs — some long-lived sessions keep pushing incremental prefixes that prevent prefix eviction. Adding a soft TTL for prefix entries might help medium-term.
+
+Jordan S: Agree — medium-term follow-ups: per-prefix TTL, per-session cap, and a circuit-breaker that disables continuous batching if batch-merge rate > threshold for 2m.
+
+Alex H: HPA thrash analysis: current HPA cooldown is 30s; with frequent bursts the controller chased CPU spikes. Proposed changes:
+- scaleUpPolicy stabilization: increase to 2m
+- target utilization 60%
+- add warmup annotations to new pods so they are not considered ready for traffic for first 20s
+
+Maria P: I’ll apply the HPA patch: 
+```
+kubectl patch hpa serving-pool-a -p '{"spec":{"behavior":{"scaleUp":{"stabilizationWindowSeconds":120},"scaleDown":{"stabilizationWindowSeconds":60}},"targetCPUUtilizationPercentage":60}}'
+```
+
+Maria P: patch applied.
+
+oncall-bot: MetricsBot: alert suppressed for 10m due to active mitigation.
+
+Jordan S: After config changes: observed less oscillation in replica counts. New pods have warmup annotation and readiness probes delay 20s. Batch sizes per request now capped, KV cache eviction triggered properly.
+
+Alex H: Are there any residual 5xx errors?
+
+Maria P: 5xx rate dropped from 2.3% -> 0.15% in the last 10 minutes. Tail latency back to normal (~180ms).
+
+Sam C: Customer update: pilot-retail-1 reports improvement, checkout requests succeeding. They asked for postmortem and whether this will reoccur after we revert.
+
+Jordan S: Postmortem items:
+- root cause: continuous-batching algorithm merged unbounded same-user prefixes across long sessions; prefix_kv cache lacked eviction TTL and allowed growth -> memory pressure -> OOM & HPA thrash.
+- short-term mitigation: reduce max batch size, disable prefix_kv, increase min replicas, HPA stabilization, warmup.
+- medium-term fixes: per-prefix TTL, session caps, circuit-breaker on batch-merge rate, stronger passive eviction heuristics, and improved observability for prefix reuse patterns.
+
+Alex H: Action items assigned:
+- Jordan S: implement circuit-breaker + metrics (ETA 3d)
+- Maria P: add prefix TTL config + rollout (ETA 5d)
+- EngRuntime team: add doc for emergency toggles + runbook update (ETA 2d)
+- CS Sam: follow up with pilot-retail-1 with RCA + timeline (ETA 24h)
+
+Sam C: ack, will send initial customer RCA draft.
+
+Alex H: We'll keep this thread open. Handing off primary oncall to Maria P in 45m. If anything regresses ping @Jordan S immediately.
+
+Maria P: Taking over in 45m. Logging final state: replication stable at 10, kv.cache.size_p95=90k, continuous_batch average size=18. Marking incident as mitigated but not resolved.
+
+oncall-bot: Incident status -> mitigated (P1 -> P2). Auto-escalation window set to 2h.
+
+Jordan S: I'll start a follow-up design doc tonight for circuit-breaker and TTL, will post in #eng-runtime tomorrow.
+
+Alex H: Thanks team. Good triage and fast mitigation.
+
+Maria P: small note: re-enable prefix_kv only after TTL is in place and we observe stable behavior for 48h.
+
+Sam C: Customer update sent. They asked for a scheduled call with us tomorrow to review RCA.
+
+oncall-bot: Reminder — handoff to Maria P in 30m.
+
+Alex H: ending active actions in this thread. Will update if anything changes.

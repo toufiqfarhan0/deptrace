@@ -1,0 +1,32 @@
+eng-platform
+
+jess_dev: heads up — noticed console heatmaps and sparklines are freezing for ~200-400ms on load in canary. UX team getting a bunch of reports. :eyes:
+vikram_sre: saw alerts too, started when telemetry-client v2.10 rolled this morning?
+jess_dev: yep canary aligns with that deploy. main thread long tasks spike during initial paint. profile shows huge parse/compile time, large JS eval.
+randal_frontend: bundle size diff after the deploy: +350KB (gzipped) for console-core. mostly from telemetry-client pulling in time-series-helpers and a new CSV parser.
+mona_pm: customers notice UI sluggishness, could be affecting adoption metrics. can we triage fast?
+dario_infra: eng-bot shows routing service returning higher error rates around same window — a lot of 502/504 from route-proxy to telemetry-ingest. maybe backpressure?
+jess_dev: stacktrace in profiler points to a hot path in telemetry-client that JSON.parse()s a big payload on init. it's blocking hydration. also KV-prefetch coalescing spike causing extra payloads.
+vikram_sre: interesting — routing policy change last week started preferring low-cost pool for telemetry routes. that pool has tighter quotas. if requests get queued/retried, frontend sees longer responses and larger aggregated payloads.
+randal_frontend: can reproduce locally by enabling telemetry batching in dev: when payloads > 80KB parse time jumps and layout thrashes. quick fix might be to lazy-init telemetry parsing off main thread (worker) or reduce batch size.
+mona_pm: short-term: rollback telemetry-client? or canary rollback to previous rollout? want a minimal blast radius.
+jess_dev: propose: 1) revert telemetry-client to v2.9 in canary, 2) disable KV-prefetch coalescing for canary, 3) add a canary-only feature flag to parse telemetry in a worker.
+dario_infra: agree. I can run a rollback for canary if product ok. eng-bot: `/deploy rollback console-canary telemetry-client v2.9` (mock command shown).
+eng-bot: notice — deploy triggered: console-canary: rollback telemetry-client to v2.9 by dario_infra (ETA ~3min). :shipit:
+vikram_sre: also opening a short follow-up: check routing-policy config: `route-policy: prefer-low-cost` should have a fallback threshold; looks like threshold was lowered from 95% -> 80% last week. reverting that buys headroom.
+randal_frontend: for longer term: move heavy parse to a web worker + stream decode, or adopt a lightweight binary envelope for telemetry so we avoid big JSON.parse on main thread. also audit imports — we accidentally pulled in the CSV parser into main bundle instead of lazy import.
+jess_dev: putting a PR up to lazy-load the CSV parser and toggle KV coalescing off for canary. I'll link the PR in a sec.
+mona_pm: thanks — can we get a status update in #incidents if rollback doesn't clear user reports within 10m?
+jd: (reaction) jess_dev reacted with :thumbsup:
+jess_dev: PR: https://git.company/repo/pulls/5421 — contains lazy import + feature flag.
+dario_infra: rollback complete on canary. preliminary metrics: main-thread long-tasks dropped ~70% for canary cohort. I'm rolling it to next stage slowly.
+vikram_sre: I'm reverting the route-policy threshold patch in staging and will schedule a config deploy to prod rollback if canary shows improvement.
+randal_frontend: after rollback, I still see a small hiccup on 2% of sessions — digging into cache miss patterns (prefix/KV cache) that cause an extra fetch path leading to larger payloads.
+jess_dev: good find. most of those 2% are users hitting multi-tenant filter combos — we should guard by capping telemetry batch size per route.
+mona_pm: roadmap note — add telemetry performance regression test to the console e2e suite (simulate big batches + route throttling).
+dario_infra: logging update: adding an extra tag `telemetry.batch_sz` to route logs so we can correlate batch sizes with parse times and route errors.
+eng-bot: automated canary metrics: anomaly cleared in latency after rollback (canary window +15m). leaving thread open for follow-ups.
+jess_dev: thanks everyone. I'll follow up with the PR and an RFC for worker-based telemetry parsing.
+vikram_sre: 📌 action items: revert route-policy threshold (vikram), roll forward telemetry-client rollback if metrics stable (dario), land lazy import PR + toggle (randal/jess).
+mona_pm: ping me when PR is merged and when staging config reverted.
+jess_dev: will do. closing thread when we see stable metrics for 1h. :white_check_mark:

@@ -1,0 +1,35 @@
+customer-success
+
+zoe_csm: quick heads up — PolarisForms renewal ≈36d out. MAU dropped ~55% in last 30d (from 420 -> 190). Champion left, new contact only in Okta as "P. Nguyen" with no activity.
+
+infra-bot: Automated usage drop alert for polarisforms (acct_polaris). Delta: -55% 30d vs baseline. Alert id: UDA-20260330-11.
+
+tarek_ae: yikes. Any engineering errors or billing issues? Did they mention switching vendors?
+
+mina_se: Onboarding checklist shows integration webhook verification failed repeatedly last week. I see multiple 502/timeout spikes around 1771313050-1771313080.
+
+zoe_csm: can you paste a short log snippet? we'll need to know if this is infra or product integration.
+
+mina_se: snippet: ```
+2026-03-30T09:34:12Z WARN 502 /v1/callback acct=polarisforms req_id=rq-8a2
+2026-03-30T09:34:13Z WARN 504 /v1/callback acct=polarisforms req_id=rq-8a3
+2026-03-30T09:35:01Z ERROR 429 /v1/generate acct=polarisforms pid=gw-04
+```
+
+tarek_ae: that's helpful. Procurement mentioned they ran a short pilot with "FormEdge" — likely competitive. I'll ask procurement contact for details.
+
+ryan_cs_manager: two-pronged plan: (1) triage infra and offer immediate SE hours if it's on our side, (2) commercial outreach to lock decision window. Agree?
+
+zoe_csm: yes. Suggested outreach: 30m technical triage + offer 10 SE hours free to finish integration. Also propose a short adoption workshop for new PM.
+
+tarek_ae: Approved to offer 10 SE hours and a 1-month extension credit if they sign a 6mo renewal. Hold on pricing detail until we confirm severity.
+
+mina_se: Action items: I'll run a root-cause check on gateway errors (investigate gw-04) and confirm whether timeouts were on our edge or theirs. ETA 4 hours.
+
+zoe_csm: I'll reach out to P. Nguyen and procurement to schedule the triage call. Draft: "Hi P — noticed a drop in activity and some integration errors. Can we do a 30m troubleshooting + adoption call this week? We can assign SE hours to help finish validation." Approve?
+
+tarek_ae: approve. Add note: "we know of transient gateway errors and will share remediation steps in call."
+
+infra-bot: Reminder: create renewal_watch ticket in Salesforce (acct_polaris, renewal_36d) — ticket #RW-20260330-09
+
+zoe_csm: created SF ticket RW-20260330-09 and linked to playbook (playbook: onboarding-rescue-v2). Scheduling triage now. Will update here when logs/scan complete. :white_check_mark:

@@ -1,0 +1,17 @@
+architecture
+
+Ravi: quick note from today's multi-region rehearsal: our fallback path allowed writes into a non-authoritative region for tenant R-19. residency enforcement gap.
+Nora: short version: proxy fallback didn't validate current placement with control plane and accepted writes.
+Igor: was it because of a stale cache?
+Ravi: yes, proxy had a cached placement that said 'local-ok' and on failover it didn't re-check placement TTL.
+Nora: proposal: two changes - (1) cheap placement stamp header from control plane on allocation (stamp + expiry) that proxy verifies on failover; (2) placement-cache must consult control plane on mismatch or expiry before accepting writes.
+Igor: sounds fine. For (1) prefer HMACed stamp instead of full asymmetric sigs to keep CPU down. include region and expiry: e.g. X-Placement: region=ap-southeast;exp=1700001000;mac=...
+Ravi: agreed, HMAC + short TTL (<=5m). If proxy sees a placement mismatch and no valid stamp, it should return 451 and create an incident draft.
+Nora: operator override: allow a time-limited override token via Console that requires two approvers. token must be logged in audit trail.
+Igor: add metrics: rejected_fallbacks_total, override_tokens_issued, stale_cache_hits. dashboard to SRE and legal.
+Ravi: CI tests: a small harness that injects partitions and asserts no writes outside allocated region unless override consumed. add to chaos pipeline.
+ci-bot: scheduled job created: residency-chaos-test -> nightly.
+Nora: I'll draft a short RFC for the placement-stamp + cache-change and update runbook with override flow. target: canary by 2026-03-27.
+Igor: I'll implement HMAC verification in proxy canary and wire metrics.
+Ravi: thanks — keep the thread updated.
+ci-bot: canary rollout queued: placement-stamp-proxy -> staging (build 4890).

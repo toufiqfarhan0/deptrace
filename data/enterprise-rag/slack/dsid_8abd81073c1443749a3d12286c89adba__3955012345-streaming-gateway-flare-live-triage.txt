@@ -1,0 +1,47 @@
+incidents
+
+incident-bot: ALERT: High error rate detected for /v1/stream in us-west-2. 5xx spike, increased timeouts and client disconnects. Paging oncall.
+oncall-sre: Ack. I'm on it. Gathering metrics and logs.
+samira: seeing a sharp jump in gateway 502/504s around 10:12 UTC. p95 latency for streaming up ~2.3s -> 8.6s. First notice: many chunked connections truncated with 'client canceled' downstream.
+josh: any recent deploys or config changes? @maria @oliver
+maria: no deploys to streaming gateway since yesterday. There was an nginx patch to upstream keepalive settings this morning (rollback proposed) — pulling owner.
+oliver: that's me, rolled out keepalive change at 09:58 to reduce idle conn time. I'll roll it back now.
+support-liz: Customer impact: 18 support tickets opened in last 30m, 7 flagged as production outage. Key customers on dedicated-usw seeing partial transcripts truncated.
+samira: stack traces show repeated 'write tcp: connection reset by peer' from gateway to model-proxy. Also many 429s from model pool followed by 5xx from gateway when fanout fails.
+incident-bot: @pager — incident created: INC-2026-2513. Severity: P1. Notifying SRE rotation.
+oncall-sre: Quick mitigation options: 1) revert nginx keepalive. 2) temporarily reduce stream fanout (fanout=1) for hosted tier. 3) fallback to paged responses for >=30s sessions. Which should we try first?
+maria: revert keepalive now and monitor. If that doesn't help, reduce fanout to 1 for all streaming requests (targeted routing rule).
+oliver: rollback initiated: /deployments/nginx-config rollback v2 -> v1
+devops-bot: rollback job started (id: jb-8812). ETA 45s. Logs: "applying v1 config..."
+samira: while rollback in flight, let's enable gateway retry/backoff and increase streaming heartbeat frequency to 10s to detect dead clients early.
+josh: I'll flip the flag to increase heartbeat. Doing it via console now: `feature.streaming_heartbeat=10s`.
+support-liz: note: customers on Dedicated might not follow this flag. For those, propose route to fallback-edge node.
+maria: also bump model proxy concurrency limit to avoid 429 amplification: set CONC_MAX=40 -> 60 for the busy pool.
+oliver: rollback completed. nginx reverted. Observability: 502 rate dropped ~30% in first 60s.
+samira: logs: chunked connection errors still present but decreasing. p95 latency down to 4.1s from 8.6s. 5xx decreasing but still elevated.
+oncall-sre: apply fanout=1 routing now for us-west-2: `route set /v1/stream fanout=1 --region=us-west-2 --dry=false`
+devops-bot: routing change applied.
+support-liz: support ticket surge slowing, but a few customers still report truncation.
+maria: enabling paged fallback for long responses as a protective measure: `feature.paged_fallback_threshold=20s` (requests exceeding 20s will switch to paged mode).
+josh: paged fallback enabled for hosted tier.
+samira: monitoring: 5xx now close to normal baseline after fanout reduction + paged fallback. Some client cancels persist; might be client-side timeouts.
+oliver: tracing shows a subset of requests with premature client disconnects (client->gateway closed) right after first chunk. Could be SDK timeout set to 8s.
+support-liz: reached out to three impacted customers — they confirmed SDK timeout set to 7s. We'll recommend updating to 30s. Sending template message.
+incident-bot: Live mitigation summary:
+- rolled back nginx keepalive change
+- reduced fanout to 1 in us-west-2
+- enabled paged fallback for long streams
+- increased streaming heartbeat to 10s
+- increased model-proxy concurrency
+Status: error rate dropping, customer impact reduced. Continue monitoring 30m.
+oncall-sre: I'll keep an eye for 45m, then hand back to rotation. Can we capture an RCA timeline and open a follow-up with root cause owner? @oliver @maria
+maria: yes. I'll own RCA for keepalive change impact + mitigation playbook. Will pull logs and do postmortem draft.
+oliver: adding action item: add canary to nginx keepalive changes and alert on chunked truncation metric if delta > 5x.
+samira: also add a runbook step to quickly toggle paged fallback and fanout.
+support-liz: customer comms: sent 'we mitigated, workaround: extend client timeout to 30s, we're investigating' to affected accounts.
+oncall-sre: closing notes: if 5xx reappears we escalate to infra-auth and model-ops. For now, marking incident mitigated.
+incident-bot: Incident INC-2026-2513 status: MITIGATED -> monitoring. Close window: 30m.
+support-liz: please paste the list of affected customer IDs for follow-up? I'll aggregate.
+maria: will attach logs and affected list to the postmortem doc.
+oliver: thanks everyone. handing off to rotation for normal ops.
+samira: thx. good job. :thumbsup:

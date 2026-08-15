@@ -1,0 +1,14 @@
+sales
+
+Maya (AE): Heads up — SentryWave exec pinged, holding signoff until we confirm VPC peering + licensing language for export controls. CISO wants BYO KMS + SSO + audit timeline. They need answers by EOD PST.
+Sam (Eng): On it. Need exact IP ranges and whether they want peering or private ingress (Azure Private Link). @Lea can legal confirm any redline constraints for export control clause?
+Ravi (Security): We can support BYO KMS (bring-your-own key), but full attestation + HSM validation is ~3 weeks. We can offer a provisional attestation in ~5 business days if they provide key metadata and sign NDA. What retention do they expect for audit logs?
+Lea (Head of Sales): Legal can fast-track a pilot addendum. To unblock the exec quickly we should codify: provisional attestation + pilot-specific SLA. Maya — what's the minimum ask from the customer that satisfies their CISO?
+Maya (AE): Customer says minimal to unblock: peer to EU region, BYO KMS (Azure), 1 year retention on tenant audit logs, and a data-residency paragraph in the pilot addendum. They're ok with an interim SOP for KMS validation if legal signs off.
+Noah (SE): For peering we'll need BGP details + allowed egress ranges from their side. Our default outbound allowlist for peering is 10.246.32.0/24. Example snippet they can give infra: `peer_cidr: 10.246.32.0/24` and a single peer IP `10.246.32.1`.
+Ravi (Security): Confirming rotation policy: we require key metadata (kid, algorithm, creation date). If they provide that and access for validation, provisional attestation in 5 business days is realistic. Full HSM audit and PKI checks still ~3 weeks.
+Lea (Head of Sales): I'll ask legal to draft the addendum and a short license redline for export controls. Maya — can you confirm customer infra contact and decision authority so we loop the right people? Also propose a reserved-capacity short term rate to cover compliance support — need a thumbs up from finance but we can propose it.
+Maya (AE): Infra contact: Johan (johan@sentrywave.com). Decision authority: CTO Marta. I'm sending a 1pm PST sync now. Customer said they're okay with an interim reserved capacity rate during pilot to cover the extra ops work. Here's the security questionnaire link I sent them: https://redwood.example/sec-qna/sentrywave (they filled some answers already).
+Sam (Eng): I'll assemble a short runbook for the peering + KMS handshake and post to eng-infra after the 1pm call. ETA: initial checklist before EOD.
+CISO-bot: IncidentBot: created triage ticket #SW-2319 for SentryWave executive escalation (labels: enterprise, security, urgent).
+Maya (AE): :thumbsup: Thanks all — if legal/eng can hit the provisional attestation + peering checklist today, I can close the exec loop after the 1pm. Flag if you need an exec-level convo, otherwise I'll own external comms.

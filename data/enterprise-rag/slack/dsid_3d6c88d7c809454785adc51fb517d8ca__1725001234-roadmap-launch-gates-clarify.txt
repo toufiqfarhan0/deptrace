@@ -1,0 +1,29 @@
+all-hands
+
+sasha: Quick live note from the Q&A: can leadership confirm final owners, hard/soft targets, and the escalation gates for API / Console parity / Optimize? Need a single artifact for customer comms and sales.
+
+michael.ceo: Short bullets: API GA = target 2024-07-22 (soft), Console parity v1 = target 2024-08-12, Optimize beta = target 2024-06-18. Owners: Priya (product), Leo (runtime), Maya (devex). Will publish a consolidated timeline by 06/21.
+
+priya.prod: Product context  API GA scope = stable streaming + function-calls + auth UX. We will gate GA on error-rate and tail-latency thresholds. If P99 increases >6% during canary, we hold.
+
+leo.runtime: Runtime note: KV-cache adjustments + batching changes are highest risk. Proposed canary sequence: staging (05/09), limited-prod 5% (05/16), widen to 40% over two weeks if telemetry is clean. Need two weeks of stable P95/P99 before broadening.
+
+maya.devex: DevEx commitments: canary playbook + migration FAQ by 05/06. We'll also prepare a short "breaking-changes" checklist for customers.
+
+sasha: Ops/infra asks: do we have Dedicated capacity levers ready for Console rollout? We saw some allocation churn last quarter.
+
+leo.runtime: Ops dependency acknowledged  infra required control-plane tagging and node pool resize. Targeting node changes 05/13. If tagging misses, Console parity shifts by one week.
+
+infra-bot: Capacity rehearsal scheduled: infra/dry-run-2024-05-12 (eta 2024-05-12T18:00:00Z). Please confirm attendees.
+
+priya.prod: Risk note: if Optimize beta shows >10% unit-cost variance across common workloads, we will keep Optimize opt-in and delay default recommendations in Console.
+
+sasha: Can we get a single doc with dates, owners, conditional gates, and contact points for escalation? Sales and support need it for customer outreach.
+
+michael.ceo: Yes. I'll post the timeline doc (short form) by 06/21 COB with explicit gates and who to ping for each failure mode. We'll update this channel when live.
+
+leo.runtime: I'll add the telemetry thresholds (P50/P95/P99, KV-hit rate) into that doc once published.
+
+maya.devex: I'll mirror the doc into docs repo and add the canary playbook link.
+
+sasha: Thanks  marking this thread as captured. Moving follow-ups into the timeline doc comments. :white_check_mark:

@@ -1,0 +1,56 @@
+eng-sre
+
+anya: incident-bot alerted: sudden latency spike + 500s across us-west-2 GPU pool, lots of CUDA OOMs in runtime. telemetry shows continuous-batcher queue depth climbing for ~8m.
+incident-bot: [ALERT] 3951234567 - GPU node flaps detected in cluster-inference-usw2 (5 node restarts in 3m). Correlated errors: cudaOutOfMemory, container_restart_loop.
+sam: seeing the same, root cause candidate = kvcache prefetch growth + batch accumulator not trimming on handoff. Allocations keep increasing on leader change.
+jordan: customer-facing impact? which tenants affected?
+anya: 2 high-throughput customers saw tail latency blow from 200ms -> 8s, error rate up ~12%. Some requests hit fallback model (small), but most failed with 503.
+miguel: I can take lead for mitigation after a quick triage. handoff in 5.
+anya: tl;dr: continuous-batcher backlog grows when node flaps trigger raft leader churn; accumulator state isn't compacted so batch size continues to grow; kvcache prefetch keeps populating entries per inflight request; combined -> GPU memory pressure and OOMs.
+sam: logs:
+```
+E tensorflow: cuda runtime error: out of memory
+runtime: batch_accumulator: size=1472 items, max_size=1024
+container: restarting pid 1 (OOMKilled)
+```
+anya: attempted short-term mitigations: 1) scaled down batch_max_tokens from 2048 -> 512 on canary nodes; 2) disabled kvcache prefetch on us-west; 3) reduced autoscale min replicas to 2 to avoid noisy node churn.
+jordan: results?
+anya: after changes on canary, OOMs stopped on those nodes, latency improved to ~400ms, errors fell to 3% for canary traffic. But other nodes still affected.
+incident-bot: [UPDATE] remediation applied to canary pool — continue rollout?
+sam: need safer rollout plan: we don't want to crash more nodes. Proposal: drain one affected node at a time, apply reduced batch_max_tokens and prefetch=false, restart runtime to clear accumulator, then bring node back.
+miguel: agreed. I'll coordinate drains. Also schedule a graceful restart script that checkpoints and clears accumulators:
+```
+#!/bin/bash
+set -e
+curl -XPOST http://localhost:9000/admin/drain
+sleep 10
+kubectl rollout restart deployment/inference-runtime -n prod --field-selector spec.nodeName=$NODE_NAME
+```
+
+anya: also pushed a short patch to continuous-batcher to cap accumulator length on handoff: 
+```
+if (accumulator.size() > ACCUMULATOR_SOFT_LIMIT) {
+  compact_and_flush();
+}
+```
+This is temporary until a proper fix lands.
+jordan: customer comms? we should message the two affected customers with ETA and what we changed.
+anya: drafted note: "we observed transient GPU node restarts causing increased latencies and errors for a subset of requests. We have mitigated by disabling aggressive prefetch and reducing batch sizes; request routing will move to updated nodes over next 15-30m. Engineering is rolling a code-level mitigation. We'll follow up with post-incident RCA." Please @sam review.
+sam: LGTM, add that we will provide token-level billing credits for impacted window.
+miguel: handoff: I'm on for next 90m, then @jordan will pick up. Steps I'm executing now: sequential drain+restart of 6 affected nodes, apply canary config, monitor GPU memory and batch_accumulator metric. If OOMs persist, fallback plan = route traffic to cpu-fallback pool and enable admission throttling at edge.
+anya: thanks. I've opened a high-priority ticket for root fix: ensure accumulator trimming on RAFT leader change + backpressure signal from kv-prefetch. Ticket ID: INF-7713.
+incident-bot: [NOTE] Severity: Sev2 -> keeping channel open for updates.
+jordan: monitoring dashboards show batch_queue_depth declining on nodes with canary. Good sign.
+sam: action items summary for handoff: [miguel] continue node roll, [jordan] own customer comms and credits, [anya] follow up on INF-7713 and coordinate release with eng-runtime, [sam] run full regression on canary traffic for 30m.
+miguel: starting first drain now. ETA per node ~5m.
+ops-bot: detected restart of node gpu-05-usw2 (reason: Killed OOM)
+miguel: gpu-05 drained and restarted, canary config applied, memory stable. moving to gpu-09.
+anya: +1 monitor for any weird raft leader oscillation. If we see >2 leader changes in 1m, abort rollout and fallback to cpu pool.
+jordan: customers contacted with initial note. They replied they see improvement, will monitor.
+incident-bot: [RESOLVE] 3951234567 - immediate mitigations successful on canary. Action: full rollout in progress.
+sam: keep channel open until all nodes done and customer error rate <1% for 30m.
+miguel: handing off to @jordan now for afternoon monitoring. I left a runbook note in INF-7713 with exact commands and thresholds.
+jordan: taking over. leaving a pinned checklist here. thanks team. :thumbsup:
+anya: postmortem needs to cover: - why accumulator persisted across RAFT handoff; - why prefetch didn't respect memory signals; - add automated runbook to throttle prefetch on high mem pressure.
+sam: schedule RCA meeting tomorrow 10am PST with eng-runtime + ml-infra.
+incident-bot: thread closed for now; reopen if regression occurs.

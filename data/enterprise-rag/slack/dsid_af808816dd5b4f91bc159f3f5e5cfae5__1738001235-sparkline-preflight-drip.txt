@@ -1,0 +1,9 @@
+marketing
+
+Maya Z.: Final preflight for Sparkline drip. Need AB subject winners and staging send greenlight.
+Connor B.: Segments: onboarding-engaged (opened onboarding emails), product-hungry (used embeddings), and waitlist. Add a control group for baseline.
+Elena F.: Subjects: "Sparkline: launch benchmarks inside", "Make inference predictable", and "Lower inference costs today". Also testing personalized vs generic preview lines.
+Ravi S.: Send windows: US 11am ET, EU 11am CET, APAC 12pm SGT. Stagger follow-ups 48h later. We'll run SMTP seed tests tonight.
+Tess H.: Webinar integration: RSVP -> auto-add to nurture with three follow-ups. If they click demo link, escalate to Sales. RSVP tracking tag: sparkline-rsvp.
+DeployBot: Reminder: sparkline-drip staging send queued.
+Maya Z.: Owners: Copy=Elena, Segments=Connor, SendOps=Ravi, Webinar=Tess. Next check-in in 6 hours.

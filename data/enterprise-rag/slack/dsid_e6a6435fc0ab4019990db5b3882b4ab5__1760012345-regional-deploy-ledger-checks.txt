@@ -1,0 +1,22 @@
+eng-releases
+
+DeployBot: Starting regional rollout: release/v2.8.1 (commit abc1234) -> prod. Regions: us, eu, apac. Change window 2025-03-18 22:00-02:00 UTC. Canary=5% US, then EU, then APAC. Notes: model pin model@2025-03-15-lite. CI: ✅. Tags: release/v2.8.1
+Jordan: ack. tagging release notes now. pinging oncall as FYI.
+Sophia: quick q — are we doing 1-minute healthcheck or 30s for the canary?
+DeployBot: Canary healthcheck interval = 30s, failure threshold = 5 consecutive errors.
+Mike: watching logs — will alert if error spikes.
+DeployBot: US canary -> finished (1760012362). Metrics: 99.8% 2xx, p95 latency 120ms. Proceeding to EU canary.
+Lee: noted. rolling EU canary.
+DeployBot: EU canary -> partial. Observed elevated 503s at backend-proxy for ~90s (rate ~3%). Rolling pause for investigation.
+Sophia: do we roll back EU or pause APAC? I'd prefer rollback EU to keep global surface stable.
+Jordan: if it's proxy 503s only in eu, rollback EU canary to release/v2.8.0 and keep APAC paused until we confirm.
+Mike: sending trace link: https://traces.internal/r/abc1234-eu (shows spike correlating with proxy scaling).
+DeployBot: Initiating rollback of EU canary -> target tag release/v2.8.0 (commit ab9f0d1). ETA ~2m.
+Oncall Bot: Incident ticket created: INC-2025-042 (eu-proxy-503s). Assigned to @mike and @lee.
+DeployBot: EU rollback -> complete (1760012384). EU canary now at release/v2.8.0. Health: 99.9% 2xx.
+Sophia: good call. hold APAC until we validate autoscaler config. recommend increase proxy readinessProbe timeout from 5s -> 10s for this job.
+Lee: bumping readinessProbe, will push small config change to staging then mirror to prod if green.
+Jordan: once we have green staging for probe tweak, we can resume APAC canary. Keep change window notes updated.
+DeployBot: APAC canary -> resumed (1760012390). APAC canary -> finished (1760012392). Final status: US ok, EU rolled back to v2.8.0, APAC ok on v2.8.1 with probe tweak. Rollout concluded. Release notes updated: https://docs.internal/releases/v2.8.1
+Mike: logging follow-up to INC-2025-042 with root cause (proxy readiness + burst traffic during scale).
+Jordan: thanks team. Post-mortem to be scheduled tomorrow after metrics settle. :calendar:

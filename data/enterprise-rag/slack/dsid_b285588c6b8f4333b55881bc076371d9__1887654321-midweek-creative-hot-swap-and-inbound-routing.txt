@@ -1,0 +1,45 @@
+marketing
+
+kevin_paid: Heads-up: midweek hot-swap planned for retargeting creatives at 3pm PT. Current Creative_X CTR trending down. Need final copy for swap and confirmation on lead routing.
+
+nina_content: Got a quick alternative: shorter headline + product stat. Two CTAs: 'Start free trial' and 'Register for webinar'. Which do we prioritize for retarget?
+
+alec_ops: For inbound routing, prefer trial leads -> SDR queue, webinar signups -> Growth webinar list. We'll use utm_content to split: creativeX_trial vs creativeX_webinar. Also remember to dedupe by email.
+
+rachel_growth: Agreed. Also recommend bumping bid +15% on retarget list segments with >2 product pages visited. That cohort shows 2x CVR.
+
+forms-bot: New form webhook created at https://hooks.internal/forms/xyz id=ff12. Webhook test: success.
+
+olivia_design: Uploaded variant_C to drive: smaller hero, emphasis on cost/latency. PNG + 3 mobile crops. Link: https://drive.google.com/variantC. Also added alternate CTA: 'See pricing' for retargeting small accounts.
+
+kevin_paid: OK swapping Creative_X -> variant_C at 15:00. I'll set creative rotation to 'prefer_new' and pause Creative_X if 12h CTR delta < -0.2%. Bids: +15% for high-engage retarget list as Rachel suggested.
+
+nina_content: Copy for variant_C_trial: "Start free trial — Fast, predictable inference. No credit card." Copy for variant_C_webinar: "Save time & money on LLM inference. Join our May 12 webinar." Thoughts?
+
+rachel_growth: Good. Add a small testimonial line for trial ad: "Used by teams at Acme & Orbit" (keeps trust).
+
+alec_ops: Routing rules (pseudocode):
+```
+if utm_content contains "webinar" -> add to list "webinar-may12" -> send email invite -> exclude from retarget for 7d
+else -> create lead -> push to sdr_queue -> enrich via clearbit
+```
+
+kevin_paid: Implemented routing tags in ad UTM template. Also adding spend guard: pause group if CPA > $150 for 6 hours.
+
+forms-bot: First webhook lead (test) received 1887654335: {"email":"test+1@redwood.ai","utm_content":"variantC_trial"} -> routed to sdr_queue.
+
+olivia_design: Noted mobile crop looks slightly off for small screens; made a 2nd mobile tweak and re-uploaded.
+
+kevin_paid: Launching swap at 15:00 PT. Will post immediate metrics snapshot after 30m. Please flag any tracking mismatches here.
+
+rachel_growth: I'll watch conversions + webinar signups and check GA events. If any conversion dips, we'll rollback within 2 hours.
+
+nina_content: Promo blurb for webinar email ready, sending to Growth for approval.
+
+alec_ops: Reminder: ensure forms webhook responds with 200 within 3s, otherwise the retry logic will cause duplicates.
+
+kevin_paid: 15:30 update: variant_C live, initial CTR +0.9%, early signs positive. Spend on high-engage cohort increased per rule. Will monitor CPA.
+
+rachel_growth: Seeing first 8 signups, tagging with utm_content worked. Good to go.
+
+kevin_paid: Great work team, keep posting anomalies here. We'll run the hot-swap for 72h then evaluate. :rocket:

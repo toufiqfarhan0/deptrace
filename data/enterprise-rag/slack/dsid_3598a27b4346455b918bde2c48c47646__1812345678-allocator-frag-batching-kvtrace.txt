@@ -1,0 +1,69 @@
+eng-runtime
+
+sara: Heads-up — since the kernel-routing change (prefer fast-matmul for seq<1024) we've started seeing intermittent OOMs on the paged-attn path in dedicated pools. Symptoms: transient OOMs during mixed-batch with KV cache compaction spikes.
+
+matt: Can you paste the allocator trace + a short repro? Which commit rolled?
+
+sara: Rolled rfc: deploy/ks-routing@a3f2c (yesterday 22:14 UTC). Minimal repro attached (internal prod-like trace). Key snippet: 
+```
+alloc_trace sample:
+ - alloc 0x7fe1 size=2MB arena=0 slab_bin=2
+ - free  0x7fe1 -> hole
+ - alloc 0x8a3c size=128KB arena=1 slab_bin=3  # tiny fragments accumulate
+ - KV cache compaction: blocked for 1.2s
+pager metrics:
+ block_reuse_rate=0.38
+ compaction_cost_ms.p99=312
+ free_frag_ratio=0.12
+ peak_workspace_bytes=1.6GB
+```
+Also seeing kernel workspace peaks whenever fast-matmul binds to large temp buffers.
+
+liam: This matches my offline profile. fast-matmul reduces compute time but needs a larger temp workspace for tile buffers; with mixed seq lengths we now end up allocating many mismatched slabs -> fragmentation.
+
+anita: Could be exacerbated by batching heuristics mixing long + short sequences. We currently batch across seq buckets up to 256/1024 thresholds; if one long request is in the batch, kernel picks large-workspace path and entire batch ballooned. Suggest a batching guard to isolate >512 sequences or force fallback kernel for mixed batches.
+
+kevin: From allocator side, deferred coalescing and adjusting slab size buckets would help. Right now slab bins: [16K, 64K, 256K, 1M, 4M]. A 128K request lands in 256K bin which wastes space if many small allocations remain. We should consider inserting a 128K bin and enabling on-free immediate coalesce for arenas with free_frag_ratio < 0.2.
+
+perf-bot: Perf regression summary (canary vs baseline):
+ - p50 latency: -4% (good)
+ - p95 latency: +6% (noise)
+ - p99 latency: +18% (spikes correlated with OOMs)
+ - memory churn (alloc/free rate): +62%
+ - OOM count: baseline 0 -> canary 18 in 24h window
+Commit: a3f2c (kernel routing)
+
+matt: Short term mitigation options?
+
+sara: Proposal: revert kernel routing on prod-dedicated (pin to baseline) for 1. rollout window + 2. push allocator tuning patch (deferred coalesce -> immediate in low-free-frag arenas) + 3. batching guard to prevent mixed seq batches from using fast-workspace kernel.
+
+liam: I can implement the batching guard today — simple rule: if batch has max_seq > 512 and variance(seq) > 128, force kernel=fallback-light. Patch sketch:
+```
+if max_seq > 512 and seq_variance > 128:
+  kernel = "matmul-workspace-light"
+else:
+  kernel = policy.pick(preferred)
+```
+
+anita: I'll add integration test to the batcher that simulates mixed sequences and asserts workspace_peak <= 1.1GB on a dedicated test rig.
+
+kevin: I'll send allocator PR to add 128K bin and a feature-flagged immediate-coalesce path (flag: ALLOC_COALESCE_IMMEDIATE). Also add a metric alloc.coalesce_ops and alloc.coalesce_time_ms so we can see cost.
+
+matt: I'll run a canary where we pin kernel routing back and enable ALLOC_COALESCE_IMMEDIATE=false (so only kernel revert). If stable for 12h we can enable allocator changes behind flag.
+
+sara: Also: short-term KV cache tweak — reduce compaction aggressiveness threshold (compaction when free_ratio < 0.08 -> change to <0.04) to avoid heavy compaction causing long pauses. liam, can you add config param?
+
+liam: Yep, adding kv.compaction.soft_limit and kv.compaction.hold_ms. Default will be soft_limit=0.04, hold_ms=2000.
+
+deploy-bot: Rollback plan ready: revert a3f2c -> will trigger canary pipeline. ETA 15m.
+
+sara: Great. Action items:
+ - matt: roll back kernel routing in prod-dedicated, run 12h canary (owner: matt)
+ - liam: batching guard + kv compaction params (owner: liam)
+ - kevin: allocator PR with 128K bin + flag (owner: kevin)
+ - anita: add integration tests for batcher (owner: anita)
+ - perf-bot: keep monitoring OOMs and memory churn metrics (owner: perf-bot)
+
+matt: I'll post canary status here in ~15m and include alloc trace comparison.
+
+sara: Thanks all. If anyone sees anomalies after rollback ping me with traces (esp. alloc_trace + pager block logs). :thumbsup:

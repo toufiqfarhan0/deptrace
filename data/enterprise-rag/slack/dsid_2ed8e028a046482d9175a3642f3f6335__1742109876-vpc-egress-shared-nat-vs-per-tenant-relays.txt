@@ -1,0 +1,63 @@
+architecture
+
+ana: Quick follow-up from the RFC meeting — we need to pick an egress model for private control plane traffic coming out of customer VPCs. Two options on the table: a central/shared NAT/proxy we own vs lightweight per-tenant relay agents that preserve source IP. TL;DR: tradeoffs around observability, cost, IP preservation, and tenant isolation.
+
+sam: +1 to summarizing. My read: shared NAT is simplest operationally (single place to patch/monitor) but kills source-IP semantics and makes per-tenant egress accounting awkward.
+
+marta: Also worried about blast radius. Shared NAT means one misconfigured rule can affect many customers. But per-tenant relays add ops surface and require a deployment footprint in each VPC (or an agent image).
+
+devin: For private control plane we care about two things: 1) being able to identify tenant requests in downstream systems (source IP or stable attest) and 2) not increasing latency beyond ~20ms p99 for handshake flows.
+
+ricardo: Performance note: central NAT + tcp-proxy keeps latency low if placed regional, but scales cost-wise as traffic grows. Relay agents add cross-tenant variance; caching and connection pooling become tricky.
+
+ana: @marta what about using AWS PrivateLink + per-customer endpoints for control plane egress? That keeps IPs but is more expensive and needs infra plumbing on our side.
+
+marta: PrivateLink's nice but customers hit account limits and it's hard for self-serve. Also, PrivateLink doesn't help for on-prem air-gapped installs.
+
+sam: Proposed middle ground: per-tenant relay agent that runs in the customer's VPC (or in a sidecar'd subnet we manage for Dedicated) that performs TLS mutual auth to our control plane, preserves original source IP in a signed header (or uses a signed attestation), and also optionally SNATs when customers opt-in. This gives us observable identity without centralized SNAT.
+
+devin: How do we preserve source IP in the TLS context? We could: 1) include the original IP as a header signed by the relay's client cert and validated by control plane, or 2) have the relay forward using TCP with a PROXY protocol. Option 2 keeps true TCP-level addr but requires proxy support everywhere.
+
+ricardo: PROXY protocol is appealing for minimal app changes, but every downstream (metrics, auth, quotas) needs to understand it. Signed headers are easier to roll out but trust relies on cert management.
+
+ana: ops-bot:deploy-log: relay-image:v0.1 pushed to staging, smoke tests queued :rocket:
+
+ops-bot: deploy status: all tests passed for relay-image:v0.1 in us-west-2 staging.
+
+marta: I'd like an evaluation plan: short perf spike to compare 3 setups — central NAT, per-tenant relay w/ PROXY protocol, per-tenant relay w/ signed headers. Metrics: p50/p95/p99 latency for control handshake, CPU/RAM per relay, cost per TB egress, reliability under failover.
+
+sam: I'll carve out a test matrix. Rough plan: 10 tenants with 100 conn/s each for 30m, observe tail latency and number of retries. Also simulate route flaps and agent restarts.
+
+devin: Add a security checklist item: cert rotation timeline, attestation verification (replay protection), and fail-open vs fail-closed semantics (we should default to fail-closed for customer-sensitive flows).
+
+ricardo: Ops considerations: per-tenant agents mean we need lightweight auto-upgrade and a clear rollback path. Also need to avoid exponential connection fan-in to our regional gateways — add connection pooling in the relay.
+
+marta: UX: customers shouldn't have to run daemonsets manually. For VPC customers we can provide a quick CloudFormation/Terraform template that spins up a tiny ECS/Fargate task as the relay. For on-prem we ship a small binary runtime.
+
+sam: Cost model: relay running in Fargate at low CPU might cost $X/month per tenant; shared NAT has bigger variable egress costs. We'll quantify in spike.
+
+ana: Decision proposal for spike: prototype per-tenant relay with two flavors (PROXY protocol and signed header), run perf/cost tests against central NAT baseline, and surface failure modes. If relays match latency and ops cost is acceptable, prefer relay for IP preservation and isolation.
+
+marta: +1 from me. Action items: sam to run perf spike (ETA 2w), devin to draft security checklist (ETA 1w), ricardo to scope upgrade/rollback infra (ETA 2w). I'll schedule a sync next Wed to review results.
+
+sam: Noted. I'll post the test plan doc link here when ready.
+
+devin: I'll also include replay-attack test patterns and a small fuzz harness for header signing.
+
+ricardo: I'll prototype a tiny connection pooler for the relay and run memory/CPU perf tests.
+
+ana: Thanks team — this keeps us on track for Private deployment parity with hosted. :thumbsup:
+
+marta: Closing loop: if anyone wants to see the initial relay config I'm testing, here's the snippet I'm using locally:
+
+```
+# relay config (minimal)
+bind_address: 0.0.0.0:8443
+upstream: controlplane.rw-inference.internal:443
+mode: proxy_protocol   # or signed_header
+client_cert: /etc/relay/certs/client.pem
+keepalive: 60s
+connection_pool_size: 50
+```
+
+marta: Add comments or objections here — otherwise I'll create the spike ticket and link it to the RFC. :white_check_mark:

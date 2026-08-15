@@ -1,0 +1,51 @@
+partnerships
+
+Priya: Quick heads-up — PartnerCloud asked for support: promotional marketplace listing in APAC starts Tue (6-week campaign). They want guaranteed availability and asked if we can pre-reserve capacity. Can infra ops run numbers? :wave:
+
+Tom: Do we have expected QPS or GPU-hours? Which APAC regions are they targeting?
+
+Miguel: Short forecast from the partner: baseline ~900 GPU-hrs/day in ap-northeast, expect 2.5–3x for first 2 weeks, then ~1.5x for remaining 4 weeks. Conservative incremental estimate ≈ 60k GPU-hrs across the 6-week window. Peak concurrent GPU pods ~= 100–140 (p3x-equivalent).
+
+Jing: Cluster note — last promo we saw inter-rack egress queues hit ~85% in ap-northeast. If we add 120 pods without placement changes we may hit NIC and cross-rack saturation. Need placement/affinity adjustments.
+
+Aisha: Two main options: 1) Reserve Dedicated pool to cover baseline + critical SLA traffic (stable but needs quota/lead time). 2) Autoscale with spot/backfill plus on-demand buffer (cheaper but less predictable). APAC quotas are the limiting factor for reserved capacity.
+
+Liam: Proposal: split approach — reserve ~40 GPUs as Dedicated for SLA-critical flows, autoscale the remainder with spot/backfill and a prewarmed pool to mitigate cold starts. That reduces quota pressure and cost.
+
+Tom: For autoscale/backfill we should also prepare model fallbacks to smaller quantized variants so each GPU handles more throughput and lowers memory footprint. That buys headroom.
+
+Miguel: Agreed. Draft autoscaler config (sketch):
+
+```
+autoscaler:
+  min_replicas: 10
+  max_replicas: 200
+  reserved_dedicated: 40
+  spot_backfill_threshold: 0.75
+  prewarm_pool: 20
+routing:
+  sla_route: dedicated
+  non_sla_route: quantized-small
+```
+
+Jing: Also need to check peering and uplink capacity — APAC peering links and our cloud partner quotas could be the gating factor. If we miss local capacity we may need to route to edge in SEA or fall back to US which increases latency and egress cost.
+
+Aisha: Quick cost sketch (rough ballpark): reserved 40 GPUs for 6 weeks ≈ 13k GPU-hrs -> ~ $60k (reserved pricing). Spot/backfill for remainder (~47k GPU-hrs) @ avg $0.6/hr -> ~$28k. Networking/egress and buffer ~ $10–15k. Total incremental infra ~$95–105k for campaign (very rough).
+
+Priya: PartnerOps wants a yes/no by EOD tomorrow. Can infra commit to 40 reserved + run the canary? Also need a short runbook and cost slide.
+
+Liam: I'll file the capacity request and schedule a 48h canary window.
+
+ops-bot: Ticket CAP-2026-408 created by Liam for "PartnerCloud APAC promo — reserve 40 GPUs + canary". Canary window requested: 2026-04-01 00:00 UTC -> 2026-04-03 00:00 UTC.
+
+Tom: One more operational rule: add a console routing policy — if 95th percentile latency > 400ms for SLA routes, auto-switch non-critical traffic to quantized variants and throttle non-SLA requests.
+
+Priya: Sounds good. @Miguel @Jing @Liam please collate a 1-page runbook (canary checklist + rollback steps) and a 1-slide cost/runway estimate for PartnerOps by EOD. I will confirm with the partner after that. :thumbsup:
+
+Miguel: Will do. I'll also run a quick placement test tonight to validate NIC headroom (simulate +120 pods at reduced QPS).
+
+Jing: I'll validate peering capacity and open a support case with the cloud provider if we need quota bump.
+
+Liam: Filing CAP ticket now and attaching the autoscaler sketch + runbook template.
+
+Priya: Thanks everyone — let's sync briefly after the canary is scheduled.

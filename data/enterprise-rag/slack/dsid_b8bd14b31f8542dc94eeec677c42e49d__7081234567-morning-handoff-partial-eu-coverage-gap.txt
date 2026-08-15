@@ -1,0 +1,62 @@
+eng-oncall
+
+raj: Good morning team — quick handoff. I'm primary for the next 8h. ben you're secondary until 16:00 UTC.
+
+raj: Current state: we had a regional spike in EU-West embedding latency overnight. Root cause appears to be a sudden autoscaler thrash on the embedding pool (pods cycling) causing request queueing.
+
+incident-bot: Pager: EMBED-THROTTLE-EUW @channel — p95 embeddings latency > 2.5s for 12m, error rate up 1.8%.
+
+sara: Saw alerts at ~02:14 UTC, started a bridge but it faded. Came back at ~05:07 with higher rate. Looks related to a config diff on the autoscaler heap limit from the rollout last week.
+
+ben: Noted. Any customer impact? Which customers hit 5xx?
+
+raj: Partial: two customers saw increased tail latency and a handful of requeues. No large-scale 5xx flood, but observed 503s for requests routed to the stressed pools. I've posted a quick summary to CS: "EU-West embeddings elevated latency, routing fallback enabled"
+
+maya: Logged the runbook action I took: rolled back autoscaler memLimit -> 6Gi to previous 8Gi on euw-embed-pool-2 and scaled replicas to stable count. That reduced pod churn but not fully back to baseline.
+
+raj: Good. Manual steps done: 1) pinned autoscaler config (cfg-embed-euw) to last-known-good 2026-02-28 revision, 2) disabled aggressive downscale window, 3) enabled fallback routing to us-west for new embed requests (low ratio).
+
+sara: Monitoring shows p95 fell from 3.1s -> 1.9s after rollback but occasional spikes remain at ~06:40 and 07:15 UTC. Looks like KV cache misses are amplifying the downstream load.
+
+ben: Can we mitigate KV cache misses short-term? Any places to warm caches?
+
+raj: Actionable: enable prefix caching for frequent namespace 'kb_customer_faq' on euw caches for 30m. Script I used:
+
+```
+# warm cache for high-traffic keys
+python tools/warm_cache.py --region eu-west --namespace kb_customer_faq --keys-file /tmp/top_keys.txt
+```
+
+raj: runbook link: https://go/runbooks/embed-autoscaler-thrash and ops runbook snippet: "If autoscaler thrash leads to >1% error increase, rollback to pinned config and enable routing fallback."
+
+oncall-bot: Handoff note: raj (primary) -> ben (secondary) until 16:00 UTC. Coverage gap: auto-recovery testing window 10:00-11:00 UTC may reduce pool capacity — keep on watch.
+
+maya: Leaving a TODO: follow up with infra-team to add a safety check to prevent memLimit regressions in rollout pipeline. Filed INFRA-1289.
+
+ben: I'll own the morning watch while raj focuses on CS comms. Plan: monitor telemetry for 30m, if p95 >2s for >10m re-open bridge and escalate to infra.
+
+sara: Also flagging that embeddings routing fallback increases token egress costs. CS informed; we should prepare cost estimate if fallback stays >10% for >24h.
+
+raj: Current status summary for handoff:
+- Incident: EUW embeddings high tail latency due to autoscaler memLimit regression -> pod churn.
+- Impact: partial customer tail latency increase, some 503s; routed fallback enabled to reduce impact.
+- Mitigation done: pinned config rollback, disabled downscale, warmed key prefix, enabled cross-region fallback.
+- Next steps (ben): 1) keep 15m cadence checks for next 2h, 2) reopen bridge if p95 >2s for >10m, 3) liaise with infra on INFRA-1289, 4) notify oncall if fallback >10% traffic.
+
+ben: Copy that. I'll post periodic status updates here.
+
+sara: FYI @raj I added a quick dashboard link: https://metrics/reports/embed-euw-quickview — keep that open during watch.
+
+raj: One more note: schedule a follow-up retro with infra and runtime tomorrow 09:30 UTC to discuss safer rollout gating.
+
+ben: Acknowledged. I'm taking over now. ping me if anything spikes. :thumbsup:
+
+incident-bot: Incident EMBED-THROTTLE-EUW status: mitigated -> monitoring (no active page in last 25m).
+
+raj: Thanks team — handing off. I'll be reachable for 30m for CS questions then offline for focus time.
+
+maya: Thanks, handing over obligations locally too.
+
+ben: Shift note logged. Will update this thread on any changes.
+
+oncall-bot: Handoff complete. Primary: ben. Secondary: raj (on-call for CS).

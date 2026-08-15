@@ -1,0 +1,38 @@
+partnerships
+
+Alex Kim: Quick heads-up — putting together the catalog synchrony runbook for the public catalog publish next week. Need to lock the press window and confirm SI listing artifacts.
+Priya Patel: Thanks Alex. What are the hard cutoffs we should communicate to partners?
+Alex Kim: Ideally final assets by Tue EOD, content QA Wed morning, embargo lift Thu 16:00 UTC. If partners miss Tue, they go in next backlog batch.
+Samir Rao: Can we compress QA to Wed afternoon if we get a clean dry run Mon? I can coordinate with eng to expedite listings.
+Elena Martinez: I can run content QA but need the landing page preview link and UTM parameters. Also remind legal about logo usage signoff.
+Alex Kim: Good call. Preview link will be staging.corp.redwood-inference.com/catalog/preview/rc1 — will share in a sec. UTM schema: utm_source=partner&utm_medium=catalog&utm_campaign=partner_launch_{partner}.
+Priya Patel: Posting checklist: 1) Press embargo window & PR author; 2) Partner asset zip (logo, 150x150, 1x + SVG); 3) Landing copy + 1 customer quote; 4) SI listing manifest; 5) QA signoff.
+Samir Rao: For SI manifest, use this minimal JSON sample so ops can ingest automatically:
+```
+{
+  "partner_id": "acme-sys",
+  "integration_type": "connector",
+  "regions": ["us-west-2","eu-west-1"],
+  "support_contact": "partner@example.com"
+}
+```
+Elena Martinez: Link to staging preview: https://staging.corp.redwood-inference.com/catalog/preview/rc1 — note that images are placeholder until asset zip is uploaded.
+Alex Kim: LaunchBot scheduled a dry run deploy for Mon 09:00 UTC. LaunchBot: dry-run scheduled by Alex Kim for 2456854800 (Mon 09:00 UTC).
+Priya Patel: Press window options: Thu 16:00 UTC or Fri 12:00 UTC. Which gives partners more buffer?
+Samir Rao: Thu keeps momentum but is tight. If any partner still missing assets by Wed noon, we should fallback to Fri and let them know.
+Elena Martinez: I'll ping legal about logos now. @Samir can you confirm SI manifest schema matches marketplace ingestion?
+Samir Rao: Confirmed — it matches v2 ingestion. I'll run a small script to validate all manifests once we get zips.
+Alex Kim: Action items: Priya — finalize PR author & embargo choice by EOD today. Elena — content QA on Wed (or Wed afternoon if dry run cleans up). Samir — manifest validator and ops checklist. Everyone — request partners send asset zip by Tue EOD.
+Priya Patel: Ack — I'll update partner-facing checklist and send a short email/sheet.
+Elena Martinez: Ack — will block Wed morning for QA but can move to afternoon if dry run looks good.
+Samir Rao: I'll drop a validator link in this thread once ready. ETA Tue 18:00 UTC.
+Alex Kim: Thanks. If anything blocks partners contacting product@redwood-inference.com and cc partnerships. Also we should record a short playbook snippet for on-call if landing 500s post-publish.
+Priya Patel: Adding a simple rollback note: unpublish catalog entry + revert DNS for partner landing to previous routing. Keep it to under 3 steps.
+Elena Martinez: One more: confirm analytics event names so we can track partner clicks. Use: catalog_partner_view, catalog_partner_click.
+Samir Rao: Validator link: https://ci.redwood-inference.com/validators/si-manifest-v2 — run against manifests/ in the zip.
+Alex Kim: Solid. I'll assemble the runbook (short runnable checklist + links) and post final version here by tonight. :thumbsup:
+LaunchBot: Reminder — dry-run deploy in 7 days.
+Priya Patel: Thanks team. Quick note: I'll include 'embargo fallback = 24h' language in partner comms to set expectations.
+Samir Rao: Sounds good. Happy to do a quick sync call Mon 08:00 UTC if anyone wants voice time before dry run.
+Elena Martinez: I'll join.
+Alex Kim: End of thread — keeping this as the single source for day-of runbook.

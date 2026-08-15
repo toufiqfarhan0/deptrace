@@ -1,0 +1,45 @@
+eng-ml
+
+sam: heads-up — ran HF->Redwood conversion for mosaic-lite on staging; chat renders failing — tokens look shifted on decode.
+
+maria: can you paste the tokenizer special map + added_tokens.json? even a tiny invisible char can cause index shifts.
+
+sam: quick dump: 
+```
+special_tokens_map = { 'bos_token': '<s>', 'eos_token': '</s>', 'pad_token': '<pad>', 'unk_token': '<unk>' }
+convert_tokens_to_ids(['<s>','</s>','<pad>','<unk>']) -> [2, 3, 0, 1]
+```
+
+sam: our Redwood canonical expects PAD=0 UNK=3 BOS=1 EOS=2. here BOS/EOS rotated which breaks chat template postprocessing.
+
+deepa: did the HF repo include an added_tokens.json? The importer appends added tokens to the vocab which changes indices if not deduped / normalized.
+
+sam: yes — added_tokens.json snippet: 
+```
+[" ", "<ctrl-x>", "<s>"]
+```
+
+maria: aha — NBSP at index 0. It's invisible and got appended before model's existing specials so indices shifted.
+
+ops-bot: import-bot: conversion finished with warnings: "special token overlap" at 2023-11-05T10:23:45Z
+
+michael: for bringups we usually run an added_tokens sanitization step: strip, NFC normalize, remove control / zero-width, then dedupe. Was that skipped?
+
+sam: I ran a direct import to iterate fast — skipped sanitization. Quick patch locally: normalize + dedupe and re-run converter. After fix: 
+```
+convert_tokens_to_ids(['<s>','</s>','<pad>','<unk>']) -> [1,2,0,3]
+```
+
+sam: smoke tests for chat formatting + decode alignment pass now.
+
+deepa: can we make the conversion pipeline enforce anchor token ids (PAD/BOS/EOS/UNK) as a validation step? At minimum emit a clear guidance warning, better to fail for hosted/dedicated models.
+
+maria: also surface any non-printable entries in added_tokens.json in the conversion report (e.g., NBSP, ZWJ, control). Make them highlighted so reviewers notice.
+
+michael: note: some models intentionally use alternate semantics (e.g., models trained with different UNK id). Validation should be configurable per catalog entry via an allow-token-variant flag. Defaults: strict for hosted/dedicated, relaxed for private deployments.
+
+sam: plan: PR to conversion service with three changes — (1) added_tokens sanitizer (strip + NFC + drop control/unicode whitespace + drop zero-width), (2) deterministic dedupe/sort before vocab append, (3) validation step to check canonical anchor ids with configurable override. I'll add unit tests with NBSP and zero-width joiner cases.
+
+ops-bot: CI: conversion-tests / tokenizer-compat passed for patch-456 (jobs: sanitizer, anchor-id-check)
+
+sam: merged and re-imported mosaic-lite to staging; chat templates green and regression tests clear. Closing thread. :white_check_mark:

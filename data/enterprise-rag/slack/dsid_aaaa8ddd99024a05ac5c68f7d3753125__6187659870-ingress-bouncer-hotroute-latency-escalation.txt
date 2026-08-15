@@ -1,0 +1,92 @@
+pagerduty-bot: PAGER: REDWOOD - Latency SLOs breached in eu-west-1 (p95/p99). Severity: SEV2. Alert: routing.p99 > 2s for >5min. Paging oncall now. https://ops.example/incident/6187659870 :rotating_light:
+ashley: acked. i'm oncall. grabbing metrics and traces now.
+maria: i'm looking at console dashboards — p95 jumped from ~120ms -> 400ms, p99 ~2.7s. streaming stalls metric (streaming/recv/stall) up 8x.
+dan: saw a deploy of routing-policy-bouncer ~10m ago, rollout at 20% -> 60%. could be related. tagging @lee for router insights.
+lee: i see a sudden concentration of traffic to router-shard-47 and shard-102 in euw1. those shards' CPU/VPU at 95% and queue length spiking. logs show a high rate of 503s from the downstream balancer.
+sre-bot: Incident timeline created — investigate-runbook <#runbooks/routing-tail-incident>.
+ashley: can we confirm misroute vs overloaded nodes? querying ingress logs..
+maria: sample grep of ingress logs:
+```
+2026-03-15T09:12:01Z ingress-lb route=default weight=0.6 -> router-shard-47
+2026-03-15T09:12:02Z ingress-lb route=default weight=0.6 -> router-shard-47
+2026-03-15T09:12:03Z ingress-lb route=default weight=0.6 -> router-shard-47
+2026-03-15T09:12:04Z ingress-lb route=bouncer-variant weight=0.0 -> router-shard-12
+```
+maria: we have a bunch of hits pinned to shard-47 — looks like the new bouncer policy miscalculated zone weights and left hot partitions.
+dan: i can repro locally: policy eval for user keys with hash prefix 'ff' maps to shard-47 due to missing fallback mapping in policy v2.
+lee: that would explain tail. streaming requests get queued behind long syncs -> stalls.
+ops_lead: impact assessment — approx 12% of requests in euw1 affected, mainly streaming sessions and long-chat endpoints. customer-facing: a few enterprise customers reported session freezes and retries.
+support_jen: i'm patching support notes and informing top 10 customers, adding mitigation steps (refresh token workaround).
+ashley: mitigation plan: 1) pause routing-policy-bouncer rollout (stop further traffic) 2) insert temporary override to route traffic evenly across shards (traffic-split override) 3) scale up router-shard-47 by adding warm instances -> reduce queue.
+dan: executing pause rollout.. `rbacctl rollout pause routing-policy-bouncer --name=bouncer-2026-03-15`
+sre-bot: Rollout pause accepted.
+maria: applying traffic-split override: `curl -X POST https://admin.internal/override -d '{"route":"default","split":"even","ttl":300}'` -> applied. seeing immediate drop in queue length on shard-47 after ~30s. p95 trending down.
+lee: i recommend keeping override while we patch policy. also suggest we drain hotspot shard and add ephemeral capacity.
+ashley: scaling shard-47 up now: `infractl scale router-shard-47 +3`
+ops_lead: good. start collecting flamegraphs and tail traces for root cause. add logs for policy evaluation paths.
+maria: after overrides, p95 back to ~160ms, p99 ~450ms, streaming stalls down 70%. still above target but improving.
+dan: root cause looks like edge-case in hash-to-shard mapping when weight table contains zeros for fallback entries. policy v2 introduced a short-circuit that ignored neighbor fallback -> hot partitioning.
+lee: can we hotfix policy? patch candidate: revert short-circuit and add explicit fallback mapping. i'm prepping PR.
+ashley: who will own the rollback if patch fails? dan?
+dan: i can roll back to policy v1 and redeploy if needed. planning a quick patch to v2 then can revert.
+sre-bot: On-call handoff reminder: ashley -> maria at 10:30 UTC.
+ops_lead: timeline for mitigation: pause at +2m, override at +5m, scale at +7m, p95 back to acceptable by +15m target. keep customers updated.
+support_jen: sending update to affected customers: "We observed routing imbalance causing increased latency; temporary mitigation applied; engineering working on fix."
+lee: PR ready, small change, running canary in staging.
+maria: suggestion: expand telemetry to capture policy weight decisions and hash prefixes to prevent blind spots. add alert for shard queue skew > 3x median.
+ashley: agreed. after we stabilize, we need a postmortem covering: rollout safety checks, policy validation tests for fallback, alert tuning, and runbook update.
+dan: patch deployed to canary -> looks good. rolling to 100% of control plane for policy evaluation (not rollout yet), but we will test on small traffic slice first.
+lee: after full mitigation, monitor for 30m before closing page. current metrics: p95 140ms, p99 220ms, streaming stalls baseline restored.
+ashley: marking incident as mitigated, keeping open for postmortem. thanks everyone. :thumbsup:
+ops_lead: ACTIONS: (1) postmortem (owner: ashley) (2) tests for hash fallback (owner: dan) (3) alerting tweak (owner: maria) (4) runbook updates (owner: lee).
+sre-bot: Incident updated to RESOLVED -> MITIGATED. follow-up tasks created in JIRA.
+support_jen: closing customer comms loop, will send final status once postmortem is published.
+ashley: handing off to maria for monitoring window. maria you're oncall until 10:30 UTC.
+maria: on it. keeping watch and will write the incident blameless postmortem.
+
+
+pagerduty-bot: PAGER: REDWOOD - Latency SLOs breached in eu-west-1 (p95/p99). Severity: SEV2. Alert: routing.p99 > 2s for >5min. Paging oncall now. https://ops.example/incident/6187659870 :rotating_light:
+ashley: acked. i'm oncall. grabbing metrics and traces now.
+maria: i'm looking at console dashboards — p95 jumped from ~120ms -> 400ms, p99 ~2.7s. streaming stalls metric (streaming/recv/stall) up 8x.
+dan: saw a deploy of routing-policy-bouncer ~10m ago, rollout at 20% -> 60%. could be related. tagging @lee for router insights.
+lee: i see a sudden concentration of traffic to router-shard-47 and shard-102 in euw1. those shards' CPU/VPU at 95% and queue length spiking. logs show a high rate of 503s from the downstream balancer.
+sre-bot: Incident timeline created — investigate-runbook <#runbooks/routing-tail-incident>.
+ashley: can we confirm misroute vs overloaded nodes? querying ingress logs..
+maria: sample grep of ingress logs:
+```
+2026-03-15T09:12:01Z ingress-lb route=default weight=0.6 -> router-shard-47
+2026-03-15T09:12:02Z ingress-lb route=default weight=0.6 -> router-shard-47
+2026-03-15T09:12:03Z ingress-lb route=default weight=0.6 -> router-shard-47
+2026-03-15T09:12:04Z ingress-lb route=bouncer-variant weight=0.0 -> router-shard-12
+```
+maria: we have a bunch of hits pinned to shard-47 — looks like the new bouncer policy miscalculated zone weights and left hot partitions.
+dan: i can repro locally: policy eval for user keys with hash prefix 'ff' maps to shard-47 due to missing fallback mapping in policy v2.
+lee: that would explain tail. streaming requests get queued behind long syncs -> stalls.
+ops_lead: impact assessment — approx 12% of requests in euw1 affected, mainly streaming sessions and long-chat endpoints. customer-facing: a few enterprise customers reported session freezes and retries.
+support_jen: i'm patching support notes and informing top 10 customers, adding mitigation steps (refresh token workaround).
+ashley: mitigation plan: 1) pause routing-policy-bouncer rollout (stop further traffic) 2) insert temporary override to route traffic evenly across shards (traffic-split override) 3) scale up router-shard-47 by adding warm instances -> reduce queue.
+dan: executing pause rollout.. `rbacctl rollout pause routing-policy-bouncer --name=bouncer-2026-03-15`
+sre-bot: Rollout pause accepted.
+maria: applying traffic-split override: `curl -X POST https://admin.internal/override -d '{"route":"default","split":"even","ttl":300}'` -> applied. seeing immediate drop in queue length on shard-47 after ~30s. p95 trending down.
+lee: i recommend keeping override while we patch policy. also suggest we drain hotspot shard and add ephemeral capacity.
+ashley: scaling shard-47 up now: `infractl scale router-shard-47 +3`
+ops_lead: good. start collecting flamegraphs and tail traces for root cause. add logs for policy evaluation paths.
+maria: after overrides, p95 back to ~160ms, p99 ~450ms, streaming stalls down 70%. still above target but improving.
+dan: root cause looks like edge-case in hash-to-shard mapping when weight table contains zeros for fallback entries. policy v2 introduced a short-circuit that ignored neighbor fallback -> hot partitioning.
+lee: can we hotfix policy? patch candidate: revert short-circuit and add explicit fallback mapping. i'm prepping PR.
+ashley: who will own the rollback if patch fails? dan?
+dan: i can roll back to policy v1 and redeploy if needed. planning a quick patch to v2 then can revert.
+sre-bot: On-call handoff reminder: ashley -> maria at 10:30 UTC.
+ops_lead: timeline for mitigation: pause at +2m, override at +5m, scale at +7m, p95 back to acceptable by +15m target. keep customers updated.
+support_jen: sending update to affected customers: "We observed routing imbalance causing increased latency; temporary mitigation applied; engineering working on fix."
+lee: PR ready, small change, running canary in staging.
+maria: suggestion: expand telemetry to capture policy weight decisions and hash prefixes to prevent blind spots. add alert for shard queue skew > 3x median.
+ashley: agreed. after we stabilize, we need a postmortem covering: rollout safety checks, policy validation tests for fallback, alert tuning, and runbook update.
+dan: patch deployed to canary -> looks good. rolling to 100% of control plane for policy evaluation (not rollout yet), but we will test on small traffic slice first.
+lee: after full mitigation, monitor for 30m before closing page. current metrics: p95 140ms, p99 220ms, streaming stalls baseline restored.
+ashley: marking incident as mitigated, keeping open for postmortem. thanks everyone. :thumbsup:
+ops_lead: ACTIONS: (1) postmortem (owner: ashley) (2) tests for hash fallback (owner: dan) (3) alerting tweak (owner: maria) (4) runbook updates (owner: lee).
+sre-bot: Incident updated to RESOLVED -> MITIGATED. follow-up tasks created in JIRA.
+support_jen: closing customer comms loop, will send final status once postmortem is published.
+ashley: handing off to maria for monitoring window. maria you're oncall until 10:30 UTC.
+maria: on it. keeping watch and will write the incident blameless postmortem.

@@ -1,0 +1,62 @@
+architecture
+
+megan: quick question — when Dedicated pools are saturated and we need to route tenants off to Hosted, can we use a 'quarantine' affinity pool instead of full failover? thinking about latency vs noisy-tenant isolation.
+
+aditya: hmm i like the quarantine idea. are you imagining a small burst-only pool in Hosted that accepts degraded SLOs? :thinking: 
+
+megan: exactly. small pool with relaxed latency targets and tokenized telemetry so we can bill / attribute. main goals: protect other Dedicated tenants and avoid global cascade.
+
+courtney: important: observability. if traffic moves to quarantine pool we need automatic tagging + alerting. otherwise experiments will hide in generic "hosted" metrics. suggest emitting tenant.affinity=quarantine and an event to our evals pipeline.
+
+samir: cache semantics are tricky. Dedicated uses local KV prefix caches; if we move tenant mid-session to quarantine hosted runtime KV layout differs => cold KV will spike. we should either invalidate prefix or send a migration marker.
+
+liz: ops runbook concerns: how do we put a tenant into quarantine manually? also rollback flow. propose CLI verbs: `rictl tenant quarantine <id>` and `rictl tenant restore <id>` that also annotate the tenant's manifest.
+
+megan: good point. also need to decide routing policy: probe-first vs immediate cutover. probe-first = ping hosted probe endpoint with small sample, if healthy then migrate gradually. immediate cutover = faster but riskier. thoughts?
+
+aditya: probe-first is safer for user-facing latency. we can reuse existing probe infrastructure but add an affinity header so hosted runtime can opt-in to degraded qos. pseudo-config: 
+```
+quarantine_policy:
+  mode: probe_first
+  sample_rate: 0.05
+  hosted_qos_profile: "quarantine-low-priority"
+  max_concurrent: 50
+```
+
+courtney: also add telemetry hooks: emit `quarantine_start` + `quarantine_end` events with reason code (overload, noisy_neighbor, manual). tie into cost reports.
+
+samir: eviction tokens need thought. Dedicated eviction currently returns a short lease token clients must present. If we issue an eviction->quarantine token, hosted must accept it and resume KV context mapping. otherwise we get duplicate model state and token mismatch. recommend expressing token migration via a signed token envelope: `migrate_v1::<base64>` that both runtimes validate.
+
+megan: that's more secure. anything on billing?
+
+courtney: we should bill quarantine at hosted rates but tag as "quarantine discount" maybe 0.8x to avoid surprising customers. show in console as "Degraded — Quarantine".
+
+srebot: ALERT: recent test run showed a 2.3x token cost increase on migration path due to cache misses. full logs: https://logs.internal/xyz (automated) :rotating_light: 
+
+liz: noted. runbook update draft: 
+```
+- detect Dedicated saturation -> autosuggest quarantine
+- run probe-first sample for 30s
+- if sample passes, migrate at 5% ramp every 10s
+- emit quarantine_start with reason
+- monitor latency/err_rate for 5m, if > threshold rollback to Dedicated
+```
+
+opsbot: CLI helpers: 
+```
+rictl tenant quarantine --id=acme --mode=probe_first --sample=0.05
+rictl tenant restore --id=acme
+rictl quarantine-status --id=acme
+```
+
+megan: ok action items: 1) aditya + samir to spec migrate token envelope and KV marker (PR by EOD Thurs), 2) courtney to add telemetry events + billing tag, 3) liz to update runbook and add CLI stubs, 4) megan to write short RFC for the quarantine affinity pool and QoS profiles. will mention canary on internal test tenants first.
+
+aditya: noted. i'll prototype token envelope and probe config.
+
+samir: will sketch KV marker flow.
+
+courtney: i'll draft telemetry + billing mapping.
+
+liz: doing runbook + cli stubs.
+
+megan: thanks everyone :thumbsup: let's sync briefly Fri standup if needed.

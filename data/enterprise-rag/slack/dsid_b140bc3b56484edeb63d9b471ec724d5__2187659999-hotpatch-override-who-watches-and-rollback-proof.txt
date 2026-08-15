@@ -1,0 +1,44 @@
+eng-platform
+
+Alex M: Quick check — if we need to yank the websocket inference feature (flag: `ws_live_v2`) during the EU canary, who is authorised to flip the emergency toggle and what shows up in the audit? I'm about to start a canary and want the rollback path nailed down.
+
+Priya K: Only people in `oncall` and `platform-admins` groups can flip production kill switches. Procedure in the runbook: post in #incidents, tag @page-sre, call a quick bridge if it's not a one-off toggle. Audit writes to `flags-audit` index and includes user, method (cli/console/api), reason, and audit-id.
+
+Jordan L: For the command, use the toggle CLI if you need fast revert:
+```
+# example
+toggle-service --env prod --flag ws_live_v2 --action off --reason "canary-eu1:latency>300ms" --case-id INC-<id>
+```
+Console clicks also record the same fields.
+
+Devin R: Quick audit query if you want to confirm who flipped it:
+`GET /flags-audit/_search?q=flag:ws_live_v2 AND env:prod&sort=@timestamp:desc`
+That returns `user`, `method`, `reason`, `audit-id`. If you need the raw log -> search `audit-events` for `audit-id:<id>`.
+
+Alex M: Can we scope the rollback to EU-1 only? I want to avoid global fallout while we debug the canary.
+
+Priya K: Yes — use rollout groups. Set `target_groups: [eu-1-canary]` then flip `ws_live_v2` for the group. Guardrails: the automated monitor will flip back if `error_rate > 2%` or `p95 latency` crosses configured SLOs. Make sure `canary_owner` is set in the rollout metadata so the automated paging goes to the right person.
+
+Jordan L: Also note: if it's an emergency manual flip (not automated rollback), the person flipping must add a short reason and case id. The platform will reject toggles without `reason` when `protect=true`.
+
+SRE Oncall Bot: flag `ws_live_v2` disabled by Alex M via platform-console; audit-id: `audit-20260317-88b2`; ticket: `INC-4721`. Notifying: @page-sre.
+
+Devin R: Side note — make sure the CLI usage and console both populate `postmortem_url` field when you create an incident so we don't lose traceability.
+
+Alex M: Got it. I'll run the EU-1 canary now, will paste the toggle command + audit-id here if I hit the kill switch. Thx all. :white_check_mark:
+
+Priya K: Quick checklist before you start: 1) set `canary_owner` 2) assign `inc_priority` 3) enable `protect=true` for the group 4) double-check alert routing to pager. If anything unexpected, flip and ping here. :eyes:
+
+Alex M: Confirmed checklist done. Starting canary in ~5m.
+
+infra-bot: Reminder: all emergency toggles must also create a retention record in `retention/flags/` with `audit-id` within 10 minutes of flip.
+
+Alex M: Copy that — will do.
+
+Jordan L: If you do flip and we need a hot rollback but want to preserve telemetry, prefer scoped `forced_off` with reason `canary-freeze` instead of global disable. That keeps historical traffic routed.
+
+Alex M: Ok. If anything goes sideways I'll use `forced_off:canary-freeze` and post audit-id.
+
+Priya K: Thanks — looks good. Keep us posted and escalate if pager doesn't answer in 5m after flip.
+
+Alex M: Will do.

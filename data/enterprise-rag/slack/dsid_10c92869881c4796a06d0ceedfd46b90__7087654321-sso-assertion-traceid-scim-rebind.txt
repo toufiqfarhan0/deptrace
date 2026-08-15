@@ -1,0 +1,39 @@
+eng-security
+
+Maria L: Heads up — after the RBAC roll earlier today a subset of SCIM provisioning jobs started failing. Looks like SSO assertions from AcmeIdP are missing our trace header so downstream provisioning rejects. Observed ~60 failures in the last 10m.
+Aj Chen: Can you paste the assertion snippet from the failing request? also which cluster/region?
+Maria L: eu-west-1, dedicated-prod. Log excerpt: 
+```
+ERROR scim-provisioner: request validation failed: missing header X-Redwood-Trace
+request_id=4f7a2b
+user=svc-acme
+assertion_subject=alice@example.com
+```
+Maria L: SAML assertion we got (redacted): 
+```
+<saml:Assertion ...>
+  <saml:Subject>
+    <saml:NameID>alice@example.com</saml:NameID>
+  </saml:Subject>
+  <!-- No Extensions/X-Trace or custom:trace element present -->
+</saml:Assertion>
+```
+Leo R: Hmm. We inject trace id at the IdP proxy layer MHV (our gateway) as a SAML extension. If the proxy rewrote attributes during the RBAC change it could have stripped the extension. Any proxy config changes in the deploy?
+Karen T: I rotated the KMS alias yesterday for the new key but didn't touch the proxy. I did update the RBAC role mapping that controls which attributes get forwarded to our proxy service. Could that be the interaction? :thinking_face:
+sre-bot: Incident bot created INC-4218 and posted alert to #incidents.
+Aj Chen: Request flow: IdP -> proxy (adds X-Redwood-Trace / saml ext) -> authz service -> scim-provisioner. If the RBAC mapping step now short-circuits attribute forwarding for IDP-internal attrs the proxy may not receive what it expects to generate the trace. Recommend verifying proxy logs and the role-mapper service.
+Maria L: I grepped the proxy logs: 
+```
+WARN proxy: missing inbound attr account_extid
+INFO proxy: skipping extension enrich (rbac-filter = deny)
+```
+Leo R: That confirms it. RBAC filter is denying the account_extid attribute which triggers the proxy branch that attaches the trace. Workaround: allow account_extid for the SAML assertion until we fix mapping. Quick fix: update RBAC rule to include `forward: [account_extid]` for the IdP service principal.
+Karen T: Rolling that change to canary now. patch: `rbac-map: add account_extid -> forward` applying to idp-service principal only.
+Maria L: Canary applied to 2 nodes in eu-west-1. Re-running a failing provisioning job now...
+sre-bot: Provisioning job 98765 restarted by Maria L.
+Maria L: Job succeeded. Failures dropping to 0.
+Aj Chen: Good. We should add an automated unit test for the role-mapper that asserts the proxy enrichment path when account_extid present. Also add an alert for sudden drop of X-Redwood-Trace in assertion telemetry.
+Leo R: Agreed. I'll open a follow-up PR for the role-mapper tests and add a short postmortem note in INC-4218 summarizing cause: RBAC rule change unintentionally blocked attribute the proxy relied on for trace enrichment.
+Karen T: Sorry about the churn — thanks for quick catch. I'll add the test to my change list and revert any other unintended denies. :thumbsup:
+Maria L: Marking this thread resolved for now; keeping INC-4218 open until tests + alert are in.
+Maria L: next steps: 1) PR for role-mapper test (Leo) 2) alert for missing X-Redwood-Trace (Aj) 3) patch note in release logs (Karen).

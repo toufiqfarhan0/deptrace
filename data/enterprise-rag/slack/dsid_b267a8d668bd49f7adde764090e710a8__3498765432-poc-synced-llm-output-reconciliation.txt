@@ -1,0 +1,34 @@
+sales
+
+elaine (AE): Kickoff with Prospero this morning — they want to swap vendorX for Redwood and run a 4-week POC. Main asks: prompt parity, response shape, and pricing alignment. timeline: want results before Q4. any immediate blockers?
+samir (SE): I'll own the adapter work. Do we have samples of their real requests and current outputs? @elaine
+elaine (AE): They uploaded a sample bundle to the S3 link (shared in DM). Example payload is basically {conversation_id, user_id, messages[], metadata}. They rely on streaming deltas and a custom 'intent' field in the JSON.
+samir (SE): ok. primary technical gaps I see: 1) response shape (they expect 'intent' present), 2) tokenization differences affecting billing, 3) rate-limit mapping (they use per-customer QPS).
+marco (SRE): tokenization delta is common when moving model families. We can run a tokenizer parity pass — need ~500-1k sample prompts from their workload to estimate per-response delta.
+isabel (Security): Security questionnaire highlights: KMS integration for key rotation, SSO (SAML) + SCIM, and data residency controls. Prospero will require SOC2 + option for Private or Dedicated for production. For POC they may accept hosted with contractual protections.
+ejordan (Finance): For pricing: we can offer POC credits and a short-term discount. If they move to Dedicated we'll propose committed baseline pricing. Need estimated tokens/day and peak QPS to finalize numbers.
+elaine (AE): They asked if we can "mirror" vendorX's billing for the POC to simplify procurement. We shouldn't replicate exact pricing, but we can match effective per-token cost for the POC period via credits. @jordan will draft.
+jordan (Finance): can do a 60–90 day POC credit + 25% off list for first 3 months if they commit to a baseline for Dedicated after. send projected usage and sample prompts.
+samir (SE): Adapter approach suggestion: lightweight shim proxy that translates vendorX API to Redwood's payloads. Sketch: 
+```
+POST /vendorx/generate  --> POST /v1/responses
+map: payload.messages -> input.payload
+preserve: metadata.intent -> output.metadata.intent
+support: streaming via chunked transfer-encoding
+```
+We also need a response-normalizer to insert their custom fields and preserve delta streaming shape.
+marco (SRE): dual-write for canary is feasible: write to Redwood + forward to vendorX for a comparison window. Adds cost but minimizes risk. For POC infra, we'll use a sandbox cluster with autoscale and a small Dedicated burst pool.
+isabel (Security): Questionnaire action: I'll start drafting answers and call out KMS rotation SLA, HSM availability, and log retention/alerts. Also will include a network diagram for Private deployment option.
+elaine (AE): Action items: samir run token-parity on 500 sample prompts by EOD Thu; marco provide tokenizer script + expected token uplift; isabel start questionaire draft and flag any non-negotiables; j jordan compile POC credit proposal. planning call tomorrow 10am PT — 30min.
+samir (SE): noted. I'll also share a comparator script: `python compare_responses.py --gold vendorx.json --new redwood.json --metrics delta_rate, schema_diff`
+isabel (Security): I'll flag any regulatory concerns (EU residency) and ask whether they need VPC peering for the POC. If yes, that affects timeline ~2–3 days.
+elaine (AE): Prospero also asked about automated fallback if we detect behavioral regressions mid-POC. We can offer a policy: if >X% schema mismatch or quality regression on eval set, we failover to vendorX for live traffic. Is that realistic?
+marco (SRE): yes — can implement policy in the proxy layer. would require logging and a small monitoring job to compute diffs. we'll estimate cost.
+samir (SE): i'll add a small eval harness to compute prompt-level BLEU/ROUGE-ish or custom pass/fail. need their ground-truth responses for ~200 samples.
+jordan (Finance): also note: dual-write + log transfer increases data egress; include that in cost. I'll add a line item.
+deploy-bot: Reminder: POC sandbox infra ticket #4231 provisioning starts in ~2 hours.
+elaine (AE): Thanks — I'll update the proposal and send to Prospero. Who can join the 10am PT sync?
+samir (SE): I can.
+isabel (Security): I'll be there.
+jordan (Finance): tentative.
+elaine (AE): perfect. I'll post calendar invite and attach the sample prompts and the draft adapter spec. :thumbsup:

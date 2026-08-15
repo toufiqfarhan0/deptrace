@@ -1,0 +1,44 @@
+incidents
+
+incident-bot: :rotating_light: ALERT: Degraded inference tail latency detected. p99 inference gateway latency > 6s for last 5m, streaming stalls increasing. Trigger: p99 > SLO threshold. auto-incident created. thread started 1769804444.
+alice.m: seeing the same in grafana — p95 ~1.2s, p99 spiking to 6-8s for streaming routes (/v1/streams). dashboard: https://grafana.internal/r/redwood/inference-latency?from=now-15m
+ben_oncall: oncall here, paging infra + db. I'm taking ownership. ben_oncall: quick check — any recent deploys or flag rollouts in the last hour?
+fiona_dev: rolled out optimistic feature-flag patch to routing (new-model-routing) ~35m ago. It added extra config fetch per request. might be correlated.
+carla_db: seeing increased auth-db connection churn, many auth-config fetches with 503s from configstore. Error rate spike: configstore 5xx ~2.1% -> 12% at peak. Slow queries: locks on feature_flags table, avg 80ms -> 800ms.
+eve_obs: logs snippet (truncated):
+```
+2026-03-15T14:00:12Z inference-gateway stream-handler [warn] kvcache miss, fetch config id=ff-872
+2026-03-15T14:00:13Z configstore proxy [error] upstream 502 read timeout
+2026-03-15T14:00:13Z auth-db query [warn] long query: SELECT * FROM feature_flags WHERE key IN (...) took 802ms
+2026-03-15T14:00:14Z inference-gateway [error] stream stall, waiting for config fetch
+```
+ben_oncall: good catch — sounds like the routing change increased syncs to configstore and thrashed auth-db. Prioritize short-term mitigation: disable the flag rollout, and enable local TTL caching for feature flags at gateway for 30m.
+fiona_dev: prepared rollback command: `curl -X POST https://controlplane.internal/flags/rollout -d '{"flag":"new-model-routing","state":"rollback"}'` — doing a canary rollback now.
+carla_db: DB team: we can add a short-term connection cap on config fetcher to backpressure requests, and increase read connection pool by 10% on replicas. Applying now.
+gary_sre: ETA for DB pool change?
+carla_db: +5m to apply, monitor.
+dan_custsu: any known customer impact? Which tenants are hitting p99?
+eve_obs: top affected tenants: alpha-co, betta-llm, internal-dev; traffic distribution skewed to streaming sessions from alpha-co due to long-lived streams. No data loss but higher tail latency and some streaming stalls causing client retries.
+ben_oncall: customer-impact = degraded UX (stream stalls), no SLO-triggered error budget burn yet but close for alpha-co. Escalating to SEs for customer comms. @dan_custsu please prepare a short note. :phone:
+dan_custsu: on it, will draft and sync with SEs.
+ben_oncall: temporary mitigations in-flight:
+- fiona rolling back flag (in progress)
+- carla applying DB pool bump and throttling configstore fetches
+- gary enabling prefix KV caching at gateway for feature flag lookups (30s TTL -> 5m TTL)
+- routing fallback: route streaming traffic to stable model-variant if gateway latency > 2s
+
+fiona_dev: rollback complete. I confirmed flag state reverted. Observability: any change?
+eve_obs: Starting to see configstore 5xx drop from 12% -> 3% over last 90s. p99 trending down to 3.5s (was 7.8s).
+carla_db: DB pool increased on replicas, connection waits dropped. Slow query tail still present but fewer lock collisions.
+gary_sre: I enabled local KV cache and bumped TTL to 2m for feature flags on gateway nodes. Also enabled temporary route-based traffic shaping: heavier streaming sessions get lower concurrency to reduce head-of-line blocking.
+ben_oncall: good. continuing monitoring. If p99 < 2s and streaming stalls < 1% for 10m, will close incident but create follow-up.
+alice.m: quick note — we saw a small spike in rate-limiter 429s earlier when configstore errors were high, caused some short client retries. Need to consider smoothing token bucket refill for retries.
+carla_db: follow-up: add index to feature_flags query path, and add materialized cache to reduce full table scans. Ops ticket created: INC-176980-FLAGS-OPT.
+gary_sre: follow-up: improve local fallback to use last-known-good config instead of blocking on fetch. Also add circuit-breaker on configstore path.
+dan_custsu: customer note drafted, will send to SEs for review.
+incident-bot: UPDATE: mitigations applied at 1769805250. p99 now 1.9s, streaming stall rate 0.6% (target <1%). Incident status: mitigated -> monitoring.
+ben_oncall: I'm handing this off to morning oncall for post-mortem and follow-ups — tagging @carla_db and @gary_sre to own remediation tasks.
+carla_db: ack, will own DB/feature-flag follow-ups.
+gary_sre: ack, will own gateway caching + circuit-breaker work.
+ben_oncall: closing incident thread in 1h if stable, creating postmortem stub: https://eng-docs.internal/incidents/1769804444-paging-latency-gradual-degrade
+incident-bot: RESOLVED: incident closed for now at 1769806145 — next steps captured in postmortem. :white_check_mark:

@@ -1,0 +1,13 @@
+eng-runtime
+
+mira: Quick probe: can we run a light-weight compaction sweep that respects tenant bandwidth and avoids CPU spikes?
+avik: Background-only, low concurrency. We should cap bytes/sec per-tenant and per-pool.
+toni: API idea: Compactor.schedule(range, target_pool, {max_bytes, bw_limit, priority}) -> JobID. Job states: queued|running|paused|done|failed.
+mira: For live pages do copy-then-swap with a soft-lease. Lease duration should be adaptive to move size.
+avik: Estimator: cost = bytes / measured_bw + copy_overhead; benefit = reduced_faults * avg_fault_latency. Schedule only if benefit > cost * safety_margin.
+compact-bot: compaction job scheduled (job=cmp-1769999999-01, pool=gpu2)
+toni: Failure handling: on mid-copy failure, abort, release lease, mark page hot for shorter retry window, reduce concurrency. Emit metric compact_job_failures.
+mira: Telemetry we need: moved_bytes, avg_move_ms, queue_delay_ms, per-tenant_bw_used. Also track "compaction-induced-faults" to detect regressions.
+avik: Default policy: conservative. Add profile for aggressive customers (opt-in) with higher bw_limit.
+toni: Action items: mira: write sweep budget heuristic. avik: add cost/benefit formula to scheduler. i'll draft Job API and state transitions.
+mira: Cool — will prototype a tiny sim and post traces.

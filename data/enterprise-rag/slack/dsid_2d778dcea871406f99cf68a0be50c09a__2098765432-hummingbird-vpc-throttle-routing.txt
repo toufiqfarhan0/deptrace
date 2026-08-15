@@ -1,0 +1,44 @@
+incidents
+
+Incident Bot: paging: SEV-2 alert for customer Hummingbird (VPC) — sustained 429 surge in dedicated pool hb-pool-2 since ~10:21 UTC. Potential client impact: failed realtime inference for 3 services. Paging oncall.
+Samir Khatri: on it. pinging priya and infra. grabbing logs now.
+Priya Nair: ack. can someone paste the most recent rate-limiter metrics? last deploy was 03:00 UTC.
+InfraBot: Metrics snapshot: hb-pool-2 qps spiked from 250->1800 at 10:19 UTC. 429 rate now ~38% of requests. Token bucket droptokens at 10:20:11.
+Samir Khatri: confirmed. looks like a traffic spike from hummingbird-edge-01 region. Is this a legitimate customer spike or retry storm?
+Maggie Li: Support says Hummingbird reports increased user traffic due to a promo. They haven't changed client SDK. Javier, can you check contract for burst allowance?
+Javier Ortega: Hummingbird is enterprise VPC with reserved capacity 500 qps and burst to 1000 qps for 15m windows per contract. They're currently at >1500 sustained. No automatic emergency lift in contract.
+Priya Nair: ok. options: 1) temporary emergency lift to hosted fallback for a subset of traffic, 2) increase hb-pool-2 token rate temporarily, 3) instruct customer to backoff, 4) route lower-priority routes to a different pool. Prefer least-blast option.
+Samir Khatri: propose routing non-critical endpoints to hosted shared pool (hosted-api-fallback) and increase dedicated pool rate by 1.5x for 30m as emergency mitigation. Need exec/AE signoff for contract override.
+Javier Ortega: I can ask Hummingbird to approve an emergency paid burst via phone now. If they confirm, legal/finance can rubber-stamp a short-term override. But expediency first — we can do a temporary technical lift with an audit log and billing annotation.
+OpsRunbookBot: Runbook: "Dedicated pool emergency throttle relief"
+```
+# Steps
+1) Temporarily set pool token rate: redwoodctl pool update --pool hb-pool-2 --token_rate 1.5x --duration 30m --annotation "emergency-burst-2098765432"
+2) Add routing rule: redirect traffic tag "non-critical" -> hosted-api-fallback
+3) Monitor 429s and token usage every 60s
+4) Rollback to baseline if errors increase >5% or latency >250ms
+```
+Priya Nair: running step 1 now. Samir pls stand by to watch.
+InfraBot: executing: redwoodctl pool update --pool hb-pool-2 --token_rate 1.5x --duration 30m --annotation emergency-burst-2098765432
+Samir Khatri: seeing immediate drop in 429s from 38% -> 12% in next 45s. Latency stable.
+Maggie Li: Hummingbird AE on call confirming they triggered a campaign. Javier, they approve emergency bump and will accept additional charges. Please capture PO/approval in thread.
+Javier Ortega: Hummingbird verbally approved. I'll follow up with written confirmation and cc finance. PO reference: HB-EMG-209876.
+Samir Khatri: moving to step 2 — adding routing rule for non-critical endpoints.
+InfraBot: applying routing rule: route tag=non-critical -> hosted-api-fallback. Note: token accounting will appear on hosted usage.
+Priya Nair: monitoring dashboards: overall token consumption shifted ~18% to hosted fallback. Dedicated pool hb-pool-2 steady at ~=900 qps.
+OpsRunbookBot: Reminder: ensure KV cache warmup for models moved to hosted fallback to avoid cold-latency spikes.
+Samir Khatri: Priya, can you run a quick smoke sample on Hummingbird app endpoints to validate responses? Maggie to confirm customer sees degraded behavior or not.
+Priya Nair: smoke calls: 20/20 success on user-facing endpoints. No 500s, 2s tail latencies for a specific non-critical route but acceptable.
+Maggie Li: Hummingbird reports degraded but functional for users. They're thankful for quick action.
+Javier Ortega: confirmation from customer: written approval received (email) at 10:35 UTC. forwarding to finance.
+Samir Khatri: good. we should schedule a rollback plan: auto-revert after 30m, but let's keep manual control if traffic still elevated. I'll set a monitor to re-evaluate at 10:55 UTC.
+Priya Nair: setting alert: if 429s >10% after 10:55 UTC, escalate to SEV1.
+InfraBot: emergency annotation applied to billing: HB-EMG-209876. Audit log: redwoodctl actions recorded.
+OpsRunbookBot: Post-incident checklist: capture client request patterns, identify client-side retries, consider proposed mitigation: client token bucket smoothing or SDK backoff patch.
+Samir Khatri: next steps: 1) Incident postmortem owner: Priya 2) Customer follow-up: Javier 3) Billing reconciliation: Finance (cc) 4) Engineering: evaluate autoscaling thresholds for dedicated pools and implement temporary dynamic burst policies.
+Maggie Li: tagging support ticket #34722 to this incident.
+Javier Ortega: note to record PR for contract amendment if this pattern repeats.
+Samir Khatri: marking incident as mitigated at 10:42 UTC. Will keep thread open until after 11:00 UTC to confirm stability.
+Incident Bot: incident status updated -> mitigated. Severity downgraded to SEV-3. Auto-reminder scheduled at 11:00 UTC for final check.
+Priya Nair: final note: saved logs and snapshot at 10:44 UTC to /srv/incidents/hb/2098765432. Postmortem to include exact sequence of token drops and client-side retry behavior.
+Samir Khatri: thanks team. great coordination. :thumbsup:

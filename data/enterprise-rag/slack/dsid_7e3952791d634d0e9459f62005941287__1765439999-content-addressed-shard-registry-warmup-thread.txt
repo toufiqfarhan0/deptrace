@@ -1,0 +1,29 @@
+eng-ml
+
+Maya Patel: Quick sync — draft idea for content-addressed shard registry + tiered warmup for safetensors. TL;DR: store shards by digest, allow lazy fetch + a prioritized 'hot' lane for KV-heavy shards. Want to avoid full-model coldstart spikes. Thoughts?
+Samir Khan: I like the digest registry. Does this assume immutable shards (i.e., any patch creates new digest)?
+Maya Patel: yes, immutability is a precondition. registry maps digest -> location(s)/replicas/size/format. We can keep a small mutable manifest that points to digests for a model version.
+Alex Kim: Two quick tradeoffs: 1) content-addressing helps dedupe across models but increases registry churn metadata. 2) Warmup: prioritizing KV/cache-friendly tensors helps latency but may produce uneven disk IO.
+Cheng Li: For warmup lanes, propose three tiers: HOT (KV + layernorms), WARM (weights for early layers), COLD (rest). HOT lane gets immediate prefetch into GPU mem or pinned host cache. WARM uses async prefetch. COLD is fetched on demand.
+Samir Khan: How do we detect KV-heavy shards programmatically? Build heuristics from tensor names/shape + profiling historical traffic?
+Maya Patel: yes, heuristic + runtime signal. If a shard sees >95% attention KV hit ratio in last N requests mark HOT. We should cap how many shards are HOT per model to avoid thrash.
+Alex Kim: Implementation sketch: lightweight registry service + prefetch worker. Registry API: `GET /shard/<digest>` returns [{region, url, checksum, fmt, size, tags}]. Prefetcher subscribes to model route and warmup policy.
+Alex Kim: sample policy snippet:
+```
+warmup_policy:
+  - mode: hot
+    selectors: ["kv*", ".*attn.*key"]
+    prefetch: immediate
+  - mode: warm
+    selectors: ["embedding", "layer.0.*"]
+    prefetch: background
+```
+Cheng Li: Also consider fallback: if HOT lane fails or bandwidth limited, fallback to serving with KV-miss + on-demand fetch but with QoS backoff to avoid head-of-line blocking.
+Samir Khan: What about safety/compatibility for safetensors vs legacy formats? registry should include `fmt` and `decode_hint`. We could have transformer that converts to runtime-packed arrays as a background job and update registry to point to packed digest.
+Maya Patel: Good call. That enables quantized/packed variants to be rolled out transparently. We'll need an eviction policy for prepacked blobs.
+Alex Kim: Ops questions: how do we secure registry URLs? Signed short-lived URLs + region-aware endpoints. Also KMS for metadata edits.
+Maya Patel: infra-bot — can we gate a spike to test warmup lanes on a small fleet? @infra-bot any constraints?
+infra-bot: Scheduled a test canary for tomorrow 03:00 UTC on r2-small fleet. Will report logs to #eng-ml-tests. (deploy-id: d-2765) :white_check_mark:
+Cheng Li: Next steps proposal: 1) proto-registry API (1 week) 2) prefetch worker POC that honors selectors (1 week) 3) small canary with HOT/WARM/COLD policy (1 week). If everyone agrees I'll open RFC follow-up with interface sketches.
+Samir Khan: +1 on timeline. Need to include metrics: prefetch hit rate, coldstart latency, disk IO per-pod.
+Maya Patel: agreed. I'll draft RFC follow-up and include the config snippet + eviction heuristics. Thanks all. :thumbsup:

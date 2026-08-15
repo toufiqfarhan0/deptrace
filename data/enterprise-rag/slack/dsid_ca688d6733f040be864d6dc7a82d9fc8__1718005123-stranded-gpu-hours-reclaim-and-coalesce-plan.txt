@@ -1,0 +1,40 @@
+eng-sre
+
+Maya: Heads-up — billing spike showed ~1.2k stranded GPU hours last week in us-west-2. Need a quick ops plan before Q3 burst. Anyone have runbook suggestions?
+Samir: Do we mean idle GPUs not autoscaled down, or pods pinned with tiny slices? Any breakdown?
+Maya: Quick Prom query I ran: 
+```
+sum by(region) (gpu_idle_hours_last_week)
+us-west-2: 1200
+eu-central-1: 320
+us-east-1: 150
+```
+Kai: Ouch. That looks like a mix of pod fragmentation + min-pool sizes. Preemption policies might not be kicking for low-priority shards.
+Liam: We saw this pattern when canary split created many 0.125-GPU pods. Binpacking fails and we leave lots of stranded capacity. Propose coalescing small pods for non-prod and lowering min-replicas for some pools.
+Diana: Agree on coalesce for non-prod, but we must preserve enterprise reservations and latency SLOs. No reducing cores for paid customers.
+Samir: Two-tier approach sounds good: (1) aggressive coalesce + reclaim for non-enterprise, (2) keep enterprise reservations intact. Also set reclaim threshold to 2h idle before termination.
+Maya: Can someone run a back-of-envelope for savings so we can justify the change to finance?
+Maya: Quick estimate from last week's topology snapshot: 
+```
+scenario,weekly_gpu_hours_saved
+coalesce-nonprod,900
+enable-preemptive,350
+prefix-kv-cache,200
+total,1450
+```
+Kai: That 900 number aligns with the fragmentation we measured. If true, that's ~60% of the stranded hours in us-west-2.
+Liam: Implementation notes: add scheduler flag `--coalesce-small-pods` with binpack weight tweak, and a reclaim controller that watches idle time + tenant-priority label. Test in canary region first.
+Samir: I'll draft a KEP for the scheduler changes and include rollout constraints and a safety toggle. Assigning to @Samir and @Liam for ownership.
+ops-bot: scheduled-job created: `gpu-reclaimer-canary` — will run in us-west-2 canary on 2024-07-01T03:00:00Z.
+Kai: Nice. Add a 48h watch window and a metric dashboard: stranded_gpu_hours, reclaimed_gpu_hours, enterprise_reservation_violations.
+Diana: I'll validate enterprise reservations won't be touched. Can we add an explicit label `tenant:enterprise` to protect them?
+Liam: Yes, scheduler will ignore pods with `tenant=enterprise` or `sla=gold`. We'll make that explicit in the proposal.
+Maya: Action items for tomorrow's sync (10:00 PT): Samir - KEP, Liam - scheduler flag PR + reclaim controller sketch, Diana - reservation audit, Kai - dashboard + alerts. I'll own rollout coordination.
+Samir: I'll also include cost delta projection for finance approval.
+Diana: ack :thumbsup:
+Kai: ack — will add rollback playbook in runbook.
+Maya: Thanks all — if nobody objects, we'll proceed with canary on the scheduled job. Ping here if any blockers.
+Liam: Quick note: remember to bump eviction grace for stateful workloads, otherwise we risk noisy restarts.
+Samir: Good call. We'll exclude StatefulSets tagged `persistent` from reclaim.
+Maya: Great. Closing the loop after the canary run and first 48h metrics.
+ops-bot: note: incident log updated: INCIDENT-2024-GL-87 (stranded-gpu-hours) attached.

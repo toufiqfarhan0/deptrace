@@ -1,0 +1,45 @@
+product
+
+Aaron (Design): sharing V3 mocks for the capacity controls page — focused on min/max, burst, GPU pool selector, and SLO slider. figma: https://www.figma.com/file/xyz/capacity-v3 :eyes:
+Jia L.: nice, skimmed — first thought: slider + numeric input is still necessary. sliders are good for quick ranges but not for exacts (e.g., ramp to 12 GPUs). we should sync them: dragging updates the number, typing updates the slider. keyboard support is a must (arrow keys +/-1, shift+arrow +/-10).
+Sam B.: agree on sync. also worried about GPU pool dropdown ordering; currently default sorts by "latency" which is confusing for cost-conscious users. can we add a small badge like "compatible / incompatible" and a cost estimate next to each pool (e.g., "$1.20/hr")?
+Oliver C.: +1 on cost badge. also the burst toggle needs clearer copy. right now it says "Enable burst" — suggest "Allow temporary burst capacity (can exceed reserved max for short periods)." and a "how it works" link that opens explainer.
+Maria K.: a11y things: contrast on the green guardrail pill is borderline (WCAG AA fail with current token). focus ring on slider thumb disappears on some keyboard browsers. add aria-labels: slider -> "SLO target", numeric input -> "min GPUs"/"max GPUs". Also make tooltip content accessible (can be read by SR).
+ui-review-bot: Automated A11y scan: "SLO slider" missing aria-label. Contrast issue flagged for token --warning-01 on guardrail pill.
+Aaron (Design): good catches. propose microcopy for the burst tooltip:
+
+"Burst capacity lets your service temporarily exceed the reserved max during demand spikes. Burst is limited by pool availability and may incur higher cost. Use burst for unpredictable traffic; disable for strict budget control."
+
+thoughts?
+Jia L.: wording ok but shorten first sentence for tooltip preview: "Temporarily exceed reserved max during spikes. May cost more." full text on click.
+Sam B.: also add a confirmation modal when enabling burst on low-tier pools: "This pool has limited spare capacity — enabling burst may fail during peak times. Proceed?" and show estimated extra cost per minute when burst hits.
+Oliver C.: SLO slider presets: add small chips for 90 / 95 / 99 and a tooltip that explains tradeoffs: "Lower SLO = lower cost, higher latency". default should be 95 per backend team recommendation.
+Maria K.: micro a11y copy: ensure the chips have aria-pressed and keyboard focus order. For color, use tokens that pass contrast and add an icon + text (not color only) to indicate status.
+Aaron (Design): here's a quick copy proposal for guardrail warning modal (will paste into figma):
+
+"Warning: Increasing max GPUs above your reserved capacity may allow short bursts of additional throughput, but could increase spend and be subject to pool availability. Enable only if you understand potential cost and availability implications."
+
+can we tighten that?
+Jia L.: tighten to: "Enable temporary burst beyond reserved GPUs. This may increase spend and depends on pool availability." short and scannable.
+Sam B.: approved. add a link in the modal: "See billing estimate" that opens a cost calc.
+Oliver C.: small UI nit — slider should show the numeric value above the thumb while dragging, and persist the value in a readout field for screen readers.
+Maria K.: CSS snippet for focus visible I can drop into the component:
+```css
+:focus-visible { outline: 3px solid var(--focus-color); outline-offset: 2px; }
+.slider-thumb { box-shadow: none; }
+```
+
+use tokenized colors.
+Aaron (Design): loving the concrete items. action items I captured:
+- add numeric inputs next to sliders + keyboard handling (Jia)
+- show pool compatibility badge and cost estimate (Sam)
+- update burst microcopy + confirmation modal (Sam + Aaron)
+- SLO presets 90/95/99 + default 95 (Oliver)
+- fix a11y: aria-labels, focus ring, contrast tokens (Maria)
+- run automated a11y scan after changes (ui-review-bot)
+
+I'll update the figma and ping again tomorrow. thanks all :heart:
+Sam B.: :thumbsup:
+Jia L.: will follow up with keyboard interaction spec tomorrow morning.
+Maria K.: i'll run a fresh contrast check once you push tokens.
+ui-review-bot: Queued re-scan for 1750123740 (post-change).

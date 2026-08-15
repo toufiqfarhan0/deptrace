@@ -1,0 +1,31 @@
+partnerships
+
+Laura N.: Quick shout — big closed-won: Cobalt Logistics signed a co-sell ISV deal with EdgeWave. They'll deploy Redwood Private (VPC) + EdgeWave integration and commit to a 36‑month Dedicated contract. Planning an AWS Marketplace listing in Q3. Huge thanks to partnerships, solutions-eng, and sales! :tada: https://redwood.internal/deals/COBALT-1923
+
+Mike C.: WOW awesome news, congrats team :tada: Was this SOC2/legal the main hold-up?
+
+Laura N.: @Mike C. Legal signed last week. Biggest negotiation points were data residency + KMS integration. EdgeWave is the reseller & integrator — customer wanted the dedicated capacity + private networking.
+
+Anjali Patel: Nice — we already pushed the onboarding runbook and initial terraform module. Ping me if you want a sandbox spin up for the case study.
+
+Sam Brown: Marketing — can we get a one-pager and case study plan? Customer is OK with a joint press release but wants partner/ legal signoff first.
+
+Laura N.: Yep. I'll own the comms loop. Timeline: partner quote + legal approval by 2 weeks, marketing draft 3 weeks.
+
+partnership-bot: Deal status updated: COBALT-1923 -> Closed Won (Owner: Mike C.). Salesforce link: https://salesforce.company/COBALT-1923 (automated).
+
+Mike C.: Will share internal win deck after finance finishes ARR numbers. Great teamwork — shoutout to @Anjali and @Laura N.
+
+Sam Brown: Planning note: add to marketplace launch calendar. I'll coordinate press timing with partner marketing.
+
+Laura N.: For folks doing enablement — key technical notes: customer requires HSM KMS, private peering to EdgeWave, and 99.9% read SLA. I'll drop the architecture sketch to the partnerships channel later today.
+
+Anjali Patel: Copy. I'll prep a short runbook: 1) approve terms, 2) provision dedicated pool, 3) validate KMS, 4) perf tests.
+
+Mike C.: Love it. Celebratory team lunch when we get logos live? :bento:
+
+Sam Brown: +1 :heart_eyes:
+
+Laura N.: Adding action items: @Mike C file final SF docs, @Anjali prep runbook, @Sam B sync marketing calendar. Thanks team — biggest partnerships co-sell win this quarter.
+
+(edited)

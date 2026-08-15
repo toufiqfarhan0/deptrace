@@ -1,0 +1,52 @@
+eng-platform
+
+maria: Heads-up: I'm going to prototype a sandboxed config preview flow so product can validate flag changes with real traffic metrics but no effect. Thinking: preview_id + shadow sampling + telemetry gating.
+kevin: +1. we need to be explicit about quota accounting. preview traffic still consumes capacity. ops will riot if it suddenly doubles token usage for a tenant. :grimacing:
+gina: right — two separate problems: (1) keeping runtime routing deterministic for prod requests, (2) safely siphoning a sampled copy for preview pipelines. we should make preview traffic meterable and optional per-tenant.
+devon: how do you plan to implement the siphon? sidecar? router-level duplication?
+maria: router-level duplication looks easiest for latency. add a non-blocking duplicate request to preview stream. key points: sampled by hash on request_id, drop body for embeddings to reduce cost, and tag with `preview_id`.
+kevin: need API contract. something like `POST /v1/config/preview` returns `preview_id` and sampling config. router accepts `X-Preview-ID` header OR route config object referencing preview_id.
+ops-bot: FYI: any preview that duplicates >=1% of traffic for >5min triggers quota alerting. See docs: https://intra.redwood/ops/preview-quotas
+gina: telemetry gating is the tricky part. product wants to see real downstream KPI deltas (latency, hallucination rate, token cost). We must provide dashboard slices and eval hooks.
+devon: for dashboards, we can create a predefined Grafana panel grouped by `preview_id` and `tenant`. But how do we avoid metric cardinality explosion?
+maria: enforce a small set of preview labels: `preview_id`, `team`, `intent`. TTL preview_ids after 24h by default. also require `budget` (tokens/day) when creating preview.
+kevin: schema proposal for preview creation payload (short):
+```
+POST /v1/config/preview
+{
+  "flag_change": {"path":"/routes/ratelimit","op":"replace","value":1000},
+  "sampling": {"type":"hash","rate":0.005},
+  "budget_tokens": 500000,
+  "ttl_seconds": 86400
+}
+```
+Response: `{ "preview_id": "pv_abc123", "status":"created" }`
+
+gina: love the budget field. add `telemetry_gate` object: `{"key":"err_rate","threshold":0.02,"window_mins":15}` — auto-pause preview if gate trips.
+devon: agree, but gates need a fast signal path. prefer using our streaming metrics pipeline instead of polling DB. ops will want a hard circuit-breaker as well.
+kevin: implementation notes: router duplicates -> preview_ingest -> preview_stream -> preview_eval -> retention -> dashboards. preview_stream should support a backpressure policy: if downstream is slow, sample droprate increases to keep router latencies intact.
+ops-bot: Reminder: any backpressure that drops >30% of preview samples should emit `preview.sample_drop` event and page the oncall if paired with `operator_review` tag.
+maria: UX: in console, create a compact wizard: pick flag diff, target cohort (hash bucket or tenant list), sampling, budget, telemetry gates, and a preview toggle to start/stop. show estimated cost before starting.
+gina: we also need a dry-run-only mode: no duplication, but run the evaluation code against cached responses from last 24h to estimate KPI impact. cheaper but less accurate.
+devon: for safety, I'd like an opt-in tenant-level consent flag. default off. we shouldn't preview customer-sensitive flags without explicit approval.
+kevin: auth: `POST /v1/config/preview` requires `preview.create` role. console will request preview.create on behalf of user. API returns a `console_control_url` so UX can link to live telemetry.
+maria: rolling strategy: encourage short-lived previews then promote to staged rollout via our existing `cohort` system. preview -> small cohort (1%) -> widen to 10% -> full. console should provide a one-click `promote` that converts preview_id -> rollout config.
+gina: question: when promoting, do we re-evaluate quotas? we must reconcile preview budget with rollout commitments. suggest require `commit_budget` during promote flow.
+devon: dev note: need migration plan for old preview flags. add `preview_state` enum and cleanup job. also vector for stale previews causing metrics noise.
+maria: test plan: unit tests for header parsing, e2e with local traffic replay, canary rollout to staging, and a limited prod canary (only internal tenants). e.g., curl example for reviewers:
+```
+curl -X POST https://api.redwood/v1/config/preview \
+ -H "Authorization: Bearer $TOKEN" \
+ -d '{"flag_change":... }'
+```
+kevin: ops asks for opt-out hooks: `preview.disableForTenant(tenant_id)` and `preview.reportUsage(tenant_id)` API endpoints.
+ops-bot: Note: add required audit log entry for any preview creation: `audit.preview.created` (user, preview_id, diff).
+gina: security: preview data must never reach model logging stores without PII scrubbing. add automatic redact pipeline for preview stream.
+maria: OK next steps: I'll push a thin RFC with API schema + console mockups. can someone volunteer to own the router duplication PR?
+devon: I'll take the router PR and coordinate with infra for the backpressure path.
+kevin: I'll draft the console wizard copy and telemetry gate UI. gina can you own security/PII gating?
+gina: yup.
+maria: thanks — setting a follow-up sync Friday. :calendar:
+kevin: can we add a Slack alert when preview hits 80% of budget? small feature, but helpful.
+ops-bot: Actionable: create alert `preview.budget.threshold` at 80% and 100% (auto-pause). Assigned: `oncall-alerts` integration.
+maria: perfect. I'll include ops runbook in the RFC.

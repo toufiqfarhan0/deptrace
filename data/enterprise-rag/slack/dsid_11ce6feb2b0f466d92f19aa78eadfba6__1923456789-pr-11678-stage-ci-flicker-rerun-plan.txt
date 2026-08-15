@@ -1,0 +1,35 @@
+eng
+
+Sasha: Heads-up: PR #11678 is failing on stage only for the Azure-latest job — snapshots are showing small diffs. link: https://github.com/redwood-inference/repo/pull/11678 :eyes:
+Sasha: Failing job: e2e-azure-stage (job 3421). paste of the failing part below:
+```
+--- expected: snapshot-RenderTest-Login-button.txt
++++ actual: snapshot-RenderTest-Login-button.txt
+@@
+-<button class="btn primary">Sign in</button>
++<button class="btn primary">Sign in 
+</button>
+```
+Henry: @Sasha thanks. Can you rerun the specific job first? sometimes the runner injects an extra newline. I can kick it.
+ci-bot: Rerun requested by Henry — job 3421 requeued (rerun-id: 17).
+Maria: If rerun still fails it's probably snapshot drift from the image loader timing change in last deploy. We had a similar flake last week. If the diff is only whitespace/newline I'm OK with updating snapshots after one successful rerun.
+Priya: Also try rebasing on main — there was a tiny change to the button render order merged earlier today. Rebase + rerun saves time.
+Sasha: Rebased onto main, pushed a force; triggering rerun now: `./tools/ci rerun --job 3421`
+ci-bot: Job 3421 (rerun-id: 17) finished — status: failed. Same snapshot diff present.
+Henry: ok saw the rerun result. Looks deterministic on stage. @Sasha can you push a snapshot update commit (run jest -u locally) and include the updated snapshots in the PR so we can run the full matrix?
+Sasha: Will update snapshots. Quick note: I ran the local test and Jest updated one file. Command I used: `yarn test e2e --updateSnapshot --testNamePattern=RenderTest`
+Sasha: Pushed commit `update-snapshots-11678` to the PR. CI queued all jobs again.
+Jonathan: If the snapshots are legitimately changed, I can give a quick approval once CI is green. Ping me after the matrix finishes.
+Maria: same here, will review the snapshot diff (just checking it's not an actual rendering change).
+ci-bot: All jobs for PR #11678 completed — 6 passed, 1 failed (e2e-azure-stage).
+Henry: Hmm still one failing job. The snapshot update didn't land cleanly for the azure runner — could be Docker image mismatch. I'm going to try re-running that single job again.
+ci-bot: Rerun requested by Henry — job 3421 requeued (rerun-id: 18).
+ci-bot: Job 3421 (rerun-id: 18) finished — status: passed.
+Maria: Great — now that the Azure job passed with the updated snapshots, the diffs look only whitespace/newline. I reviewed the updated snapshot and it's fine.
+Jonathan: Approved. :thumbsup:
+Henry: Approved as well. Two approvals ✅  — from Jonathan and Henry.
+Priya: LGTM once the smoke tests run in prod stage (we have a small window).
+Sasha: Merging now after approvals and green CI. Thanks y'all :rocket:
+ci-bot: Merge complete — PR #11678 merged into main (commit abc1234). Deployed to stage job queued.
+Maria: Thanks Sasha and team — will keep an eye on the stage deploy for a few mins.
+Sasha: Thanks everyone. If this resurfaces I'll open a follow-up to add a tiny retry for the render step in CI to avoid noise.

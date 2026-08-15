@@ -1,0 +1,32 @@
+eng-security
+
+rachael: Heads up — RedTeamCo confirmed external engagement for infra + staging. Need to finalize RBAC window, KMS access, evidence ingest path, and retest slots. cc @nisha @kevin
+nisha: Thanks. Prefer a 2h timeboxed access window scoped to staging only. Ephemeral roles via SSO, no prod creds. What upload format does the vendor expect for evidence?
+kevin: We can provision an IAM role `pt-assessor` with conditions: SourceIp = vendor IPs, SessionDuration = 4h. Will grant kms:Decrypt on alias/redwood-pt-key and remove after. :lock:
+rachael: Can you paste a minimal KMS policy we can hand to for review?
+kevin: Sure — example: 
+```
+{
+  "Effect": "Allow",
+  "Action": ["kms:Decrypt"],
+  "Resource": "arn:aws:kms:us-west-2:123456789012:key/abcdef12-3456-7890-abcd-ef1234567890"
+}
+```
+sam: Evidence workflow: create a timeboxed S3 prefix `s3://redwood-pt-evidence/{engagement-id}/`. We'll issue presigned PUTs via presign-service. Vendor must include SHA256 checksum in x-amz-meta-sha256. Also enable Object Lock (GOVERNANCE) 30d and S3 MFA delete where possible.
+vault-bot: [INFO] ephemeral role template `pt-assessor-template` v1.2 created (pending approval)
+nisha: Ops: enable CloudTrail management + S3 data events for that prefix, and forward to SIEM. Tag logs with `engagement:{id}` and set retention 365d.
+rachael: For remediation tracking, I've added a column on vuln-tracker board called `PT: Triage` — can vendor post findings there or should we ingest via webhook?
+kevin: I'll add a webhook so vendor can submit findings as issues, but team triages internally first. Suggested SLA: acknowledge within 24h, remediation plan within 5 business days.
+sam: Proposed retest windows: 2026-06-17 slots — 10:00-12:00 PT, 16:00-18:00 PT, 02:00-04:00 PT (low traffic). Ops prefers the night slot.
+nisha: I'm oncall that week and prefer the 02:00-04:00 PT slot. I'll own RBAC handover and immediate key rotation post-window. :white_check_mark:
+rachael: Action items (owner / due):
+- kevin: create role + KMS policy + vendor IP condition (due EOD)
+- sam: provision presign pipeline + enable S3 ObjectLock and checksum enforcement (due EOD)
+- nisha: enable CloudTrail data events + SIEM forwarding + tags (due EOD)
+- rachael: vendor handshake email + update vuln-tracker (due now)
+kevin: ack
+nisha: ack
+sam: ack
+rachael: sending handshake email now -> https://docs.internal.redwood/pt-handshake (contains checklist + creds handoff runbook)
+oncall: [BOT] PagerDuty incident stub created for PT window: PD-INC-2026-PT-12
+rachael: closing thread for now. I'll reopen if vendor requests changes or if any of the owners need more time. Thanks all!

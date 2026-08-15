@@ -1,0 +1,25 @@
+product
+
+emily.product: Quick sync: need to finalize GA criteria matrix for the upcoming GA of 'Prompt Routing' initiative — SLA, docs, support, monitoring, pricing. Owners, call out blockers by EOD? I'm consolidating for Thurs deck.
+kevin.eng: SLA note: latency SLO for hosted must be 95th < 120ms for small requests. Blocker: model fallback path (quantized variant) increases tail latency; we need compatible fallback perf numbers.
+miguel.sre: We don't have dashboards for fallback-run counts. I'll add a panel but need the metric name from runtime team (is it runtime.fallback.count?).
+cheng.runtime: metric is runtime.requests.fallback.total — will add dimension 'variant'. Sending schema in a sec.
+matt.qa: Smoke test matrix done for standard prompts; failing cases in long-context tests (LLM truncated responses). Filing a small bug list.
+alice.research: Quality/regression: quantized 4-bit shows 2% KL increase on our eval set. For GA we need <1% regression or an explicit tolerance in docs. Any customer-facing doc text for this?
+emily.product: Good call. We'll surface the tolerance and put an advisory in the release notes if we accept it. @alice.research, can you write a short blurb?
+alice.research: Yes, will draft blurb by noon.
+sara.ops: Support readiness: need 2 runbooks — 'SLA escalation' and 'Fallback behavior & mitigation'. Who owns runbooks?
+kevin.eng: I'll own 'Fallback behavior'. @sara.ops owns SLA escalation (ok?)
+sara.ops: Yep, will draft.
+deploy-bot: New doc created: /docs/runbooks/fallback-behavior.md by kevin.eng
+emily.product: Metrics checklist: alerts for SLO breaches (p95 latency > threshold), error-rate >1%, fallback-rate >0.5%. Any other alerts?
+miguel.sre: Add 'cache-hit-rate' < 70% — that correlates with cost spikes.
+matt.qa: Tests: add an end-to-end billing smoke to validate token accounting.
+emily.product: Pricing note: need per-token rates communicated and a hidden burst cap on free tier. @finance will finalize numbers; for now assume $0.0003/token for standard.
+sara.ops: :thumbsup: I can add that to support FAQ.
+kevin.eng: One more: can we get a 'canary' weight schedule? Suggest 1% for 24h -> 5% for 48h -> 20%.
+emily.product: Agreed. I'll include rollout in the deck. Anything blocking GA signoff?
+cheng.runtime: Blocker: autoscaler isn't respecting minimum throughput under sudden burst. I'll have a patch by tomorrow AM.
+emily.product: Ok mark as 'critical blocker' but still on track.
+matt.qa: Action items summarized: kevin add fallback doc link; cheng push autoscaler fix; alice draft quality blurb; sara runbooks; miguel dashboards; finance finalize price. I'll post checklist later.
+emily.product: Thanks all. Please update the sheet when done. End sync.

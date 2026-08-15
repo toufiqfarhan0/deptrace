@@ -1,0 +1,15 @@
+people-ops
+
+maria.peopleops: Quick ask — candidate A interview Thu 10:30am PT just lost a panelist, who can pick it up? Also quick debrief question: for infra roles should we add an ops-risk checkbox or keep everything in free-text notes?
+samir: I can try to cover if someone drops materials here. heads-up I'm on a deploy so might be a few mins late.
+dmitri: I can take 10:30 and scribe if needed. @maria.peopleops can you grant me view access to the takehome + rubric link?
+elena: Rubric weights idea — infra IC: system_design 35, debugging 25, communication 20, ownership 20. Manager: system_design 25, people/leadership 35, strategy 20, culture 20.
+maria.peopleops: thanks elena — i'll add that to the debrief header. For ops-risk: add a single checkbox flag_ops_risk for behaviours that materially increase production risk (unsafe shortcuts, data-loss suggestions). General concerns go in notes.
+recruiting-bot: Candidate A materials uploaded: https://drive.redwood/candidates/A — rubric_v3 + takehome. Calendar updated with dmitri.
+dmitri: got access, thx. I'll scribe and focus system design.
+samir: happy backup if needed. One scoring q: allow halves (e.g., 3.5) or only integers?
+maria.peopleops: allow 0.5 increments. we'll normalize in aggregate but capture halves for nuance.
+elena: quick debrief guidance — call out specific examples under notes (e.g., "couldn't reason about failover for X") instead of only high-level summary. helps calibration.
+dmitri: noted. i'll include examples and only flag flag_ops_risk for prod-impact items.
+samir: slot covered by dmitri, scribe set. thanks everyone :tada:
+maria.peopleops: i'll post a 30m reminder with zoom link + rubric. thanks all :pray:

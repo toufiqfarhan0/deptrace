@@ -1,0 +1,81 @@
+docs
+
+elyse: FYI i opened a small migration-oriented PR to refresh SDK snippets across py/ts/go. aims: clearer streaming retries, explicit pagination cursor handling, and a short migration note for v2 stream API. https://github.com/redwood-inference/docs/pull/901
+raj: thanks! can you call out what changed for existing users reading the guide?
+elyse: added a short 'what changed' section and two concrete examples: a compact python async stream with retry+backoff, and a TS example showing await-for-await. also swapped an unsafe cursor usage in the Go pagination sample.
+sam: paste the py snippet so i can sanity-check error handling quickly
+elyse: sure:
+```python
+# async python streaming + exponential backoff (v2 stream API)
+import asyncio
+from redwood import Client
+
+async def simple_stream():
+    client = Client()
+    attempt = 0
+    max_attempts = 3
+    backoff = 0.25
+    while True:
+        try:
+            async with client.stream("gpt-neo-1", prompt="hi") as s:
+                async for piece in s:
+                    print(piece.text, end="")
+            break
+        except Exception as e:
+            attempt += 1
+            if attempt >= max_attempts:
+                raise
+            await asyncio.sleep(backoff)
+            backoff *= 2
+```
+
+natalie: looks good. small nit: include cancellation via asyncio.Timeout? otherwise a long retry loop could hang consumers.
+elyse: good call, i'll add a note in the migration section about cooperative cancellation and timeouts.
+raj: what's the TS pattern? we prefer idiomatic async iterators for docs.
+elyse: TS snippet is in the PR, copied here:
+```ts
+// typescript streaming with jittered retry
+import { Redwood } from "@redwood/inference"
+
+async function run() {
+  const client = new Redwood()
+  let tries = 0
+  while (tries < 4) {
+    try {
+      const stream = await client.stream("gpt-neo-1", { prompt: "hi" })
+      for await (const chunk of stream) {
+        process.stdout.write(chunk.text)
+      }
+      return
+    } catch (err) {
+      const backoff = (Math.random() + 0.5) * Math.pow(2, tries) * 100
+      await new Promise(r => setTimeout(r, backoff))
+      tries++
+      if (tries === 4) throw err
+    }
+  }
+}
+```
+
+sam: nice. about the Go pagination change, can you summarize the bug? we saw a support ticket where callers passed empty string and server returned next_cursor null but code kept calling.
+elyse: exactly. old snippet did `for cursor != ""` and assumed empty string means done. servers can return null pointer for cursor. i changed to a pointer nil-check and documented the difference.
+raj: paste compressed go example
+elyse: here:
+```go
+// go pagination with nil cursor guard
+var cursor *string = nil
+for {
+  resp, err := client.List(ctx, &ListParams{Cursor: cursor})
+  if err != nil { return err }
+  items = append(items, resp.Items...)
+  if resp.Cursor == nil { break }
+  cursor = resp.Cursor
+}
+```
+
+natalie: can we add a note that some SDKs historically used an empty-string sentinel? helps troubleshooting.
+elyse: yes added under migration notes and linked the internal support ticket for reproducibility.
+docs-bot: heads-up: please ensure PR includes snippet lint step (tsc --noEmit, go vet, mypy where applicable) or mark as waived in PR body. CI will require it. :robot_face:
+sam: i'll add a quick github actions job for snippet linting before merge.
+raj: thanks. anything else blocking?
+elyse: once sam adds the lint job and i add the timeout/cancel note, i'll merge. planning to tag as docs:sdk-snippet-migration. :sparkles:"

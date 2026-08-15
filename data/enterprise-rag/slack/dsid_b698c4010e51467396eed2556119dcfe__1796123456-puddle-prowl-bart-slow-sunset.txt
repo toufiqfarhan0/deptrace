@@ -1,0 +1,31 @@
+random
+
+rita: Heads-up folks  heavy squall on Embarcadero, BART reporting reduced speed between Embarcadero and Montgomery. Added ~18m to my trip. Anyone stuck?
+
+omar: Yep, stuck on the platform at Embarcadero. Announcements say "single-tracking due to debris on the tracks." Everyone's trying to squish into the 2nd car. :grimacing:
+
+zhen: Yikes. Took the ferry instead  very wet but moving. Not ideal for people with laptops in backpacks.
+
+claire: If anyone needs a towel or spare umbrella, left one at the 3rd floor bike rack locker (labelled "R-commute"). Also FYI the 5pm office shuttle might be delayed depending on traffic.
+
+omar: Thanks @claire. Is the shuttle still running normally or should I snag an Uber?
+
+ops-bot: Transit alert: BART between Embarcadero and Montgomery experiencing 15-25 minute delays due to track inspection. Estimated clear time 18:40.
+
+rita: @omar i'd maybe wait 10-15m and see if the headways normalize. If you're time-sensitive, Uber or ferry could be faster.
+
+zhen: Pro tip: if you take the ferry, stand near the front doors for the fastest exit when docking. Learned that the wet stair queue is brutal.
+
+omar: Switch to ferry sounds good. How's the fare with Clipper today? Forgot my card at home.
+
+claire: I can cover a Clipper tap if you need. Leave a sticky on the receptionist desk and I'll drop it off before 6.
+
+omar: You're a saint, thanks! :sparkles:
+
+rita: Also @ops-bot can we get a heads-up in #commute channel if anything else pops up? Might save people a platform scramble.
+
+ops-bot: Noted. Posting updates to #commute when status changes by >5 minutes.
+
+zhen: GIF: https://giphy.com/gifs/surprised-rain-3o6ZsY1c (mood)
+
+rita: Alright team, stay dry and shout if you need a pickup from Embarcadero.

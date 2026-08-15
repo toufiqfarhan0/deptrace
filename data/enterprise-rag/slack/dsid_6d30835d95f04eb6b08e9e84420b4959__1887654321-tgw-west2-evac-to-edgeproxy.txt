@@ -1,0 +1,46 @@
+incidents
+
+kevin: noticing spikes in TCP retransmits from west-2 -> our CDN edge, packets dropping on the TGW. GPUs in west2 report stalled streams and backlog in the serving queue. :rotating_light:
+ops-bot: ALERT: net.tgw.us-west-2.retransmits > 200/s for 3 consecutive minutes. Affected ASG: west2-gpu-serve-01.
+anya: can someone validate if this is a provider control-plane issue or a peering flake? please grab flow logs + traceroutes.
+samir: on it. pulled VPC flow logs and saw repeated SYN retrans between our NAT 34.200.12.45 and cdn-edge 13.32.77.9 around 21:07-21:10 UTC.
+kevin: KV cache clients also showing long-lived blocked writes. backlog growing on llama-kv-proxy instances. recommend reducing cache TTL and cycling connections.
+mike: mitigation proposal: route a canary to edge-proxy-usw1 (different region) and set HTTP proxy keepalive to minimize new TCP handshakes. start with 20% to limit cost exposure.
+cloud-noc: AWS ticket opened: TGW reports intermittent route propagation delays, investigating. No ETA yet.
+anya: runbook steps: 1) deploy 20% hash-based diversion to edge-proxy-usw1 2) lower kv cache TTLs on west2 from 600s -> 45s 3) restart kv proxies to free stuck sessions >90s.
+kevin: control-plane commands (from routing service):
+```
+# hash-based canary to edge proxy
+POST /v2/traffic/shift {
+  "target": "edge-proxy-usw1", "weight": 20, "mode": "hash:request_id"
+}
+# verify status
+GET /v2/traffic/status/us-west-2
+```
+ops-bot: ROUTE_UPDATE: 20% -> edge-proxy-usw1 applied. Health checks OK.
+samir: lowered cache TTLs and restarted kv proxies:
+```
+cfg apply kv.cache_ttl=45
+systemctl restart llama-kv-proxy
+./scripts/close_stale_sessions --threshold=90
+```
+mike: cost heads-up: cross-region egress will incur extra charges. rough estimate at current QPS: ~$9/hr at 20% shift. tagging finance.
+billing-bot: ESTIMATE: incremental egress ~$9.2/hr while canary at 20%.
+anya: monitoring latency/error budgets. if canary looks good for 10m, ramp to 50% then 100%.
+cloud-noc: AWS update: "We observed control-plane propagation inconsistency for TGW route table rtb-0d9f. Engineers applied stabilization patch; monitoring propagation."
+kevin: if AWS resolution extends beyond 25 minutes, we'll keep canary and prepare a medium-term plan: shift staging-heavy work to west1 reserved pool and keep production on edge-proxy routing for 2-3 hours.
+samir: quick probe results after 20% canary: canary error rate 0.9% (was 7.1%), median latency +85ms on edge path, p95 still within SLO. backlog on west2 decreased ~60%.
+ops-bot: RAMP: applying 50% -> edge-proxy-usw1 per playbook. Checks every 5m enabled.
+ops-bot: ROUTE_UPDATE: 50% -> edge-proxy-usw1 applied.
+mike: FYI infra-cost channel: expect elevated egress while routing stays cross-region. if prolonged, consider switching bulk-batching to west1 reserved to reduce per-byte egress.
+cloud-noc: AWS NOC: control-plane patch applied, propagation looks healthy. recommend keep an eye for 15m.
+kevin: after 25m at 50% traffic, metrics stable. proceeding to 100% and gracefully draining long-lived sessions in west2.
+ops-bot: ROUTE_UPDATE: 100% -> edge-proxy-usw1 completed. System health green. Continued monitoring for 60m.
+anya: follow-ups: 1) write incident postmortem 2) add an automated fallback policy to shift to edge-proxy on TGW anomalies 3) implement earlier throttles for long-lived KV connections 4) run cost analysis for sustained cross-region fallback.
+samir: collecting logs/metrics and will handoff for postmortem draft.
+cloud-noc: AWS confirmed transient TGW route propagation issue affecting peering for ~14 minutes, no further customer action required. Ticket will be closed.
+kevin: great work team :thumbsup: we'll keep this thread as the timeline for the PM. Marking incident mitigated; postmortem to follow.
+ops-bot: INCIDENT: mitigated -> traffic shifted to edge-proxy. Actions logged to incident-runbook-5991.
+billing-bot: FINAL_ESTIMATE: incremental egress ~$37.8 for duration of elevated routing.
+finance: acknowledged, will reconcile with monthly billing.
+kevin: thanks everyone. I'll ping when the postmortem draft is ready.

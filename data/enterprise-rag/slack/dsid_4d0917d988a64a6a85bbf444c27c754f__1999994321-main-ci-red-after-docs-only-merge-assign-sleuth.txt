@@ -1,0 +1,40 @@
+eng-infra
+
+maria: Heads up — main CI just turned red right after my docs-only merge (https://github.com/redwood-inference/repo/pull/3245). I didn't touch code. Anyone free to take first look? @eng-infra :eyes:
+ci-bot: pipeline https://ci.redwood.ai/overview/1999994321 — smoke-e2e failed (job smoke-e2e, step run-tests) :exclamation:
+lee: which job is failing exactly? can you paste the failing test name / log snippet?
+maria: failing step is `smoke-e2e` -> `integration-suite`
+maria: log:
+```
+E       AssertionError: Expected KV cache persisted snapshots to match
+tests/test_transformers_integration.py::test_kv_cache_persistence
+RuntimeError: checkpoint file not found: /artifacts/checkpoints/kv-0001.chk
+```
+samir: weird — docs-only shouldn't touch artifacts. i'll trigger a rerun now.
+ci-bot: rerun requested by samir — queued (build 1999994321.2)
+ci-bot: rerun completed — smoke-e2e still failing (1999994321.3)
+anika: pinging infra-oncall. @infra-oncall can you grab this? if it's flaky we can rerun more but if it's a real regression we should bisect.
+infra-oncall: taking a look. can you confirm which commits landed since last green? maria, when was last green for main?
+maria: last green at 1999989000. I merged my docs PR at 1999994300. nothing else from me.
+lee: checking commit window... there was a small commit earlier today by ops to update the ci-image (ci: bump base image). suspecting that might affect artifact paths.
+taylor: that ops change is in `infra/ci/Dockerfile` — owner is @devops-team. @devops-team any idea?
+devops-bot: FYI commit 1999994005 by @jeff (devops-team): `ci: switch base image to ubuntu:22.04` — changed default working dir and removed some symlink in /artifacts. :warning:
+samir: ok that matches missing checkpoint path. can someone confirm if the image change removed `/artifacts/checkpoints` mount or changed path resolution?
+anika: please don't skip tests. we should bisect quick to be sure. samir — you have perms to run `git bisect` in CI images? otherwise i'll run locally.
+samir: running a quick local bisect against main; steps:
+```
+git bisect start
+git bisect bad 1999994321
+git bisect good 1999989000
+# run CI smoke-e2e locally (approx)
+```
+samir: bisect points to commit 1999994005 (jeff) — the ci-image bump. :mag:
+lee: filing an incident and assigning to devops-team to revert or patch the image. I'm opening issue: https://github.com/redwood-inference/infra/issues/987
+maria: thanks all. @jeff / @devops-team can you either fix the image to preserve /artifacts layout or update CI to mount checkpoint dir? we can temporarily pin older image if needed.
+devops-bot: devops-team notified. incident created and assigned to @jeff — infra/issues/987
+opsbot: scheduled temporary rollback of CI image to previous tag (rollback window open for 30m) — triggered by lee
+jeff: looking into it now. probable fix: create symlink in new image or restore artifacts dir. will update within 20m.
+taylor: if jeff needs a hand to test the image change I can help.
+anika: follow-up actions: (1) don't merge docs-only PRs without CI image awareness? jk. more seriously, add a CI smoke gate for infra changes. (2) create postmortem if image change affected multiple pipelines.
+maria: sorry for the noise — appreciate the rapid triage. :pray:
+lee: marking this thread resolved for now — monitoring after rollback. :thumbsup:

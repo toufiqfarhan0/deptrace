@@ -1,0 +1,31 @@
+sales
+
+sara_sales: Heads up — NovoHealth is asking for 35% off list for a 12mo POC -> prod path. They want Dedicated capacity + SOC2+ contractual addendum. Need pricing + SLA review and deal desk signoff. Rough numbers: 2M tokens/mo during POC ramp -> 6M/mo in year1. Any immediate blockers?
+
+jia_presales: Thanks — can you confirm Dedicated vs Private (VPC/on-prem)? Data residency? That materially changes cost and approval.
+
+sara_sales: Confirmed Dedicated (reserved GPU pool) in us-west initially, EU later. Data remains in customer VPC. They require SOC2 plus custom security exhibit.
+
+tom_eng: Dedicated + VPC implies minimum committed capacity. For a 35% off target we'd typically need 18–24mo commit or a much higher monthly commit. Could structure as 12mo with a ramped commit: months 1–3 @2M, months 4–12 @6M avg -> ~48M tokens committed. Need to run numbers.
+
+matt_dealdesk: :wave: 35% is aggressive on a 12mo term. Deal desk needs: (a) explicit committed spend number, (b) SLA targets (p99 latency, uptime), (c) termination & data-handling terms, (d) discount justification (reference/co-sell/strategic). Who's the exec sponsor?
+
+sara_sales: They position as a marquee healthcare payer — strong reference/co-sell potential. Their ask: steep POC discount to offset integration effort. Proposal idea: 20% baseline, +10% if they sign 24mo and commit to Dedicated capacity.
+
+jia_presales: Tech notes: POC needs reserved ~2x A100-equivalent nodes for first 3 months, scale to ~6 nodes after. We should document expected p50/p95/p99 at 512 tokens and 2k tokens for SLA. Also confirm whether client accepts quantized model variants (saves cost but may affect QA). They flagged hallucination risk — need evaluation plan.
+
+matt_dealdesk: Approval path suggestion: sales -> dealdesk -> VP Sales signoff for discounts >25% -> CFO for material ARR impact. For 35% we'll need VP signoff. Required artifacts: one-pager with commit schedule, unit economics, fallback pricing, and legal term list.
+
+sara_sales: I'll draft the one-pager. Quick check: can we add a 'ramp protection' clause where we auto-scale infra but bill down to a committed floor for first 6 months? That helps them avoid spikes while protecting our ops.
+
+ops-bot: Note: provisioning request for "novohealth-prod" Dedicated pool will take ~72 hours after contract signature to be available.
+
+matt_dealdesk: Ramp protection is acceptable if we cap billing at the committed floor and provide weekly usage reporting. We also need a capacity-hold fee if they reserve capacity but underutilize after month 3. Define thresholds.
+
+tom_eng: From infra: capacity-hold fee = 20% of the reserved node cost for underutilization >30% after month 3 (example calc to include in one-pager). I'll surface exact node cost numbers and latency targets in the doc.
+
+sara_sales: Great — I'll send the one-pager by EOD and cc @matt_dealdesk @tom_eng. Can someone confirm we can offer 30% on 12mo with co-sell clause? If not, I will present 20% + increase option for 24mo.
+
+matt_dealdesk: We can approve up to 25% for a 12mo term with a co-sell/reference commitment. Anything above 25% requires VP signoff. Loop in @nina_vp_sales if you want to push to 30–35%.
+
+nina_vp_sales: Looping in. Happy to review the one-pager — will approve if we get a clear strategic value case + SSO/KMS/contractual security controls. Book a 30-min sync tomorrow and loop legal for the security exhibit.

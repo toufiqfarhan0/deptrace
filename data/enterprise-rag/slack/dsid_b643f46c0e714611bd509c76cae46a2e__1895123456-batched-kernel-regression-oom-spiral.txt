@@ -1,0 +1,36 @@
+incidents
+
+cheng: noticing a sudden throughput drop on us-west-serving around 11:02Z — latency spikes and several worker restarts. GPUs reporting OOMs + allocator slab failures, throughput ~45% down :warning:
+
+oncall-bot: Incident created 2026-03-18T11:03Z (serve-us-west throughput drop) — assigned to eng-runtime
+
+elaine: looking now. can you paste allocator logs and profiler output? any obvious noisy tenant?
+
+cheng: quick allocator tail from host-uw2-14:/var/log/runtime/allocator.log:
+```
+[11:01:58] GPU_OOM: alloc failed for 1.2GB
+[11:01:58] ALLOC_SLAB_FAIL: slab=32MB free=0
+[11:01:58] kernel_select: fast_attn -> fallback=generic_matmul
+[11:02:00] KV_EVICT_TRIGGER tenant=0x4f3 rate=137/s
+[11:02:05] worker_restart: pid=4213 reason=OOM
+```
+
+omar: fwiw there was a kernel-routing heuristic tweak rolled at 02:00 UTC yesterday that deprioritized compact kernels for long-seq models. Putting a flag on it as a suspect.
+
+tasha: grafana batch histogram: https://grafana.redwood/serve/us-west/batching — small-batch (size<=2) ratio jumped from 12% -> 58% coincident with latency spike. continuous-batching buffer delay also increased.
+
+cheng: profiler snapshot /tmp/prof-1895.pb shows kernel-selection hotpath taking ~22% CPU and slow fallback kernels occupying GPU memory longer (noisy allocation patterns). KV cache eviction spikes line up with the OOM windows.
+
+elaine: mitigation plan: 1) isolate/ratelimit noisy tenant 0x4f3 2) drain one noisy host to force rebalance (host-uw2-14) 3) temporarily force kernel selection to prefer compact kernels for the affected model family 4) enable eager-kv-evict. Anyone object?
+
+omar: starting drain of host-uw2-14 now. also prepping a rollback for the kernel-routing heuristic.
+
+tasha: applied tenant rate cap and kicked rolling restart of runtime pods on us-west-serving canary pool. increased per-request micro-batch from 1->4 for the canary. :thumbsup:
+
+cheng: after draining + rate cap + rolling restarts, throughput back up ~30% within 7m, worker restarts dropped to baseline. still seeing a few OOM traces but reduced.
+
+oncall-bot: Incident update: mitigated at 2026-03-18T11:18Z. ticket INC-4892 created and linked.
+
+elaine: follow-ups: - revert heuristic change behind feature-flag and add canary for kernel-routing changes - add alert: small-batch ratio >40% for >5m - add alert: kv-evict-rate >100/s - run mem-defrag profile on allocator to detect slab fragmentation trends. I'll own the RFC.
+
+cheng: assigning follow-up to eng-runtime: @omar + @tasha to own hotfix for kernel selection + eviction policy tuning, @elaine to own alerts/RFC. closing thread after ticket creation. :white_check_mark:

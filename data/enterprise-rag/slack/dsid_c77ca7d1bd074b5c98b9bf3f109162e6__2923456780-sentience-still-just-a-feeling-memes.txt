@@ -1,0 +1,22 @@
+random
+
+Alex: Okay team, which model do you think would start a podcast first? :microphone:
+Jamie: 3.5 for bite-sized 'hot takes' episodes. Fast to produce, even faster to apologize.
+Priya: Claude would call it 'Philosophy for Breakfast' and include a 2-min meditation between segments :joy: 
+Marco: @Kelly we need your bracket expertise. who's the dark horse?
+Kelly: The fine-tuned 'kitchen-gpt' that only talks about sous-vide. Niche but loyal listeners.
+Sam: Seed idea: 'ErrorBot' (apologizes before you finish reading) vs 'Overfit Oscar' (keeps riffing on the same anecdote).
+Nina: GIFs mandatory. Imo the toaster with sunglasses wins every category.
+office-bot: Reminder: Friday lunch bracket submissions close at 2pm. Use /poll to submit. :bell:
+Alex: Prompt challenge: "Write a haiku apologizing for having too many hyperparameters." Winner gets a sticker :sticker:
+Priya: Weights hum in the night
+parameter dreams compute peace
+please stop overfitting
+Marco: :clap::clap: Absolute chip classic.
+Kelly: Imagine the production model starts a side hustle as a life coach. 'Tell me your loss function.'
+Sam: If it becomes sentient, office policy: offer snacks. HR? :pretzel:
+HR-bot: HR: Please do not feed production models snacks. Treat them like interns — respectful boundaries required.
+Alex: :laughing: noted. No snacks, maybe ergonomic keyboards.
+Priya: Also add 'Most likely to be anthropomorphized' as a bracket category. Nominating TinyGPT.
+Nina: +1 TinyGPT for tiny personality syndrome.
+Alex: I'll spin up the poll in #random and transfer bracket duties. Thanks for the content, folks :tada:

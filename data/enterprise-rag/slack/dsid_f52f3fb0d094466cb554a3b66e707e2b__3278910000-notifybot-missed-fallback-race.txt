@@ -1,0 +1,20 @@
+incidents
+
+Nora: paging integrations are failing again — notifybot not escalating to phone, only slack.
+Kai: saw same, getting a 502 from pagerbridge on /v1/page.
+ops-bot: alert: notify-proxy returned 502 for 48 requests in 2m. https://status.redwood/incident/327891
+Eli: can someone check the pagerbridge logs? maybe signing key rotation?
+Nora: logs: `ERROR notify_bridge.go:147: resp status=502 body="upstream timeout"`
+Kai: rolling back last notifybot deploy now (deploy-bot: rollback started).
+deploy-bot: rollback completed for notifybot@2026-03-20T09:45Z :white_check_mark:
+Eli: after rollback - pages still not hitting phone trees, slack-only.
+Nora: oncall handoff? @Kai you're primary? can you take lead and call the rotation?
+Kai: i'm oncall, on phone. running `kubectl logs -n notify pagerbridge-abc | grep 502 | tail -n50`
+Kai: found `WARN signature_mismatch` in logs — token rotated but old cache still used by webhook proxy.
+Eli: temporary mitigation: flip notify-proxy to passthrough mode: `POST /internal/debug/passthrough`
+Kai: passthrough enabled. triggering a test page now.
+ops-bot: test page id=pg_test_327891, status=queued -> delivered to sms-gateway (delivery_latency=4.2s)
+Nora: pages restored to phone. nice. need postmortem and rotate signing keys properly.
+Kai: customer impact: two customers reported missed SMS pages in last 20m — support tickets #4982, #4983
+Eli: follow-up: create a canary for key rotation and a health-check that validates phone delivery.
+Nora: agreed. will file incident and link playbook. thanks all :raised_hands:

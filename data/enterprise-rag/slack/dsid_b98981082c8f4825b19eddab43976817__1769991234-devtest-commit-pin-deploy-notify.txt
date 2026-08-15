@@ -1,0 +1,25 @@
+eng-releases
+
+DeployBot: [env=devtest] initiating deploy for service-inference tag=v1.12.3-rc4 commit=9f3b2a7 kernel_pin=nv-4.2
+Maya: quick q — does this include the kernel pin from PR #482?
+Liam: yep, image built from `registry.redwood.io/inference:v1.12.3-rc4-pin482`
+Kenji: any DB migrations or traffic-shifting planned?
+Maya: no DB changes. config tweak to batcher and model pin only.
+DeployBot: deploy started -> devtest at 2026-03-20T14:22:14Z (pods: 0/3 -> 1/3)
+Amanda: will run a 10m observation window then promote to sandbox if healthy :eyes: 
+Ravi: tailing logs: `kubectl -n inference logs -l app=service-inference --since=1m --follow`
+Liam: healthcheck status: pod-1 ok, pod-2 ok, pod-3 initializing
+Maya: seeing a small p95 token latency bump (~120ms) immediately after rollout — expected with new pin
+Kenji: ok to continue canary if no errors in 10m. set alert thresholds to +30% from baseline
+DeployBot: [env=devtest] progress: 3/3 pods Ready, traffic routed, canary=enabled
+Liam: load test small ramp completed, no 5xx observed
+Amanda: drafting release note: "service-inference: kernel pin nv-4.2, batching tuning, model variant pinned to v1.12.3-rc4"
+Ravi: suppressing routine canary alerts for next 20m to reduce noise
+Maya: copying deploy tag to `release/devtest-pin-9f3b2a7` branch and updating deploy config to pin version
+Kenji: will promote to sandbox at 14:40 UTC unless anyone objects
+DeployBot: deploy finished -> devtest SUCCESS at 2026-03-20T14:29:03Z commit=9f3b2a7 duration=00:06:49
+Amanda: noted. I'll open the sandbox rollout thread at 14:40 and attach the release snippet
+Liam: acked :thumbsup:
+Maya: thanks team — keeping monitor on for 30m then we'll decide on wider rollout
+Ravi: watching logs and metrics, will flag if regressions appear
+Kenji: thanks, closing this devtest thread.

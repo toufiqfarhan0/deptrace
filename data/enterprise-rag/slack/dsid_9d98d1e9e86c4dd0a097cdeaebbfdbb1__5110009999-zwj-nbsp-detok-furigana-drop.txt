@@ -1,0 +1,53 @@
+eng-ml
+
+li: quick flag from today's nightly: cerulean-v1 int8 shows a regression on ja->en and zh->en focused on tokens around ZWJ / narrow no-break space. samples attached.
+
+anika: can you paste one failing example + sacrebleu?
+
+li: pasted from the run:
+```
+# source (ja with ruby/zwj):
+タブを具合する・・・リョクカ‍アマ。
+# baseline (fp16) -> en:
+I will prepare the tab... Ryokuka Ama.
+# int8 -> en:
+I will prepare the tab... RyokukaAma.
+# sacrebleu summary:
+cerulean-v1:fp16  ja-en BLEU = 31.2
+cerulean-v1:int8  ja-en BLEU = 26.7 (-4.5)
+cerulean-v1:int8  zh-en BLEU = 24.8 (-3.8)
+```
+
+mike: interesting. looks like ZWJ (U+200D) got removed during detok or token merging, collapsing ruby separator so two name pieces glued. that would explain lower BLEU for both ja/zh because name tokenization changed.
+
+yuki: i saw a recent PR on post-token normalization that collapses NBSP+ZWJ combos to a thin space. intended to reduce layout noise but maybe it inadvertently removes ZWJ when adjacent to Kana/Han.
+
+infra-bot: nightly-eval/cerulean-v1:int8 queued. run id: 2026-03-23-cerulean-5110009999. logs: https://internal.redwood/evals/5110009999
+
+li: triage proposal: 1) confirm tokenizer outputs (baseline vs int8) for minimal sample 2) rerun detok with the NBSP/ZWJ preservation flag 3) add a targeted regression test to smoke-evals (ruby/zwj/nbsp) 4) if detok fix doesn't recover, try rebuild quantization knobs (per-layer clamp) to rule out activation rounding edge-case.
+
+anika: i ran tokenizer-diff locally: baseline preserves ZWJ as separate invisible token between the name parts while int8 build removes it and merges two tokens. diff snippet:
+```
+- baseline tokens: ["リョクカ","\u200d","\u30a2マ"]
+- int8 tokens:     ["リョクカアマ"]
+```
+
+mike: that's a red flag. tokenizer shouldn't behave differently for int8 unless we swapped tokenizer binary or postprocessing. did we ship a different tokenizer artifact with the int8 build?
+
+yi: (typo) yuki: build matrix shows tokenizer artifact was rebuilt in the int8 pipeline to include a micro-optimization for token merging. i think that's the change.
+
+li: ok please pin tokenizer artifact from fp16 build into int8 job and rerun the ja/zh eval subset. if BLEU recovers it's tooling mismatch not quantization.
+
+anika: adding action item: stopgap hotfix is to disable the NBSP/ZWJ collapsing rule in detok. I'll open a small PR and add test cases for ruby annotation and NBSP+ZWJ combos.
+
+mike: also check embedding drift for name tokens: int8 embedding similarity for "Ryokuka" pieces dropped ~0.18 cosine vs baseline, suggests token boundary change altered embedding lookup population.
+
+eval-bot: rerun started (pin-tokenizer-artifact). ETA ~15m. will post when finished. :hourglass_flowing_sand:
+
+yuki: long-term: let's add per-locale detok invariants to the onboarding checklist. any change that touches invisible codepoints needs a smoke-case for ruby, furigana, zwj, rlm/lrm combos.
+
+li: agreed. assigning follow-ups: @anika PR for detok test + disable rule, @mike check embedding drift, @yuki update onboarding checklist. will update thread when rerun completes.
+
+eval-bot: rerun complete: ja-en BLEU recovered to 31.1 (+4.4), zh-en recovered to 24.6 (+3.8). artifacts: https://internal.redwood/evals/5110009999/diff
+
+li: confirmed, regression was tokenizer/post-detok artifact not quantization. closing as detok-tooling-rollback. thanks everyone.

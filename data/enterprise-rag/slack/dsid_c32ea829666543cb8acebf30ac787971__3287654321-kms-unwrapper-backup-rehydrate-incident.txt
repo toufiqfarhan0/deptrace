@@ -1,0 +1,43 @@
+eng-security
+
+neha: noticed an alert: vault audit sink for namespace 'customer-data' stopped delivering at ~03:40 UTC after RBAC cleanup. missing ~20m of events.
+
+peter: i rolled back a dev binding at 03:38 to reduce blast radius. could that have removed the sink writer?
+
+kartik: which SA does the writer use? ops-bot, can you show the last successful write event?
+
+ops-bot: Last successful sink write: 2026-03-26T03:39:52Z by serviceAccount:svc-audit-writer@redwood-project. Role analytics-writer removed from svc-analytics at 03:37:22Z.
+
+neha: backup plan: rehydrate from encrypted backups in gs://redwood-audit-backups/customer-data/*.enc and import after decrypt. need short-lived KMS decrypt grant for kms-unwrapper SA.
+
+peter: grant approved for 8m. i'll apply and revert after import.
+
+vault-bot: import dry-run: 120 events found, 3 files failed integrity check (likely partial uploads). Filenames: 2026-03-26-03-41.json.enc, 2026-03-26-03-49.json.enc, 2026-03-26-03-54.json.enc.
+
+kartik: pull originals from gs://redwood-audit-raw. if originals are missing we need to mark the window for forensic review and escalate to secops.
+
+neha: fetching raw now. also scanning plaintext for patterns: "vault.token", "access_key", and api key regex. if anything matches we rotate immediately.
+
+evidence-bot: backed up raw blobs to gs://secops-evidence/INC-2026-099/ with kms wrap. sha256 recorded for each artifact. Access: secops-only.
+
+peter: one of the truncated blobs contains a partial oauth client secret used by partner-ingest. rotating that client's secret now.
+
+kartik: rotation steps executed: 1) created new client secret in IAM console 2) updated partner config in k8s secret 3) triggered rollout. Commands:
+kubectl -n prod set secret generic partner-ingest-creds --from-literal=client_secret=REDACTED_NEW
+kubectl rollout restart deploy/partner-ingest -n prod
+
+ops-bot: rollout started for partner-ingest, status: in_progress.
+
+neha: ensure old secret revoked at provider (partner) and in our token revocation list. add note to incident doc INC-2026-099.
+
+peter: revoked old client secret and recorded revocation time 03:58 UTC. reverting kms decrypt grant now.
+
+ops-bot: Permission change applied: kms.cryptoKeyDecrypter revoked from serviceAccount:kms-unwrapper.
+
+vault-bot: import final run: 117 events imported, 3 events dropped due to corrupted blobs.
+
+neha: create follow-up tickets: (1) add automated alert on audit-sink write failures, (2) tighten change review for RBAC sweeps to include sink-owner ack, (3) periodic backup verification that compares backup counts to live event counts.
+
+kartik: assigned tickets and added owners. i'll run a quick search for any other truncated backups across buckets.
+
+neha: thanks all 44d marking this thread for closure after postmortem entry. link: https://internal.redwood/incident/INC-2026-099

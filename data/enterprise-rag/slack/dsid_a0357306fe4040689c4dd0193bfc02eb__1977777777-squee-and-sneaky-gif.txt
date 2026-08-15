@@ -1,0 +1,26 @@
+all-hands
+
+ayana: All-hands live — stream https://meet.redwood.ai/303. Drop your tiny celebrations, GIFs, and impossible snack takes here :tada:
+brooks: I'm here for the glory and the mysterious office donuts — bless whoever left them. :doughnut:
+cel: GIF: https://giphy.com/gifs/celebrate-yes-3oEjI6SIIHBdRxXI40 389 desktop confetti activated
+dara: snack poll: bagels vs croissant? react :bagel: or :croissant:
+finn: bagels :bagel:
+morgan: croissant :croissant:
+deploy-bot: Recording will be posted to #all-hands after the meeting.
+ayana: big shout to SRE for the 3am patch — hero capes pending. :cape:
+brooks: someone slide-bombed the product deck with a baby goat gif. instant morale 100%. :goat:
+cel: tiny after-party poll: "quick-hang" 20m or "meme-dump" in #after-hours? reply "hang" or "memes"
+dara: memes
+finn: hang if there is a promised kazoo solo
+morgan: memes for the collectors club
+brooks: parent check-in: anyone watching with kids/pets? say hi and drop a cute pic in thread.
+ayana: hello from my ficus. it's very invested in Q2. :herb:
+cel: Q&A reminder — drop questions as threads, we'll surface a few live. keep 'em spicy or wholesome.
+deploy-bot: Meeting recording started. Transcript may be abbreviated.
+dara: tiny logistics note: potluck sign-up in #office. bring something that survives transit. also badge scanner is fixed.
+finn: if we hit our target anna promised to bring cupcakes to SF office. stakes are high. :cupcake:
+morgan: who keeps adding leftover slides labeled 'mystery content'? hilarious and slightly terrifying.
+brooks: emoji spam in 3...2...1 :confetti_ball: :sparkles: :raised_hands:
+ayana: final thought: if anyone can remix the celebratory slide into a ringtone, that's a top-tier contribution.
+deploy-bot: Meeting will be auto-closed in 2 hours. Thanks for attending! :robot_face:
+ayana: thanks everyone — love the energy. see you for Q&A and the optional post-show nonsense :smile:

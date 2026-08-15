@@ -1,0 +1,44 @@
+marketing
+
+Ava: Quick sync — finalizing the Kestrel customer story. We want a short blog + one-pager, a webinar slot, and a quote we can push to socials. Need Jordan's quote and legal sign-off. Target publish next week. Who can own what?
+
+Sam: I can own webinar logistics. What date window works for Kestrel? Also we should decide CTA for inbound lead routing (signup vs contact sales).
+
+Liam: Jordan confirmed availability the week after next mornings PST. He also shared a quick quote below (raw). I can get the signed release once legal confirms wording.
+
+Jordan (Kestrel): "Happy to share for Redwood — 'Redwood cut our inference costs by ~50% and made latency predictable across regions, which let us ship features faster.' — Jordan, CTO, Kestrel"
+
+Priya: Drafted the short blog intro + one-pager bullets. Doc: https://tiny.redwood/kestrel-case-draft (please comment). Draft excerpt: 
+
+"Kestrel reduced end-to-end inference spend and improved latency stability after migrating key workloads to Redwood Inference. The integration took 2 sprints and delivered immediate operational wins."
+
+Rachel (Legal): Quick notes: we need substantiation for the ~50% claim (source data) and a signed quote release before publishing. Please avoid absolute language — prefer 'reduced inference costs by around 50%' unless you can validate exact numbers. Also request permission to use Kestrel logo. Send the final quote and the data points to legal@redwood.com.
+
+Tobi (Eng): Attaching the lightweight numbers Kestrel shared in onboarding (summary):
+```
+baseline: 0.95 $/k token-equivalent
+post-migration: 0.47 $/k token-equivalent
+observed latency p95 pre: 420ms
+observed latency p95 post: 120ms
+```
+Those are the figures they gave; engineering can pull precise logs if Legal needs deeper audit.
+
+Sam: For inbound routing, recommend: CTA -> 'Request a demo' sending to sales@redwood.com with tag source:kestrel-case. Sam will set up routing in Pardot/HubSpot. Also propose a webinar co-host with Kestrel for credibility.
+
+Priya: Timeline proposal: Tue — finished blog draft, Wed — legal review & final quote, Thu — design assets + one-pager, Fri — sales enablement one-pager and webinar landing page, next Mon — publish blog + announce webinar. Is that tight?
+
+Rachel (Legal): That timeline works if we get the substantiation and release by Wed EOD. Also prefer the quote text to be: "Redwood reduced our inference costs by around 50% and improved latency stability across regions." Jordan or Kestrel legal needs to sign-off on that exact phrasing.
+
+Liam: I'll ping Jordan and ask Kestrel to sign the release and confirm the wording. Jordan — can you confirm you approve the phrasing Rachel suggested?
+
+Jordan (Kestrel): Confirmed. Fine with: "Redwood reduced our inference costs by around 50% and improved latency stability across regions." We approve use of the Kestrel logo for the case story. I'll get the signed release to you by Wed.
+
+calendar-bot: Meeting created: Kestrel case final sign-off — Wed 2026-04-01 10:00 PST — https://calendar.link/meet/abc123
+
+Ava: Perfect. Owners: Sam — webinar + inbound routing; Priya — blog + assets; Tobi/Liam — metric backup; Rachel — legal sign-off; Liam — collect signed release. I'll assemble the publish checklist. :rocket:
+
+Priya: I'll push the doc updates and tag everyone for final comments by EOD Tue.
+
+Rachel (Legal): Once we have the signed release and the numbers file, legal can sign off same day.
+
+Ava: Thanks all — posting this thread as the single source of truth for the case story. Ping here with any blockers. :+1:

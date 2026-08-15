@@ -1,0 +1,38 @@
+customer-success
+
+maria_cs: Quick sync — Eden Health accepted the preview invite. They confirmed 5 seats and want a tight 2-week onboarding window starting 2026-04-01. Need to lock enablement slot + feedback plan. cc @ryan_se @jess_product
+
+ryan_se: On it. I'll provision a sandbox org + API keys. Need attendee names + emails.
+
+jess_product: Can we get the top 3 flows they plan to test? Also propose Wed 10am PT (30m) for enablement.
+
+maria_cs: Asked their PM; she listed: smart triage, patient notes summarization, payer classification. Sent attendee emails: alice@edenhealth.com, matt@edenhealth.com, sara@edenhealth.com
+
+ryan_se: Provisioning now. Enroll command I'm using:
+```bash
+enroll-bot create_preview_org --org "Eden Health" --seats 5 --start 2026-04-01 --notes "two-week pilot"
+```
+
+enroll-bot: Provision request received (job id 2238). ETA ~7m. You'll get updates here.
+
+beta-bot: Preview org ready: eden-health-preview. API keys delivered to @ryan_se via DM. :tada: 
+
+oliver_pm: FYI finance flagged this as higher renewal-risk cohort. Ask: if active seats < 20% in wk1 mark as at-risk. Can we set a weekly digest and early entrenchment tasks?
+
+maria_cs: Proposed success metrics:
+- active seats >= 3 by EOW week1
+- avg response latency < 600ms for their target flows
+- quality: >=80% pass on our eval set
+I'll create a weekly digest dashboard and include finance distribution list.
+
+jess_product: Feedback loop plan: two evals (initial quality sweep + EOP NPS) + 3 qualitative check-ins. I need 10 targeted prompts per flow from their PM — they'll provide by EOD tomorrow.
+
+ryan_se: Infra suggestion: pin model -> redwood-gpt-3-small-quant8 for predictable perf. Objections?
+
+maria_cs: No objections. Locking that model for the preview.
+
+jess_product: I'll send calendar invite for Wed 10am PT, include recording template and a short one-pager "How to escalate" for their CS ops.
+
+oliver_pm: I'll loop in commercial + sales_ops for renewal tracking (cc: @sales_ops).
+
+maria_cs: Action list summary: Ryan -> provision & share creds; Jess -> invite + eval set + one-pager; Oliver -> commercial loop; Maria -> dashboard + weekly digest. Ping here for any blockers. :thumbsup:

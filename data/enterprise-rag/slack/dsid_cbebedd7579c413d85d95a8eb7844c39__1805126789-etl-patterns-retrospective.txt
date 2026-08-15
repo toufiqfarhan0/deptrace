@@ -1,0 +1,35 @@
+incidents
+
+Sam H: Quick follow-up from the postmortem — we saw recurring ETL lag + missing spans across the last three incidents. Need to lock owners for remediation, a timeline, and a recurring detection plan. Assigning this thread for tracking.
+
+Anya P: I'll take remediation for the aggregation bug (root cause: out-of-order batch drop). Goal: patch + canary in Dedicated by next Tue.
+
+Michael L: Thanks Anya. Can you add the exact PR + canary playbook here when ready? I'll own rollback/runbook updates.
+
+Anya P: sure — PR will be ready by EOD Thu. Canary playbook draft in this thread when PR lands.
+
+Lee R: I can handle ETL job autoscaling config and monitor rule tuning. I'll add a metric to alert on per-shard ingestion lag > 3s.
+
+Sam H: Owners noted: Anya -> aggregation patch; Lee -> autoscaling & alerts; Michael -> runbooks/rollback. We need due dates. Propose: patch merged by 2027-05-20, canary live by 2027-05-22, runbooks updated by 2027-05-23. Agree? :calendar:
+
+Anya P: Dates OK for me.
+
+Michael L: OK. I'll draft runbook checklist: what to check during canary (latency, token drop rate, KV cache hit rate, span completeness).
+
+Observability Bot: New postmortem created: https://redwood.example.com/postmortems/2027-05-15-etl-span-loss (automated).
+
+Sam H: We also need a plan for recurring pattern detection — suggestion: weekly job that computes span completeness per service and flags >2% regression vs baseline. Lee, can you scope?
+
+Lee R: Yep. I'll prototype a daily job first, then roll to weekly aggregation. Will post the job query here.
+
+Anya P: One more item: we saw aggregation mismatches for late-arriving traces. I'm adding a smaller follow-up: add a tolerance window and backfill job to recompute aggregates for T-24h when we see a window breach. Owner: Anya.
+
+Michael L: Let's track all these in the incident action tracker and mark a follow-up review 2 weeks after canary. I'll create the ticket and link.
+
+Sam H: Great. Action summary (for tracker):
+- Anya P: fix aggregation drop, add backfill for late traces — due 2027-05-20 (merge) / canary 2027-05-22
+- Lee R: autoscale + alert thresholds + detection job prototype — proto by 2027-05-21
+- Michael L: runbook + rollback + create ACL ticket for review — by 2027-05-23
+- Follow-up review meeting: 2027-06-05
+
+Sam H: I'll ping #product-observability to align dashboards and user-impact queries. Please paste PRs/ticket links here so I can close the loop. :thumbsup:

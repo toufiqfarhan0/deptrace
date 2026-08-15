@@ -1,0 +1,28 @@
+incidents
+
+deploy-bot: Canary alert for release r-2026.03.17 — model=redwood-v2-small, region=us-west1. 95th latency 3.1s (baseline 0.8s), error rate 7%. Canary weight: 10%. Trigger: latency+5xx threshold.
+jamie (oncall): oncall acked, looking. Paging oncall team.
+maya (runtime): grabbing logs and runtime metrics now. Any customer reports?
+sam (release): no customer tickets yet, but traffic is real. Recommend kill-switch if error rate keeps rising.
+jamie (oncall): errors are 500/internal + kv-cache overflow on grpc backend. snippet: ```ERROR kv_cache: write overflow key_len=1024 shard=3```
+ryan_ops: I'm starting a controlled drain of canary traffic. Will flip routing to fallback pool, one step at a time.
+sam (release): prepping flag flip: `rwctl featureflag set canary_release_enabled false --release r-2026.03.17` — hold for confirmation from oncall.
+jess (sre): suggest automated rollback first (policy) then manual if needed. Can we confirm rollout automation didn't change kernel params?
+maya (runtime): quick check: runtime build 2.1.4 shipped with a KV allocator tweak. Seeing higher tail-latency on small-GPU nodes. Could be commit 8f4b9.
+jamie (oncall): proceed with flag flip. sam please execute when drain hits 2%.
+sam (release): flipping now. `> rwctl featureflag set canary_release_enabled false` — API returned 200.
+deploy-bot: Feature flag update acknowledged. Canary weight -> 0% by policy. Autoscaler paused.
+ryan_ops: confirmed routing change applied. k8s patch: `kubectl -n inference patch svc traffic-weight` — new weights: stable=100, canary=0.
+jess (sre): kicking off smoke tests against stable endpoint. `curl -sS https://stable.us-west1.redwood/health` -> 200, lat 0.92s.
+maya (runtime): telemetry: 95th latency back to 0.85s across region. Error rate dropped to 0.3%.
+\amaje? (typo skip):
+jamie (oncall): monitoring for 15m. No customer-facing incidents opened, recommend Sev2 until we confirm no regression.
+sam (release): noted. Creating incident ticket and postmortem stub: INC-2026-4323. Assigning runtime + release owners.
+ryan_ops: add a note to check 2.1.4 allocator change and compare perf on small nodes vs large nodes.
+jess (sre): will run a quick canary replay in staging to reproduce. If reproducible, schedule rollback of runtime build.
+maya (runtime): captured traces and flamegraphs; uploading to S3: s3://redwood-incidents/4346127777/traces.tar.gz
+jamie (oncall): rollback complete confirmed at 4346130300. SLOs returned to baseline. Keeping watchers for the next 30m. :thumbsup:
+sam (release): thanks team. Please add any follow-ups to INC-2026-4323. I'll coordinate postmortem and customer comms if needed.
+jess (sre): +1. Will post initial findings in the ticket within 2 hours.
+deploy-bot: Incident channel will be kept open for updates. Automated alerts disabled for this release until postmortem.
+jamie (oncall): handing back to rotation in 30m if stable. Closing thread if no further deviations.

@@ -1,0 +1,17 @@
+eng-infra
+
+ash: Heads up — we got a recurring p95 sawtooth in us-east on small-chat models starting ~03:15 UTC. pattern looks like 10m quiet, 2m spike repeatedly. :confused:
+kira: I saw that. packet capture shows rx coalescing bursts + NVMe queue spinups at the start of each spike window. looks correlated with nightly data-prep batches landing on mixed hosts.
+omar: affected hosts are fractional slices with mixed tenants. when batchers wake they kick NVMe and PCIe DMA, MIG context switch amplifies tail.
+ben: quick mitigation: carve out 2-3 nodes as dedicated warm-pool for low-latency tenants during peak window. ops-bot can do a short-lived carveout. cost estimate: ~0.7% cluster capacity for that hour.
+ops-bot: autoscaler: warm-pool requested by @ben — 3 nodes in us-east provisioning (job id wp-1723).
+ash?: (typo)
+ash: ignore previous msg, typo.
+kira: also tried a single-host probe: turned off IRQ coalescing (ethtool -C) and bumping RPS; first-token latency improved ~20% for that tenant. command: ```sudo ethtool -C eth0 rx-usecs 125 rx-frames 1```
+ash: good. but NVMe stalls still showing. suggestion: reduce background IO queue_depth for batchers on mixed hosts and prefer moving heavy IO jobs to dedicated batch pool.
+omar: long-term idea: allocator should include a noise_score from infra telemetry (irq_rate, nvme_stalls, pcie_retries). expose it as soft-affinity: latency-sensitive get quiet-host tag, batchers get low-priority tag. if quiet-host pool < threshold, prefer dedicated-slice fallback.
+ben: +1. we should surface dedicated-fallback cost to finance and product (so they understand SLA tradeoffs).
+kira: action items: 1) ops: keep warm-pool for 1h and monitor (ops-bot) 2) ops: apply ethtool/RPS change to one rack and measure (ash) 3) infra: start exporting infra.noise.* metrics to prometheus (omar) 4) allocator: prototype quiet-host soft-affinity scoring and fallback path (ben).
+ash: i'll coordinate with finance on cost model for fallback.
+ops-bot: autoscaler: warm-pool (job wp-1723) active — will auto-shrink after 60m if p95 stable.
+ash: thanks all, update this thread with any probe numbers. :eyes:

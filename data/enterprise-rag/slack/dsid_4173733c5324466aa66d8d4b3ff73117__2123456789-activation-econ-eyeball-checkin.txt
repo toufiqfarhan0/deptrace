@@ -1,0 +1,26 @@
+customer-success
+
+maya: heads up — Fjordly QBR landed for next Wed. want a quick eyeball on token econ + onboarding health so the slides are tight
+ashley: sounds good. main goals: confirm embedding footprint, project spend for next qtr, and list any onboarding blockers we need to surface to renewals
+maya: onboarding update: 85% through enablement checklist; prod rollout scheduled but they're seeing an unexpected embed batch job that spikes usage overnight
+devin: embedding spike is from nightly ETL -> 3x baseline. recommended mitigations: rate-limit, shift batches to off-peak, enable prefix caching. shared quick config snippet to test:
+devin: ```yaml
+batching: smart
+kv_cache: true
+max_concurrent_requests: 6
+```
+samir: good; what does current burn look like? we need a conservative forecast for the QBR deck
+maya: current monthly tokens ≈ 18M. weekly trend +15% over last 3 weeks. if no changes, naive proj = +40% qtr-over-qtr
+ashley: propose immediate actions: soft budget alert at 22M/mo, hard throttle at 30M/mo, and schedule a focused enablement call to optimize their batch windows and caching
+luis: quick note on quantization — since they're mostly 2k sequences, 8-bit quant might not move the needle much but we can run an eval to be sure
+maya: capture feedback from their PM: they want clearer per-route cost breakdown in Console and a sample canary policy to avoid surprise spikes during rollouts
+samir: for the slides, can someone run a sensitivity sim showing savings if we enable prefix caching (est 25% token reduction) and smarter batching (est 18%)?
+maya: I'll run a 30-day simulation and add a before/after table to the cost slide
+ashley: owners: luis — quant eval; devin — config doc + snippet plus a one-pager; maya — deck + forecast numbers; samir — draft budget alert thresholds and the runbook
+devin: I'll push the config example to their onboarding folder and ping their eng lead Thursday
+luis: I'll run the quant eval Thursday EOD and post results in the thread
+maya: who will present the mitigation ask on the QBR? @ashley? :raised_hands:
+ashley: happy to present. i'll prepare a 5-min runbook plus a single "ask" slide for renewals (budget + enablement cadence) :thumbsup:
+cs-bot: reminder — QBR prep checklist due in 48h
+maya: thanks all — i'll update the deck once luis/devin have numbers and drop a short executive summary
+ashley: great work team, will follow up with a slide draft by EOD tomorrow :rocket:

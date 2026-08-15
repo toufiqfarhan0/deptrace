@@ -1,0 +1,66 @@
+eng-runtime
+
+elaine: quick FYI — after the kernel switch in prod last night we saw prefill hit-rate collapse on a few clusters during bootstrap. digging in, want to sync on warmup shaping.
+marco: which kernel/version rolled? any correlating deploy event id?
+elaine: rolled runtime v3.0 (kernel switch from v2.9). deploy id d-2026-0318-03:12. hit-rate for prefix cache dropped from ~0.72 -> ~0.28 over the first 8 minutes post-deploy.
+marco: ouch. did batch occupancy change? could be batching heuristic + kernel latency interaction.
+elaine: yes — batch occupancy median fell 1.8x; p95 latency for short prompts +120ms.
+warmup-bot: scheduled job "deploy-warmup-run" started by elaine at 3745012400
+tara: do we have the profiler traces? KV eviction logs? curious if key normalization changed (we swapped a hashing kernel last month).
+elaine: attaching small snapshot (paste below). KV keys look identical, but the prefix fingerprint distribution widened (more unique keys during warmup). suspect probe traffic wasn't shaped, so we ended up thrashing small hot sets.
+
+--- metrics snapshot ---
+prefill_cache_hitrate: 0.72 -> 0.28
+batch_occupancy_median: 12 -> 6.6
+p95_latency_short: 120ms -> 240ms
+evictions_per_min: 5 -> 38
+degraded_nodes: 3/24
+--- end ---
+
+marco: that eviction spike is the killer. If our kernel increased single-request latency slightly, continuous batching window shrinks and warmer traffic can fail to build a stable KV footprint.
+nick: can we shape the warmers into an exponential ramp instead of flat-rate? flat bursts coincide with autoscale events and cause eviction.
+tara: agreed. propose: deploy-time warmer with three changes: 1) jittered exponential ramp (to avoid synchronous probes), 2) key-pruning to bias toward most-likely prefixes, 3) detect kernel switch and reduce probe concurrency for 10m.
+elaine: sketch for the config I used (current):
+
+```
+jobs:
+  - name: deploy-warmup-flat
+    rate: 500/s
+    duration: 10m
+    keyset: prefix.top10000
+    concurrency: 50
+```
+
+elaine: replacing with this proposal for next rollout:
+
+```
+jobs:
+  - name: deploy-warmup-ramp
+    schedule: on-deploy
+    pattern: exponential
+    start_rate: 20/s
+    max_rate: 400/s
+    duration: 15m
+    jitter: true
+    key_selection: topk-weighted(5000)
+    concurrency_cap: 12
+```
+
+marco: love the concurrency cap. also add a feedback loop: if prefill_hitrate < 0.5 after 3m, reduce concurrency by 50% and extend ramp.
+tara: can we tie key_selection to recent production traces instead of static topk? sample last 1h top prefixes per region.
+elaine: yes — runtime can feed a regional hotlist to warmers. that should keep key entropy constrained.
+
+nick: other idea: split warmers by kernel-compatibility class. for kernels with known small latency regressions, we run a slower ramp and prefer larger batches to amortize overhead.
+marco: right — we can annotate kernel builds with a warmup_profile label so the deployer picks shape automatically.
+
+warmup-bot: deploy-warmup-run completed: ramped 0->350/s over 12m, measured hit-rate climb to 0.66 at end; no eviction spike. logs: /prod/warmup/3745012400/log
+elaine: preliminary good sign. need a formal test in canary clusters next week.
+tara: ticket it: add adaptive warmer, kernel-profile labels, and regional hotlist feed. I'll own tests. @nick can you add the label hook to the deployer?
+nick: yep, will PR today. also adding a small unit test to validate concurrency cap enforcement.
+marco: follow-up: add a profiler gating job that runs a micro-benchmark after kernel switch and fails canary if batch occupancy drops >20%.
+elaine: agreed. action items: (1) PR warmup config change to pattern=exponential (elaine), (2) deployer kernel-profile label (nick), (3) hotlist feed via trace sampler (tara), (4) profiler gate (marco). aim to land by Fri.
+
+elaine: thanks all. will post the canary results here.
+nick: :thumbsup:
+tara: :raised_hands:
+marco: keeping an eye on telemetry dashboards. good catch.

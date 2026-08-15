@@ -1,0 +1,49 @@
+support
+
+Ava Nguyen: FYI customer hitting sporadic 500s when saving a model config in the Console. They provided a screenshot but no network logs. Can someone post the exact HAR + console capture steps we want them to follow?
+
+Samir (customer): seeing the error when I hit Save, says "internal server error" and request id header looks like `req_1a2b3c`. Happened twice in a row.
+
+Mel (support): thanks Samir — sorry about the trouble. We need a browser network HAR + console log so eng can correlate the request-id and stack traces. Quick checklist for you: capture network (preserve log), reproduce the save, export HAR + console, and upload to the support case. I'll DM upload link after you confirm.
+
+Jordan (eng): adding a couple specifics so the HAR is actionable: we need the full request/response for the failing POST, including response headers (X-Request-ID or x-request-id). Also please include the browser console output (uncaught exceptions). If you can extract the request id from the response header that helps — paste it in the support thread.
+
+Ava Nguyen: Mel — here's the short capture guide we usually send. Use Chrome/Edge for best HAR fidelity. Keep it concise in the case: steps, request-id, repro steps, and time.
+
+Support Bot: [automatic message] If you want to include a curl repro, this helper will redact your token: `support export-curl --with-headers --redact Authorization`
+
+Mel (support): Samir, please follow these steps exactly (paste into a single message or upload as a zip):
+1) Open Chrome DevTools (F12 or Cmd+Option+I on Mac).
+2) Go to Network tab -> check "Preserve log".
+3) Go to Console tab -> right-click -> "Preserve log" as well (or ensure errors are visible).
+4) Reproduce the failing Save action in the Console UI.
+5) In Network tab, find the failing POST (filter by `POST` or by endpoint `/api/v1/models/save`). Click it -> Headers -> note `x-request-id` in response.
+6) Right-click on any request in Network -> Save all as HAR with content.
+7) In Console tab -> right-click -> Save as -> copy console text into a file (or take screenshot).
+8) If comfortable, export a curl repro: right-click the network request -> Copy -> Copy as cURL (bash). Edit the curl to redact Authorization, replace with `<REDACTED_TOKEN>` and attach.
+
+Jordan (eng): If you can't upload the HAR, paste the failing request/response headers + the response body (JSON) and the exact time (UTC). We can search logs for the x-request-id. Also include the browser and OS (Chrome 113 on macOS 12 etc).
+
+Samir (customer): done. Uploaded `har+console.zip` to the case. Response header shows `x-request-id: req_1a2b3c`. Browser: Chrome 115.0.
+
+Ava Nguyen: great — Jordan, can you look for `req_1a2b3c` in prod logs? Time: 2024-11-15T16:42:11Z (from Samir).
+
+Jordan (eng): will do. Quick note for future repros — if the user can also paste the cURL we can hit the same backend from our side and confirm the 500 without UI. Example we ask them to redact token and send: 
+```
+# paste-redacted-curl
+curl 'https://api.redwood-inference.com/v1/models/save' \
+  -H 'Authorization: Bearer <REDACTED_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  --data-binary '{"model": "my-model", "config": {...}}' \
+  --compressed
+```
+
+Mel (support): onboarding tip for customers on privacy: remind them to remove any PII from request bodies/screenshots. If the payload is large, they can trim to the minimal repro.
+
+Jordan (eng): found the request in logs by x-request-id — posting internal note: 500 caused by null pointer during config validation on save endpoint. I'll open a patch and link back.
+
+Ava Nguyen: thanks Jordan — once patch is up can we ask Samir to retry with the same payload? Also add a short note for the customer: "try again in ~10 minutes, we rolled a fix".
+
+Samir (customer): confirmed after 20 minutes it worked, no more 500s. Thanks everyone! :tada: 
+
+Mel (support): marking the case resolved, will include the HAR guide in our canned responses for similar future tickets. :thumbsup:

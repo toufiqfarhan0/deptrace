@@ -1,0 +1,88 @@
+eng-oncall
+
+IncidentBot: [P1] decode tail latency spike detected in us-west-2 for streaming endpoints. p95 up 120ms -> 450ms, p99 up ~800ms. Symptoms: streaming stalls, intermittent timeouts, kernel paging counters increasing. Alert: 2024-06-12T09:12:14Z
+
+Alex (SRE): paging + tail. I'm paged, taking lead. sending immediate triage steps. pinging runtime and infra.
+
+Jamie (Runtime): seeing same in prod telemetry. correlate with a kernel/compilepath deploy that finished ~09:05 UTC. suspect: new compilepath + TRT/FlashAttention build.
+
+Kim (Infra): checking node metrics now — NVMe read IOPS spikes + elevated major pagefaults on a subset of GPU hosts. attaching quick dmesg dump (snip).
+
+Alex (SRE): can we confirm which build rolled? DeployBot, what went out before 09:12?
+
+DeployBot: rollout complete: runtime-infer:v2.4.7 -> infer-runtime-prod (09:05:33 UTC). Components: TRT 8.1 upgrade, flashattn patch, compiler flag set: -Ofast -march=native.
+
+Jamie (Runtime): that's the one I flagged last week as higher perf on short sequences. But long-seq KV cache + new kernels can change pagewalks. Repro on staging with long sequences shows decode stalls and occasional kernel pagefault spikes.
+
+Taylor (CS): customers A,B,C reported streaming hiccups starting ~09:10. One big customer hit repeated reconnects. CS is triaging support tickets.
+
+Alex (SRE): short plan: 1) temporarily route affected model traffic to fallback variant on older runtime, 2) if insufficient, rollback runtime:v2.4.7, 3) mitigate paging by disabling flashattn at runtime env if possible.
+
+Jamie (Runtime): steps to route traffic to fallback (quick):
+```
+# change route in router service
+curl -X POST https://control-plane/api/v1/route -d '{"route":"/v1/generate","model":"gpt-rl-open-13b-quant","target":"gpt-rl-open-13b-quant-compat"}' -H 'Authorization: Bearer $ADMIN_TOKEN'
+```
+
+Kim (Infra): pre-check: can we do a rolling rollback without violating capacity/N+1? If we roll back too fast we'll drop traffic. Suggest canary route 10% -> 50% -> 100%.
+
+Alex (SRE): doing 10% canary to fallback now. Monitoring p95/p99 and paging.
+
+(5m later)
+
+Alex (SRE): canary at 10% applied. immediate drop in p99 for canary slice. p99 for canary down ~350ms -> 210ms. Bulk still high.
+
+Jamie (Runtime): trying an env override to disable flashattn on a handful of nodes (hotfix):
+```
+# set env var on runtime pods
+kubectl -n infer set env deploy/runtime RUNTIME_FLASHATTN=0 --selector=kernel=2.4.7
+```
+
+DeployBot: env change published to 8 pods matching selector (09:30 UTC).
+
+Kim (Infra): kernel-level knobs applied: increased tmpfs mmapping and tuned page-cluster on those hosts. dmesg shows reduced pagefaults on affected pods.
+
+Alex (SRE): p99 trending down where flashattn disabled + canary routing. suggests flashattn or compiler flags interacting with compilepath.
+
+Taylor (CS): CS update: two customers moved to fallback variant and confirm improved stability. One customer still degraded (long prompt workloads). flagged for SRE follow-up.
+
+Ravi (PM): please capture what changed in 2.4.7 and surface to releases. We need rollback decision soon. What's risk if we wait 30m?
+
+Jamie (Runtime): risk: continued customer impact + SLO breaches. But rollback will re-introduce old TRT build; risk to short-seq latency improvement. I'd prefer rolling back the kernel compilepath only if mitigations don't stabilize.
+
+Alex (SRE): recommendation: progressive rollback of runtime:v2.4.7 at node-pool level, 20% steps, monitor SLOs and NVMe/pagefault counters. If rollback not possible quickly, expand non-flashattn env override to more nodes.
+
+(20m later)
+
+Alex (SRE): rolling runtime rollout rollback step -> runtime:v2.4.6 (20% nodes) initiated.
+
+DeployBot: rollback job queued, expected 8m per step.
+
+Jamie (Runtime): while rollback proceeds, upload a minimal repro to the issue: long-seq synthetic prompt that triggers decode tail within 30s. Include kernel perf events and timestamps.
+
+Alex (SRE): attaching logs snippet:
+```
+PROD: host gpu-12 kernel=2.4.7 pid=4213 decode stalled 00:00:02.345
+pagefaults: major=18 minor=342 dcache_miss=... kv_cache_evictions=12
+NVMe io: read_latency=6.3ms throughput=120MB/s
+```
+
+Kim (Infra): seeing rollback slice show improved pagefault profile already. p99 for rolled slice down to ~200ms. Full system p99 slowly decreasing as more nodes roll back.
+
+Taylor (CS): customer impact note: we upgraded incident severity to P1, notified affected customers with ETA ~40m for full mitigation. keeping them updated.
+
+Alex (SRE): current action items:
+- Continue rollback in 20% steps (Alex + Kim)
+- Expand RUNTIME_FLASHATTN=0 override if rollback stalls (Jamie)
+- Collect perf traces from affected hosts and run perf diff vs 2.4.6 (Jamie + Alex)
+- CS updates and incident timeline for customers (Taylor)
+
+Beth (Oncall): I'm next on-call in 45m. I'll take over the post-mitigation verification and RCA coordination. Alex handing off.
+
+Alex (SRE): handing off to Beth. brief: kernel/compilepath 2.4.7 correlated with p99 tail. rollback in progress, flashattn disable proved effective on canary. collect traces for RCA.
+
+Beth (Oncall): ack, taking over. I'll confirm rollback completion and queue postmortem.
+
+Ravi (PM): thanks. please tag release/2.4.7 and add blocking note: revert compile flags until we have perf trace analysis. prioritize investigation of -Ofast and march flags vs pagewalk behavior.
+
+(End of thread)

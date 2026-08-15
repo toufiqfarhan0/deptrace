@@ -1,0 +1,40 @@
+finance
+
+Sofia (Vendor Ops): FYI vendor BlockLeaf sent an invoice we need to review — they're asking to be paid in BTC and also asked whether to submit a W-9 or W-8BEN-E. invoice screenshot: https://files.redwood/blockleaf/invoice-0426.png
+
+Ava (Finance): Crypto payment doesn't change tax docs. We need to determine the legal invoicing entity first — if it's a US payee -> W-9, otherwise W-8BEN-E. Also check the VAT ID and country for reverse-charge. Can you paste the invoice header?
+
+Liam (Tax): Agree. If vendor is EU/UK with a valid VAT ID and B2B supply, we typically apply reverse charge (no VAT). If it's a US person we need W-9 and gross-up may apply in certain jurisdictions.
+
+Sofia (Vendor Ops): invoice header snippet:
+```
+Invoice: 2026-0426-77
+Bill To: Redwood Inference Inc.
+Seller: BlockLeaf Ltd
+Seller Country: United States
+VAT/Tax ID: NL123456789B01
+Payment terms: 14d - BTC wallet
+Notes: "Founder is US, company is UK/Netherlands operations"
+```
+
+Priya (AP): We cannot process payment until tax docs are in place. Please place the invoice on hold and ask vendor for: 1) legal entity registration (certificate of incorporation), 2) VAT/VIES screenshot if EU VAT ID, 3) bank/legal name tied to crypto payouts, 4) W-9 or W-8BEN-E depending. Hold reason: TAX_DOCS_REQUESTED.
+
+Marco (BlockLeaf): Hi team — we're BlockLeaf Ltd. We're registered in the UK but operate nodes from NL. We invoice from our US branch sometimes. We don't have a W-9 to hand over because we bill from the UK entity. Also, we're asking if Redwood will gross-up payments because our payment processor said US-based customers might withhold on certain IP/royalty lines. We prefer crypto because it simplifies cross-border settlement.
+
+Liam (Tax): Crypto is irrelevant to documentation requirements. You need to confirm which legal entity issued the invoice. If the invoice is from the UK company with a valid UK VAT ID, then: (a) provide certificate of incorporation; (b) send VIES/UK VAT verification screenshot; (c) sign and return W-8BEN-E only if you assert foreign status for US-source payments (we won't accept W-9 from a foreign entity). If invoice is from a US entity, we need a W-9. Gross-up: if you're non-US and the payment is for services performed in the US, we might have withholding exposure, but that's rare for SaaS/inference fees — please state the invoice nature (service vs royalty).
+
+Sofia (Vendor Ops): @Marco can you confirm the invoice issuing entity exact legal name and registration number? Also ask for the VIES link for that VAT ID.
+
+Marco (BlockLeaf): Confirming: invoice issued by "BlockLeaf Ltd (UK)" — CRN 12345678. VAT ID in the invoice was a legacy Netherlands VAT while we were testing NL node billing — my bad, sorry. We can reissue from UK entity and attach company docs. For withholding: we requested gross-up proactively because our payroll/payments team flagged potential US backup withholding if they detect a US founder. But the invoice is for platform access (services).
+
+tax-bot: Automated VIES check: VAT NL123456789B01 - status: INVALID (last checked 2026-04-25 09:12 UTC).
+
+Ava (Finance): Ok — next steps: 1) vendor to reissue invoice from the UK entity (BlockLeaf Ltd) with UK VAT ID or blank VAT if not VAT-charged, 2) provide Certificate of Incorporation (UK) and official VAT verification (gov.uk or VIES screenshot), 3) complete W-8BEN-E if non-US payee or W-9 if US payee. No payment until docs received.
+
+Priya (AP): I'll add hold code + note in accounting: "Awaiting vendor tax docs; VIES failed; possible entity reissue". Please cc ap-docs@redwood for upload when vendor replies.
+
+Marco (BlockLeaf): Understood. We'll reissue and attach docs today. We'll skip gross-up for now unless you tell us withholding will be applied.
+
+Liam (Tax): If you reissue from UK entity and provide W-8BEN-E + incorporation + valid VAT, no gross-up normally required. If anything looks like royalties/US-sourced fixed royalties we will follow up. Thanks all. :thumbsup:
+
+Ava (Finance): Thanks — marking this thread as blocked on vendor docs. Sofia please update when uploaded.

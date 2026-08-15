@@ -1,0 +1,93 @@
+incidents
+
+maria_g: Heads up — around 12:05 UTC we saw a big provisioning spike in eu-west1 (sudden +120 GPU pods). Shortly after, a ton of our per-node and KV-cache metrics stopped reporting. Prometheus shows scrape failures for the eu-west1 job.
+
+oncall-sre: I see the alert: `prometheus_scrape_errors > 0` in eu-west1. Are pods restarting? any node churn? :thinking_face:
+
+maria_g: Yep, nodepool autoscaler kicked in aggressively and nodes replaced. Looks like during node recreation the node-exporter DaemonSet didn't bind to the new nodes due to a relabel rule we added last month (label check: `node-role.kubernetes.io/gpu`), the new nodes came up with `role: gpu-node` (mistmatch).
+
+aj_pat el: ouch. That relabel mismatch would cause all scrape targets to drop. Can you paste logs from prometheus and a sample node?
+
+maria_g: Prometheus logs (excerpt):
+```
+level=error ts=2026-07-21T12:07:12Z caller=scrape.go:912 component="scrape" job="eu-west1-nodes" err="endpoint disabled by relabeling"
+```
+kubectl get nodes -l role=gpu-node -o wide | head -n 5:
+```
+NAME                           STATUS   ROLES    AGE     VERSION
+gpn-euw-02-7f4c9               Ready    <none>   4m      v1.26.3
+```
+
+kevin_huang: That matches — relabel config now expects `node-role.kubernetes.io/gpu` and those nodes don't have it. We changed infra onboarding labels a week ago. We should either update relabel config or add compatibility labels on new nodes.
+
+oncall-sre: Agreed. Immediate mitigation: 1) relax prom relabel to include `role=gpu-node` temporarily, 2) restart prometheus to re-evaluate targets, 3) re-add node label patch automation. I can run 1+2 now.
+
+maria_g: +1, also we lost traces for requests routed through eu-west1 — Jaeger shows no spans for a ~15m window. Could be the same root cause (agent exporters not scraping).
+
+oncall-sre: executing temporary relabel patch and rolling restart. Running:
+```
+# patch prometheus relabel config (dry-run shown)
+kubectl -n monitoring patch configmap prometheus-k8s --patch '{"data":{"relabel_rules.yaml":"- source_labels: [__meta_kubernetes_node_label_role]\n  regex: (gpu|gpu-node)\n  action: keep"}}'
+# restart prometheus pods
+kubectl -n monitoring rollout restart statefulset/prometheus-k8s
+```
+
+infra-bot: deploy-bot started rollout for prometheus-k8s at 2026-07-21T12:12:03Z (rollout id: 3e9a7f).
+
+deploy-bot: Rollout in progress — 2/3 replicas updated.
+
+aj_pat el: While that's rolling, we should shift non-critical inference traffic out of eu-west1 until metrics are healthy. Maria, can you trigger traffic weight adjustment for the regional router? 
+
+maria_g: Doing a temporary traffic shift: 30% -> us-west2, 70% -> eu-west1. Using routing API:
+```
+POST /v1/routing/update
+{ "region_weights": {"eu-west1": 0.7, "us-west2": 0.3} }
+```
+
+kevin_huang: Note — cross-region egress will incur extra cost. Expect +$4k/day if shift holds for several hours. Keep finance in the loop.
+
+oncall-sre: Prometheus pods are back, starting to re-discover targets. I'm seeing targets for `eu-west1` come back with `UP`. KV-cache and per-GPU metrics are trickling in.
+
+maria_g: Good. Can we add an alert for missing critical metric families (eg `gpu_utilization`, `kv_cache_hit_ratio`) that triggers before full `scrape_errors`? We had a blind spot because scrape errors were aggregated and low-level families vanished without a separate signal.
+
+kevin_huang: We can add `absent_over_time(gpu_utilization[5m]) > 0` style alerts. Also add synthetic exporters check that validates required metric names exist.
+
+aj_pat el: Longer term we should: 1) make relabel rules tolerant to legacy label variants, 2) add an admission webhook to normalize kubelet labels for GPU nodes, 3) add a CI gate that deploys a temporary exporter on new nodepools and verifies scrape.
+
+yuki_nakamura: Also suggest instrumenting node creation job to emit `node_label_mismatch` event to our event bus so ops can react before customers notice. And add a post-deploy smoke test that runs 10 synthetic inference requests and verifies spans and metrics.
+
+maria_g: Filing tracking ticket: INFRA-3419 (instrumentation + relabel fixes + smoke tests). I'll add owners and PR checklist.
+
+infra-bot: INFRA-3419 created by maria_g — https://redwood.atlassian.net/browse/INFRA-3419
+
+oncall-sre: Summary for now: mitigations applied, prom relabel relaxed, prometheus restarted, traffic partially shifted. Observability gap window ~12:05–12:20 UTC. No data loss for persisted logs; traces missing for ~15m during peak.
+
+kevin_huang: Action items: 
+- AJ: admission webhook + CI gate (ETA 3w)
+- Maria: infra ticket + smoke tests (ETA 1w)
+- Oncall-sre: add `absent` alerts and synthetic exporter probe (ETA 2d)
+- Yuki: event bus emission for node_label_mismatch (ETA 2w)
+
+aj_pat el: I'll start a draft PR for the webhook today.
+
+maria_g: Thx everyone. Postmortem requested once INFRA-3419 has PRs merged. We should also run a one-off cost forecast for the traffic shift and include it in the incident notes.
+
+kevin_huang: I'll loop in finance and send quick numbers.
+
+yuki_nakamura: One more ask — please record the sequence in the incident doc and include the exact relabel snippet that caused the drop so we can avoid copy/paste mistakes in future.
+
+oncall-sre: Copy. attaching current relabel snippet here for the postmortem: 
+```
+- source_labels: [__meta_kubernetes_node_label_node-role_kubernetes_io/gpu]
+  regex: true
+  action: keep
+```
+(we'll replace with tolerant variant in PR)
+
+maria_g: closing loop — monitoring shows normal scrape rate again and spans returning. Reverting traffic weights back to normal over next 30m. Will verify post-shift before fully closing. :white_check_mark:
+
+deploy-bot: Rollout complete for prometheus-k8s at 2026-07-21T12:21:18Z (rollout id: 3e9a7f)
+
+maria_g: Incident note: observability instrumentation gap due to relabel mismatch during large nodepool churn; mitigations applied; INFRA-3419 filed. Follow-ups assigned.
+
+oncall-sre: Thanks all. Marking incident as resolved for now — we'll track mitigation PRs in the ticket. :thumbsup:

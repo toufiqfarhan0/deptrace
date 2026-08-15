@@ -1,0 +1,39 @@
+eng-platform
+
+maria: Starting a small experiment: surface a 'route cost explorer' that attributes token spend down to the query-path level (route -> chosen_sku -> prefetch impact). Thoughts on telemetry and defaults?
+
+lee: Love it. For telemetry: we need stable qpath_id + final_sku. Sampling: exact for last 15m, then sampled aggregates for 24h+, otherwise dashboard jitter is annoying.
+
+ton y: tiny nit: for fallback cases, include both chosen_sku and fallback_sku, plus fallback_reason. We mis-assign cache hits today when fallback swaps quantized v unquantized.
+
+maria: Agreed. Plan: emit compact event every request: qpath_id, route, tokens_in, tokens_out, cache_hit, final_sku, fallback_reason (nullable). Store full lineage separately keyed by qpath_id.
+
+ashley: UX: default external view should show "credited owner" to avoid billing confusion. Internals get 'apportioned view' toggle. Show confidence band for sampled data.
+
+lee: Add export requirement: finance wants CSV with qpath_id, credited_sku, apportioned_cost_usd, credited_cost_usd, sample_method. Make export behind admin route.
+
+maria: We'll add POST /internal/exports/qpaths with filters (time range, routes, include_apportioned boolean). Exports include metadata about sampling windows.
+
+ops-bot: deploy-bot: schema "qpath-compact-v1" rolled to canary cluster 'canary-eu-1' :rocket:
+
+lee: Implementation detail: prefer reference-id approach (qpath_id) instead of inlining full lineage per event to keep ingest size down. We'll materialize lineage docs asynchronously.
+
+ton y: For the simulation widget: slider to move traffic percent between SKUs and show projected delta in monthly tokens and expected cache-hit delta. Use recent 7d sample to base projection.
+
+maria: We'll surface two numbers: estimated monetary delta and expected delta in cache-savings. Also show uncertainty from sample variance.
+
+ashley: And a small help blurb explaining how apportioned savings are computed vs credited. Link to RFC in panel footer.
+
+lee: I'll open telemetry PR to add qpath_id emission and lineage table. Ping when canary reports green.
+
+ops-bot: deploy-bot: canary 'canary-eu-1' reports schema healthy in 2m :white_check_mark:
+
+maria: filing short RFC now with sketches and export CSV schema. If anyone objects to apportioned default for internal, say now.
+
+ton y: +1 apportioned default for internal.
+
+ashley: +1
+
+lee: +1
+
+maria: thanks all!

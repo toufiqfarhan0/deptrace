@@ -1,0 +1,41 @@
+eng-oncall
+
+OpsBot: :rotating_light: Pager triggered: router.fallbacks spike in us-west. alert_id=INC-2323. Affected pool: dedicated-dp-west-3. 502_rate=27% (1m). Possible fallback loop detected — paging oncall. https://incidents.redwood/INC-2323
+Mira: oncall Mira here, looking now.
+Chao: I‘m pulling router + pool telemetry. I see a variant flip to quant-v2 around +00:00:08 then autoscaler signalled scale-down. pool shows 0 capacity for that variant (looks like a metric read issue). Query: `sum(pool_capacity_free{pool="dedicated-dp-west-3",variant=~".*"}) by (variant)` returns zeros for quant-v2 only.
+Sam: which customers are hitting it? 5xx or timeouts?
+Chao: early list: AcmeApp, Lattice, internal-loadtest. AcmeApp error rate up to ~60% at ingress. Mostly 502/504 from router.
+Jordan: OK — mitigation plan: 1) flip fallback policy for affected routes to prefer-hosted (force routing off dedicated pool), 2) pin route to fp32-v1 for AcmeApp where possible, 3) pause autoscaler on dp-west-3 and manually add nodes to prevent blackholing while we fix metric source.
+Mira: copying mitigation steps. I can run the policy flip now. Sam — can you notify CS for AcmeApp?
+Sam: on it, pinging @cs-team. Also enabling temporary 1-min retry guards in API clients (recommendation).
+Chao: running commands to pin & change policy — posting logs:
+```
+# change fallback policy
+curl -X PATCH https://console.redwood/api/v1/routes/acmeapp-route -H "Authorization: Bearer $ADMIN" -d '{"fallback_policy":"prefer_hosted","pinned_variant":"fp32-v1"}'
+# pause autoscaler
+rdctl autoscaler pause --pool dedicated-dp-west-3 --reason "incident-INC-2323"
+```
+Response: 200 OK. Policy applied. Autoscaler paused.
+OpsBot: Deploy bot: routing policy change applied by Mira (deploy/4567).
+Sam: after policy change, host routing % to hosted increased from 12% -> 89% in ~30s. Error rate dropping from 27% -> 9%. Monitoring. :thumbsup:
+Mira: leaving a 30m watch, will hand off to Sam in 25. If it resurfaces ping me.
+Jordan: initial root-cause notes: looks like a metric label rename in capacity exporter pushed in last deploy: `pool_capacity_free` -> `pool_capacity_available`. Router's fallback decision logic still queries the old metric and thus sees 0 capacity for quant-v2 (false negative). That forced routing to other regions/variants causing overload and apparent blackhole when autoscaler reacted.
+Chao: confirmation: capacity-proxy logs show `metric fetch error: series not found: pool_capacity_free{pool="dedicated-dp-west-3",variant="quant-v2"}` at 15:03:21 UTC. New metric existed but with different label set.
+Sam: customer impact summary for CS: AcmeApp spikes 60% failure for ~4 minutes, Lattice ~12% failure, internal tests flaked. No data exfiltration, only availability.
+Jordan: action items (assignments):
+- CHG-1212: revert metric rename in capacity exporter and add alias -> assigned to Chao
+- CHG-1213: add routing guard to router decision code: require capacity >= 3 before marking variant as available -> assigned to Jordan
+- CHG-1214: add canary test that asserts router sees capacity metrics in staging post-deploy -> assigned to Mira
+- CHG-1215: incident postmortem write-up and customer comms -> assigned to Sam
+Please create tickets and link to INC-2323.
+Chao: created CHG-1212, PR opened with rollback + compatibility shim. Rolling out to capacity-proxy staging for validation.
+Mira: status update: traffic stable, 502s down to 3% baseline. Keeping autoscaler paused for 10m to observe.
+OpsBot: Incident INC-2323 status -> mitigated. Autoscaler paused. Targeting full resolve after metric rollback validated.
+Sam: CS notif: AcmeApp notified of transient outage window and we offered rollback assistance; internal SLA credits discussed.
+Jordan: long term: add metric-schema contract to deployments + CI check. Also add a small circuit-breaker to router fallback to avoid cross-region mass-fallback in <30s windows.
+Mira: handing off to Sam for the watch. Sam — you have the pager.
+Sam: taking the pager. will escalate if error >10% for 10m.
+OpsBot: Incident closed: resolved 00:12:23 after mitigation applied; follow-ups tracked in CHG-1212..1215.
+Mira: thanks team. good coordination. :heart:
+Jordan: filing postmortem draft now.
+Sam: will follow up with customer comms summary + timeline.

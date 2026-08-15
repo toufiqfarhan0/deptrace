@@ -1,0 +1,15 @@
+product
+
+maria: Quick sync — I sketched a horizon plan for routing + tenant isolation through H2, and I need product/arch/sales input. TL;DR: prioritize lanes for model-aware routing, geo residency, and graceful fallbacks. draft: https://redwood.internal/doc/horizon-routing-plan :eyes:
+raj: reading it now. high-level Q — do we fold model-aware routing into the same policy layer or keep it as an orthogonal router? complexity vs SLO guarantees tradeoff needs calling out.
+anya: Agree. For launch gates we need concrete checks: perf (p99 < 150ms on hosted), isolation test harness (no KV bleed across tenants), and automated fallback runbooks. I'll add gating checklist to the spec.
+sam: sales input: two enterprise pilots want tenant-isolated lanes + region-bound models. both asking for September pilot start and SLA language for latency. Mark as customer-driven high priority. :chart_with_upwards_trend:
+maria: Noted. Proposal: create a prioritization matrix (impact x effort) and run a 2-week spike to validate core assumptions (policy surface, canary semantics, cost).
+raj: Spike goals I'd add: define policy DSL surface (matchers, weights, fallbacks), mapping rules for model variants, canary rollout semantics, and a rough cost delta estimate between shared vs isolated lanes.
+anya: From infra side, dev work includes KV eviction hooks, cross-region cache invalidation, rollout feature flags, and per-tenant telemetry. Rough estimate: 4 sprints to alpha if we allocate 2 engineers + 1 infra.
+ops-bot: deploy-bot created doc: /docs/horizon-routing-plan.md and opened PR #512 with the initial spec.
+sam: :thumbsup: Also ask: what's the migration story for Dedicated customers with reserved capacity? they want an upgrade path w/ minimal downtime.
+maria: Good point. We'll include Dedicated migration patterns and a cost worksheet. Also need legal/compliance review for the private deployments (data residency). Scheduling a follow-up Tue 10am, invite sent.
+raj: One more: let's capture evacuation playbook if a tenant causes noisy-neighbor issues — auto-quarantine rules + manual override.
+anya: I'll draft the test harness and a small benchmark harness (seq lengths, batch sizes) and attach perf numbers to the spec.
+maria: OK — action items: (1) raj + anya: spike plan + success criteria by EOW, (2) sam: gather customer pilot contracts and SLAs, (3) me: prioritization matrix + schedule meeting Tue 10am. Short thread — we'll iterate in the PR. :white_check_mark:

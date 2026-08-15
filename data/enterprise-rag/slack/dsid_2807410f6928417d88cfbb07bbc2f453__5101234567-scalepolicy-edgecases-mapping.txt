@@ -1,0 +1,42 @@
+docs
+
+nina: Quick heads-up 4e2 I'm putting together a short doc PR for ScalePolicy edge-cases: tenant selector fallthrough, isolation label mismatches, and small SDK examples. Plan to include a diff + minimal JSON example and a CLI dry-run.
+
+carlos: Thanks, can you call out the common pitfall where tenant_selector has multiple labels and no pool matches -> falls back to best-effort preemption? That confused ops last week.
+
+priya: Also include a tiny err handling example for the Python SDK when ApplyScalePolicy returns 404 for missing tenant mapping. Keeps customer guides practical.
+
+nina: Draft JSON I will use:
+```json
+{
+  "scalePolicy": {
+    "minReplicas": 1,
+    "maxReplicas": 8,
+    "cooldownSeconds": 120,
+    "tenantSelector": {"matchLabels": {"team":"billing","env":"prod"}},
+    "isolation": "hardened"
+  }
+}
+```
+
+carlos: Add a short runbook snippet: `redwoodctl pool assign --tenant billing-prod --pool reserved-payments` and a note to check pool tags.
+
+priya: Python snippet suggestion:
+```python
+try:
+  client.apply_scale_policy('tenant-billing', policy)
+except NotFoundError:
+  print('No pool mapping found; contact ops')
+```
+
+infra-bot: Draft PR opened by nina: https://github.com/redwood-inference/docs/pull/912 labels: docs,dedicated,scalepolicy
+
+nina: Will include a tiny table for cooldown defaults (chat=60, http=120, batch=300) and a backport note for the oncall handbook. Tagging @carlos for ops review.
+
+carlos: I'll review tonight.
+
+priya: LGTM for the SDK snippets, small nit on error class name but can fix in PR.
+
+nina: PR merged by nina 44b backport PR opened: https://github.com/redwood-inference/docs/pull/913
+
+priya: Nice, thanks!

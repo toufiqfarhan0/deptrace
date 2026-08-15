@@ -1,0 +1,45 @@
+incidents
+
+incident-bot: ALERT — Dedicated pool 'leonidas' (vpc: eu-west-2) for tenant 'Leonidas Health' reached 91% GPU utilization. Queue length increasing, 1200 waiting requests. Auto-burst policy did not trigger (policy: region_quota_exhausted). Paging on-call. Link: https://monitoring.redwood.internal/alerts/3690012345 :rotating_light:
+Alex (oncall-sre): ack. I'm looking at the metrics now. Can someone grab the runbook?
+Priya (eng-runtime): runbook: /runbooks/dedicated/gpu_exhaustion.md — main mitigations: enable-burst, evict-noncritical, route-to-hosted.
+Jordan (acct-eng): FYI customer on a standing call, they report degraded UI responses. They want minimal model downgrades. Burst preferred if safe.
+Diego (infra-op): quick check — no spare dedicated GPUs in eu-west-2 pool. burst_resource_count=0. We do have capacity in eu-central-1 but cross-region burst would add ~120ms latency.
+Maya (support): Customer impact: web UI LLM features timing out at 5s thresholds, a small % of inference errors showing. SLA tier: enterprise plus. Customer contacts oncall for updates.
+Alex (oncall-sre): can we evict background/low-priority tenants in leonidas pool? list of tenants shows 1 background tenant (dev-testcorp) using 10% GPUs.
+Priya (eng-runtime): eviction would free ~2 GPUs. Eviction also risk: queued jobs killed, retries => sudden request surge. Suggest: manual_burst + route low-priority -> hosted for 30m, and start progressive eviction if queue not improving in 10m.
+Sam (product): prioritize customer experience; if burst preserves quality, go ahead. Notify customer before eviction.
+Alex (oncall-sre): preparing manual burst command. tagging @diego to confirm infra permissions.
+Diego (infra-op): I approve manual burst if it uses cross-region hosts; we need explicit opt-in due to egress policy. Confirming with infra auth...
+Alex (oncall-sre): running: ```
+# enable manual burst for tenant
+redwood-cli burst enable --tenant leonidas --duration 30m --reason "prod queue spike" --region eu-central-1
+```
+incident-bot: command accepted. Request queued for infra approval (req-20260317-01).
+Diego (infra-op): approved. executing cross-region attach.
+incident-bot: BURST: cross-region burst attached: +4 GPUs from eu-central-1. Estimated added throughput +48 tokens/s.
+Jordan (acct-eng): emailing customer: "Leonidas Health — we've attached temporary capacity to keep service stable; expect ~120ms additional latency for some requests. Monitoring closely."
+Maya (support): Customer replied: "Thanks, appreciate the quick fix. Please avoid evicting our background jobs."
+Alex (oncall-sre): queue depth dropping from 1200 -> 180 over 6 minutes. Latency p95 rose to 420ms for cross-region requests, p95 for local remains ~90ms.
+Priya (eng-runtime): observed KV cache warmup; throughput stable. Start gradual scale-down plan to release burst at 25m if stable.
+Sam (product): good call. After burst ends, schedule follow-up w/ account team to review needed reserved capacity.
+Alex (oncall-sre): creating incident ticket INC-20260317-3690 and assigning postmortem to eng-runtime + infra-op.
+Diego (infra-op): notes: we hit quota because autoscaler didn't consider sustained 10k token/min walks with short bursts. Will file a tuning PR.
+Priya (eng-runtime): follow-ups: 1) add runbook step to prefer cross-region attach earlier, 2) add metric alert if queue > 500 for >5m, 3) evaluate pre-warming KV cache after attach.
+Jordan (acct-eng): customer wants a short blameless recap on Monday. I'll own comms.
+Maya (support): ticket updated and customer notified.
+Alex (oncall-sre): mitigation successful. queue stable at ~40, last outlier processed. Moving to monitoring phase. If anything spikes, @oncall-sre-2 please escalate. :white_check_mark:
+Sam (product): thanks team. Adding to weekly ops review.
+Priya (eng-runtime): capturing console logs: ```
+[2026-03-17T09:12:30Z] attach-burst req-20260317-01 ok
+[2026-03-17T09:15:02Z] queue depth 1200 -> 600
+[2026-03-17T09:18:45Z] queue depth 600 -> 180
+[2026-03-17T09:22:10Z] queue depth 180 -> 42
+```
+incident-bot: NOTE: manual burst will auto-release at 30m unless extended.
+Alex (oncall-sre): leaving this thread. monitoring until release. Postmortem: owner @Priya.
+Jordan (acct-eng): thanks everyone. Customer on call reiterated appreciation.
+Maya (support): closing customer-facing update thread.
+Diego (infra-op): filing infra-ticket INF-20260317-88 for autoscaler tuning.
+Priya (eng-runtime): will draft postmortem and recommended reserved capacity for Leonidas Health.
+Sam (product): good job. :clap:

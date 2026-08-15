@@ -1,0 +1,60 @@
+eng-infra
+
+maria: Heads-up — saw a bunch of pods stuck pending in prod because of our MIG nodepool fragmentation. Thought we could brainstorm tradeoffs: large time-slice pools vs smaller MIG-tiling pools.
+
+olivia: ugh, seen that today too. any logs?
+
+maria: paste of scheduler log: 
+```
+Pod default/model-serving-xyz: 0/12 nodes are available: 7 Insufficient nvidia.com/mig-1g.5gb, 5 node(s) had taint dedicated=gpu:NoSchedule.
+```
+
+tom: this is the classic packing problem — MIG partitions make many small accelerators, which is great for isolation but leads to many tiny free fragments. autoscaler can't easily consolidate because pods request different MIG profiles.
+
+raj: can we make the autoscaler aware of MIG profiles? e.g., node groups per profile and set priorities?
+
+sophie: we already have a couple nodepools labelled `gpu.mig=1g` and `gpu.mig=7g`. The problem is bursty batch jobs want larger slices and low-latency pods want tiny slices. Autoscaler keeps adding nodes of the wrong profile.
+
+devon: two axes: (A) keep MIG pools but add a shared time-slice pool for best-effort batch; (B) keep fewer MIG partitions per node (coarser slices) to reduce fragmentation. Both have latency/cost tradeoffs.
+
+maria: I'm leaning toward strategy A: dedicated low-latency MIG pools for realtime, and a separate time-sliced pool for throughput jobs. That lets us set different PDBs, QoS, and scaling rules.
+
+tom: agree. For time-slicing we could use the new nvidia-smi time-slice driver + our runtime plugin. It reduces determinism though — jitter increases. Also requires node-level cgroup tuning (slice duration, preemption windows).
+
+olivia: what's the quick config we can prototype?
+
+maria: prototype plan: 
+1) create nodepool `gpu-shared-timeslice` (spot/dedicated?) with 4x A100, no MIG. Label `gpu.sharing=timeslice`.
+2) create nodepool `gpu-mig-rt` with MIG set to 1g/5g mix, tainted `realtime=true:NoSchedule`, label `gpu.sharing=mig-rt`.
+3) autoscaler: add two node groups and set expander priority: prefer `mig-rt` for pods with label `workload=rt`, otherwise `gpu-shared-timeslice`.
+
+raj: autoscaler config snippet: 
+```
+--node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/redwood
+--balance-similar-node-groups
+expander: priority
+```
+
+sophie: we'll also need a scheduler extender or a mutating webhook to map pod annotations to node selectors automatically — otherwise devs pick the wrong pool.
+
+devon: +1 on webhook. simple rule: `pod.spec.nodeSelector['gpu.sharing'] = pod.metadata.annotations['redwood/gpu.share']` default to `timeslice` if empty.
+
+autoscaler-bot: Scaled up `gpu-shared-timeslice` from 3 -> 5 nodes at 2028-04-12T09:12:15Z in response to pending pods.
+
+maria: cost note — timeslice pool has higher per-pod latency but higher utilization (lower $/token). MIG pools cost more for small bursts because of fragmentation. Need to measure: run realistic mix with our load generator (batch + rt).
+
+olivia: can we set scaleDownUnneededTime lower for timeslice nodes to avoid wasted hours? e.g., 10m vs 20m for MIG nodes.
+
+tom: yeah, and use different SLOs in the console so alerts are per-pool. Also set node eviction priority: prefer draining timeslice nodes first to keep realtime capacity.
+
+raj: one operational gotcha — networking overlay capacity. When you add large timeslice pools we saw CNI IP exhaustion in us-west-2 last time. Make sure pool has correct subnet range or use secondary IP ranges per nodepool.
+
+maria: good catch. add that to the runbook. Also let's add a quick probe to CI: schedule 50 small RT pods and 200 batch pods and assert 95% RT success < 50ms tail.
+
+sophie: I'll open a PR with the webhook and autoscaler node-group mapping, + infra test harness.
+
+devon: I'll prototype the timeslice kubelet flags and upload perf numbers.
+
+infra-bot: Note: created issue INFRA-1729 "gpu-sharing: prototype timeslice pool + webhook" (assignee: sophie).
+
+maria: thanks everyone. if we can get a 1-week experiment and perf dashboard we can decide whether hybrid is overall cheaper than pure-MIG. :chart_with_upwards_trend:

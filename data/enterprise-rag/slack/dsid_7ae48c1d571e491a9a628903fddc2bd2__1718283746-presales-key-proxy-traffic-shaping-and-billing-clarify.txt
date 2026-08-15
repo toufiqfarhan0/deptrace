@@ -1,0 +1,43 @@
+sales
+
+Lucy (Sales): Heads-up — prospect (Raj at AcmeCorp) has POC KMS/HSM questions around key-proxy latency, rotation windows, and how HSM ops get billed. Posting thread so we can align quickly.
+
+Raj (AcmeCorp): Hi team — evaluating Redwood Dedicated + BYO-KMS. Quick Qs: 1) If we rotate CMKs daily, what's the expected impact on live traffic? 2) Does Redwood proxy call the HSM for every request (billing worry)? 3) Need FIPS/HSM attestation docs. Also: can the runtime keep pre-warmed KV cache across a rotation?
+
+Nina (Solutions Eng): @Raj short answers: 1) Rotation can be zero-downtime if done with rolling keypairs (dual-write + gradual read migration). 2) Proxy does NOT call HSM per request once tokens are cached — unwrap only on cache miss or new key version. 3) We can preserve in-memory cache per instance but cross-instance cold starts will need unwraps. Will loop in Omar for certs/attest.
+
+Omar (Security): Linking docs: https://redwood.internal/sec/hsm-fips-attest.pdf :lock: We'll provide FIPS cert summary + SOC2 excerpts in the SOW. For air-gapped/private deployments we can include offline ceremony runbook and attestations. Also we can export rotation events to a customer-managed audit sink.
+
+Mike (Deal Lead): Pricing note from finance: HSM unwraps are billed per 1k ops. Rotation orchestration (each key version creation/unwrap) counts toward that. We can offer a committed HSM-ops tier (monthly cap) to smooth costs. Need expected rotations/month and peak TPS to size.
+
+Raj (AcmeCorp): Ballpark: peak 10k rps, initial rotation twice/day, wrapped-token TTL 1h. Concern: token churn causing cold unwrappings and brief latency spikes during rotation bursts. Also require FIPS + vendor attestation before PO.
+
+Nina (Solutions Eng): For 10k rps we recommend: 1) client-side short-lived wrapping with local caching, 2) per-worker KV cache + prefix caching in Redwood runtime, 3) background batch unwrapping to avoid thundering herd. Example runtime snippet: 
+
+```
+redwood.kms:
+  unwrap_batch: 128
+  kv_cache_ttl: 3600
+  rotation_mode: rolling
+  allow_subsecond_backoff: true
+```
+
+Nina (Solutions Eng): Operational pattern: create v2 key, dual-write ciphertexts for X minutes, flip reads to prefer v2, then retire v1 after cache TTL. This yields near-zero downtime if clients respect short TTLs.
+
+Lucy (Sales): I'll draft a SOW that includes: 1) HSM ops commit option, 2) rotation DR runbook & test window, 3) attestation pack. Will send ratecard next.
+
+Raj (AcmeCorp): One more ask — can Redwood guarantee rotation P95 <500ms for unwrap path under load, or provide a test harness/staging job we can run to validate? Also need IP allowlist and ephemeral creds for the POC.
+
+Omar (Security): We can run a joint rotation test in staging. Requirements: API key for staging, sample traffic generator (peak + steady), and IP allowlist for the HSM proxy endpoints. We can instrument and share p95 latency graphs and unwrap counts.
+
+crypto-bot: deploy-notify: POC env created: poc-acmecorp-2024. Vault path: secret/poc/acmecorp (creds posted to vault).
+
+Mike (Deal Lead): Next steps: Lucy to send draft SOW + preliminary ratecard (include HSM-ops commit option), Nina to schedule a technical runthrough & rotation test (Wed slot), Omar to attach compliance artifacts, and Raj to share sample traffic profile.
+
+Raj (AcmeCorp): Thurs 14:00 local works for the tech call. We'll prepare a 10k rps replay script and a short checklist for IP allowlist.
+
+Nina (Solutions Eng): Great — I'll put the invite and a pre-req doc in the calendar. :thumbsup:
+
+Lucy (Sales): thanks everyone, I'll loop legal for the SOW templates and tag finance for the commit pricing.
+
+Raj (AcmeCorp): Thanks — looking forward to the test.

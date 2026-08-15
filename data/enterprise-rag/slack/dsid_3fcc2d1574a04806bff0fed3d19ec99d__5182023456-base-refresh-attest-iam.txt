@@ -1,0 +1,23 @@
+eng-security
+
+daria: Planning a quick base-image refresh Friday 07:00 PT. Scope: patch libssl, tighten seccomp, remove telnet/ftp, add immutable flag + attestations. Need KMS signer binding + audit retention confirmation.
+
+mike: +1. recommend sign staging with current key, smoke canary, then rotate key before prod sign. ensures verifier can accept both.
+
+kevin: IAM change: create role 'image-signer' scoped to projects/infra/.../cosign-key with permissions ['cloudkms.cryptoKeyVersions.asymmetricSign','cloudkms.cryptoKeyVersions.getPublicKey']. Use iam-proxy to mint short-lived token (TTL=1h).
+
+ops-oncall: I'll reserve 07:00-08:30 and add canary rule: if 5xx >1% for 10m -> rollback. Canary pool = 30 pods.
+
+signing-bot: [build-system] staging build complete: gcr.io/redwood/inference-runtime:staging-5182023456 -> signed (cosign-key v7).
+
+mike: verify step done locally, pushing canary now.
+
+ops-oncall: Canary running +15m, metrics stable. :thumbsup:
+
+kevin: Confirmed signBlob entries in KMS audit sink; forwarding to sec-observe. retention set 90d.
+
+daria: Post-rollout task: grype diff against prod to ensure pruning didn't introduce new high CVEs. mike to run.
+
+mike: will run and post results. Owners: Daria=lead, Mike=CI+post-rollout, Kevin=IAM/KMS, Ops-oncall=schedule+rollback.
+
+daria: Thanks all. Ping if anything breaks. :white_check_mark:

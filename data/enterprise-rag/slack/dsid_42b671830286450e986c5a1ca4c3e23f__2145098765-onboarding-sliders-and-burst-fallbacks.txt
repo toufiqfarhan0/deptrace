@@ -1,0 +1,27 @@
+product
+
+Ava Chen: Hey product/design — quick review request for the autoscale onboarding flow (SLO slider + min/max + burst fallback). Noticed a couple of clunky spots, can we microcopy + a11y sweep?
+Liam Patel: Saw this earlier, +1. Main problem: the SLO slider default jumps to 90% reliability which nudges min up a lot. Feels aggressive for new users.
+Sofi Gomez: Accessibility note: pool picker traps focus when you open it and then close — VoiceOver reads duplicate headings. Tab order needs to be linear.
+Marco Rivera: Copy thought on "burst": users confused if it's permanent. Suggest rename to "Burst capacity (temporary)" or add a short helper: "Extra GPUs for short spikes — billed separately".
+Ellie Tran: UX concern on fallback: when selected pool is exhausted we fallback to hosted model. We need the toast copy to be explicit about data routing & perf. Current toast: "Using fallback pool" is too vague.
+Ava Chen: Good calls. For slider defaults maybe we set a soft default at 70% with a subtle tooltip: "Start conservative — we’ll suggest higher based on traffic." Thoughts? :thinking_face: 
+Liam Patel: 70% seems safer. Also suggest we show immediate cost delta next to slider (small grey text) so SREs understand dollar impact.
+Sofi Gomez: For keyboard: make pool picker a dialog role with aria-modal=true and add `aria-describedby` pointing to the helper copy. Also label the slider with `aria-valuetext` that reads e.g. "Reliability 70 percent — higher reliability may increase cost".
+Marco Rivera: Microcopy proposal for burst helper: "Temporary burst capacity: short-term extra GPUs to absorb spikes. Automatically scales down after 10m." Could be shorter.
+Ellie Tran: Proposed fallback toast text (first pass):
+```
+Fallback active: selected GPU pool at capacity. Redirecting requests to Redwood Hosted for availability. Data remains encrypted in transit; choose a Dedicated pool to avoid routing. (View details)
+```
+Ellie Tran: Also add a non-blocking inline banner in console that links to a more detailed modal explaining privacy/perf tradeoffs.
+Ava Chen: Nice. For the slider microcopy I drafted a one-liner: "Move left for lower cost, move right for tighter latency and reliability." Keep or shorten?
+Liam Patel: Shorten to: "Lower cost ← → Lower latency & higher reliability" (with icons).
+Sofi Gomez: Accessibility for that condensed copy: ensure it's still read by screen readers as full phrase using visually-hidden text.
+Marco Rivera: UX edgecase: if user sets min=0 and burst enabled, what do we show for expected baseline capacity? Maybe show a tiny predicted throughput line chart sample so they understand cold-starts.
+Ava Chen: Good idea — small sparkline under min/max showing expected tail latency. Placeholder for now.
+deploy-bot: deployment note: autoscale-ui-v2 rolled to staging at 2024-11-06T16:22Z — please test keyboard + screen reader flows before promoting.
+Ellie Tran: Next steps: 1) update copy proposals (Marco + Ava) 2) Liam to prototype cost delta UI 3) Sofi to run a11y keyboard/VoiceOver pass 4) I’ll draft fallback modal content. Can we aim for EOD Thurs?
+Liam Patel: On it — will mock cost delta and tiny sparkline.
+Sofi Gomez: I can start tests tomorrow morning, will add VoiceOver notes in the figma file.
+Marco Rivera: I’ll send 2 condensed microcopy options by EOD.
+Ava Chen: Thanks team — will collate and update the figma and link here when ready. :raised_hands:

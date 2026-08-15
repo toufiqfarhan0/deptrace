@@ -1,0 +1,67 @@
+2034567890
+
+incident-bot: :rotating_light: Alert: preproc-service high CPU + OOMKill rate detected in cluster us-west-2
+
+incident-bot: Metric alert: preproc.cpu.usage > 95% for 3m, OOMKill rate 12/min on Deployment/preproc-tokenizer (ns=serving)
+
+elaine: paging SRE oncall. I'm looking at the alerts now, assigning priority P1. raj can you triage?
+
+raj: got it. i'm seeing a wave of `OOMKilled` in preproc pods across 3 nodes. logs show repeated allocations in tokenizer worker loop.
+
+raj: paste kubectl output:
+```
+$ kubectl get pods -n serving -o wide | grep preproc
+preproc-5fc8bcb7-1   0/1    CrashLoopBackOff   3   5m   10.40.1.12   ip-10-40-1-12
+preproc-5fc8bcb7-2   0/1    OOMKilled         5   7m   10.40.2.5    ip-10-40-2-5
+preproc-5fc8bcb7-3   1/1    Running           0   1m   10.40.3.9    ip-10-40-3-9
+```
+
+raj: describe shows `state: terminated (oom)` and container logs show `Killed` and `MemoryError` in tokenizer batcher
+
+luca: full stack snippet from container logs:
+```
+MemoryError: Failed to allocate 512MB
+  File "tokenizer/worker.py", line 238, in process_batch
+    buffer = bytearray(total_size)
+Killed process 12765 (python) total-vm:1024m
+```
+
+elaine: any signs of malicious input or massive prompt sizes? customer-success can we validate if these requests correlate to specific tenants?
+
+customer-success: checking. early signal: spikes from `acme-data-ingest` and `pilot-app`. I'll DM for customer impact specifics.
+
+michael: i'm going to cordon ip-10-40-2-5 to stop scheduling more pods there. we can drain gracefully after we stabilize.
+
+elaine: mitigation plan: 1) reduce preproc concurrency env var `TOKENIZER_MAX_WORKERS` -> 2 (hotfix configmap), 2) set resource limits/requests to prevent node-level OOM, 3) restart pods via rolling restart (1 at a time), 4) enable rate-limiting on ingress for heavy clients.
+
+raj: quick patch coming: changing configmap `preproc-config` to set `max_workers: 2` and `max_batch_tokens: 2048`. will apply and watch.
+
+raj: applying -> `kubectl apply -f cm-preproc-max2.yaml` and then `kubectl rollout restart deployment/preproc-tokenizer -n serving --timeout=10m`
+
+incident-bot: Deployment rollout started: preproc-tokenizer (rev 42) by raj
+
+elaine: small ask: do NOT restart all pods at once. do a single-pod rolling restart to avoid losing KV caches and causing latency spikes.
+
+raj: doing one-by-one, first pod restarted, memory use stable on pod-3. second pod restarted now.
+
+luca: after restart, logs show batcher capping at smaller sizes and no immediate OOMs. CPU still elevated but within limits.
+
+michael: cordon done on ip-10-40-2-5. draining now to remove bad node from scheduling.
+
+customer-success: impact summary so far: ~6% of requests for acme-corp were 5xx for ~12 minutes. pilot-app had degraded latency for ~10 minutes. informing customers.
+
+elaine: good. tagging this as `investigation` for root cause: looks like a workload spike with large prompt batches combined with missing resource limits on older pods.
+
+raj: follow-up actions: 1) enforce resource limits in helm chart (cpu/memory), 2) add request size guardrail in preproc (reject > 1M tokens), 3) add histogram alert for token count per request, 4) postmortem and RFC for better backpressure.
+
+michael: taking oncall handoff in 30m. leaving notes in #incidents and the incident doc: https://internal/redwood/incidents/2034567890
+
+elaine: thanks team. will keep watch for 15m then escalate to eng if we see further OOMs. :thumbsup:
+
+incident-bot: Incident status: mitigated -> partial (CPU under threshold, OOMKill decreased). created incident ticket INC-2034567890
+
+michael: handing off to night SRE. next: postmortem owner = raj.
+
+customer-success: I've emailed affected customers with a short summary and ETA for follow-up.
+
+elaine: closing slack paging loop. continue updates in the ticket. :white_check_mark:

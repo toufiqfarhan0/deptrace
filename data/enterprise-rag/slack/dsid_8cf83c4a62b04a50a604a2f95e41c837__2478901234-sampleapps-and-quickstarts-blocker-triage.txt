@@ -1,0 +1,24 @@
+devex
+
+Amanda: Quick sync — changelog cutoff is in ~12h. Current blockers: iOS sample e2e failing, JS quickstart snippets need SDK API names updated, SDK 1.4 PR needs final +2 reviews. Owners: @Chris (sampleapps), @Sophia (docs), @Mike (sdk). Any blockers we should escalate?
+Chris: iOS e2e failing on CI emulator. Locally repros for me. I have a fix but need a test run. PR: https://github.com/redwood/sampleapps/pull/472
+Sophia: Docs quickstart has a few `initClient()` -> `createClient()` changes. Draft is in https://github.com/redwood/docs/pull/421 but I'm holding until SDK release because snippets will break otherwise.
+Mike: SDK PR merged to main but windows job in CI is failing in the build matrix. Poked infra. If that gets green we'll cut the tag.
+deploy-bot: nightly canary build for "devex-sdks" started — job 9921 queued.
+Amanda: @Chris can you paste the failing log snippet here (or gist) so infra/eng-ci can triage while you rerun? Also please add a one-liner to the changelog draft about the sampleapp iOS bump so we don't forget.
+Chris: Sure — failing step is `yarn e2e:ios` with simulator boot timeout. Log: ```
+Error: Simulator failed to boot within 120s
+at spawnSync (node:child_process:...)
+Caused by: com.apple.CoreSimulator.SimError
+```
+I'll re-run in ~15m and push a flaky-fix branch.
+Leo: I can pick up a quick review of the SDK PR in ~30m (assign to me when ready).
+Sophia: If SDK doesn't land before cutoff I'll freeze docs and add an action item: "update quickstart snippets post-sdk-1.4" in the changelog. Better than constantly flipping docs during release.
+Mike: Eng-ci replied: one flaky infra node in windows pool; they pushed a temporary replacement. Re-run should pass. I'm triggering a rebuild now.
+Chris: Rebuild kicked. If this passes I can merge the sampleapps PR and update the changelog note.
+Amanda: Plan: wait up to 6h for SDK CI to stabilize. If still failing at that point we freeze changelog and include a follow-up entry. Otherwise proceed as normal. Everyone ack? :thumbsup:
+Chris: +1
+Leo: 👍
+Sophia: ack — will hold docs PR until Mike confirms the tag.
+Mike: Rebuild succeeded — windows job green. Tagging release candidate.
+Amanda: Great — please add the SDK tag to the changelog draft and I will cut the final before the cutoff. Thanks all!

@@ -1,0 +1,51 @@
+eng-ml
+
+jia: Bringing up theta11b (int4 roll) on canary cluster. Local perf looked fine but canary saw OOMs with long context. Logs below — anyone seen similar with sparse-attn + prefetch?
+
+jia: ```
+E/oom: GPU0: alloc_failed bytes=2.1G
+model: theta11b-int4
+config: batch_size=8 max_new_tokens=512 prefetch_kv=True sparse_attn=True
+stack: alloc_tensor -> kv_cache_alloc -> sparse_index_materialize
+```
+
+matt: Can you paste the full `--model-config` you used? Also check `kv_eviction_threshold` — if it's too late we retain huge KV.
+
+jia: ```
+--batch_size=8
+--max_new_tokens=512
+--prefetch_kv=1
+--kv_eviction_threshold=0.85
+--batching_window_ms=25
+--sparse_attn=on
+```
+
+zara: Kv eviction at 0.85 is pretty high for int4 canaries. Try 0.6-0.7. Also note: prefetch + sparse_attn can allocate extra index buffers (temporary) which double peak mem in our runs. Disable prefetch first to confirm.
+
+matt: Also check `max_state_shard` / shard metadata — we had a bug that caused duplicate KV shard materialization (PR incoming). If that's happening you see 2x KV size in traces. @ryan filed a ticket.
+
+jia: Good call. Running canary with `--prefetch_kv=0` and `--kv_eviction_threshold=0.65` now. Will report numbers.
+
+ci-bot: Canary deploy started: theta11b-int4 -> canary-2 (run id: canary-2187654321). Tests: perf, oom_sweep.
+
+jia: Quick update: with prefetch disabled + kv_eviction=0.65 we still hit OOMs at batch_size=8 / max_new_tokens=512, but failure happens much later in sequence. At batch_size=6 it's stable. Rough bench: tail latency ~210ms -> starvation to 250ms when we reduce batch.
+
+zara: Proposal for safer defaults on int4 canaries: `max_new_tokens=256`, `batch_size_cap=6`, `batching_window_ms=10`, `kv_eviction_threshold=0.65`. Run an A/B: int4 vs int8 on our eval set to catch quality regressions before broader rollout.
+
+matt: Agree. Also add an internal metric for sparse-attn "sparse_index_mem" so we can observe ephemeral spike. If that shows big deltas we know index materialization is culprit.
+
+jia: I'll run the regression eval: 2k instruction prompts + 5-shot tasks, compare perplexity and response-quality heuristics. If int4 drops quality >1.5% relative to int8 we fallback to int8 for hosted.
+
+ryan: PR #3124 that fixed duplicate-shard logic merged to staging this morning. If that was the root cause, OOMs should reduce substantially and we can relax batch caps.
+
+jia: :thumbsup: I'll re-run canary after staging picks up the PR. Tagging @zara for rollout decision once we have new numbers.
+
+zara: I'll reserve a canary slot tomorrow 09:30 PT. If stable, we'll promote to canary lane and add notes to release. Please add experiment IDs to the perf run so we can trace.
+
+deploy-bot: Deploy scheduled: jia/theta11b-int4-canary -> canary-2 at 2026-03-21T09:30:00Z
+
+matt: One more note — if sparse-attn is the issue we should test a variant with `sparse_attn_fallback=disabled` (force dense path) to measure the tradeoff: memory vs compute. Might be acceptable for canary latency.
+
+jia: Will add that to the test matrix. Running three runs: (A) int4 prefetch_on, (B) int4 prefetch_off + kv_eviction 0.65, (C) int4 dense-fallback forced. Will upload results to the canary run and tag this thread.
+
+zara: Thanks — sounds like a plan.

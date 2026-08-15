@@ -1,0 +1,90 @@
+support
+
+mira: FYI — since the 03:10 UTC deploy were getting a handful of high-severity tickets: p95/p99 for text-generation endpoints spiked ~3-4x. Multiple customers mention slow responses when using function/tool calling and large structured JSON outputs. I attached a couple of request ids in the tickets.
+
+ops-bot: [ALERT] 03:18 UTC - latency spike detected on /v1/generate (p99 > 2s) - alert id A-7821.
+
+support-bot: 6 tickets opened (enterprise + midmarket). Common note: "tool_router" appears in traces before the long tail.
+
+alex: Can you paste one of the request ids and a short trace? Any change in config or model variants rolled at 03:10?
+
+mira: Request id: abc123-def. No model family change; we did push the validation+router improvements (PR #4127) that wired in a new JSON schema validator for structured outputs + centralized tool router. Here's a short trace from observability: 
+
+```
+trace_id: abc123-def
+spans:
+  parse_request: 6ms
+  model_infer: 115ms
+  tool_router: 250ms
+    schema_validator: 320ms
+  response_serialization: 10ms
+  total: 720ms
+```
+
+Not every request shows the schema_validator span but when it does it adds 200-400ms.
+
+sam: Thanks. That matches a hypothesis — we added the strict JSON-schema validation pass in PR #4127 which runs a full-document validation for tool outputs. The validator is currently the Python jsonschema-based implementation running synchronously in the request path. For large structured outputs (~6-12KB) that can add 200-500ms on our instance types. Also the tool_router does some sync dispatching for router plugins.
+
+jordan: We need immediate mitigations for affected customers. Options: 1) flip feature flag to disable strict schema validation 2) rollback PR 4127 3) increase worker pool/parallelism for validator 4) make validation async and stream response while validating in background (risk: callers expecting sync validation).
+
+alex: Short repro steps for eng to reproduce locally?
+
+sam: Repro steps: 
+  - hit /v1/generate with function_call enabled and schema: large nested object (example below)
+  - enable "strict_json_schema" feature flag on the request (we default to on)
+  - capture trace in dev instrumentation (span "schema_validator")
+
+Example payload snippet to repro (send as text prompt that triggers tool output):
+```json
+{
+  "tool_call": {
+    "name": "order_builder",
+    "arguments": {
+      "items": [{"id": "sku-123", "qty": 1, "options": {"color": "red", "engraving": "lots of text..."}}],
+      "metadata": {"notes": "long blob repeated to hit size"}
+    }
+  }
+}
+```
+
+sam: Quick perf notes: jsonschema (python) ~ 200-400ms for 8-12KB payloads. AJV (node) compiled validators ~ 2-10ms. Compiled validators or wasm-based validators are the right medium-term fix. Short-term we can also do: skip validation for known-safe tools, or validate only key fields.
+
+mira: Customers are asking for fast mitigation — can we flip the flag?
+
+jordan: I can flip at prod. Which flag and scope?
+
+alex: Flag is strict_json_schema; default scope global: true. Command (infra CLI):
+```bash
+./infra/feature-toggle set strict_json_schema=false --env=prod --scope=global --note "hotfix: reduce p95 p99"
+```
+
+jordan: Doing it now.
+
+ops-bot: Executing feature-toggle: strict_json_schema=false --env=prod --scope=global
+ops-bot: feature-toggle update: success (timestamp 2001002500)
+
+mira: rolling traces after flip: 
+```
+request id abc123-def - previous total 720ms, new total 380ms
+spans: parse_request 5ms, model_infer 110ms, tool_router 120ms, response_serialization 8ms, total 360ms
+```
+
+support-bot: Customer-facing update: "We identified a validation path that increased latency for some structured outputs and temporarily disabled strict schema validation while we implement a compiled/streaming validator. Apologies for the disruption." :thumbsup:
+
+alex: Good. For follow-ups:
+  - Sam to implement compiled validator (AJV/wasm) and provide a feature branch that compiles validators at model onboarding time.
+  - Sam to prototype streaming/async validation (validate background + reconcile if invalid).
+  - Eng-runtime to add metrics for "schema_validator" duration and percentage of requests with validation enabled.
+  - Ops to create a canary rule for any change that increases p95 by >20%.
+
+sam: Ill own the compiled validator work. Plan: compile schemas at model/tool onboarding, serve validator artifact from cache. ETA: initial PR in 2 weeks.
+
+jordan: Actioned: keep flag off for now (prod) and schedule a maintenance window to test compiled validator canary.
+
+mira: Customers confirmed p95 dropped from ~1.3s -> ~0.42s for affected routes. Leaving flag off until compiled validator is rolled out. Thanks everyone.
+
+support-bot: Created follow-up ticket: #SUP-9843 "Replace python jsonschema with compiled validator + streaming validation" assigned to sam.
+
+alex: Logged a small tech debt: tool_router sync dispatch suffers from lock contention when many validator goroutines block; we'll add async router path as part of the work.
+
+mira: Closing this thread — will post updates when PR is merged.

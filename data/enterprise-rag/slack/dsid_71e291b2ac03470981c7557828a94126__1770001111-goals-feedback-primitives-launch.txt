@@ -1,0 +1,33 @@
+people-ops
+
+Sam Brooks: Heads-up  people-ops has a new compact bundle: 'goal-setting + feedback primitives' meant to accompany the OKR one-pager. It includes a manager rubric, short peer micro-form, and three filled examples for non-engineering roles. Link: https://redwood.docs.internal/people/goals-feedback-primitives (internal only). Please review by next Tue.
+Tina Alvarez: Nice. What's in the manager rubric? Is it numerical or narrative?
+Sam Brooks: The rubric is narrative-first with clear anchors. It defines 'Insufficient / Meets / Exceeds' with 290-second examples and evidence anchors. Not a scorecard but helps calibration conversations.
+Melody Chen: Can you paste one anchor for a "Meets" vs "Exceeds" for a product manager? Helps me explain to my team.
+Sam Brooks: Sure:
+Sam Brooks: "Meets (PM): Delivered roadmap commitment; adoption metrics hit target within 2 quarters; stakeholder alignment maintained. Evidence: release notes, adoption dashboard, 1 cross-team doc."
+Sam Brooks: "Exceeds (PM): Delivered roadmap commitment early; led cross-team experiment with 15% lift; mentored two PMs on discovery process. Evidence: experiment result, mentoring notes, public retro."
+Rajiv Sharma: Love the examples. Do we have equivalents for Sales/CS? Our roles are tricky to convert.
+Sam Brooks: Yes 	7 added 3 sales/CS examples: quota attainment with quality checks, net-retention impact, and a 'customer advocacy' KR (case studies published). Example: "Exceeds (CS): Renewals > 110% quota, reduced churn by 2ppt through targeted onboarding playbooks (links)."
+Tina Alvarez: What about non-OKR goals like "professional growth" or DEI work? Those are important but hard to measure.
+Sam Brooks: We recommend a dual-field approach: 1) Narrative outcome (what changed) and 2) Proxy metric where possible (number of events run, representation % in hiring panels, retention of mentees). Mark these as 'qualitative KRs' in the template so managers know to treat them contextually.
+Melody Chen: Can we see the peer micro-form? Short things get more responses.
+Sam Brooks: Peer micro-form (3 fields): 1) Strength (1 line + example link), 2) One area to grow (1 line), 3) One actionable suggestion (1 line). Anonymous by default. We also have a 90-char max per field to keep it sharp.
+Rajiv Sharma: Upward feedback? I'd like a safe way to capture manager improvement notes.
+Sam Brooks: Added an optional upward-feedback micro-prompt in the flow: "One thing my manager could start/stop/continue to better support my goals (max 200 chars)." Aggregated and anonymized by People Ops, shown as themes to managers after calibration. Participation optional.
+Tina Alvarez: Any auto reminders or integrations with calendar? We forget these.
+PeopleOps-bot: Reminder: Submission window opens 2026-04-01 and closes 2026-04-17 23:59 UTC. People Ops will send calendar reminders 7 days and 24 hours before deadline and a follow-up for managers 2 days after close to start calibration notes.
+Melody Chen: For the manager rubric, any explicit guidance on language to avoid (bias-y phrasing)? Managers sometimes use unhelpful adjectives.
+Sam Brooks: Yes 	7 included a 'do-not' list: avoid personality judgments ("lazy", "difficult"), avoid unverifiable absolutes ("always/never"), avoid comparisons to others. Use evidence-first phrasing. We added stop-gap sentence starters to translate vague praise into evidence lines.
+Rajiv Sharma: Can we have a template snippet managers can paste into calibration notes? Makes calibration faster.
+Sam Brooks: Pasted a short copy-paste template in the doc: "Context: [1 line]; Evidence: [links/metrics]; Summary: [insufficient/meets/exceeds]; Coaching: [one sentence next step]."
+Tina Alvarez: How are cross-functional contributions surfaced? My designers sometimes miss credit.
+Sam Brooks: We added a 'cross-team impact' field on the one-pager with two prompts: "Who benefited" and "Concrete benefit (metric or artifact)". Encourage folks to fill it; managers should highlight these in calibration sessions.
+Melody Chen: Workshop? I find examples plus live practice helps.
+Sam Brooks: Scheduling two 45-min drop-ins next week: "Writing evidence-led self-reviews" and "Manager calibration: using the rubric". Calendar invites will be posted.
+PeopleOps-bot: FYI 	7 added a micro-FAQ in the doc about parental leave and partial cycles. If >4 weeks leave, manager + employee should set adjusted goals; flag in the form so calibration pools can treat context appropriately.
+HR-Engine: Note: The submission form supports up to 6 evidence links per objective and allows attaching a single PDF (max 2MB) for supporting docs. Plan integrations with GitHub issue links in a later iteration.
+Rajiv Sharma: One last ask 	7 can we include a filled, short self-review example for a design IC and a sales rep so folks know what good looks like?
+Sam Brooks: Added two 200-300 char filled examples. Design example focuses on shipped component library + adoption metric; sales example focuses on ARR closed + customer health.
+Melody Chen: Thanks Sam 	7 I'll send a couple micro-edits on wording.
+Sam Brooks: Thanks everyone 	7 please leave any comments directly in the doc. We'll merge changes Friday evening if no major objections. :sparkles:

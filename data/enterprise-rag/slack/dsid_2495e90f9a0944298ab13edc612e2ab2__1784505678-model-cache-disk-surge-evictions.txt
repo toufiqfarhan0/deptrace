@@ -1,0 +1,68 @@
+incidents
+
+incident-bot: :rotating_light: ALERT: node-n42 in us-west-2 is reporting ephemeral-storage pressure > 95% — multiple model-serving pods evicted, several containers restarted. Auto-page sent to on-call.
+
+alex: seeing lots of pod restarts on node-n42, model-cache dir filling: /var/tmp/model_cache. 3 pods OOMKilled, 4 evicted.
+
+maria: paging @sre-oncall now, will grab logs. Can anyone confirm customer-facing errors?
+
+pagerduty-bot: Triggered on-call: <@sre-oncall> (severity: P1) — Escalation in progress.
+
+sre-oncall: on it, joining. What ETA on more context?
+
+dan: quick heads-up — prometheus shows spike in 5xx for /v1/generate in us-west-2 from 13 -> 280 rps errors starting ~1784505600. Latency also up.
+
+jess: confirmed: Velocity logs show many `CUDA_ERROR_OUT_OF_MEMORY` entries in restarted containers immediately before crash, but k8s events show reason: "Evicted" due to ephemeral-storage. probably model cache filled disk then GPU processes couldn't allocate and crashed.
+
+maria: dumping kubectl describe + events for one pod:
+
+```
+$ kubectl describe pod model-server-7f8b9 -n prod
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Warning Evicted    2m    kubelet, node-n42   The node was low on resource: ephemeral-storage.
+  Normal  Killing    2m    kubelet, node-n42   Stopping container model-runtime
+```
+
+and `kubectl get pods -o wide` shows node-n42 with diskPressure=true.
+
+alex: root cause appears to be model cache growth: a recent change to runtime cache eviction policy increased max cache size to 80GB for some model families; node only has 60GB ephemeral. cache filled, kubelet evicted pods.
+
+sre-oncall: immediate mitigation plan: 1) cordon node-n42, 2) drain non-critical pods (batch jobs, canaries), 3) restart model-serving DaemonSet with reduced cache size on remaining nodes, 4) re-route traffic away from affected replica set / region if errors persist. executing now.
+
+maria: running commands:
+```
+kubectl cordon node-n42
+kubectl drain node-n42 --ignore-daemonsets --delete-local-data --force
+kubectl set env ds/model-runtime RUNTIME_MODEL_CACHE_MAX=16G -n prod
+kubectl rollout restart ds/model-runtime -n prod
+```
+
+alex: removing old logs/tmp files on node-n42 to free space: `/var/log/model/*.log` and `/var/tmp/model_cache/*` (will be done by infra agent after drain). note: emptyDir used for cache so deleting is safe but causes cold cache.
+
+dan: started a temporary traffic policy to route 30% of requests to us-east fallback cluster and 10% to CPU-fallback models to reduce GPU load. pushing reroute now.
+
+jess: customer impact snapshot: 9 customers on dedicated clusters showed >5% errors, hosted public endpoints experienced 18% increase in 5xx for ~14 minutes. No data loss, just request failures/retries. Escalating to CS for affected accounts.
+
+sre-oncall: confirmed cordon+drain done. freed ~48GB after deleting stale caches. restarting pods on other nodes with new env applied. Monitoring bootstrap.
+
+maria: also observed some containers logging `failed to mmap cache: [Errno 28] No space left on device` prior to crash — consistent with eviction sequence.
+
+alex: note for postmortem: a config rollout 3 hours ago inadvertently targeted runtime ds selector for a new cache policy. Need safer rollout (canary) and a node capacity check preflight.
+
+pagerduty-bot: Acknowledged incident P1 -> ticket #INC-2026 created, channel linked.
+
+dan: metrics look better — 5xx back down to baseline in the last 5 mins after drain & restart. GPU OOM logs stopped.
+
+sre-oncall: temporary mitigations applied: reduced cache max to 16GB, cordoned node, drained and cleaned disk, traffic reroute + CPU fallback. Next steps: 1) run cluster-wide audit for nodes with < cache_size headroom, 2) roll out safe canary for cache policy with resource checker, 3) adjust alert thresholds (ephemeral-storage at 85% trigger), 4) follow-up postmortem.
+
+jess: CS notified affected customers with mitigation note and ETA for full restore to pre-incident capacity.
+
+maria: FYI logs/diagnostics saved to s3://redwood-incident/1784505678/ for postmortem.
+
+sre-oncall: handing off to dan for the 1hr follow-up. If anything regresses ping this thread or escalate. thanks all. :white_check_mark:
+
+dan: taking follow-up. will prep the incident timeline and own the postmortem doc.
+
+incident-bot: Incident P1 acknowledged by <@sre-oncall>. Postmortem checklist created.

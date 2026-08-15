@@ -1,0 +1,31 @@
+eng-ml
+
+Marta: Heads-up — we're onboarding Fulcrum's LoRA for cust-fulcrum. Need a quick rollforward smoke: compat, int4 quant, tokenizer mapping. Target: dedicated pool. Anyone free for a 15min handoff? :clock1:
+Sam: I can do the compat checks now. Which base model is it pinned to?
+Marta: Base is redwood/mistral-7b-v1, LoRA built against v1.2. Customer used a sentencepiece tokenizer variant; suspect token id offsets. Also used 4-bit PTQ (nf4).
+Ben: On it. I'll run a small eval pack (10 prompts) + token overlap test. Pushing a quick eval script to /tmp/fulcrum-eval.sh
+Ben: ```
+# /tmp/fulcrum-eval.sh
+python eval_pack.py --model redwood/mistral-7b-v1 --lora fulcrum-lora.safetensors --quant int4 --prompts prompts_small.json
+```
+Kai: Heads up: on int4 we sometimes see KV cache mismatch if LoRA stores fp32 hooks. Watch for repeated phrases/hallucinations.
+Sam: Running tokenizer mapping now. Quick check: `python -c "from tokenizers import Tokenizer; print(len(Tokenizer.from_file('cust_piece.model')))"`
+Sam: @Marta what's the expected latency SLO? Prod will be on dedicated pool.
+Marta: Target 120ms p50 @ 32 tok/sec. If int4 increases latency >20% we fallback to int8.
+Ben: Initial eval: token overlap shows +3 token shift for currency symbols. Example: '$100' tokenized as ['$', '100'] vs ['Ġ$', '100'] on base. Might need remap layer.
+Sam: I ran merge smoke: model loads and generates, but one test failed (numeric extraction). Attaching stderr:
+Sam: ```
+ValueError: Token id 50257 out of range for embedding
+```
+Marta: @Sam good catch. That indicates tokenizer vocab mismatch. Solution: remap token ids during merge (offset +2), or rebuild tokenizer. Which is cleaner for customer?
+Kai: Prefer remap for now, less risky. I can prepare a mapping patch and a small shim in serving runtime to translate ids at load time.
+Ben: Eval pack results: 10 prompts, 8 pass, 2 numeric extractions fail, 1 mild repetition case. Attaching summary: pass rate 80%, avg latency 135ms (int4).
+Marta: :thinking_face: 80% is borderline. Customer expects invoice-parsing accuracy >95%.
+Sam: Options: (1) rebuild LoRA against exact tokenizer, (2) apply token remap + retrain small alignment batch, (3) serve int8 variant. Recommend #2 then #3 if fails.
+Ben: I'll prototype remap patch. If we retrain we need cust data — do they share a small seed set?
+Marta: Customer provided 500 labeled invoice examples. I'll get them to you via secure share. @Ben, @Kai coordinate on remap + small fine-tune.
+rollout-bot: rollout-bot: Canary deploy queued for dedicated-pool-12 with model variant fulcrum-lora-remap:v1
+Sam: Canary logs look clean so far. No OOM. Throughput stable. Running end-to-end invoice extraction.
+Ben: After remap + 200-step alignment fine-tune, pass rate -> 96% on our eval pack. Latency bumped to 145ms. Customer OK with that.
+Marta: :thumbsup: Great. Let's schedule a call with Fulcrum tomorrow to sign off. Thanks team.
+Kai: :white_check_mark: I'll open a follow-up doc with mapping patches and commands.

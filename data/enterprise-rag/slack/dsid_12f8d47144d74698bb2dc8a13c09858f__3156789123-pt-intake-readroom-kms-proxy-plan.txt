@@ -1,0 +1,53 @@
+eng-security
+
+jess: Quick note — vendor wants scope clar for next PT. They need RBAC change window, KMS read for logs, and defined retest slots. Can we collate? :raised_hands:
+
+anita: can you confirm what level of KMS access? we prefer ephemeral wrapping via proxy, not raw key access.
+
+matt: +1. plan is to give them an IAM role that can decrypt via kms:GenerateDataKey with conditions and only from presigned S3 endpoint. we'll share presigned artifacts.
+
+ryan: for audit logs we'll export to s3://redwood-pt-evidence/<engagement>/ and provide presigned link. retention 90 days by default — is that ok?
+
+jess: 90d ok for now. need retention proof for compliance; can we snapshot into the evidence bucket with object metadata containing commit id and timestamp?
+
+anita: yes — please use naming convention: <engagement>-evidence-YYYYMMDD-HHMM.tar.gz and add header metadata: 'packer_commit' and 'collector_node'.
+
+matt: here's the minimal IAM role snippet we'll attach to the assessor role:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{"Effect":"Allow","Action": ["s3:GetObject", "s3:ListBucket", "kms:GenerateDataKey"], "Resource": "arn:aws:s3:::redwood-pt-evidence/*"}]
+}
+```
+
+anita: don't allow kms:Decrypt, use GenerateDataKey with KMS Encrypt/Decrypt done via envelope keys in the proxy.
+
+jess: who's owning remediation tracker? we should tie vuln tickets to PT id and set SLA for fixes.
+
+ryan: I'll own the tracker. open a JIRA EPIC like PT-<id>-remed and link sub-tasks. propose 30d P1, 90d P2.
+
+matt: also want to add telemetry proof steps for exploits reproduction: steps, logs, sample payloads. keep sensitive PII redacted.
+
+security-bot: deploybot: calendar invite created for vendor dry-run — Thu 2026-04-02 18:00 UTC
+
+jess: thanks. two more q's: 1) retest windows: can we offer two 4-hour slots over next 2 weeks? 2) can assessors request temporary escalation if they find blocker during test?
+
+anita: 1) yes, propose Tue 10-14 UTC and Fri 14-18 UTC. 2) temporary escalation allowed via ephemeral role with audit hooks and manual approval by oncall.
+
+tariq: onboarding note — we'll provide a readroom link with presigned S3 + short-lived SSH jumpbox creds (expires 6h). We'll log all sessions via session-manager.
+
+jess: perfect. I'll draft the intake checklist and post it here tomorrow. tagging @oncall for approval on ephemeral role flow.
+
+oncall: reviewed. ok for dry-run. ensure KMS key policy includes 'AssumeRole' only for our proxy principal and add CloudTrail guards.
+
+jess: great. next steps: 1) matt to prepare role snippet + presigned bucket path 2) ryan to create JIRA epic 3) anita to draft KMS proxy runbook 4) tariq to prep readroom creds. please reply with ETA.
+
+matt: role + presigned path by EOD today.
+
+ryan: JIRA epic created PT-2026-58, linking here: https://redwood.atlassian.net/browse/PT-2026-58
+
+anita: proxy runbook first draft by tomorrow lunchtime.
+
+tariq: jumpbox creds ready by Wed 12:00 UTC.
+
+jess: awesome — thanks team. :rocket:

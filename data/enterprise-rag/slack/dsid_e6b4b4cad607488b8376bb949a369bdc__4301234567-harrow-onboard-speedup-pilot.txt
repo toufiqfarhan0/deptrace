@@ -1,0 +1,31 @@
+customer-success
+
+lana: FYI — HarrowHealth onboarding shows rising p99 on /api/complete after yesterday eployment. p95 small, p99 ~30% up. Notified account.
+
+chris: any model change? or traffic pattern shift?
+
+lana: model swap to open-13b occurred 03/24. KV cache hit for onboarding routes dropped 90% -> 58%. Looks like prompt header changed, breaking prefix cache.
+
+lana: snippets: ```
+2026-03-24T14:05Z INFO req=zz1 route=/api/complete model=open-13b seq=640 p99_ms=980 cache_hit=false
+2026-03-24T14:06Z INFO req=zz2 route=/api/complete model=open-13b seq=120 p99_ms=210 cache_hit=true
+```
+
+sam: renewal in 33 days — this is time-sensitive. Recommend low-risk pilot: enable per-route prefix caching + int8 canary for low-impact flows.
+
+vivian: +1. Also propose routing rule: short responses (<80 tokens) -> compact-8B by default during onboarding windows, with quality checks. That reduces p99 tail.
+
+chris: ops checklist:
+- enable prefix cache for /api/complete
+- start int8 canary 5% for non-critical endpoints
+- add alert: p99 > baseline*1.2 for 10m or cache_hit < 60% for 15m
+
+ops-bot: ACTION CREATED: /runs/harrow-quant-4301 owner=chris start=2026-03-24T17:00Z canary=5%
+
+lana: customer note draft: short summary, mitigations, timeline, rollback steps. Will include expected quality delta (~<1% on extraction tests) and projected cost delta.
+
+sam: i'll coordinate renewal comms. include measurable targets: p99 down 20% within 7 days, cost change <5%.
+
+chris: spinning up canary now. will post status.
+
+ops-bot: STATUS: canary deployed 2026-03-24T17:02Z. monitors attached: onboard-latency, cache-hit-rate, quality-eval-4301.

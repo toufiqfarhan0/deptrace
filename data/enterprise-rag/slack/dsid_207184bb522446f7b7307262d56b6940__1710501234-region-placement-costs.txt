@@ -1,0 +1,24 @@
+eng-infra
+
+Alex: Quick cost comp across regions for reserved vs on-demand GPUs. TL;DR: us-west1 reserved (H100) cheapest at scale; europe-west3 reserved ~+18%; asia-southeast1 on-demand ~2x due to premiums + egress. Spreadsheet: https://redwood.sheets/internal/region-costs-2026
+Maria: Got it — opening link now.
+Alex: https://redwood.sheets/internal/region-costs-2026 (view-only for now)
+Ryan: Numbers look reasonable. Note: europe H100 quota is tight for our requested capacity; fallback to A100 possible. What's the perf hit?
+Sophia: Perf delta A100->H100: ~10–12% higher latency on some decoder-heavy models, throughput a bit lower. Also: KV cache misses across regions cause extra egress charges — big with small-model cache-miss patterns.
+Alex: Quick snippet from the sheet:
+```
+region      reserved/hr(H100)  on-demand/hr   notes
+us-west1    $9.70               $12.50         best for bulk/low-latency
+europe-w3   $11.40              $13.60         quota risk, higher ops cost
+asia-se1    $18.00              $20.50         premium + egress
+```
+Maria: If we commit 12-month reserved in us-west + europe we estimate ~28% savings vs current on-demand runrate. Can you attach the line-item calc?
+Alex: Sure — rough monthly: (48 H100 * $9.70 * 24h * 30d) + (24 H100 * $11.40 * 24h * 30d) = ~$1,688,832/ month (committed). On-demand at same capacity ~ $2,347,200/mo. Savings ~= $658k/mo (~28%). Will post full sheet.
+Ryan: From ops side: we want active/active across two regions for DR and latency. Proposal: reserve primary capacity in us-west1 (48 H100) + europe-west3 (24 H100). APAC stays on-demand and uses smaller A100 pools where feasible.
+Sophia: Network ops: we should colocate model shards + KV caches to avoid cross-region egress. Also set up regional mirroring for metadata only. Egress estimates added to sheet — APAC cross-region traffic dominates billing if we route many inference requests to US/EU.
+infra-bot: autoscaler: scaled us-west1-cluster +8 H100 nodes at 2026-03-10T03:20:15Z
+Maria: OK — sounds like a plan. I'll draft the purchase request for 12mo commitment in us-west and 9mo in europe, review next Wed. :thumbsup:
+Ryan: I'll open the infra PR to lock AZ placement and update the deploy runbook + fallback policy.
+Sophia: I'll add network playbook notes and egress monitors. Anyone want a quick sync tomorrow at 10am PT?
+Maria: Yes, 10am PT works for finance + infra.
+Alex: Added calendar invite. Thanks everyone :raised_hands:

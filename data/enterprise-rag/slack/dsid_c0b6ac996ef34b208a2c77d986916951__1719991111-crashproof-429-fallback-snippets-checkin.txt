@@ -1,0 +1,78 @@
+docs
+
+anna_docs: PR opened — https://github.com/redwood-inference/docs/pull/412. Rewrote the 429 troubleshooting runbook to be shorter and added small SDK snippets for graceful fallback. Need a quick review on fallback ordering wording, a Go snippet that matches our retry headers, and where to best link to the context-trimming guide. PTAL.
+
+mike_devx: taking a look now. main thing: we should be explicit about the order of fallbacks (reduce batch size -> fall back to cheaper model -> surface 429 to app). that ordering matters for customers.
+
+sara_research: +1 on ordering. also we should add a short section that explains when KV cache helps vs when you should trim prefixes — folks confuse the two.
+
+josh_eng: nit: in the JS snippet you call `setTimeout` with a linear backoff. recommend exponential with jitter. small snippet: 
+```js
+// recommended backoff for 429s
+async function backoff(attempt) {
+  const base = 300; // ms
+  const max = 5000;
+  const jitter = Math.random() * 100;
+  return Math.min(max, Math.floor(base * Math.pow(2, attempt)) + jitter);
+}
+```
+
+kevin_support: from support tickets: customers want a curl example that shows the Retry-After header handling and a clear UX suggestion (show "temporarily degraded" banner). Can we add a tiny curl + pseudo-UI snippet?
+
+anna_docs: good point @kevin_support — I'll add a curl example and an excerpt for product/UX teams. Draft curl below, can someone sanity-check headers?\n```bash
+curl -i -X POST https://api.redwood-inference.com/v1/generate 
+  -H "Authorization: Bearer $REDWOOD_KEY" 
+  -H "Content-Type: application/json" 
+  -d '{"model":"rwd-1.0", "prompt":"summarize: ..."}'
+# if 429 returned, check Retry-After header and implement backoff + fallback model
+```
+
+sara_research: looks fine. add note: if Retry-After missing, use exponential-jitter backoff starting at 300ms and cap at 5s, then escalate to fallback model after N attempts (default 3).
+
+mike_devx: on the Go snippet — I sketched something that uses our `Retry-After` header helper (`rl.ParseRetryAfter`) and `x-retry-count` header to preserve telemetry. can I paste?\n```go
+// simplified example
+import (
+  "net/http"
+  "time"
+)
+
+func DoWith429Handling(client *http.Client, req *http.Request) (*http.Response, error) {
+  for attempt := 0; attempt < 4; attempt++ {
+    resp, err := client.Do(req)
+    if err != nil { return nil, err }
+    if resp.StatusCode != 429 { return resp, nil }
+    ra := ParseRetryAfter(resp.Header.Get("Retry-After")) // helper returns time.Duration or 0
+    wait := ra
+    if wait == 0 { wait = time.Duration(300*(1<<attempt))*time.Millisecond }
+    time.Sleep(wait + jitter())
+    // on final attempt, optionally switch to fallback model
+    if attempt == 2 { // pre-switch attempt
+      // mutate req to use cheaper model name
+      req.Header.Set("x-redwood-fallback-model", "rwd-1.0-small")
+    }
+  }
+  return client.Do(req)
+}
+```
+
+josh_eng: this is great. one more doc-level request: call out cost/latency tradeoffs when switching to fallback model (we should show a tiny table or bullet list).
+
+anna_docs: will add a short bullets section: "tradeoffs: cheaper model = lower cost, possible quality regression; fewer tokens = lower latency". Also adding a cross-link to the error-ref page under "Related docs".
+
+deploy-bot: CI check for docs/pull/412 — spelling + link-check running (ETA ~ 10m).
+
+kevin_support: small UX wording suggestion: replace "degraded mode" with "temporarily degraded" in the customer-facing guidance. less scary. :+1:
+
+mike_devx: quick thing — in the runbook please include an example of trimming prompt prefix vs truncating last messages. customers often need both code and reasoning.
+
+anna_docs: noted. I'll add a tiny code pair: prefix-trim example and context-window-aware trimming snippet.
+
+sara_research: also add a note on what to monitor: 429 rate, average Retry-After, and fallback-model usage percent. tie those to the Console dashboards in a short line.
+
+anna_docs: thanks all — I'll push updates shortly. If CI/link-check passes, I'll merge by EOD. If anyone wants to pair on wording for the fallback order section, ping me. :shipit:
+
+mike_devx: ping me after update, I can help reword the ordering section to be more prescriptive.
+
+kevin_support: TY — will forward the curl + UX snippet to the support playbook.
+
+anna_docs: merging notes: will ensure file names use the new short-naming conv, add anchors for "Retry-After handling" and "fallback ordering" and create an issue to add an end-to-end example app later.

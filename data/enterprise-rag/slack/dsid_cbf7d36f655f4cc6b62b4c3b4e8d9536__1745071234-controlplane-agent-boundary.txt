@@ -1,0 +1,45 @@
+architecture
+
+micah: RFC follow-up: nail down control-plane vs runtime boundary for hosted/dedicated/private. Proposal: single control-plane API for deploy/create/route and push placement/runtime-only decisions to agents. Need final agreement on config surface.
+
+sarah: +1 on single API. How do we keep telemetry/metrics consistent across hosted vs private installs? Different infra means different tag sets.
+
+aj: define a metrics invariant. Suggest a mandatory prefix `redwood.metrics.*` for core metrics and an optional mapping layer for private installs to translate local tags to our canonical schema.
+
+devon: mapping layer makes sense but ops will push back if it's manual. Can we auto-translate common tags with agent-side rules/heuristics?
+
+micah: control-plane schema should include `observability_contract_version`. Ship a lightweight agent/sidecar that enforces mappings. For hosted we operate it; for private we provide a helm chart/binary and a small config.
+
+sarah: big blocker is fallback routing: dedicated -> hosted fallback may violate data residency. Need explicit per-deployment policy and clear defaults.
+
+aj: Agreed. Add `fallback_allowed: boolean` to deployment resource. Default false for enterprise orgs. Must be opt-in and surfaced in contract.
+
+infra-bot: Requirement noted: PRIVACY-22 (2025-04-12) — no cross-tenant fallback unless explicit contract. :white_check_mark:
+
+devon: on client SDK surface: expose `deployment_hint` and `preferred_tiers` (array) rather than raw hostnames. Runtime/agent will choose endpoint using capability descriptors from control-plane.
+
+micah: example client config idea:
+```
+{
+  "preferred_tiers": ["private","dedicated","hosted"],
+  "fallback_allowed": false,
+  "observability_contract_version": "v1"
+}
+```
+
+sarah: model pinning: private customers must be able to pin model hashes. Runtime may offer optional auto-upgrades for minor patches if customer opts in. Need documented upgrade policy and signed manifests.
+
+aj: kernel/quantization differences across infra matter. Add `compatibility_profile` to deployment schema so scheduler routes only to nodes with matching kernels/ops and quantization support.
+
+micah: summary consensus: single control-plane API + per-deployment capability descriptors: `observability_contract_version`, `fallback_allowed`, `compatibility_profile`, plus explicit `data_residency` tags. Keep control-plane agnostic about node internals; agents advertise capabilities.
+
+action items:
+- devon: draft agent helm + SDK hint changes (ETA 1 week)
+- sarah: draft metrics contract and mapping doc (ETA 2 weeks)
+- aj: add `compatibility_profile` to deployment schema and list known profiles (ETA 1 week)
+
+micah: I'll open a follow-up RFC with owners/timelines and proposed schema snippets. tagging @legal for fallback/data residency wording.
+
+sarah: I'll coordinate with legal on fallback/clause language and bring back any must-have constraints.
+
+micah: thanks all — will post RFC link when ready. :thumbsup:

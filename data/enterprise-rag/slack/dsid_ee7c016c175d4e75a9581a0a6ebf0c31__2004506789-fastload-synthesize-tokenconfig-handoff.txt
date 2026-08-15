@@ -1,0 +1,43 @@
+eng-ml
+
+sam: Heads-up — hitting a weird HF->Redwood conversion mismatch. tokenizer.json exists but tokenizer_config.json is missing. fast tokenizer load fails and system falls back to slow tokenizer, which changes special token handling and breaks evals.
+anya: ugh, this again. do you have the model repo link or a ls of artifacts?
+sam: repo: github.com/org/new-model. quick ls from the export tar:
+```
+sam: /model
+sam: ├── config.json
+sam: ├── merges.txt
+sam: ├── vocab.json
+sam: └── tokenizer.json
+sam: (no tokenizer_config.json, no special_tokens_map.json)
+```
+anya: ok missing tokenizer_config is a common HF vs transformers export gap. fast tokenizer (tokenizers lib) expects tokenizer.json plus some extra mapping for special tokens. if it's absent the HF Python loader sometimes synthesizes, but our fast-load path refuses.
+maria: what symptoms in eval? numbers?
+sam: running our standard conv-eval on quantized int8 candidate: Rouge-L F1 dropped ~3.8 points vs baseline. QA exact-match down 4.2%. logs show tokenization disagreements on leading/trailing BOS/CLS tokens and chat templates.
+kai: did the conversion script keep the chat_template in config.json? sometimes chat templates live in tokenizer_config.json or special_tokens_map.json.
+sam: config.json had "chat_template": "<s>{role} {content}</s>" but the fast tokenizer expects special token IDs named like "bos_token" "eos_token" etc in tokenizer_config.json.
+anya: quick mitigation: we can synthesize tokenizer_config.json from tokenizer.json + config heuristics. propose script that: read tokenizer.json, detect special token strings in config.json/chat_template, add tokens mapping and write tokenizer_config.json before fast-load.
+maria: +1. can also add a warning in model onboarding pipeline and auto-fallback to create tokenizer_config.json. we should log exact diffs for audits.
+kai: watch out for token normalization differences between tokenizers lib and slow python tokenizers. synthesized file may still produce mismatch for some legacy models. need unit tests.
+sam: attached quick sketch of script I ran locally:
+```
+# synthesize tokenizer_config.json
+from pathlib import Path
+import json
+j = json.loads(Path('tokenizer.json').read_text())
+conf = {'special_tokens_map': {}, 'added_tokens': []}
+# heuristics: look for <s>, </s>, <pad>, <unk>
+for t in ['<s>','</s>','<pad>','<unk>']:
+    if t in j.get('model', {}).get('vocab', {}):
+        conf['special_tokens_map'][t.strip('<>/')] = t
+Path('tokenizer_config.json').write_text(json.dumps(conf))
+```
+sam: naive but got fast tokenizer to load and reduced the eval delta to ~0.6 F1 (still not perfect).
+anya: that's promising. can we add this synth step to the onboarding job and mark model as "needs tokenizer audit"?
+maria: yes, create a checklist item and a unit test that compares tokenization outputs between fast and slow on a few anchored prompts. fail onboarding if mismatched > threshold.
+kai: for the int8 quantization experiments, small tokenization diffs amplify the quality regression. So this needs to be fixed before we sign-off a quantized model.
+tokenbot: artifact uploaded: new-model-synth-tokenizer-2004506789.tar.gz
+sam: thanks. I'll open a PR with synth script + test and add an opt-in flag for force-synthesis in the onboarding pipeline.
+anya: nice. also add telemetry: record whether tokenizer_config.json was synthesized and the delta between fast/slow tokenization length distributions.
+maria: can someone file a follow-up to check downstream chattemplate parsing in runtime? special tokens can be swallowed by our chat template normalizer.
+sam: filing it now. thanks all. :thumbsup:

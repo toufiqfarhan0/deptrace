@@ -1,0 +1,68 @@
+partnerships
+
+Sam Ortiz: Quick flag 1: partner asks how we handle trace -> logs correlation for model shards. they saw lots of orphan spans in their trace UI.
+Noor Ahmed: probably because workers emit logs without trace_id in stdout. we only inject trace context in gRPC handlers at the gateway.
+Ethan Cole: can add a tiny shim to the infer-worker that picks up W3C headers from request metadata and sets them in the logger context. low risk.
+Maya Chen: also recommend adding `resource.attributes` in OTEL for `deployment.environment` and `inference.pool` so partner dashboards can group by pool.
+Sam Ortiz: agreed. priorities for partner runbook:
+- logger shim in worker + example in go/python
+- OTEL resource + exporter config for dd (collector snippet)
+- Datadog APM sampling rule to preserve inference spans
+- dashboard tile: traces + logs linked by trace_id
+- announcement text (what we can share)
+Noor Ahmed: shim example (python):
+```python
+from opentelemetry import trace
+import logging
+
+tracer = trace.get_tracer(__name__)
+logger = logging.getLogger('infer')
+
+def handle_request(req):
+    ctx = extract_w3c(req.headers)
+    with tracer.start_as_current_span('infer.request', context=ctx) as span:
+        logger.bind(trace_id=span.get_span_context().trace_id)
+        # process
+```
+Ethan Cole: collector -> Datadog (yaml):
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http: {}
+processors:
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: staging
+      - key: inference.pool
+        value: gpu-pool-1
+exporters:
+  datadog:
+    api:
+      key: "${DD_API_KEY}"
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource]
+      exporters: [datadog]
+```
+Maya Chen: Datadog sampling JSON draft (we'll keep 100% for spans with `span.service:\"redwood-inference\" AND model.name:*`):
+```json
+{
+  "type": "trace_sampling",
+  "name": "keep-inference-spans",
+  "filter": "service:redwood-inference AND model.name:*",
+  "sample_rate": 1.0
+}
+```
+Sam Ortiz: for dashboarding — partner wanted a single URL that opens a trace and the related logs. Datadog supports `trace.search` + log correlation. we'll add a sample notebook with the steps.
+Noor Ahmed: note on cardinality: `model.name` can explode with variants. let's normalize model_name to short tags (e.g., `redwood-7b-v2`) and avoid user-generated names.
+Ethan Cole: I'll open PR with the worker shim & normalization rule. ETA tomorrow AM.
+Datadog Bot: Agent rollout scheduled to staging at 2004137790. Tag mapping: `env`, `inference.pool`, `model` added.
+infra-bot: CI run for infra-config passed at 2004137799.
+Maya Chen: I'll draft the partner-facing doc and include the notebook link + dd dashboard JSON.
+Sam Ortiz: timeline: PR+tests tomorrow, partner sandbox test Thu, demo Fri. any blockers?
+Noor Ahmed: none from infra. I'll help validate trace->log links during partner test.
+Ethan Cole: thumbs up, starting PR now. :rocket:

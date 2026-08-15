@@ -1,0 +1,67 @@
+eng-runtime
+
+Maya R: 🚨 Customer corp-123 on Dedicated reporting large throughput drop since ~10:42 UTC. They see intermittent 429s and p95 latency jumping to 2.5s (was ~150ms). No config changes on customer side.
+ops-bot: [10:45:12] autoscale: pool dedicated-corp-123 scaled up from 4 -> 8 GPUs due to queue depth spike (reason: queue-depth>0.8).
+
+Maya R: Attaching snippets from our edge logs: 
+```
+2026-03-12T10:43:20Z pool=dedicated-corp-123 req=abcd1234 status=429 reason="batcher_throttle" batch_size=1 max_batch_tokens=4096 queue_len=72
+2026-03-12T10:43:21Z pool=dedicated-corp-123 req=abcd1235 status=200 latency=2450ms batch_size=1
+2026-03-12T10:44:10Z scheduler=continuous-batcher warn="max_batch_tokens hit" requested_tokens=6000 allowed=4096
+```
+
+Maya R: Looks like continuous-batcher is creating lots of tiny batches (size=1) even though queue_len is high. Possibly max_batch_tokens constraint and token distribution from customers causing fragmentation.
+
+Chris L: Do we have recent deploys to scheduler or batching code? deploy-bot, any deploys to continuous-batcher in the last 24h?
+
+deploy-bot: [10:46:00] deploy: service=continuous-batcher image=ci-2026-03-11-9f7a3 tag=live by @infra-team
+
+Priya N: I saw that deploy yesterday — it included a change that switched from greedy-slot-fill to a token-aware packing heuristic. It was intended to reduce token waste, but might regress when many short-sequence requests are interleaved with long ones.
+
+Sam T: Repro steps I used locally to simulate: 
+```
+# spam short requests then long ones to reproduce fragmentation
+for i in {1..200}; do \
+  curl -s -X POST https://api.redwood.dev/v1/generate \
+    -H "Authorization: Bearer $TEST_KEY" \
+    -d '{"model":"redwood-2-32k","input":"short msg"}' &
+  sleep 0.02
+done
+# then one long token request
+curl -s -X POST https://api.redwood.dev/v1/generate \
+  -H "Authorization: Bearer $TEST_KEY" \
+  -d '{"model":"redwood-2-32k","input":"<3000 tokens>"}'
+```
+
+Sam T: With current scheduler I see many single-request batches and p99 latency spike; switching scheduler to greedy-slot-fill locally reduced p99 by ~60%.
+
+Chris L: Any auth/billing breaks? Could a token throttle from the customer side cause 429s?
+
+Maya R: Verified: customer usage didn't spike, and their quotas are fine. Billing reports show normal usage. This is internal throttling (batcher throttling) not API key throttles.
+
+Priya N: Quick config to check on the pool: `max_batch_tokens=4096`, `max_batch_size=32`, `batch_timeout_ms=15`, `scheduler=continuous-token-aware`. If the token-aware heuristic treats every short request as a separate bin, max_batch_tokens will be hit by long requests, preventing coalescing.
+
+Priya N: Proposed immediate mitigations:
+- revert to greedy-slot-fill for the pool (fast rollback)
+- decrease batch_timeout_ms -> 8ms to favor filling slots sooner
+- temporarily increase max_batch_tokens to 8192 to allow larger merges for mixed workloads (watch memory)
+
+Maya R: Can someone run a canary rollback on dedicated-corp-123? If rollback reduces single-request batches, that'll confirm scheduler regression.
+
+Chris L: I'll run the rollback to greedy-slot-fill on a single node in the pool and monitor. Starting now. @ops-bot, please throttle new canaries to not affect production routing.
+
+ops-bot: [10:55:04] action=canary-update target=dedicated-corp-123 node=node-7 scheduler=greedy-slot-fill batch_timeout_ms=8
+
+Maya R: Also capture kernel metrics: GPU memory utilization, kernel-saturation, and nvlink traffic. If we allow bigger batches it could push memory over the limit.
+
+Sam T: After canary flip (node-7) I see batch_size median jump from 1 -> 10 on that node and p95 drop from 2.4s -> 0.23s. Other nodes still impacted.
+
+Priya N: Good signal. That strongly indicates the token-aware heuristic misclassifies short requests and fragments batches. I'll prepare a patch to adjust the packing thresholds and add a fallback to greedy when queue_len > 0.6.
+
+Maya R: Escalating to SE + Customer Success: I'll file a ticket and include these repro steps and logs. Also note customer asked about SLA credits — budgeting team pls advise if we need a proactive crediting.
+
+Sam T: Notes for postmortem: root cause likely scheduler heuristic change -> fragmentation -> continuous autoscale and internal batcher throttles -> 429s. Mitigation: rollback greedy-slot-fill, tune thresholds, add better telemetry (per-customer batch-size histogram).
+
+Priya N: I'll open a PR with tests that simulate mixed short/long traffic and a canary gating job. Target hotfix PR in next 2 hours.
+
+Chris L: Thanks. I'll keep monitoring both pool-level and pool-node-level metrics and will post summaries in this thread. :eyes:

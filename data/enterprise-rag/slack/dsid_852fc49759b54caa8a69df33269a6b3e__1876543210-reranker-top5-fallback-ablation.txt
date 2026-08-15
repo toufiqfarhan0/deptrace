@@ -1,0 +1,68 @@
+eng-ml
+
+oliver: FYI I ran the new bringup for small-ranker-int4 on the eval harness. Unexpected: overall nDCG@10 +2.2% but MRR@10 -4.7%. curious if dataset sampling or candidate dedupe changed behavior.
+
+ci-bot: rollout complete: small-ranker-int4 @dedicated-cluster-3 (2026-03-21T09:12:30Z) :white_check_mark:
+
+maria: -4.7% MRR is significant. Did you run per-query-length slices? Also any change in sample dedup policy (we recently toggled keep-first vs merge-duplicates).
+
+oliver: I reran slices. breakdown on prod_holdout_sample (10k queries):
+- short (<=3 tokens): nDCG +0.8%, MRR -9.2%
+- mid (4-8): nDCG +2.5%, MRR -1.3%
+- long (>=9): nDCG +4.4%, MRR +0.1%
+short queries driving the MRR hit.
+
+jin: interesting pattern. short queries often have many near-ties in relevance. Could be quant noise squashing logits. Did you check score variance and tie counts?
+
+oliver: quick stats: fraction of queries with exact top-score ties increased from 0.9% -> 3.6% under int4. mean top2-top1 gap shrank from 0.041 -> 0.013.
+
+tara: aside from numeric effects, any preprocessing differences? We shipped an upstream change that normalizes whitespace and drops some anchors for docs with many meta tags. That can reorder truncated docs for very short queries.
+
+oliver: preproc config for run (unchanged except quant backend):
+```
+model: small-ranker-int4
+eval_set: prod_holdout_sample
+preproc:
+  tokenizer: hf/tok-v2
+  html_strip: true
+  dedupe: merge-duplicates
+ranking:
+  candidate_pool: top100
+  tie_breaker: score_then_source_priority
+```
+
+jin: merge-duplicates will combine variants; might change which doc gets the highest aggregated score. If baseline used keep-first we should rerun a parity eval with same dedupe logic.
+
+maria: also check candidate order stability when you sort by (score, -source_prio). Maybe int4 causes ties so we should choose secondary key that matches business logic (e.g., human-curated docs first).
+
+oliver: did a parity eval swapping dedupe to keep-first: MRR drop reduces to -2.2% (still bad). so dedupe explains some but not all.
+
+jin: next step: try a fp32 re-score of only top-k candidates (k=5 and k=20) to see marginal cost vs quality. If rescoring top5 recovers most MRR, that's a low-cost mitigation.
+
+oliver: ran microbench: rescoring top5 in fp32 bumped p95 latency from 48ms -> 58ms, cost delta ~+12%. Results on 2k queries: top5-fp32 MRR delta = -0.6%, ndcg delta +1.9%. promising.
+
+maria: we should also consider a calibration transform applied after quant scoring: per-batch affine transform (scale + shift) computed to match mean/variance of baseline logits. cheap to compute and might separate tiny gaps.
+
+oliver: quick AB of calibrate vs rescoring: calibrate-only MRR delta = -2.8%, calibrate+top5-fp32 = -0.4%. calibration helps but not enough alone.
+
+jin: can you inspect specific top1 flips for short queries and paste a couple? seeing candidate snippets helps decide if label noise or model misrank.
+
+oliver: pasted two examples below: 
+1) query: "vpn"
+- baseline: [KB-123 (rel), KB-78, KB-90]
+- int4: [KB-78, KB-123, KB-90] (top1 flipped; KB-123 short doc had many anchors removed)
+2) query: "ssh key"
+- baseline: [GUIDE-45 (rel), DISC-200, GUID-12]
+- int4: [DISC-200, GUIDE-45, GUID-12] (relevant moved to 2)
+
+maria: note both rel docs are short HOWTOs. if our html_strip removes key tokens (like code snippets) they become less informative. combine that with quant noise and boom.
+
+tara: devops note: fused-quant kernel on dedicated has deterministic but slightly different reduction order; with int4 rounding that's expected to shift near-equal values. I'll open an infra bug to compare reduction ordering with the fallback kernel.
+
+jin: ops aside, long term: add a targeted regression test in eval harness for short-query MRR (assert <1% drop). Add tokenization/strip parity checks in CI for bringups.
+
+oliver: agreed. I'll push two follow-ups: 1) enable top5-fp32 fallback in canary for 24h; 2) calibration by default for int4 path; 3) create test: tests/evals/short_query_mrr_guard.py using short_holdout_10k.
+
+ci-bot: job queued: ab_test_rerank_int4_top5fp32 (24h canary)  started 2026-03-21T09:20:00Z
+
+maria: thanks. can you attach AB diffs and a sample CSV of flipped queries when job finishes? we'll send to labeling if pattern persists. :folded_hands:

@@ -1,0 +1,40 @@
+eng-releases
+
+maria: Heads-up — planning a small canary rollout tonight for the model-routing change (fallback priority tweak). Target window 21:30 UTC. Need deploy owner, smoke owner, rollback owner, and canary lane assigned. Steps below. Ping @jax @devon for release.
+
+jax: I can own the deploy (I'll run the deploy script and watch logs). Will post start/finish.
+
+devon: I'll own the smoke checks and monitoring. Can someone paste the quick smoke commands?
+
+maria: Smoke script (quick):
+```bash
+# smoke.sh
+curl -s -X POST https://api.redwood.ai/generate -H \"Authorization: Bearer $TOKEN\" -d '{"model":"redwood-llama2-small","input":"Hello"}' | jq '.choices[0].text'
+# expected: p99 < 500ms, 0 errors in 5 requests
+```
+
+maria: Quick checklist (pre-deploy):
+- ✅ PR #4502 review + approvals in repo
+- ✅ Staging config applied and sanity passed
+- ✅ Infra alerting updated (SLO thresholds for canary)
+- ✅ Backup snapshot taken at 20:45 UTC
+- ⬜ Canary rollout (2% traffic)
+- ⬜ Promote to full route if metrics stable for 15m
+
+ryan: I'm oncall tonight — I'll be rollback owner. Rollback criteria: errors > 3% OR p99 > 1200ms for 5 continuous minutes. If triggered I'll coordinate rollback and paging.
+
+sophie: I'll handle customer comms if we see any impact.
+
+deploy-bot: Scheduled window created: 21:30-22:00 UTC. Canary lane locked: lane-3.
+
+jax: Plan: run `scripts/deploy.sh --lane lane-3 --config pr4502` at 21:30 UTC. Estimated deploy time ~6m. I'll stream logs to #deploy-logs and paste link here.
+
+devon: I'll run the smoke script against lane-3 immediately after deploy: `env=prod-canary ./smoke.sh` (5 runs) and post results. If any failures I'll @ryan and tag the deploy.
+
+maria: Rollback artifact and tag are ready: `git tag v1.2.3-canary` and container `gcr.io/redwood/inference:v1.2.3-canary`. Links: https://git.redwood/infra/commits/4502 and https://gcr.io/redwood/inference/v1.2.3-canary
+
+jax: ack :thumbsup:
+ryan: ack :white_check_mark:
+sophie: ack :eyes:
+
+maria: Greenlight: if no objections by 21:15 UTC I'll kick off the canary. Reply here to object. Otherwise deploy proceeds and owners follow the checklist. Thanks!

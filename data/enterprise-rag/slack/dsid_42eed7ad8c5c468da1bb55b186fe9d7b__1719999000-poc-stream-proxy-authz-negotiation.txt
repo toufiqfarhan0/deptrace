@@ -1,0 +1,58 @@
+sales
+
+sara: Hey team — Acme POC is hitting intermittent 429s during streaming behind their corp proxy. Stream stops mid-response and client shows ECONNRESET sometimes. They repro from TS and Python clients. Can we swarm?
+
+kevin: Which SDK versions? any stack traces or response headers from the 429?
+
+sara: TS client v1.4.2, Python client v0.9. Customer pasted this header block from the proxy: 
+
+  HTTP/1.1 429 Too Many Requests
+  Retry-After: 5
+  X-Proxy-Req-Id: abcd-1234
+
+and a short log: 
+  stream aborted at chunk 238, socket hangup
+
+maria: Thanks — common pattern: corporate proxies kill long-lived HTTP/1.1 streaming connections or buffer chunked payloads until timeout. Two quick asks: can they try forcing HTTP/1.1 and keep-alive on the client? also confirm proxy idle timeout.
+
+aj: On Node/TS side try configuring an http.Agent keepAlive + longer socket timeout. Example: 
+
+  const keepAliveAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 60000 });
+  fetch(url, { agent: keepAliveAgent, timeout: 120000 });
+
+and increase SDK retry/backoff: 
+  retries: { maxAttempts: 6, factor: 2, minTimeoutMs: 500 }
+
+Also for streaming we recommend small chunk flushes so proxies don't buffer: set streaming.chunkSize ~16kb.
+
+kevin: For Python requests use: 
+
+  session = requests.Session()
+  adapter = HTTPAdapter(pool_connections=100, pool_maxsize=100, pool_block=True)
+  session.mount('https://', adapter)
+  resp = session.post(url, stream=True, timeout=(5, 120))
+
+and try curl repro to reproduce proxy behavior: 
+
+  curl -v --http1.1 -H 'Connection: keep-alive' -H 'Accept: text/event-stream' 
+    --limit-rate 100K "https://api.redwood.example/stream"
+
+maria: If proxy injects a 429 on long connections you'll see Retry-After. Ask Acme infra for proxy logs for X-Proxy-Req-Id abcd-1234 and the proxy idle timeout; sometimes corp proxies close after 60s of no buffer flush.
+
+remy: Security note — Acme's GRC flagged streaming through their corporate egress for data classification. They've asked for our SOC2 cert and IP allowlist for Dedicated. Sara — is this still a sales ask? If they need Private deployment, pricing will change.
+
+sara: Yes Remy — they requested the security questionnaire responses yesterday. Sales asked for Dedicated pricing ballpark. Any quick numbers?
+
+remy: For initial POC we can offer hosted but with IP allowlist + VPC peering; Dedicated starts at ~$XXk/month depending on throughput and retention. I'll email exact quote. Meanwhile I'll attach SOC2 link.
+
+aj: Back to triage — if forcing HTTP/1.1 + keep-alive + chunk flush doesn't help, ask them to run this diagnostic and paste output: 
+
+  curl -v --http1.1 -H 'Connection: keep-alive' -H 'Accept: text/event-stream' "https://api.redwood.example/stream" 2>&1 | sed -n '1,200p'
+
+Look for 'Connection: close' from proxy or 502/429 injected mid-stream. Also capture client-side TCP resets (netstat / tcpdump).
+
+deploy-bot: deploy status: streaming-proxy-fix candidate branch deployed to staging at 2024-10-18T09:12:00Z :rocket:
+
+kevin: One more thought — some proxies don't like Transfer-Encoding: chunked and buffer until full chunk. If they have per-request buffering, switching to server-sent-events style smaller chunk flushes is the most reliable workaround.
+
+sara: Great — I'll ask Acme to try the Node keepAlive + chunk flush change, run the curl diag, and send proxy logs for X-Proxy-Req-Id abcd-1234. I'll also follow up on the SOC2/docs and Dedicated pricing. Setting a sync at 10am PT tomorrow to review logs. Thanks all :thumbsup:

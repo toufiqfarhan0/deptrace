@@ -1,0 +1,11 @@
+partnerships
+
+marta.p: Heads-up: AcmeRetail's PO from AWS marketplace is stuck. Portal rejected due to missing MSA reference on PO line items.
+derek.sales: Customer says procurement attaches a PO but our acceptance flow requires a contract_ref param that AWS doesn't include. They're blocked on provisioning reserved capacity.
+jasper.eng: log: `422 missing_contract_ref`. We used to map marketplace order->contract via vendor alias, but vendor mapping changed last week.
+anil.legal: If we accept without contract_ref we risk misattributing billing/indemnity. Can't proceed without signed ACK.
+marta.p: Customer asks for temporary manual override to attach their MSA id on our side so capacity can be provisioned. Is that allowed?
+opsbot: created ticket MP-6022 "manual-contract-ref-override" assigned to @jasper.eng.
+jasper.eng: Ops can apply a manual mapping if legal signs an exception. Estimate 3-4hrs to add mapping UI + audit log.
+anil.legal: I'll draft a one-off approval email to keep audit trail.
+derek.sales: I'll get the customer's signed MSA id and paste it here. Need this live today — sales escalation. :pray:

@@ -1,0 +1,29 @@
+people-ops
+
+Maya Liu: Hey team — I’m Maya, started today in Eng. Quick security/onboarding q: I clicked the security training link in the handbook but not sure which modules are mandatory before I can access Dedicated infra channels. Also got a PhishSim email but my work laptop hasn’t arrived and my personal Mac is not enrolled in MDM yet. Do I need to enroll before the phish sim? And how do I check FileVault status?
+
+Jenna (People Ops): welcome, Maya! 🎉 Mandatory: Security Basics + Data Handling. Link: https://redwood.intranet/training/security-basics. Please finish those within the first 3 days. For phish sims, company devices are auto-exempt after enrollment; personal devices should request a loaner. Ping IT to enroll.
+
+Raj IT: @Maya Liu — can you run `fdesetup status` and paste the output? Also send your laptop serial (or the model) and we’ll push the Jamf invite.
+
+Maya Liu: ran `fdesetup status` → "FileVault is Off"
+
+Raj IT: OK. Two quick paths: GUI: System Prefs > Security & Privacy > FileVault > Turn On. Or terminal if you prefer:
+```
+sudo fdesetup enable -user maya
+```
+We’ll also send the Jamf enrollment link: https://jamf.redwood/enroll. Once enrolled, phish-sim exemptions apply and we can push required configs (MFA prompts, disk encryption enforcement).
+
+Sam InfoSec: FYI PhishSimBot will auto-assign new hires for the next sim window (usually Wed). Please complete Security Basics before that. If you don’t have a company device, request a temporary loaner from Facilities — we’ll mark you as exempt until you’re on a managed machine.
+
+PhishSimBot: User Maya Liu scheduled for simulated phishing exercise on 2025-11-12. To request deferral or loaner exemption, reply here with "loaner-request" or contact people-ops.
+
+Maya Liu: Thanks — can I request a loaner? My work laptop delivery is delayed. Also, will MFA setup be part of the Jamf flow or separate?
+
+Alex Eng: I’ll chase Facilities for the loaner. @Raj IT — can you send a temporary enrollment/MDM policy that’s less intrusive for personal devices while they wait for a loaner?
+
+Raj IT: Sent Jamf invite to maya@redwood.com. Also created a temporary policy for personal-device participants (limits access until MDM + FileVault enabled). MFA is separate: we require authenticator + at least one backup method (SMS or YubiKey). Expect an invite from identity@redwood for MFA enrollment.
+
+Jenna (People Ops): I added you to #eng and to the onboarding tracker. Welcome again! :party_parrot:
+
+Maya Liu: Got the Jamf invite and the MFA email. Enabling FileVault now; will update here if I hit sudo issues. Thanks everyone!

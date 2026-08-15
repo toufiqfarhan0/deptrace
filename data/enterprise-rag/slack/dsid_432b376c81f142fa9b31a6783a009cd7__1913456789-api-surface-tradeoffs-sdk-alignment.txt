@@ -1,0 +1,48 @@
+devex
+
+jess (PM): quick sync — we need to decide scope for the next SDK miniship. customers keep asking for typed function-calling + structured output stability. tradeoffs: large types surface vs simple runtime ergonomics. can we triage?
+
+mike (DevEx): +1. main constraints are backward compat for TS users and avoiding huge bundle size increases.
+
+anya (SDK): from the TS side: typed function-calling requires us to expose a stable union type for tools. current approach is `any` -> quick but untyped. typed version will need a small codegen or runtime validate shim.
+
+sam (Platform): runtime-wise, function-calling shape doesn't change serving. concern is structured-output schemas that require strict validation on client vs server. prefer opt-in validation on SDK.
+
+oliver (Eng-ML): rerank + embeddings ask: customers want consistent similarity semantics after quantization changes. for SDKs we should expose an `embeddingOptions` with `distanceMetric` + `normalize` flags so downstreams can lock behavior.
+
+mike (DevEx): thoughts on examples: we should ship a simple TS example showing `type ToolSpec = { name: string; inputSchema: JsonSchema }` and a Python snippet using pydantic for validation. small, focused.
+
+anya (SDK): pseudo-TS example (short):
+```
+type ToolInput = { prompt: string }
+export function callTool<T extends ToolInput>(tool: ToolSpec, input: T) : Promise<ToolResult> { /* ... */ }
+```
+That keeps generics light.
+
+jess (PM): acceptance criteria for miniship? propose: 1) TS runtime types for function-calling that are optional but documented, 2) structured output helpers (serialize/validate) in both SDKs, 3) embedding options API stabilized, 4) changelog entry + migration notes.
+
+sam (Platform): add SLA/compat check: ensure new helpers don't change default serialized payload shapes — we must keep wire format unchanged.
+
+oliver (Eng-ML): add test criterion: downstream similarity tests with cached vectors — we should include a small eval harness in examples to detect regressions post-quantization.
+
+mike (DevEx): docs work: short cookbooks for each feature + “opt-in” toggles. Also we need a deprecation policy blurb if we expose new typed args that could be removed later.
+
+anya (SDK): timeline? I can prototype TS types + small example in 3 days, then 2 day review. Python helpers should mirror APIs — I'll draft signatures.
+
+jess (PM): good. owners: @anya -> SDK types & examples, @mike -> docs cookbooks + changelog text, @sam -> platform wire-format sign-off, @oliver -> eval harness. target ship: next miniship on Thu.
+
+ci-bot: sprint-note created: "sdk-types-structured-output" assigned -> anya, mike, sam, oliver. due 3 days.
+
+mike (DevEx): one more: for structured output, recommend providing both schema-first and example-first helpers. some customers prefer `zod`/`pydantic` flows. include both.
+
+anya (SDK): ack. I'll add tiny zod example and a pydantic snippet.
+
+jess (PM): final ask: any blocker now?
+
+sam (Platform): only blocker is wire-format audit. I'll start that today.
+
+oliver (Eng-ML): nothing blocking from my side. will put a small vec-regression test in repo.
+
+mike (DevEx): I'll draft the changelog entry and migration notes — will ping for review. :thumbsup:
+
+jess (PM): great. please update the thread when PRs exist. target: cut miniship branch by EOD Wed. thanks everyone. :sparkles:

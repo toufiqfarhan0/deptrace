@@ -1,0 +1,41 @@
+eng-runtime
+
+maria: Quick follow-up from the canary run — we hit a weird case where a demote + rapid re-prefetch caused two nodes to believe they owned the same prefix. Observed ~1s of duplicate KV fetches and a spike in memory usage.
+kevin: Ugh. Is this the lease handoff path or the soft-evict grace period?
+aj: Looks like handoff race. One node issued a demote, started a prefetch to rehydrate, meanwhile the origin renewed a short lease and then revoked it. Lease-id mismatch in telemetry.
+sophie: Do we have a minimal repro? even a script that triggers demote->prefetch->lease-revoke tight loop would help.
+maria: I have logs. Snippet: `lease=0x7f3a; action=DEMOTE; prefetch_started=true; lease_revoked=true; owner=shard-3` — we see both shard-2 and shard-3 claim residency for ~800ms.
+kevin: That smells like missing linearization between `demote` (marking residency->false) and `handoff` (transfer token). Are we waiting for confirm?
+aj: Current flow: origin sets demote flag in local state, sends `handoff_request` async, target responds and applies residency, then origin clears. If responses cross, both can think they have residency.
+sophie: We should make demote idempotent but also make the transfer transactional: origin shouldn't clear until it sees target ack with matching epoch. Add `handoff_epoch` to the handshake.
+maria: Proposal: include `epoch` + `lease_token` in the handshake and require target to persist `(prefix, epoch, owner)` before ack. If origin sees ack with older epoch -> reject.
+kevin: That helps but still leaves a window where both persist before either clears. We need a tie-breaker. Maybe sequencer-assisted ordering or a compare-and-swap on a central ownership key?
+aj: Centralized CAS is heavy. Could we instead adopt a two-phase commit-ish pattern but with optimistic fencing: origin writes `handoff:pending(epoch)` to shared metadata, target writes `handoff:accepted(epoch)`, origin reads back accepted before clearing. Those metadata writes are small and fast.
+sophie: That reduces races but requires a durable metadata store. We already have a tiny consensus store for displacement snapshots — can coopt that.
+maria: Performance question: does this add a lot of latency to hot handoffs (the common case)? We need to keep SLOs.
+kevin: Hot handoffs should be rare if prefetch/replication is good. But in emergencies we mustn't blow latency. We can gate the synchronous path: fast-path = optimistic (current behavior) with detection + rollback; slow-path = metadata-assisted for risky cases (high concurrency or big tenants).
+aj: Rollback semantics are tricky. If both persist then one will eventually revoke and accept eviction; but clients could see duplicate reads. Can we guarantee monotonic reads? At least prevent double-writes to backing store.
+sophie: For client-facing monotonicity, rely on request-level fencing: `prefix_version` returned with KV reads, and clients assert monotonic versions. But internal duplicates still waste resources.
+kevin: Another angle: introduce a short randomized backoff in origin before clearing after ack. That makes simultaneous clear unlikely. Cheap and easy but not deterministic.
+maria: Backoff reduces probability but doesn't eliminate. For correctness we need deterministic ordering or a persisted ordering token.
+aj: I sketched a hybrid: 1) Add `handoff_epoch` persisted in metadata store. 2) Target writes `resident(epoch)` and returns ack. 3) Origin reads confirmed resident epoch and then does a final `transfer_complete(epoch)` CAS to clear its residency. If CAS fails, it retries or aborts. 4) If origin times out, it marks `zombie` and an async repair job reconciles.
+sophie: That seems reasonable. Also add metric `handoff_in_flight` + histogram of durations and a counter for conflicting-ownership-detected.
+maria: Agreed. For prefetch-heavy tenants we should enable `fast_transfer` which is optimistic but keeps a `transfer_watch` that auto-heals on conflict.
+kevin: Testing: add a chaos test that injects delayed acks, reorders RPCs, and forces concurrent handoffs for same prefix. Must run in CI and on canary clusters.
+aj: I'll add a test harness script. Pseudo: ```bash
+# spawn two nodes
+# force demote on node A, start prefetch on node B
+# inject delay on A's final clear
+# validate only one owner persisted
+```
+sophie: Also add evict/restore e2e with heavy load — measure memory churn and duplicate fetch counts.
+infra-bot: deploy-plan created: `eviction-handshake-metadata-proto` -> canary: redwood-canary-3 -> rollout: gradeds 10/30/60. Link: https://deploys/internal/eviction-handshake-metadata-proto
+maria: Permission question — who owns the metadata store change? @kevin @aj?
+kevin: I'll own the metadata API and migrations. Will coordinate with infra for capacity.
+aj: I'll implement handshake logic and tests. I'll pair with Sophie on metrics.
+sophie: I'll add dashboards and the chaos scenarios to the test matrix.
+maria: Action items: Kevin = metadata API + migration plan, AJ = handshake impl + CI tests, Sophie = metrics/dashboards + chaos. Infra to approve canary.
+kevin: One more: let's add a short TTL for `handoff:pending` entries so leaked pendings don't block future ops. Keep TTL = 30s but make configurable.
+aj: Good call. I'll also add a repair job that scans pendings older than TTL and tries a safe reconcile.
+sophie: We should document the failure modes in the RFC follow-up and list the exact invariants we guarantee (single residency, monotonic prefix_version, eventual repair).
+maria: I'll update the RFC doc and capture rollout checklist. Thanks all — will post canary results in this thread. :thumbsup:

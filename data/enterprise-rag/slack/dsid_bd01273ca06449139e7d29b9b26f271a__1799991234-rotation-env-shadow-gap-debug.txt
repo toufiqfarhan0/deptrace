@@ -1,0 +1,68 @@
+support
+
+amy_support: Heads-up — major EU customer reports 401s right after the scheduled API key rotation at 02:10 UTC. Vault shows new key alive, old key revoked. Requests from the customer started failing ~02:12. Trace ids: 82a3a1 / 82a3a2. stack: edge-proxy -> auth-service -> inference. Any idea if env var propagation could still be using the old key?
+
+kevin_enginfra: Do we know how the service reads the key? Is it via sidecar that watches Vault, direct KMS unwrap, or plain env var injected at pod start?
+
+amy_support: They use the standard helm chart with vault-agent sidecar (kv v2) + env injection into container. They also use our edge regional proxy in eu-west-1.
+
+maria_sre: :eyes: two quick things to check: (1) was sidecar restart / vault-agent lease renewal successful? (2) are there long-lived keepalive connections at the edge that still have the old token cached?
+
+deploy-bot: Deploy event: rotation job triggered 2026-03-17T02:10:12Z. Vault updated secret path se/kf/customer-321/api-key -> new version 17. Sidecar rollout: gradual, 02:11:18 to 02:13:00.
+
+kevin_enginfra: If sidecars rolled gradually there could be a window where some pods still had old env vars. Also check if any services read key from disk (file fallback) instead of env.
+
+maria_sre: To repro locally on a failing pod: 
+```
+# on a pod that's returning 401
+kubectl exec -it deploy/customer-api-5c7b4 -c customer-api -- /bin/sh -lc "printenv | grep REDWOOD_API_KEY"
+# test header directly against auth-service
+curl -v -H 'Authorization: Bearer $KEY' https://auth.eu-west.prod.redwood.internal/v1/verify
+```
+If printenv shows the old key, it's env propagation. If it shows the new key but auth still rejects, then edge caching or KMS unwrap problem.
+
+amy_support: Customer ran the printenv check — pod shows NEW key on one replica, OLD key on another. So propagation gap confirmed. They see 401s from the replicas with OLD key.
+
+dinesh_sec: That's consistent with a staggered sidecar restart + no automatic reconnect from edge. Two possible failures: (A) Vault lease or template didn't trigger env rewrite in some containers (template failure), or (B) a reverse-proxy / keepalive kept upstream connection open to the old process instance.
+
+kevin_enginfra: Actionable checks: 
+1) Check vault-agent logs in the sidecar for template render errors: `kubectl logs -c vault-agent deploy/customer-api-5c7b4`
+2) Confirm pod restart timestamps: `kubectl get pods -o wide --selector=app=customer-api --sort-by=.status.startTime`
+3) Check edge-proxy conn pool: look for long-lived connections to the specific pod IPs and force drain if needed.
+
+amy_support: customer attached logs, here's a snippet from one failing pod sidecar: 
+```
+2026-03-17T02:11:09Z template: write failed: permission denied
+2026-03-17T02:11:09Z vault-agent: render template failed, leaving old file
+```
+
+maria_sre: Permission denied on template render — that smells like a KV v2 path permission mismatch after rotate (maybe ACL limited to new version?). Dinesh, could KMS rewrap have changed the decryption context?
+
+dinesh_sec: Possible. Also confirm the Vault token that vault-agent uses wasn't expired at the moment of rotate. If the agent couldn't fetch the new secret due to token TTL, it would keep the old file and env. Check agent lease renewal logs and the auth backend for the agent role.
+
+kevin_enginfra: Meanwhile we can mitigate: force restart of pods and drain edge conn pools for the customer. Commands: 
+```
+kubectl rollout restart deploy/customer-api --namespace=prod --selector=customer=321
+# or kill the specific pod to force new env
+kubectl delete pod customer-api-5c7b4
+# edge drain (on edge-proxy node):
+adminctl upstream drain --backend 10.2.3.45 --grace 5s
+```
+
+amy_support: Customer agreed to a quick pod restart; they restarted the two failing replicas at 02:25 and errors dropped to zero. They want root cause though — said this has not happened with earlier rotations.
+
+maria_sre: Root cause hypothesis: vault-agent template threw permission error due to an unintended policy change on the KV path during rotation (maybe automation replaced policy binding). Need to compare Vault audit log around 02:10: 
+```
+vault audit tail -format=json /var/log/vault/audit.log | jq 'select(.time|startswith("2026-03-17T02:10"))'
+```
+Also check KMS rewrap entries: if the key-id changed and agent lacked decrypt rights, that could produce a different failure.
+
+dinesh_sec: I'll pull the vault audit and IAM bindings for the agent role. If we find policy churn, we'll roll back the change and add a test to the rotation job to validate sidecar access post-rotate.
+
+kevin_enginfra: Engineering ops note: add a post-rotation smoke step that does `kubectl exec` printenv against a sample pod to confirm env rewrite, and verify edge pool drain for any in-flight connections. We can add to the job: sleep 30s, then verify.
+
+amy_support: Assigning owners: dinesh_sec -> vault/audit + policy root-cause, kevin_enginfra -> edge conn pool + rollout update, maria_sre -> post-rotation smoke test + runbook update. Customer notified and ok with restart.
+
+maria_sre: I'll follow up with a short runbook patch: include `vault-agent` log checks and `kubectl printenv` as mandatory smoke checks. Also add detection for template render errors to alerting.
+
+amy_support: Thanks all — marking this thread resolved after root cause triage & runbook PR. :white_check_mark:

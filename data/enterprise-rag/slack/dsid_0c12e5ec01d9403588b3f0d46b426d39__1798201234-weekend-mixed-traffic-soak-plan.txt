@@ -1,0 +1,58 @@
+eng-runtime
+
+olivia: Heads-up — planning a mixed traffic soak for this weekend. Goal: verify kv-cache changes + new batching heuristics under sustained traffic. Need capacity signoff and profiling owners. Thinking Sat 02:00–08:00 UTC.
+
+ben: +1 from infra side if we keep < 3k concurrent users per region. can we split EU/NA windows?
+
+olivia: yeah split makes sense. NA Sat 02:00–05:00 UTC, EU Sat 05:30–08:00 UTC. that keeps peak GPU QPS per pool predictable.
+
+mike: tagging in perf team — i can own flamegraph collection & pipeline hooks. which scenario are we replaying? full-production mix or subset?
+
+olivia: replaying golden-traffic archive id: golden-archives/v2/2026-11-04-17. full mix but we will throttle non-critical background jobs (analytics).
+
+tara: I can take loadgen orchestration (k6 + locust hybrid). will run initial dry-run tonight 23:00 UTC. primary command for k6 is:
+```
+k6 run --vus 500 --duration 30m --out influxdb=http://metrics:8086 script.js
+```
+Add locust for heavier KV cache hotspot tests.
+
+ben: infra checklist — please confirm: reserved nodes up, disk io alert disabled for the run, ephemeral logging to s3://tmp-soak-logs, and a rollback snapshot prepared. I created ns: soak-na-2026-11-06.
+
+lisa: I pushed a small runtime tweak to evict early under low-memory pressure — PR #5123. Can we gate the soak on rolling the change to a small canary then the full pool?
+
+olivia: yes, plan: canary pool (2 instances) for NA first 30m, check perf/regressions, then scale to full NA window. same for EU. mike, can you add canary profiling checks?
+
+mike: will add: heap/alloc rate, p95 token latency, and kv-cache miss ratio. hooking up auto-compare to last-green baseline.
+
+soakbot: [AUTO] soak-run-reservation accepted for soak-na-2026-11-06. Reservation ID: SR-9851. Notifying on #eng-runtime.
+
+tara: quick question — what user journeys to prioritize for trace sampling? UI chat gen, embeddings lookup, and background rerank are top ones.
+
+olivia: focus sampling on chat gen + embeddings. rerank only at 10% sample. capture KV trace header x-kv-hit for correlation.
+
+ben: capacity note: if observed GPU util > 85% for 10m continuously, throttle generator by 20% and escalate to eng-sre. put autoscale pause flag: --no-autoscale so we don't scale during canary checks.
+
+mike: added a tiny health-check script:
+```
+# check p95 token latency and kv miss
+curl -s http://perf-check/health | jq .metrics | grep p95
+```
+I'll post flamegraphs to /shared/perf/soak-1798201234 after the run.
+
+lisa: ran quick local smoke with the change, no obvious regressions. leaving a note in PR.
+
+olivia: outstanding blockers? otherwise I'll create the runbook and schedule the dry-run tonight. @ben can you confirm reserved nodes are available?
+
+ben: confirmed. nodes reserved and snapshot ready. :thumbsup:
+
+tara: dry-run tonight 23:00 UTC — i'll post the short run log here when done. everyone please add any last demands to this thread.
+
+olivia: thanks all — runbook link: https://redwood.internal/soak-runbooks/mixed-traffic-2026-11-06 (will update with exact commands).
+
+mike: action items summarized: 1) tara: run dry-run tonight, 2) ben: keep reserved nodes & snapshot, 3) lisa: monitor canary PR, 4) mike: profiling hooks + flamegraphs, 5) olivia: final runbook + go/no-go 1h before window.
+
+lisa: noted. I'll set an alert on kv-miss ratio > 5% for immediate rollback.
+
+soakbot: [AUTO] reminder scheduled: go/no-go check at 2026-11-06T01:00:00Z (1h before NA start).
+
+olivia: great — closing planning. ping here if anything changes. :rocket:

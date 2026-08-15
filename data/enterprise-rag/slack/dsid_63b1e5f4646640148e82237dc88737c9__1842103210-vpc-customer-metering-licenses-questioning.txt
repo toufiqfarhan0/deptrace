@@ -1,0 +1,27 @@
+finance
+
+Maya: Heads up — ACME asked if we can break out committed GPU reservation fees vs. vendor licensing on their private VPC invoices. They want passthrough visibility for audit.
+Anika: +1 from sales. They need clear lines: hardware reservation, cloud egress, third-party license. ACME is negotiating a 12‑month private deployment.
+Luis: We currently amortize reserved GPU commits monthly across the term and include a single "infrastructure pass-through" line. We can add a separate "license" line but need legal signoff re: redistribution of vendor invoices. @Tasha
+Raj: From infra: we can meter GPU-hours per allocation by customer tag; that supports per-customer breakdown. Network egress and KMS usage are also taggable but require a short rollout for accurate attribution (1–2 weeks).
+Tasha: Legal: most vendor licensing agreements prohibit re-billing the vendor invoice itself, but we can bill our license charge as a pass-through if we have written permission or if the vendor allows reseller billing. Need contract copy from ACME or permission from vendor. :thinking_face:
+Chloe: Finance options:
+- Option A: Bill vendor license as a separate Redwood "license pass-through" line (we absorb vendor invoice and mark up or not) — requires vendor OK.
+- Option B: Charge a "Licensing handling fee" (our line item) and include vendor cost as an attachment for customer visibility (no redistribution).
+Either way, we should show amortized monthly amount for reserved GPU commit.
+Anika: ACME prefers Option A for reconciliation. I'll ask them to provide the vendor contract and confirm they permit pass-through. Will ping them now.
+BillingBot: New invoice template v4 deployed to staging; includes optional fields: license_fee, hardware_reservation, network_egress. See /billing/templates/v4
+Maya: If we do Option A, how do we present it on the invoice? Example snippet requested by ACME:
+Maya: ```
+Invoice #12345
+- Redwood infrastructure reservation (amortized): $12,000
+- Vendor license (pass-through): $3,600
+- Network egress: $120
+Total due: $15,720
+``` 
+Luis: That layout is fine. Need a firm policy on markups. Current practice: we don't markup vendor license for Enterprise customers unless procurement asks; we can include a configurable markup flag.
+Raj: Operational note: for on-prem deployments, some vendor licenses are per-socket and not metered hourly. We'll need a mapping table (sockets -> equivalent monthly cost) to produce the amortized figure.
+Tasha: Also check export controls / compliance when sending vendor invoices as attachments (PII in vendor billing). Limit attachments to summary lines if needed.
+Chloe: Action items: @Anika get vendor contract and customer's permission; @Raj enable tag-based metering for egress/KMS for ACME; @Luis draft invoice layout and pricing policy (markup rules); @Tasha confirm legal signoff. I'll hold the billing workflow until clear.
+Anika: Got it. I'll update once ACME confirms permission (ETA 48h). :thumbsup:
+Maya: Thanks team. Let's keep this thread for status updates so finance can act fast once we have docs.

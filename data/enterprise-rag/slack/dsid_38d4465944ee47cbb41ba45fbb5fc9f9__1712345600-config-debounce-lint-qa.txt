@@ -1,0 +1,39 @@
+eng-ml
+
+sara: Quick heads-up — config-lint failed on the new 'eos-lite' onboard. CI shows two issues: missing `model.max_seq_len` and tokenizer vocab_size mismatch (config says 50258 but weights header is 50257). Serve is throwing KV-cache index OOB. @liam can you take a look? Logs: https://ci.internal/redwood/1234
+
+liam: On it. can you paste the exact lint output / small config snippet so I can repro locally?
+
+sara: Paste of the minimal config that failed:
+```json
+{
+  "model": {
+    "name": "eos-lite",
+    "max_seq_len": null
+  },
+  "tokenizer": {
+    "vocab_size": 50258,
+    "bos_token_id": 1
+  }
+}
+```
+
+liam: I think the validator treats null like 0 which causes downstream runtime to allocate 0-length cache. Quick fix: validator should treat missing/null as use default (2048) unless explicitly set. Also that vocab_size vs weights mismatch looks like an off-by-one from a pad token. @anya can you confirm tokenizer file in S3?
+
+anya: Confirmed — s3://models/eos-lite/tokenizer.json reports "vocab_size": 50257. The published weights header lists 50258. Looks like someone regenerated the vocab and added a <pad> later. I'll re-upload a tokenizer variant with pad token, but we should make the lint strictness configurable (`strict_tokenizer`) so we can relax for onboarding.
+
+max: FYI we added a runtime tolerance before: if `pad_token_id` present we allow vocab mismatch by 1 for kv-cache alignment, but it's brittle. Strong preference to keep config+tokenizer aligned and fix the tokenizer artifact.
+
+deploy-bot: deploy queued: config-validator v0.9.3 -> staging at 2024-04-23T15:12:00Z
+
+liam: I just opened PR #4123 with the validator change: treat missing/null max_seq_len as global default 2048, and add a WARNING (not ERROR) for 1-off tokenizer vocab mismatch unless `strict_tokenizer=true`. Includes unit tests + changelog. @sara can you add a small regression prompt set so Optimize will pick up any tokenization diffs?
+
+sara: :thumbsup: adding a 10-prompt regression set now, will upload to s3 and ping in this thread when done.
+
+anya: Uploaded tokenizer v2 with pad token at s3://models/eos-lite/tokenizer-v2.json and tagged the model manifest with `serving_tokenizer_uri: s3://models/eos-lite/tokenizer-v2.json`. Also added manifest field `tokenizer.vocab_size: 50258`.
+
+liam: Re-ran lint locally against updated manifest — passes. CI should follow.
+
+infra-bot: CI job 6789 passed for config-validator PR #4123 (branch: fix/null-defaults).
+
+sara: Great, thanks everyone. Moving this model to `onboard/ready`. Planning a canary deploy tomorrow morning — I'll share the rollout policy separately, ping me if you want to review the canary thresholds or fallback model mapping.

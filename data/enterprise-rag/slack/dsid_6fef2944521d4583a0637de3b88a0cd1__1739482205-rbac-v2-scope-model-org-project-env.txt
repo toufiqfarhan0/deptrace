@@ -1,0 +1,111 @@
+architecture
+
+Jordan Lee: trying to close the loop on scope semantics for RBAC v2. we keep bouncing between org/project/env. can we align on what the policy engine evaluates + what gets written into audit logs?
+
+Ines Carvalho: +1. also want to make sure tenancy model is consistent across Hosted/Dedicated/Private. in practice customers ask “can my staging operators not touch prod?” and that’s basically env.
+
+Ethan Park: from control plane POV, we already have URLs that are /orgs/{orgId}/projects/{projectId}/environments/{envId}/… for some stuff, but routing policy APIs today are a bit weird (some are org-level).
+
+Naomi Feldman: PRD intent: org scope for “enterprise admin” things, project scope for app/team things, environment scope for operational separation (dev/stage/prod) esp for regulated customers.
+
+Amara Diallo: gateway needs a deterministic way to derive scope from request. if scope can be “optional”, we’ll end up with weird fallback behavior. deny-by-default makes this painful.
+
+Jordan Lee: proposal v0: ScopeType = ORG | PROJECT | ENVIRONMENT | CLUSTER (private/dedicated). but i worry we’re overfitting.
+
+Diego Santos: if we don’t have CLUSTER we end up shoving cluster into env metadata. private deployments will hate that because “env” in their world is not always the same as “cluster”.
+
+Marcus Lin: security angle: least privilege wants the smallest meaningful scope. if a routing policy change can impact prod traffic, we need env-level scoping at minimum (or a policy object that’s explicitly bound to env).
+
+Ethan Park: routing policy objects right now: there’s an “org default routing policy” and then project overrides. env override is planned but not shipped everywhere.
+
+Ines Carvalho: question: do we make routing policy edits permissioned at the scope of the *policy object* (where it lives) or the *impact scope* (what it affects)? those diverge if org-default affects all projects.
+
+Jordan Lee: yeah. impact-scope is hard to compute consistently. but if we don’t, org-level policy becomes a footgun.
+
+Allison Grant: for audit logs we need to be explicit either way. auditors will ask “what did this change affect?” if we only log “resource=RoutingPolicy org=…” we’ll miss the blast radius.
+
+Logan Wright: we can add fields for both in audit events w/out nesting? like `resource_scope_type/resource_scope_id` + `effective_scope_type/effective_scope_id` as strings.
+
+Amara Diallo: gateway can only stamp what it can derive from the path + headers. “effective scope” might require reading policy object contents.
+
+Ethan Park: service can enrich audit event. gateway can put authz decision context (subject, action, derived scope), control plane can add “impacted environments” maybe.
+
+Marcus Lin: careful on “impacted environments” list. could explode. but at least env vs org should be clear.
+
+Jordan Lee: for the policy engine itself: i’d rather evaluate on a single canonical scope (the one in the request). then audit log includes that scope + a separate “resource” identifier.
+
+Naomi Feldman: can we state a product rule: routing policies that affect traffic must be bound to project+environment. org-wide “default routing policy” becomes an internal-only construct or is treated as security-admin only.
+
+Ethan Park: i can live with that. we can keep org-default but make it a special permission + require break-glass / security admin role.
+
+Amara Diallo: if org-default exists, gateway needs a scope. the endpoint is /orgs/{orgId}/routing-policy/default. that means scope is ORG. so permission should be like `routing_policy.write` at ORG scope.
+
+Marcus Lin: and then the env-level policy endpoint is /orgs/{orgId}/projects/{projectId}/environments/{envId}/routing-policy. permission `routing_policy.write` at ENV scope.
+
+Jordan Lee: ok but then permission catalog needs to say scope constraints. e.g. same action name but allowed scope types differ by resource.
+
+Ines Carvalho: alternative: distinct permissions: `routing_policy.write.org_default` vs `routing_policy.write.environment`. avoids confusion.
+
+Naomi Feldman: distinct permissions is clearer for customers + role templates. otherwise “routing_policy.write” accidentally grants org-default changes if someone can bind at org scope.
+
+Allison Grant: +1. for audit logs too: denial reasons become clearer (“missing routing_policy.write.org_default”).
+
+Logan Wright: from telemetry schema side, we’ll want to normalize action strings. if we split too much it’s noisy. but maybe fine for high-risk actions.
+
+Jordan Lee: compromise: permission names encode target: `routing_policy.update` but resource type differs: `RoutingPolicy:OrgDefault` vs `RoutingPolicy:Environment`. authz check is `(action, resource_type, scope)`.
+
+Amara Diallo: gateway can attach resource_type via endpoint annotation. that works.
+
+Ethan Park: yep. control plane can enforce same resource_type in service layer too.
+
+Marcus Lin: please ensure “org default routing policy” is Tier-0 sensitive and only Security Admin / Org Admin by default.
+
+Naomi Feldman: agreed. separation-of-duties: Deployment Operator should be able to edit env routing policies but not org-default.
+
+Ines Carvalho: ok, so scope model:
+- ORG: users/roles/bindings, audit log export settings, org-default routing policy
+- PROJECT: model catalogs per project? api keys per project? (still debating)
+- ENVIRONMENT: routing policy, model pinning/rollouts, secret rotation for that env
+- CLUSTER: only for Private/Dedicated installer/admin actions (node pools, upgrade, backup)
+
+Jordan Lee: question on PROJECT vs ENV: do API keys belong to project or org? today keys are org-wide but used per project.
+
+Ethan Park: keys currently minted under org, not tied to env. but we have “project keys” request from multiple customers.
+
+Marcus Lin: if keys are org-wide, granting key rotation at org scope is very broad. could be ok but needs explicit permission + audit log clarity.
+
+Naomi Feldman: let’s not solve keys here. focus on routing policy semantics.
+
+Allison Grant: for audit logs: ask is: what scope do we store for authz decision?
+
+Jordan Lee: recommended audit fields:
+- `authz.scope_type` / `authz.scope_id` = the scope used for evaluation (derived from request)
+- `resource.type` / `resource.id`
+- `authz.decision` allow/deny
+- `authz.policy_version`
+- `authz.reason_code` if deny
+then optionally `resource.parent_scope_*` if needed.
+
+Logan Wright: we can keep them as flat fields on the event (no nested). naming would be like `authz_scope_type`, `authz_scope_id`, etc.
+
+Amara Diallo: and gateway should always send scope_type/scope_id even if deny, so we can debug denies.
+
+Ethan Park: service should also log the “resolved env” if request was ambiguous (ex: endpoint that takes envName query param). but better if we ban those.
+
+Ines Carvalho: +1. scope should be in path, not query. otherwise people will do weird things and we can’t gate well.
+
+Jordan Lee: so action items:
+1) Jordan: update scope semantics doc: scope derivation rules + required in paths.
+2) Ethan: identify routing policy endpoints that are org-level today; propose env-level equivalents + deprecations.
+3) Allison/Logan: confirm audit log field naming + which side stamps which fields.
+4) Naomi/Marcus: confirm resource_type approach (OrgDefault vs Environment) for permission inventory.
+
+Naomi Feldman: works. i’ll also ping Tessa/Console team: role binding UI needs to make scope explicit (org vs env). we’ve seen admins accidentally bind too high.
+
+Marcus Lin: also note: if org-default routing policy changes exist, they should trigger higher-severity alerts in SecOps. we can wire that later but at least log it.
+
+Amara Diallo: :thumbsup: once we land endpoint annotations for resource_type + scope_type, gateway middleware can enforce consistently.
+
+Ethan Park: i’ll drop a list of endpoints in this thread later today.
+
+Jordan Lee: perfect. closing the loop: consensus seems to be “env scoping is required for traffic-affecting routing policies; org-default is allowed but treated as distinct resource_type and tightly permissioned; audit logs capture evaluation scope + resource_type/id.”

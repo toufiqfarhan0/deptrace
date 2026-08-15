@@ -1,0 +1,34 @@
+finance
+
+Jordan Lee: Hey @finance, quick one — I submitted an expense for last week's SF conference (expense id `9876123`) but it still shows as 'pending' in Concur. The corporate card charge from Hotel Solis for $782.46 posted to my card but the vendor on the statement reads 'HOTEL SOL'. I uploaded the PDF folio and a photo of the receipt when I filed, but AP says they can't match the receipt to the charge. Can someone help reconcile? Attached: https://redwood.slack-files.com/T1234-F5678-abc123/receipt.jpg :receipt:
+
+ExpenseBot: Expense `9876123` received and queued. Current queue position: 4. ETA to AP review: ~48h.
+
+Maria Chen: @Jordan Lee thanks — can you confirm the last 4 of the card and the transaction date? also did you upload the itemized folio (the hotel folio shows room + tax + incidentals)? AP needs the folio to match amount.
+
+Jordan Lee: Yep last4 `4242`, transaction posted `2026-03-15`. I uploaded folio but maybe it got attached as a single-page scan. Here's the folio lines:```Room charge 625.00
+Taxes & fees 92.46
+Mini-bar 65.00
+Total 782.46```I also have the folio PDF if someone needs it: https://redwood.slack-files.com/T1234-F5678-xyz789/folio.pdf
+
+Alex Patel: tagging from AP — sometimes the statement uses a short merchant name. I can search our bank feed for `HOTEL SOL` with that amount+date and match to `last4 4242`. If you also have the folio invoice number, paste it.
+
+Jordan Lee: Folio/invoice number is `FOLIO-55321`. I included it in the PDF header.
+
+Maria Chen: Ok that's helpful. Two quick asks: 1) can you add one-line justification to the expense (conference client dinners) so manager approval is explicit, and 2) Emily — can you confirm approval? We need manager sign-off before we mark reimbursable.
+
+Emily Rivera: Approved — this was for the Redwood Integration Summit and Jordan hosted a partner dinner on 3/14. +1 for reimbursement. :thumbsup:
+
+Maria Chen: Thanks Emily — Alex, can you match `FOLIO-55321` + `last4 4242` in the bank feed? If matched we'll attach the folio to the charge and status -> reimbursed / paid out on next AP run.
+
+Alex Patel: Found it in the bank feed, mapped the merchant code to `Hotel Solis (HOTEL SOL)` and linked folio `FOLIO-55321`. I left an internal note: `matched by folio no & last4`. Changing status now.
+
+ExpenseBot: Expense `9876123` status updated -> `Ready for Reimbursement`. Expected payout: next AP cycle (3/18).
+
+Jordan Lee: Amazing, thanks all. One more Q: should I still dispute the corporate card authorisation for the incidentals (mini-bar)? It was a personal charge and policy says incidental personal charges should be contested.
+
+Maria Chen: Yes please dispute any personal incidental charges through the card portal and tag AP. Put the dispute ID in the expense notes so we can record it — we won't reimburse disputed amounts.
+
+Jordan Lee: Will do. Dispute started, dispute id `DISP-9981`. I added it to the expense notes.
+
+Alex Patel: Noted. Closing thread once payout posts. :white_check_mark:

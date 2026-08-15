@@ -1,0 +1,37 @@
+eng-ml
+
+Jiayi: heads-up — mariner-v0.7 quant bring-up showed a weird detok artifact when inputs mix CJK and RTL scripts. repro attached below.
+Hugo: ok can you paste the smallest repro here?
+Jiayi: sure — short snippet that flips bracket orientation and inserts an RLM in the middle: `日本語 〈مرحبا〉 test` -> model output: `日本語 〈\u200fمرحبا〉 test` (note \u200f appears before arabic chunk)
+Anita: so the detok inserted an RLM (U+200F) inside the token boundary?
+Jiayi: yes. happens only for int8 quant on cuda-gpu with mariner q4 -> float16 build is fine. also only when sequence contains left-angle bracket char `` before RTL span.
+EvalBot: quick stats: ran 2k mixed CJK+AR test cases. BLEU (zh->ar) drop = 6.2 vs baseline float16; exact-match bracket orientation flip in 4.7% of cases.
+Hugo: interesting. is it tokenization mismatch or a post-detok reflow? can you dump token ids?
+Jiayi: pasted token ids for the example:
+```
+input: 日本語 〈مرحبا〉 test
+tokens: [12034, 56, 987, 6421, 3012, 7]
+recon from tokens: 日本語 〈\u200fمرحبا〉 test
+```
+Hugo: hmmm recon has RLM — so tokenizer or kvcache decode path inserted it. which tokenizer version?
+Jiayi: tokenizer v2.1.3 (our subword merge table); mariner onboard used the `norm-on-detok` flag enabled at runtime.
+Anita: could it be our Unicode BIDI normalization step running after quantized kernel that uses different branch for combining marks?
+Jiayi: that's our hypothesis. Kernel selects bidi-compat normalization micro-path when `norm-on-detok` true + quantized beam. quant path uses a lightweight Unicode lookup that omits contextual shaping for CJK adjacent punctuation.
+Matt: can you reproduce locally on CPU with the same quant params? we need to know if it's kernel-only or model weights quant noise.
+Jiayi: repro on CPU int8 sim (ffmpeg-style sim) also produced RLM, but only when running deterministic kvcache flush. float32 path didn't show it. so seems deterministic codepath difference.
+Hugo: ok next steps: (1) add a unit test combining CJK punctuation + RTL spans (2) temporarily set `norm-on-detok=false` for mariner-v0.7 int8 canary (3) bisect the bidi micropatch in the kernel.
+Anita: I'll file a quick PR to add the unit test and a transformer-level guard. assigning to @hugo to bisect.
+Hugo: taking it. can you also run a locale-focused eval to quantify user-facing regressions? e.g., zh->ar blog post and ja->he short-sentence sets.
+Jiayi: ran a quick locale set: zh->ar, ja->ar, zh->he. BLEU drops concentrated on punctuation-heavy sentences; fluency metrics (chrF) drop smaller. full eval here: `s3://redwood-evals/mariner-v0.7/locale-detok-2026-03-22.csv`
+EvalBot: alert: 5 customer-facing runs flagged in sandbox production for mariner-v0.7 int8 — fallback to float16 enabled for those routes.
+OpsBot: auto-fallback executed for model routes: prod/translate-asia, prod/translate-mena at 2026-03-22T14:12Z.
+Matt: good call. once we have the bisect we can re-enable. do we need an emergency canary rollback?
+Anita: not yet — fallback kept user traffic safe. no SLA issues. but we should add a note in release notes: "known detok bidi artifact with CJK+RTL for mariner-v0.7 int8; float16 unaffected"
+Jiayi: I'll open the bisect ticket with logs and the minimal repro + unit test. linking the kernel commit range: `kernel/bidi-norm @ f2b3..c7e9`
+Hugo: thanks — priority P2. assigning to @Hugo, cc @Jiayi, @Anita.
+Jiayi: one more oddity — quantized decoder sometimes drops closing angle bracket when combined with Arabic diacritics. I'll include samples in the ticket.
+Anita: noted. we'll coordinate with localization team for more evaluation data. :eyes:
+Matt: rough ETA for bisect?
+Hugo: aiming EOD tomorrow. will post findings in this thread.
+Jiayi: thanks all. if anyone needs the local reproducer script: `./tools/repro_mixed_bidi.sh 〈مرحبا〉` — it's in the mariner folder.
+Matt: nice. :thumbsup:

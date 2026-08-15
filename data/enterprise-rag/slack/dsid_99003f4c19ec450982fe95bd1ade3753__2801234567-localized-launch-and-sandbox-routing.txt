@@ -1,0 +1,38 @@
+marketing
+
+mina_marketing: Locking the final run-of-show and launch posts for tomorrow's webinar. Two extra asks: localized landing pages for EU/APAC and a sandbox invite workflow that respects timezone followups. Can ops confirm demo failover and APAC speaker prerecord?
+eli_prod: We can make 2 short localized landing pages: /benchmarks-eu and /benchmarks-apac. I'll send short copy snippets for EU (focus on compliance) and APAC (focus on regional latency). Keep bullets to three lines each.
+harry_demo: Demo lead here. Live against private-stage-us. APAC speaker (Yuki) will present a 4-min prerecorded segment; we'll cue it at 10:12 PT. Live fallback plan: if 95th>500ms switch to hosted-readonly and play the prerecorded clip for the rest of the demo. Clip uploaded: https://drive.redwood/webinars/yuki_apac_segment.mp4
+sara_ops: Recording & stream ready. Mic checks at 9:30 PT. Ops checklist for failover:
+- Primary: private-stage-us (pinned)
+- Auto-fail to private-stage-b if errors>1.5% for 30s
+- Then hosted-readonly as last resort
+- On manual fallback, I'll post "OP: manual-failover -> hosted-readonly" in channel and trigger producer overlay
+ben_growth: Sandbox invites: immediate send only to attendees in these buckets: poll yes + asked for sandbox in Q&A + registered company domain in target accounts list. For APAC registrants, delay invite by 6 hours local time to avoid in-region overnight sends. We'll tag leads by region and poll response.
+apac-coordinator: I'll provide a short translated CTA line for the APAC landing page and confirm Yuki's voiceover has subtitles. She wants the caption file by today 5pm PT.
+alert-bot: resource-check: private-stage-us GPUs 4/8 free, private-stage-b 2/6 free.
+mina_marketing: Run-of-show (final):
+```
+9:30 - mic checks + recording on
+10:00 - Welcome & goals (mina) - 3m
+10:03 - Bench highlights (eli) - 6m
+10:09 - Live demo start (harry) - 3m live + 4m APAC prerecorded (yuki)
+10:16 - Cost vs latency deep dive (eli) - 6m
+10:22 - Live Q&A + polls (all) - 14m
+10:36 - CTA: benchmarks + sandbox invite (ben) - 3m
+10:39 - Optional office hours per region
+```
+harry_demo: Demo day checklist (short): local copy of prompts, `PRIVATE_STAGE_KEY` and `HOSTED_READONLY_KEY` env set, backup laptop ready, preloaded clip for Yuki. If I call "switch clip" ops will cue immediate playback.
+sara_ops: Producer cues I'll post: "3-min left", "switch clip now", "wrap in 30s". Also will flash :white_check_mark: / :x: in channel for each speaker during checks.
+ben_growth: Polls: minute 6 "Primary infra worry?" (latency/cost/scaling/compliance). minute 25 "Want sandbox invite?" (yes/no). We'll add UTMs per region to landing pages.
+mina_marketing: Quick asks before I close this thread:
+- Eli: send EU/APAC slide copy by EOD
+- Ben: sandbox workflow doc link
+- Sara: confirm failover alert goes to #eng-oncall and #marketing-live
+- APAC-coordinator: caption file to Sarah by 5pm PT
+Please react with :white_check_mark: when done.
+eli_prod: \u2705 EU/APAC slide copy sent to drive (audit copy in `/marketing/webinars/localized-copy`)
+ben_growth: \u2705 sandbox workflow doc: https://docs.redwood/sandbox-workflow (tags + timezone send rules)
+sara_ops: \u2705 failover alerts set to #eng-oncall and #marketing-live
+apac-coordinator: \u2705 caption file uploaded: https://drive.redwood/captions/yuki_v1.srt
+mina_marketing: Thanks team. We'll use this thread for any last-minute swaps. See you at 9:30 for checks :rocket:

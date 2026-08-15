@@ -1,0 +1,24 @@
+eng-infra
+
+maya: heads up — ap-se1 is seeing a weird surge of tiny gpu pods stuck Pending, a lot of them single-gpu and they all show "Claimed by different node" in scheduler logs. looks like some kind of claim-drift between the warm pool and scheduler?
+henry: can you paste the scheduler bind logs? also which pool — warmpool-gpu-small?
+maya: yeah warmpool-gpu-small. log snippet: ```I0312 14:02:12.123456 scheduler: binding pod/model-train-xyz -> warm-node-17 (claim cache mismatch: claim_id=abc vs live=def)```
+anika: ugh that claim_id mismatch line — i've seen that with late detach of volume/slot during node-recycle. could be kubelet not releasing the GPU lease fast enough after preempt.
+henry: env: ap-se1c, GPU flavor A100-80GB and a mix of smaller instances. did we recently change the warm pool drain window?
+maya: we rolled warmpool drain from 5m -> 30s yesterday to speed burstdowns. suspect race: shorter drain means node returns to pool while kubelet still cleaning attachments, scheduler thinks slot free -> claim collision.
+sre-lead: if that's true we can get two effects: fragmentation (lots of tiny single-gpu pods bouncing) and transient evictions when the real holder returns. also increases egress/flapping costs. not good.
+anika: quick mitigation: increase warmpool drain back to 5m and add a short taint (gpu-release=pending:NoSchedule) for 2m after warmpool repop. that prevents immediate reuse.
+maya: @henry can you patch the warmpool autoscaler? small change, revert drain to 5m and add taint hook in lifecycle hook.
+henry: will do. deploying now. also enabling a scheduler metric to surface claim_id mismatches.
+ops-bot: deploy start: warmpool-autoscaler v2.3.1 by henry — rolling to ap-se1 (canary 10%)
+maya: i'll keep an eye on pending counts, but we should also audit kubelet detach latency — added ticket: https://our-boards/INFRA-2213
+henry: quick note on cost: reverting drain window ups warmpool idle minutes by ~12%, so estimate +6% monthly spend for that pool. tradeoff vs user-level evictions and retries which are costlier.
+sre-lead: agree — short-term revert + taint hook, medium term: instrument kubelet GPU release path and add a strict bind-consistency check in scheduler to avoid double-claim.
+anika: also consider a fallback routing: if claim_id mismatch encountered, scheduler should hold for 10s before binding and requery node state. cheap safety.
+maya: ok plan: (1) revert drain to 5m + taint hook (henry) (2) add short hold/backoff in scheduler (anika) (3) kubelet detach telemetry ticket (INFRA-2213) (4) monitor pending/gpu-eviction-rate + cost delta (maya).
+henry: patch rolled to canary now, will ramp if metrics look good.
+ops-bot: deploy success: warmpool-autoscaler v2.3.1 canary -> success, rolling to 100% in ap-se1
+maya: seeing pending drop already, nice. will keep watch for 30m. :thumbsup:
+sre-lead: when stable, file a postmortem blurb and include the tradeoff calc for warmpool sizing vs evict-retry cost.
+anika: adding scheduler hold PR draft — ping when ready for review.
+henry: thanks all — keeping slack thread here for followups.

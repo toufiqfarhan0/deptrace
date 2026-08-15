@@ -1,0 +1,35 @@
+product
+
+Renee (Product): ACME asked to accelerate tenant-prefetch GA to 6 weeks. They require private HSM and a 95th < 80ms SLA for short prompts. Need cross-team dependency map and a minimally acceptable cut if HSM slips.
+Vik (Eng Runtime): Key runtime tasks: quantized model perf smoke, KV prefetch warming, and a bounded fallback path. Perf smoke can run in 10 business days if we get test corpus and infra hooks.
+Omar (Infra): We can provision prewarm instances, but HSM integration depends on key provisioning and IAM rules. Estimate 12 business days for end-to-end HSM path if security sign-off is fast.
+Priya (Security): HSM is required for compliance sign-off. Temporary mitigation: use customer-managed KMS with tightened audit logging and a 30-day legal exception. Legal will need justification.
+Jules (Eng Platform): For latency determinism, we should pin ACME to a Dedicated placement with isolated prewarmed slots. I'll need a feature flag key and target concurrency numbers to size autoscaling. Approx 8 engineering days to add placement + tests.
+Nate (Solutions): ACME can provide top prefixes for warmup and can tolerate a small ramp. They insisted on no data mixing and want a rollback to hosted if Dedicated path degrades.
+Vik (Eng Runtime): Rolling fallback to hosted requires stateless handoff or strict KV invalidation. Propose: grace-period read-only mode for a tenant when failing over, drop write-through caching to avoid leaks.
+deploy-bot: New canary template committed: https://redwood.internal/canaries/tenant-prefetch-v3
+Renee (Product): Proposed schedule: Week A: perf smoke + submit HSM exception; Week B: infra prewarm + KMS contingency wiring; Week C: platform placement + E2E staging; Week D: 5% canary then ramp. If HSM not ready by Week B, we run canary under KMS+audit only. Please call out hard blockers now.
+Omar (Infra): Blockers: 1) HSM credential procurement ETA; 2) capacity commit (how many prewarm slots?); 3) network firewall rules for HSM endpoints.
+Priya (Security): I'll prioritize the compliance review. If we use KMS fallback, I need audit endpoints and retention policy specified; I can produce the acceptance criteria in 48 hours.
+Jules (Eng Platform): Need exact concurrency targets for autoscaler: ACME expects 100 peak concurrent sessions, sustained 35 qps. Confirm and I'll size pools. Also will add a placement flag in the routing layer.
+Vik (Eng Runtime): For prewarm, simple script idea — feed top-500 prefixes and measure first-token latencies. If p99 > 120ms fail the canary. Pseudocode below:
+```
+for p in $(cat top-prefixes.txt); do
+  curl -s -X POST https://dedicated.prefetch/ingest -d "{\"prefix\":\"$p\"}" &
+done
+wait
+```
+We'll integrate into CI to run before canary.
+Nate (Solutions): I'll send the prefix list and a small staging dataset by EOD.
+Renee (Product): Owners and ETA recap: runtime perf smoke (Vik) 10bd, HSM exception/legal (Renee+Priya) 2d, infra prewarm + HSM wiring (Omar) 2bd pending creds, platform placement + flag (Jules) bd, canary runbook + rollback (Vik+Jules+SRE) staging cutoff.
+Renee (Product): Draft launch checklist - please react:
+[ ] p95 < 70ms and p99 < 120ms on canary;
+[ ] Security sign-off or KMS exception with audit + legal approval;
+[ ] Autoscale validated to 120 concurrency;
+[ ] Rollback to hosted validated with KV invalidation;
+[ ] Customer acceptance tests passed in staging.
+Priya (Security): +1 if KMS fallback has immutable audit and a documented exception window.
+Omar (Infra): +1 but add perf-loss threshold: token CPU uplift < 7% under stress.
+Vik (Eng Runtime): +1. I'll own rollback runbook and the KV invalidation steps.
+Jules (Eng Platform): +1. I'll open the placement PR and link to this thread.
+Renee (Product): Thanks all. Quick sync tomorrow 10:30am PT to triage blockers (15m). I'll open a tracking board with these owners and assign tickets. :thumbsup:

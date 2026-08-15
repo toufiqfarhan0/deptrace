@@ -1,0 +1,45 @@
+customer-success
+
+maya_sable: Hey team — we'd like a custom reranker for Sable's storefront search. Primary goals: increase top-3 clickthrough for regional catalogs, keep 50ms tail latency, and ensure PHI/PII redaction. Is this something Redwood can host?
+
+lina_cs: Hi Maya — yes we can. Quick q's: what's your expected qps and acceptable cost delta vs current model? Also do you need private deployment (VPC/HSM) or hosted?
+
+maya_sable: 200 qps average, 600 qps peak. We are open to Dedicated for predictable perf. Cost: target <2x current per-token spend. We need KMS/HSM for key management and retention controls.
+
+tom_se: For 50ms tail at 600 qps you'll likely want a distilled 13B quantized with KV caching per session. 70B distil could be tighter on accuracy but higher infra. Can we get 1k prompt samples for evals?
+
+maya_sable: attaching examples shortly. here's a quick sample prompt set:
+```
+User: "find black denim jacket, size M, in-stock NYC"
+User: "return policy for international orders"
+User: "order #12345 status"
+```
+
+renee_safety: Thanks — main safety asks: PII redaction enforced in pre- and post-processing, log scrubbing, and a test suite for hallucination/regression. We'll need labelled eval pairs for a sample of 200 queries for safety metrics. Can Sable redact customer IDs before sending?
+
+maya_sable: We can mask IDs at source but want Redwood to perform secondary redaction for defense-in-depth.
+
+omar_am: Flagging renewal/commit: Sable is mid-year co-term. If this goes onto Dedicated, they may want a commitment discount. Lina — can we model TCO with an upsell path?
+
+lina_cs: I'll run a cost-influence calc. Tom — can you estimate infra and per-query cost ranges for 13B-quant vs 70B-distil and add suggestions for batching/auto-scaling?
+
+tom_se: Sure — rough numbers in thread:
+- 13B qnt: ~0.6x latency target per replica, lower mem, good batching.
+- 70B distil: 1.8x cost, needs more GPUs to hit tail.
+I'll put a short runbook for autoscale and caching.
+
+redwood-bot: <link> https://docs.redwood.ai/ops/dedicated-sizing — sizing guide and KMS/HSM notes
+
+renee_safety: Also request: build prompt-based safety eval harness (automated) and add regression alerts tied to evaluation set. We can onboard with a 2-week eval window.
+
+maya_sable: 2-week eval window works. timeline: want pilot in 4 weeks.
+
+omar_am: I'll draft a proposal with pricing tiers and renewal impact analysis.
+
+lina_cs: Action items: (1) Sable to upload 1k anonymized prompts + 200 labelled safety pairs by Tues. (2) Tom to drop perf/cost estimates by EOD Fri. (3) Renee to prepare eval harness template. (4) Omar to prepare renewal impact draft.
+
+maya_sable: Thanks all — uploading sample archive now. :rocket:
+
+lina_cs: Got it — will follow up on Slack and create a shared Notion intake doc.
+
+redwood-bot: incident-bot note: created intake ticket CS-8942 for Sable pilot

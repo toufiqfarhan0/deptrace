@@ -1,0 +1,14 @@
+marketing
+
+maya: Quick flag 00 webinar signups landed overnight and ~65 are unassigned in HubSpot this AM :alarm_clock:
+ben: ugh. Most from the short-form flow. Assignment rule depends on `mkt_owner_id_enriched` which is missing for these
+taylor: looks like enrichment timed out during the nightly region sync. Default TTL is 60s, and our workflow gives up at 45s
+maya: proposal: short-term increase assignment wait to 180s for `webinar-*` forms and enable 2 retries in the enrichment lambda
+olivia: agree. Also run a backfill for the last 18h so SDRs get those leads asap. I'll own the HubSpot API job
+ben: adding a fallback workflow rule: if Owner empty after 3m -> set Owner = `sdr-inbound` and add note `pending_enrich` so AEs know why
+taylor: I'll open GH PR for TTL+retry changes and a canary deploy. PR: GH-5120. Include a feature flag `ENRICH_OVERRIDE_WEBINAR`
+integration-bot: Job created: MK-1210 (backfill) assigned to olivia, scheduled 20:00 PT
+maya: SLA to record: 90% assigned < 3m, 99% < 12m for webinar leads. Monitor for 72h
+ben: will make Datadog tile and alert: `webinar.unassigned.count > 30 for > 20m`
+olivia: backfill ran at 1751234720, pushed owner updates and timeline notes; SDRs notified in #sdr-inbound
+maya: thanks all 1: great quick turnaround :thumbsup:

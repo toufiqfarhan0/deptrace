@@ -1,0 +1,28 @@
+eng-releases
+
+Hannah Lee: Drafting the internal note for patch v2026.03.9. Target canary 20:10 PT, broad at 20:40 PT. Working draft: https://redwood.internal/rn/drafts/2026-03-9
+Vikram Shah (Ops): Thanks. Need exact model pin + commit for routing and the explicit rollback triggers. Also prefer a short ops checklist in the note.
+Hannah Lee: Pin block I plan to publish: model_bundle=rbw-lite-0329, commit=aa1f3c7, runtime=snap-128. Adding to draft now.
+Aida Torres (Docs): I can condense this for the internal blast. Keep it 2 bullets: Canary time + what to watch. Who's oncall?
+Margo Flynn (Oncall): I'll be oncall 19:00-22:00 PT and own canary escalation. If we hit thresholds I'll trigger rollback.
+Vikram Shah: Proposed rollback triggers:
+```
+- p50_latency_ms: 460
+- error_rate_increase_pct: 0.9
+- any unexpected OOM
+```
+Fallback model: rbw-lite-0316. Runbook: https://redwood.internal/runbooks/RBW-LITE-ROLLBACK.
+Hannah Lee: Adding mixed prompt sample to canary (80% short, 20% long) per the preflight anomalies we saw.
+Aida Torres (Docs): Draft blurb for approval:
+"Internal: Rolling out v2026.03.9. Canary 20:10 PT, broad rollout 20:40 PT. Model pinned to rbw-lite-0329 (commit aa1f3c7). Rollback if p50>460ms, error rate +0.9% or any OOM. Oncall: Margo Flynn. Runbook: https://redwood.internal/runbooks/RBW-LITE-ROLLBACK."
+Vikram Shah: LGTM. Adding ops checklist to runbook: preflight queries, KV cache warm, autoscaler sanity, smoke prompts.
+Margo Flynn: I'll run the checklist at 19:50 PT and report status here. Standing by for canary.
+DeployBot: [deploybot] Canary scheduled: staging -> prod-canary at 2026-03-27T20:10:00-07:00 (requested by Hannah Lee). Reminder set for 15 minutes prior.
+Hannah Lee: Please post the final blurb here once published so we have a single source of truth for the blast.
+Aida Torres (Docs): Preview posted: https://redwood.internal/rn/previews/2026-03-9  will publish internal blast at 19:55 PT if no objections.
+Margo Flynn: Preflight complete: KV warmed, autoscaler checks good, smoke prompts pass. No OOMs during staging soak.
+Vikram Shah: Monitoring hooks ready. I'll watch p50 and error rate during canary and call it if thresholds fire.
+Aida Torres (Docs): Published internal blast at 19:55 PT. Included oncall rota and runbook link.
+DeployBot: [deploybot] Reminder set: Canary at 2026-03-27T19:55:00-07:00.
+Hannah Lee: Thanks team  will update thread with canary outcome.
+DeployBot: [deploybot] Canary completed: PASS. Snapshot: p50=330ms, error_rate_delta=0.2%, no OOMs. No rollback triggered.

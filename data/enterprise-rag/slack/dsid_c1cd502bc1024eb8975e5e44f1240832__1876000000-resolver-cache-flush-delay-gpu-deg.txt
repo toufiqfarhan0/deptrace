@@ -1,0 +1,25 @@
+1876000000
+
+Erin: seeing increased 5xxs and GPU pod churn in eu-west-1 — autoscaler is evicting pods, latency spikes. Starting cross-region failover and DNS steer. Lowered app steering TTL to 30s now.
+Ben: updated DNS at 1876000015 to point steer.example.redwood.net -> eu-central-lb.example.cdn (CNAME). Note: some resolvers already cached an A record from earlier resolution.
+Carla: running `dig +trace steer.example.redwood.net` — authoritative zone shows new CNAME, public recursive resolvers (8.8.8.8, 1.1.1.1) returning an old A for several ASes. Looks like those resolvers cached the A for 3600s.
+Dan: cloud DNS confirms zone change propagated to authoritative servers at 1876000018. This is resolvers' cache, not our authoritative layer.
+Maya: mitigation idea — add direct A fallback records for the steering name to the static gateway IPs so resolvers that re-query get A directly rather than following stale CNAME/A chain. Will that help?
+Ben: careful: our LB IPs are ephemeral. We can use the reserved NAT/static egress IPs for the interim. Preparing change: will add A records with 30s TTL.
+infra-bot: dns-change: updated A records for steer.example.redwood.net -> [34.98.12.3, 35.187.45.11] (change ch_abc123)
+Erin: from client-side tests: some clients now hit eu-central, others still hit eu-west for another ~30-40 minutes. Mixed responses depending on ISP resolver.
+Carla: captured resolver responses: many ISPs ignore our lowered TTL and return the previously cached A until original TTL expires. We can see this in `dig @resolver_ip steer.example.redwood.net +short` for several resolver IPs returning old addresses.
+Dan: alternate mitigation — BGP-level preference for the static IPs pointing to eu-central. Network team can announce prefixes to shift traffic without waiting on recursive caches.
+Ben: network team ready to announce. Coordinating now — will prepend AS path for eu-west to de-prioritize.
+Dan: BGP announce executed at 1876000075. bgp-change id bgp987.
+infra-bot: bgp: announced prefixes 34.98.0.0/20 -> prefer eu-central (bgp987)
+Maya: after BGP shift, telemetry shows ~85% of connections served by eu-central within 3 minutes. Still seeing a small tail from a few stubborn resolvers.
+Erin: note on cost: spinning additional GPUs in eu-central and cross-region egress increases burn. Quick estimate: ~$3.5k/hr if sustained. Capture for postmortem and billing.
+Carla: the key takeaway — CNAME->A resolution and the A TTL cached by recursive resolvers caused the majority of the delay, not our authoritative DNS. Need clearer runbook steps for when DNS changes don't propagate.
+Ben: proposed runbook additions: 1) pre-lower TTL to 60s for steering records 24–48h before maintenance where feasible; 2) prefer temporary A-record fallbacks for steering names when we control IPs; 3) BGP announcement escalation path if resolver caches don't update within X minutes.
+Dan: collecting list of stale resolver IPs observed (to contact ISPs if necessary) and uploading to incident doc.
+Maya: service health back to nominal for most clients. Remaining error tail down from 12% to <1% over 20m.
+Erin: great work — postmortem owner assigned: Erin. Action items: runbook updates (Ben), resolver sample export & ISP outreach (Dan), cost/RU impact (Carla). Closing operations in 20m unless anything else pops up. :thumbsup:
+Ben: +1. I'll open a PR against the runbook and tag infra owners.
+infra-bot: incident-status: degraded -> recovering -> resolved (incident 2026-03-18-34)
+Erin: thanks everyone. We'll include a short blurb for customers explaining the failover and TTL caveats. End of thread.

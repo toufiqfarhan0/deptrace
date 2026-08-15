@@ -1,0 +1,33 @@
+sales
+
+sam_sales: Heads-up: NorthCo wants a POC for BYO-keys + HSM attestation. Requirements: customer-controlled KEK, per-12h rotation, cross-region mirroring (us-west + eu-north), and independent audit evidence for each rotate. They also asked if RSA-3072 import is supported and if there's an import fee.
+
+ana_sre: quick clarifier - workload is signing-heavy (OIDC tokens) with occasional decrypt for legacy flows. Expected peak ~1.2k QPS, steady 300. Is that right?
+
+sam_sales: yep, those numbers. POC 48h, want a chaos test: blackout eu-north for 10m during rotate.
+
+rahul_security: we support RSA-3072 import using our secure import tooling; key material must be wrapped with our import KEK. We can provide FIPS 140-2 L3 attestation bundles per rotate. For split custody we offer wrapped-only escrow under customer KEK or optional escrow with legal addendum.
+
+emma_custrep: pricing asks: one-time import fee, per-1M RSA sign ops, cross-region surcharge. Need a short presales quote.
+
+ana_sre: presales numbers (non-binding):
+- One-time import: $1,500 per key (includes ceremony + audit bundle)
+- RSA-3072 signing: $70 per 1M ops
+- Cross-region mirror surcharge: $18 per 1M ops
+Note: sustained peaks may require dedicated HSM commit pricing.
+
+rahul_security: SQ items to complete: org contact for key ceremonies, legal signoff for escrow (if they want Redwood-held copy), and whether a third-party custodian is required. Also confirm retention window for wrapped blobs (default 30d for POC, configurable).
+
+emma_custrep: I'll request contacts and ask if 12h rotation is negotiable to 24h. They seemed firm but might accept 24h for production. For the POC they'll accept 12h if we flag monitoring.
+
+ana_sre: POC runbook summary to share:
+1) import test key + validate 10k signs
+2) baseline 0-300 QPS (1h)
+3) ramp to 1.2k QPS (4h), scheduled bursts to 2.5k for 15m every 3h
+4) at 24h perform a canary rotate and verify attestation bundle
+5) at 36h trigger full rotate + simulate eu-north outage for 10m, verify failover and unwrap success
+6) collect p50/p95/p99 and unwrap error rates; threshold alert if unwrap errors >0.05%
+
+ops-bot: Ticket created: REDWOOD-POC-2077 - "NorthCo BYO-key POC: RSA-3072 import + rotate" - assignees: @sam_sales @ana_sre @rahul_security
+
+sam_sales: next steps: emma to collect contacts & escrow preference, ana to draft perf notes and SRE checklist, rahul to draft SQ answers and sample attestation. I'll assemble and send to the prospect tomorrow. :thumbsup:

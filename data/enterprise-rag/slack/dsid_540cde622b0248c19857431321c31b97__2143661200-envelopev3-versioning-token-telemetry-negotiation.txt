@@ -1,0 +1,50 @@
+product
+
+jess: Quick sync on api-envelope v3 14: customers pushing for smaller payloads, clearer token billing fields, and stronger traceability for debugging.
+
+omar: Proposal: include a top-level \"envelope_version\": \"3\" so clients can switch logic based on version. Makes rollbacks explicit.
+
+paula: For token accounting: default lightweight field \"token_count\" (int). Add optional \"token_usage\" object for enterprise only with keys: prompt_tokens, completion_tokens, context_tokens. Keep names short.
+
+ryan: casing? snake_case everywhere in the JSON response please. SDKs will map to native style.
+
+jess: Agree on snake_case + SDK mapping. Add a 90-day dual-accept window where API accepts camelCase too for incoming payloads.
+
+omar: Fallback contract: if model can't produce structured output, runtime returns response: { raw_text: string, fallback_reason: \"STRUCT_UNSUPPORTED\" } and sets compatibility_code e.g., \"compat_0x02\". Apps can switch parsers based on compatibility_code.
+
+infra-bot: deploy-bot: canary queued for schema-v3-canary -> eu-central at 04:30 UTC. Running smoke tests: envelope_version, token_count, trace_id, fallback_reason.
+
+paula: Telemetry: return trace_id on every response (not just errors). Include optional span_id and response.generated_at (ISO8601). Trace format: rwd-<uuid4>. No customer data in trace.
+
+ryan: Security note: token_usage MUST NOT include text or prompt fragments. Only numeric counters. Also rate-limit access to the enterprise token_usage endpoint.
+
+jess: Small example for docs (server returns snake_case canonical):
+```json
+{
+  \"envelope_version\": \"3\",
+  \"response\": {
+    \"summary\": \"2-sentence summary\",
+    \"structured\": { /* optional object */ },
+    \"raw_text\": null,
+    \"token_count\": 256,
+    \"token_usage\": null,
+    \"fallback_reason\": null
+  },
+  \"trace_id\": \"rwd-3f9a7d2b-...\",
+  \"request_id\": \"req-8c7a...\",
+  \"response_generated_at\": \"2026-03-21T12:34:56Z\"
+}
+```
+
+omar: Rollout plan idea: 1) accept snake_case/camelCase for 3 months, 2) enable envelope_version header for canaries, 3) default token_usage disabled except for enterprise tenants.
+
+paula: Launch gating checklist (draft):
+- envelope_version present
+- token_count verified against billing logs
+- trace_id propagated to tracing and logs
+- fallback_reason and compatibility_code documented
+- canary results show no perf regression with token_count on
+
+ryan: I'll add tests for parser resilience (missing structured, truncated JSON, fallback codes).
+
+jess: Action items: omar write API spec PR, paula own telemetry + enterprise flag, ryan add parser tests, infra-bot will run canary. We'll circle back after PR review. :thumbsup:

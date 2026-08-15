@@ -1,0 +1,113 @@
+eng-infra
+
+Victor Alvarez: heads up, we’re proposing DNS TTL reductions for regional failover (Hosted + some Dedicated endpoints). Want a quick risk assessment here before we merge the tf changes.
+
+Victor Alvarez: current state (most public records): TTL=60s (a few are 300s still). Proposal: drop to 20s for the failover-weighted records, keep everything else at 60s.
+
+Irene Choi: 20s is… aggressive but maybe fine. Can you clarify which records exactly? `api.redwoodinference.com` is behind the geo/latency policy right?
+
+Victor Alvarez: yep. Specifically:
+- `api.redwoodinference.com` (latency/weighted policy)
+- `stream.api.redwoodinference.com`
+- `dedicated.<region>.redwoodinference.com` NOT in scope (those are customer-specific and already pinned)
+- a couple internal healthcheck CNAMEs used by probes
+
+Miles Thornton: +1 to being careful. Remember TTL is only one lever; resolvers don’t always respect low TTL.
+
+Emily Zhao: confirming: some enterprise customers terminate behind corporate resolvers that clamp to min TTL (I’ve seen 30s/60s). Also Java apps tend to cache DNS “forever” unless configured (security property). So lower TTL helps, but it’s not deterministic.
+
+Rafael Mendes: from SRE side: we’re trying to get faster convergence during a region impairment, but we don’t want surprise traffic shifts during normal ops. If TTL change causes more query load or weird caching behavior, that’s a bad trade.
+
+Victor Alvarez: risks I’m tracking:
+1) Resolver TTL floors (min TTL) => won’t see benefit for some clients
+2) Negative caching (NXDOMAIN) if we misconfigure or a provider returns transient NXDOMAIN
+3) Increased QPS to authoritative (Route53) and potential throttling (unlikely but worth quantifying)
+4) Partial propagation mismatches during change window => weird split-brain (some clients re-resolve, others don’t)
+
+Allison Grant: observability angle: if we do this, we should annotate dashboards and watch:
+- DNS query rate at Route53
+- `5xx` + tail latency by region
+- ingress RPS shifts (esp. eu-west)
+If there’s a subtle traffic drift we need to detect it fast.
+
+Peter Holtz: also watch retries. Lower TTL can cause more reconnect churn on clients that resolve per request, but main risk is *failback* when a region recovers. If the record flips back quickly, some clients will thrash. We should pair with hold-down timers in routing policy.
+
+Miles Thornton: right, DNS TTL != policy flap protection. The controller has hold-down, but DNS-based steering has to respect that too (don’t “bounce” answers).
+
+Irene Choi: provider caveats:
+- Some recursive resolvers serve stale records longer under load/outage (serve-stale RFC). During an internet event, low TTL might not matter.
+- Cloudflare / public resolvers sometimes prefetch and extend caching behavior.
+- On AWS, Route53 health checks can lag; but we’re not relying solely on R53 health checks for failover anyway.
+
+Victor Alvarez: yep, this TTL change is meant to reduce the *best-case* convergence time when routing weights are adjusted, not to be the only trigger.
+
+Emily Zhao: question: are we changing TTL for apex/ALIAS? If it’s ALIAS to a load balancer, TTL semantics are a bit weird. Route53 sets TTL but ALIAS answers can behave differently than plain A/AAAA from a client POV.
+
+Victor Alvarez: `api.*` is ALIAS to regional NLBs via latency-based routing. TTL should still apply, but yes: some resolvers treat ALIAS just like A records. We’ll test with `dig` against common resolvers.
+
+Rafael Mendes: can we do staged rollout? like: lower TTL only for a canary hostname first, run a planned weight flip in staging, then do prod.
+
+Victor Alvarez: rollout plan draft:
+Phase 0 (today): add canary record `api-canary.redwoodinference.com` with TTL=20s, same routing policy as `api.*`.
+Phase 1 (staging): run a controlled weight shift us-east -> eu-west and measure convergence. Record:
+- time-to-traffic-shift at edge (ingress)
+- DNS query rates
+- client error/latency
+Phase 2 (prod, low blast): change TTL to 30s first on `stream.api.*` only (lower traffic), observe 24h
+Phase 3 (prod): change TTL to 20s on `api.*` during a weekday window w/ oncall present
+Rollback: revert TTL to 60s + stop further changes if:
+- Route53 qps spikes >2x baseline for >15m
+- unexplained region traffic shift >10% sustained
+
+Sean Gallagher: I like staged. But I’d prefer 30s as final unless we can prove 20s doesn’t create noise. The bigger win might be getting rid of the 300s outliers.
+
+Irene Choi: +1. Removing 300s is low-risk / high value.
+
+Victor Alvarez: fair. Alternative proposal:
+- Standardize to 60s everywhere
+- Drop only failover steering records to 30s (not 20s)
+- Keep canary at 20s for measurement
+
+Miles Thornton: works for me. Also check: some mobile clients use OS caching with min TTL (iOS) + captive networks. Don’t assume perfect.
+
+Allison Grant: if we do canary, please ensure dashboards include: `dns_ttl_seconds` label or annotation so we can correlate.
+
+Victor Alvarez: we can add an annotation in the failover dashboard + a runbook note. I can also emit a one-time “infra change” event to the timeline feed.
+
+Peter Holtz: any interaction with anycast? we have anycast notes in the networking doc but our public endpoint is still DNS->regional NLB. Anycast is only for internal edge proxies in a couple POPs, right?
+
+Victor Alvarez: correct. No anycast change here.
+
+Emily Zhao: another caveat: if we lower TTL but keep connection reuse high (HTTP/2), many clients won’t re-resolve until reconnect. So the effective traffic shift time is bounded by connection lifetimes too.
+
+Miles Thornton: which is why the gateway redirect + retry-after stuff matters. DNS is just one piece.
+
+Rafael Mendes: action items:
+- Victor: update tf PR to set TTL=30s for prod records, add canary at 20s
+- Allison: prep dashboard annotation + quick query for Route53 QPS
+- Miles/Victor: add note to game day plan re: DNS TTL expectations (not deterministic)
+
+Terraform Bot: PR opened: redwood-terraform/pr-1442-dns-ttl-and-failover-routing-updates (diff includes TTL changes for `api.redwoodinference.com` + new `api-canary.redwoodinference.com`).
+
+Irene Choi: can you also add a guardrail in the PR description: “no other routing policy changes included” to keep scope tight.
+
+Victor Alvarez: yep, will do. Also adding a checklist:
+- [ ] verify no 300s TTL remain on failover records
+- [ ] verify healthcheck CNAMEs unchanged
+- [ ] confirm Route53 limits + current qps baseline
+
+Sean Gallagher: and include explicit “stop” conditions + who has rollback authority (infra oncall + SRE lead). We don’t want to debate mid-change.
+
+Victor Alvarez: ack. Rollback authority: infra oncall (primary) with SRE lead consulted, Irene as final escalation.
+
+Allison Grant: :thumbsup: once PR is in, I’ll add the dashboard annotations & a temporary alert on Route53 qps anomalies.
+
+Miles Thornton: one more thing: make sure we don’t reduce TTL on any records that are used for data residency pinning (some enterprise tenants depend on region-locked hostnames).
+
+Victor Alvarez: confirmed out of scope. Only the global Hosted API hostnames.
+
+Irene Choi: ok. +1 to proceed with the 30s plan + canary at 20s. Let’s schedule staging measurement before prod change.
+
+Victor Alvarez: sounds good. I’ll update PR + drop a calendar hold for staging test with Emily + Allison.
+
+Rafael Mendes: thanks all. linking this thread in the reliability initiative doc so it doesn’t get lost.

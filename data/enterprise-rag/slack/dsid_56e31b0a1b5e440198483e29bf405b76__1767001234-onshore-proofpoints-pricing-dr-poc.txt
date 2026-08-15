@@ -1,0 +1,36 @@
+sales
+
+maria (sales): Hey team — FinRegCo asked for onshore-only processing for EU and UK POC. They want: 1) list of sub-processors touching data in-region, 2) confirmation we can block cross-border egress during normal ops, 3) what happens to SLA if we failover to outside EU for capacity reasons. Any quick answers?
+kevin (solutions): Quick clarifying q: is the ask 'no cross-border ever' or 'no cross-border except DR with notice'?
+maria (sales): Legal says 'no cross-border for regular traffic; DR is negotiable but must be explicit with timeline & approvals'. They also want KMS keys to stay in-region.
+li (eng-infra): For a POC we can create an EU-only routing policy and a dedicated pool pinned to eu-west-1/eu-west-2. That keeps inference and KV caches in-region. We can also enable strict egress deny rules at the load balancer level.
+li (eng-infra): config snippet we can show customer:
+```
+routing_policy:
+  region_preference: [eu-west-1, eu-west-2]
+  allow_cross_border_failover: false  # default for POC
+  egress_logging: enabled
+```
+kevin (solutions): Note: if we set allow_cross_border_failover=false, capacity exhaustion could cause request rejection instead of failover. That's an SLA/behavior tradeoff.
+natalie (security): Sub-processor list: storage and monitoring stacks are third-party. I can surface an in-region-only subproc inventory for eu-west, but some infra subs (CDN, observability) may still route telemetry to provider endpoints — we need to verify per-POC. Also confirm BYOK support for customer-managed KMS in eu region.
+aaron (acct): Pricing/contract impact: if they require a dedicated eu-only pool (reserved for POC), what uplift should I quote?
+kevin (solutions): Ballpark: hosted w/ routing rules = no uplift (but no isolation guarantee). Dedicated reserved capacity in-region = ~20–30% uplift on unit price for isolation and SLA. Exact depends on capacity size and commit term. For short POC we can offer a time-limited discount.
+maria (sales): Customer also asked for a short one-pager listing exactly what we can promise in writing for the POC (routing, subproc, KMS, logs). Can we produce that today?
+li (eng-infra): I can draft the technical proof points and a config example. I'll need an ops ticket for temporary dedicated pool and a task to enable egress logs & IP allowlist.
+routing-bot: created ticket RH-4621 for "POC: EU-only routing + egress logs" assigned to eng-infra
+kevin (solutions): Natalie — can you prefill the security questionnaire bits for subprocessor access & key management? Use the standard DPA language but add region-specific callouts.
+natalie (security): Yup. I'll drop answers inline and mark anything that needs legal sign-off. Also will confirm whether any subprocessor has plaintext access in eu region.
+aaron (acct): Customer asked if failover to US triggers an SLA credit. If we promise no cross-border, failover should be considered an incident with potential credits. If we allow DR failover by policy, it's just behavior and not creditable. Need legal advice.
+maria (sales): ok next steps: 1) li to deliver tech one-pager + config + ops ticket, 2) natalie to prep sq answers & subproc inventory, 3) kevin to draft pricing uplift options, 4) aaron to prepare contract language options for "no-cross-border" vs "allow-DR".
+li (eng-infra): I'll post the one-pager and the proof-of-deployment screenshots (egress logs) by EOD.
+kevin (solutions): I'll prepare two pricing bullets: hosted-with-routing (no uplift) and dedicated-eu-pool (20–30% uplift, discount for short POC).
+natalie (security): I'll send the redlines and required signoffs.
+aaron (acct): I'll prep two contract snippets and flag the legal question about SLA crediting.
+maria (sales): thanks all — I'll sync with the customer after we have the one-pager. Tag me when posts are up. :pray:
+kevin (solutions): FYI ops note — if we need private deployment (VPC) for the POC, lead time is ~2 weeks for connectivity. Public-hosted EU-only is faster.
+li (eng-infra): Added a note: to demo onshore proof we should include a short tcpdump + signed egress log snippet showing paths are eu-only. I'll attach that in the RH-4621 ticket.
+maria (sales): perfect. anyone want to call quick w/ customer tomorrow? they're in CET.
+kevin (solutions): I can do 30m at 09:30 CET.
+aaron (acct): i'm in.
+natalie (security): remote but can join for the first 10 to confirm answers.
+maria (sales): great — booked. thanks team :thumbsup:

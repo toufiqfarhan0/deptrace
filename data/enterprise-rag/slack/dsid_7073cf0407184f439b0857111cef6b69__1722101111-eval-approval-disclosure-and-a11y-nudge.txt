@@ -1,0 +1,22 @@
+product
+
+Sam (Design): Quick poll on bulk approve UX — Figma here: https://www.figma.com/file/abc. Two things: should bulk approve live as a single header CTA or keep per-eval CTAs? And how do we surface keyboard shortcuts for it?
+Elena (PM): Prefer single header CTA when selected items share identical scorecard & tags. Otherwise keep per-item to avoid accidental wide changes.
+Kofi (Frontend): Implementation: header CTA + small badge showing count. Keyboard shortcut: Shift+A scoped to the review list. Display hint in header: 'Selected 3 • Shift+A'.
+Ruth (A11y): Accessibility must be first-class — header hint should have a visually-hidden accessible string and tooltips need role="tooltip" + aria-describedby. When confirmation modal opens it must trap focus and announce with aria-live.
+Jordi (Eng): Backend: implement POST /api/v1/evals/bulk_approve with body {"ids":["e1","e2"],"comment":"LGTM","apply_all":false}. Return 207 Multi-Status for partial failures with per-id status. UI can then show inline failures.
+Arjun (Research): Add a small sample link in the modal: 'View sample diffs (3)'. Reviewers should be able to spot-check before confirming. Also record sample_ids in the audit log.
+Sam (Design): Microcopy takes: 'Approve selected' vs 'Approve all' vs 'Bulk approve'. Team preference? My vote: 'Approve selected' — least scary. Confirmation header: 'Approve 3 results?' body: 'This marks the selected outputs as approved. You can undo from the activity log within 10 minutes.'
+Elena (PM): 'Approve selected' ok. Note: keep explicit language about scope and time window for undo.
+Kofi (Frontend): For undo: show toast 'Approval applied. Undo?' with anchor that triggers rollback. Spinner shows while rollback in progress. Make toast aria-live polite. Esc closes modal.
+Ruth (A11y): Modal focus: move focus to confirm button on open. After success, move focus to toast. Add aria-describedby linking to sample diff anchor. Also ensure keyboard-only users can discover the shortcut (a small help button that reveals shortcuts is fine).
+Jordi (Eng): Partial failures: return reasons (stale_version, permission_denied) per id. UI should show per-row inline error with 'Retry' button that calls POST /api/v1/evals/{id}/approve.
+Sam (Design): Visual treatment: bulk CTA = outline + subtle number badge to lower perceived risk. Header hint persistent; tooltips short: 'Approve selected (Shift+A)'.
+Arjun (Research): Add a disclosure in modal: 'Also apply to all matching results in this run' (danger action, collapsed by default). If chosen, require extra confirmation copy and log the scope.
+Elena (PM): Agreed — default to selected only. Extra checkbox hidden behind 'Apply to all matching' disclosure with red label.
+Kofi (Frontend): One accessibility/UX note: make shortcut hint never rely only on tooltip. Put it in header text so it's visible on small screens. Keep tooltip redundant, not the primary discoverability mechanism.
+Sam (Design): I'll update Figma with: header hint, outline CTA, confirm modal with sample-diff link and disclosure, microcopy: Confirm='Approve selected', Cancel='Cancel', Undo toast='Approval applied. Undo?'.
+Jordi (Eng): I'll wire the endpoint and multi-status support today. Audit log fields requested: user_id, eval_ids[], action, timestamp, sample_ids[].
+deploy-bot: Staging deploy scheduled 2024-11-16T02:00Z for bulk endpoint changes.
+Ruth (A11y): Final test plan: NVDA + VoiceOver keyboard walkthrough, ensure aria-live messages for modal open/close and toast, validate focus order, test with high-contrast mode.
+Sam (Design): Thanks all — 15m sync tomorrow 10:30 to sign off on copy and keyboard flow. I'll post updated frames here after the sync :thumbsup:

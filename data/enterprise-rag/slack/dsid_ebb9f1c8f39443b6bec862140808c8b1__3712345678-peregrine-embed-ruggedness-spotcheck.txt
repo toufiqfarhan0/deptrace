@@ -1,0 +1,40 @@
+eng-ml
+
+marta: Quick heads-up — starting onboarding for peregrine-embed-small-v2 (384d) with dynamic 4-bit quantization (nf4-like). Running wiki + prod-holdout smoke to check recall, clustering, and NN overlap.
+
+jeff: ack. which eval harness/command are you using?
+
+marta: running the standard harness, snippet below:
+
+```
+./eval/harness run --model peregrine-embed-small-v2 \
+  --quant dynamic4 --batch 256 --ctx 512 \
+  --datasets wiki-100k,prod-holdout-50k \
+  --metrics recall@1,5,10,nn-overlap,umap-silhouette
+```
+
+anya: initial numbers?
+
+marta: quick summary from the first pass (20 trials, seed=42):
+- baseline (bert-embed-large) recall@10 = 0.743
+- peregrine-q4 recall@10 = 0.717  (delta -0.026, ~-2.6 percentage points)
+- recall@1 delta = -0.018
+- nn-overlap (top10) = 0.86 vs baseline 0.92
+- umap silhouette: baseline 0.21 -> peregrine-q4 0.24
+- median NN distance increased ~4%
+- latency: peregrine-q4 4.1ms/token vs baseline 6.8ms/token
+- estimated token cost reduction ~35%
+
+eval-bot: automated summary: statistical test for recall@10 diff p < 0.01. artifacts and plots: https://internal.redwood/artefacts/3712345678 (includes UMAPs, NN-overlap hist, per-query deltas)
+
+dan: interesting — silhouette up but recall down. smells like tighter intra-cluster compactness at the expense of boundary shifts that change nearest neighbors. can you run per-query failure-mode breakdown (short queries, named-entities, paraphrase pairs)?
+
+marta: yes — kicking off short-query sweep (qlen=10/32/128) and a centroid-shift plot (median distance of true-nn vs model-nn). also enabling the per-class recall table for label-balanced holdout.
+
+jeff: couple of suggestions: try per-channel int4 quant for a quick comparison, and also try freezing layernorms and embedding table during quantization calibration (we've seen gains for small models). also check cosine-normalization after quant.
+
+marta: good call — will spin per-channel int4 + frozen-layernorm runs. if short-query recall stays degraded, propose fallback routing for qlen<32 to bert-embed-large until we stabilize.
+
+anya: +1 on fallback. keep us posted.
+
+marta: will post plots and a short troubleshooting checklist in ~1hr. :eyes:

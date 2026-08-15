@@ -1,0 +1,99 @@
+eng-runtime
+
+alex: Heads up — ran the credit-based routing sim for Mixtral MoE this morning. goal was to smooth expert pressure and reduce KV cache churn after the fused-softmax kernel switch.
+
+alex: TL;DR: credit-router-v1 reduces peak per-expert active requests by ~30%, KV cache evictions down ~18%, but p95 token latency went up ~6–9% depending on batch packing. logs and sim config below.
+
+priya: nice. can you summarize the tradeoffs? p95 increase is concerning for low-latency tails.
+
+alex: sure. short summary:
+- baseline (topk=4, no credits): p50 48ms p95 132ms per-token on mixtral-12x1
+- credit-router-v1 (credits=8, refill=windowed, soft-demote): p50 52ms p95 143ms
+- KV hit rate improved from 78% -> 92% in steady-state long-context sims
+- avg throughput unchanged (+1.8%), but tail worsened due to occasional cross-expert waits when credits depleted
+
+tomo: can you paste the sim config? curious how credits are refilled and how router chooses ties.
+
+alex: pasted below. this is the minimal config we used in the router sim harness.
+
+```
+# credit-router-v1 config (sim harness)
+router:
+  mode: credit
+  credits_per_expert: 8
+  refill:
+    mode: windowed
+    window_ms: 50
+  tie_break: random_weighted_by_logit
+  topk: 4
+  soft_demote_threshold: 0.6
+  demote_decay_ms: 200
+```
+
+sasha: random_weighted_by_logit tie-breaker makes sense. did you try deterministic round-robin for ties? might reduce tail jitter.
+
+alex: we tried round-robin in exp 41 but it raised average KV misses because it forced more cold expert hits. logit-weighted randomness favors already-hot experts but credits prevent runaway hotness.
+
+priya: do you have profiler traces showing where the p95 hit comes from? kernel selection or router wait path?
+
+alex: attached a short trace snippet. major contributors were:
+1) lightweight router book-keeping (~2–5ms occasional spikes) when credits refill triggers GC scans
+2) cross-device NVLink stalls when an expert request had to wait for token-level KV fetches (these were rarer but expensive)
+3) fused-softmax kernel v2 introduced a 1.5–3ms regressive jitter for very small batches (<8) we didn't catch earlier
+
+```
+# perf snippet (simplified)
+[2026-03-15 09:10:23] p95=143ms
+  router::dispatch_wait  24%
+  gpu::kv_fetch_wait     18%
+  kernel::fused_softmax  14%  (jitter increased)
+  batching::pack         12%
+  others                 32%
+```
+
+lin: is the router GC scan O(E) over experts? that could be bad as we scale expert count.
+
+alex: current sim GC is O(actively_allocated_experts) but in practice we iterate the per-shard active set only. still, when credits window_ms is small we end up scanning more often.
+
+tomo: what about making refill event incremental? e.g., sharded timers that only touch N experts per tick.
+
+alex: yep that was our next hack. exp 44 used incremental-refill (shard size = 64). same credit budget, but refill latency went from 2.1ms spike to 0.4ms spikes distributed. p95 improved ~2% vs baseline credit-router.
+
+priya: can we combine incremental-refill with a different kernel choice for small batches? maybe switch to scalar-softmax for batch<8 to avoid fused-softmax jitter.
+
+alex: tried a hybrid-kernel policy: if batch_size < 8 use scalar-softmax, else fused. results: p95 drops ~4% vs pure fused; throughput unaffected.
+
+sasha: what about topk tuning? does lowering topk to 3 help KV pressure without hurting quality too much?
+
+alex: topk=3 reduces KV writes and slightly helps p95 (few ms) but token quality dip in some eval prompts (we ran eval suite EVAL-LL-12) showed 2–3% more step-regressions. tradeoff.
+
+deploy-bot: canary deploy queued: credit-router-v1 with incremental-refill + hybrid-kernel -> canary on 10% traffic (mixtral-12x1) at 2026-03-15T14:00Z. /deploy canary credit-router-v1
+
+lin: action items from my side:
+- add ShardedRefill implementation to the router codepath (avoid global scans)
+- instrument per-expert credit queue latency histogram
+
+tomo: my action items:
+- add hybrid kernel selection heuristic in runtime (small-batch path -> scalar-softmax)
+- add NVLink KV fetch backoff diagnostic metrics
+
+priya: I'll run larger long-context eval (50k samples) to check quality regressions for topk=3 and credits config.
+
+alex: last note — we measured KV cache eviction reduction heuristically by tracking per-expert KV miss heatmaps. attaching example snippet below.
+
+```
+# KV heatmap summary (90th percentile active window)
+baseline: hot-experts 3.4x mean, evict_rate 0.22 ops/s
+credit-router-v1: hot-experts 1.8x mean, evict_rate 0.18 ops/s
+incremental-refill: hot-experts 1.6x mean, evict_rate 0.15 ops/s
+```
+
+sasha: awesome. can we also log an emergency fallback: if p95 > 200ms for 1m, auto-disable credits and revert to topk fallback? need to protect PL endpoints.
+
+alex: good call. I'll add a feature-flag guarded fallback policy and an SLO alert hook.
+
+priya: thanks alex — please drop the sim artifacts and a short runbook in the eng-runtime wiki after canary.
+
+alex: will do. attaching sim tarball link: https://artifacts.redwood/exp/credit-router-v1.tgz :thumbsup:
+
+sasha: :rocket:

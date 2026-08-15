@@ -1,0 +1,51 @@
+eng-infra
+
+maya: Heads up — seeing a spike in preemptions + eviction churn in ap-southeast1 starting ~02:15 UTC. Pods requesting 1 GPU are getting scheduled then immediately evicted with "insufficient NIC bandwidth" events. :sob:
+
+leo: Ugh. Any cluster-level correlates? CPU/egress/burst?
+
+maya: Network egress per-rack is high, but alarms are not firing. Pattern: small GPU-bound jobs (tiny-gang) land on new n3-type nodes we rolled last week and then get moved. Looks like NIC capacity is the gating resource, not GPU.
+
+ash: Do we have recent placement logs? Could be late-bind + binpack mismatch — scheduler thinks GPU free but NIC quotas exhausted when pod starts.
+
+devin: Pasted a snippet from scheduler events (filtered):
+```
+Events:
+  Type     Reason       Age   From               Message
+  ----     ------       ----  ----               -------
+  Warning  FailedPrebind 2m    kubescheduler      pod "trainer-abc" failed prebind: node "n3-rack2-05" insufficient resource: cluster/nic.bandwidth
+  Normal   Binding      1m    kubelet            Successfully assigned default/trainer-abc to n3-rack2-05
+  Warning  Evicted      1m    kubelet            Pod evicted: resource pressure: NIC egress
+```
+
+nina: That looks like a race — scheduler prebind check isn't accounting for ephemeral egress bursts from concurrent tiny jobs. Two ideas: tighten late-binding window or add an admission-time NIC reservation (small static).
+
+leo: Could we tweak the scheduler predicate to weigh NIC headroom higher for GPU pods? Or prefer nodes with warm warmpools (we have warm nodes tagged)?
+
+maya: Warm nodes are an option but capacity is limited in ap-southeast1. We're also seeing fragmentation — GPUs idle but spread across many racks -> nic oversubscribe while GPUs used. Costy to overprovision warm nodes.
+
+devin: Quick mitigation: rollout a scheduler patch to validate NIC as a hard constraint during scoring (short term) + change preempt budget to avoid immediate eviction of newly bound pods. I can open a canary PR.
+
+nina: Also recommend a short-term autoscale of batch-gpu pool in that region with instance types that have higher per-node NIC egress (rather than many small nodes). Might reduce cross-rack packing.
+
+ash: Agree. Ops action: increase per-node NIC-capacity label for autoscaler to prefer beefier instances. Action items?
+
+maya: Action list: 1) devin to PR scheduler prebind NIC check (canary) 2) nina to propose autoscaler flavor bump for ap-southeast1 3) leo to run query for rack-level egress skew for last 6 hours and post heatmap 4) ash to gate any more n3 small-type rollouts until we confirm. I'll notify SRE and customer-success if this impacts SLAs.
+
+devin: PR link (canary): https://git.internal/redwood/scheduler/pulls/2487 — it's a small change to prebind check. Will canary in ap-southeast1 zone only.
+
+leo: Running heatmap now, will post shortly. :eyes:
+
+sre-bot: Alert: ap-southeast1 GPU pool evictions exceeded threshold (5x baseline) — auto-page on-call if unresolved for 30m.
+
+maya: Thanks. If the canary looks good we should also add a short-lived admission controller to reject pods that request GPU but don't specify egress labels so they don't land unsafely.
+
+nina: For rollback plan: revert scheduler patch and drain a small set of beefy nodes back to warm pool. Keep canary <= 5% of qps.
+
+ash: Noted. I'll hold the n3 rollout.
+
+leo: Heatmap posted: https://grafana.internal/d/abcd/apse1-nic-heatmap — shows 3 racks with >85% egress for last 2 hours.
+
+maya: Good context. Let's execute the plan. Ping me in #oncall if preemptions continue after canary.
+
+nina: TL;DR: fragmentation + NIC oversubscribe is the root. Short-term: scheduler prebind fix + flavor bump. Medium: binpack policy changes to prefer packing GPUs per-rack when NIC is constrained. Long: smarter egress-aware packing in the scheduler. :white_check_mark:

@@ -1,0 +1,94 @@
+eng-ml
+
+sam: rolling canary for aurora-64k-int3 to dedicated-pool-3, noticed weird priming drift on long system prompts (~>12k tokens). repro included.
+maya: ugh, what kind of drift?
+sam: after ~8192 tokens, the model starts repeating a suffix that wasn't in the prompt. sequence seems anchored to a prior prefix.
+liam: can you paste minimal repro?
+sam: sure — reproduce with the following steps:
+
+sam: ```
+# start canary
+REDWOOD_MODEL=aurora-64k-int3 \
+NUM_TOK=14000 \
+python tests/longctx_kv_repro.py --model $REDWOOD_MODEL --length $NUM_TOK --system-file tests/long_system.txt
+```
+
+sam: logs:
+sam: ```
+[2026-03-23T15:05:12Z] prefilling 12288 tokens from system prompt
+[2026-03-23T15:05:14Z] kv-prefill ok
+[2026-03-23T15:05:16Z] generate start
+[2026-03-23T15:05:39Z] token_index_wrap detected at step 8193 -> remapped to shard 2 offset 1
+[2026-03-23T15:05:40Z] output: "...the summary is complete. the summary is complete. the summary is complete."
+```
+
+maya: sounds like a KV index wrap / RoPE phase mismatch?
+liam: did you run with quant-int3 path or fallback int8 kernels?
+sam: int3 quant path (new quant pipeline), but I also tried int8 and it did NOT show the repeat. int8 was fine.
+ojas: interesting — so quantized kernels + long prefill triggers the repeat. any difference if you disable async prefetch?
+sam: disabling prefetch reduces frequency but still reproducible after longer runs.
+nate: can you dump a small kv fingerprint around the boundary? a hex diff + the rotating index would help.
+sam: attached fingerprint snippets to the repro gist: link: https://gist.github.com/redwood/aurora-kv-fp-1758009876
+ci-bot: test run queued: kvcache-long-repro-1758009876 (will run on dedicated-pool-3) :gear:
+
+maya: hypothesis: our packer uses 64-bit offset arithmetic, but the quant packer truncates to 32-bit for the int3 path causing an off-by-(shard_size) on wrap.
+liam: or RoPE scaling table isn't being upscaled for the quant kernel; effective phase becomes modulo'd incorrectly at X steps.
+ajas: (typo) ojas: can also be timeout between prefill handshake and kv map commit — concurrency window could create a transient alias.
+sam: propose checklist:
+- reproduce with deterministic seed on cpu only (fast but slow)
+- run with quant path & log kv-index per layer at steps 8100..8220
+- bisect: find earliest token count where repeat appears
+- run same sequence on int8 kernel to compare 
+
+liam: I'll take the deterministic seed run and instrument layer 10..20 kv-index.
+liam: quick Q — which model variant exactly? sha: aurora-64k-int3@rev-b2f7d.
+sam: yep.
+
+liam: ran deterministic CPU run, I see index rollover at 8192 exactly. dump attached:
+liam: ```
+layer10_kv_index: 8189,8190,8191,0,1,2
+layer11_kv_index: 8189,8190,8191,0,1,2
+```
+liam: but the token embeddings at the rollover look correct — it's the phase table used in attention that has a shift.
+
+maya: can you grep for where the phase_table pointer is set in quant path? maybe double free or reuse.
+liam: grep points to runtime/quant_rope.c: init_phase_table_shard();
+liam: init invoked on first request and again on prefill completion -> race.
+
+nate: if init is racy, two different scalings might be in-flight and one overwrites shared mem. that matches transient is intermittent with async prefetch.
+sam: verdict from quick bisect: repeat always after re-init during prefill handoff. reproduce 12/12 runs.
+
+ojas: mitigation? lock init or make phase tables per-request (mem overhead) or bump versioned table id so cache mismatches detected.
+maya: we should also add an assertion in runtime that rejects two inits without proper teardown. and add a metric for phase_table_version in telemetry.
+
+sam: action items:
+- liam: add locking around init_phase_table_shard (PR) — estimated 2h
+- maya: telemetry + assert in quant runtime (PR) — 1h
+- nate: run full comparison suite (int3 vs int8) across 4 long prompts (overnight) — picks up tomorrow
+- ojas: prepare rollback patch for canary if we see >0.5% regression in generation ngram overlap (hotfix path)
+
+liam: starting PR now. small diff: runtime/quant_rope.c add pthread_mutex around init and a check on already-initialized -> no-op. will request review.
+liam: link PR: https://github.com/redwood/runtime/pull/9123
+
+maya: ran quick nightly with PR applied in a sandbox; prefill + generate for 14k tokens no repeats observed (3 runs). will queue full test.
+
+sam: wonderful. if full test passes, we'll promote canary next week. thanks folks :tada:
+
+nate: one more: add an eval to our quality kit comparing generated ngram fingerprint pre/post canary for 5 deterministic prompts. add to rollout gating.
+
+ojas: noted. I'll add to rollout gating checklist.
+
+ci-bot: kvcache-long-repro-1758009876 job finished: FAILURE (1 failing test). logs at https://ci.redwood.ai/jobs/1758009876
+
+sam: okay re-opening. liam, can you check CI fail?
+liam: CI failure is because the test harness was still pointing at int3 without the locking patch. rerunning with PR applied.
+liam: rerun queued: kvcache-long-repro-1758009876-rerun (ETA 18m)
+
+~ 17:04 UTC later ~
+
+liam: rerun passed 5/5 deterministic sequences. CI green now.
+sam: rolling to canary again with PR. will monitor telemetry (phase_table_version metrics) and generation ngram delta.
+
+maya: note for postmortem: root cause = race during quantized RoPE phase table init triggered by asynchronous prefill handoff. mitigation = locking + telemetry + rollout gating.
+
+sam: thanks team. closing thread once canary is stable for 24h.

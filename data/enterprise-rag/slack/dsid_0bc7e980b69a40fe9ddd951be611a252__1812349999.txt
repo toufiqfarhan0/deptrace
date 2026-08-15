@@ -1,0 +1,92 @@
+incidents
+
+incident-bot: :rotating_light: ALERT: High 429 rate observed from prd-hotpath GPU pool (us-east1). Queue depth rising rapidly. Paging on-call.
+
+emma_sre: acked. looking now — what are the earliest signs? any error spikes or autoscaler events?
+
+raj_infra: seeing continuous queue growth starting ~5m ago. autoscaler logs show repeated "scale request rejected: max_pool_size" for hotpath-pool. kubemetrics show GPU utilization ~98% on existing pods.
+
+maria_runtime: p99 latency up to 2.4s, token bucket drop rate at 21% over last 10m -> 429s. stack traces show token_bucket::allow() returning false under burst.
+
+emma_sre: can we confirm whether token bucket config was changed in last deploy? I don't see config changes in last 24h.
+
+raj_infra: no config push. however, autoscaler policy changed yesterday during rollout: max_nodes=20 for hotpath; historical peak needs ~28. autoscaler attempted to scale but rejects at 20.
+
+maria_runtime: so two simultaneous issues: pool max limit preventing scaling + token-bucket throttle being conservative. together causing request pileup and 429s.
+
+olivia_support: any customer-facing impact? Support is seeing a spike in errors from a handful of enterprise tenants.
+
+jake_prod: confirmed — error dashboard shows ~12% of production text-generation requests failing with 429 in last 10m. Top customers: acme-inc and beta-app (reduced throughput). We're routing metrics to incident channel.
+
+emma_sre: mitigation plan: 1) temporarily increase hotpath pool max_nodes to 40 2) loosen token bucket refill for tier=prod-hotpath 3) enable fallback to bfloat16-quantized model for non-SLA customers 4) monitor and roll back once stable. execute in that order.
+
+raj_infra: working on #1 — issuing emergency patch to cluster-autoscaler config. running: 
+
+```
+kubectl patch cm autoscaler-config -n infra --type merge -p '{"data":{"hotpath_max_nodes":"40"}}'
+```
+
+raj_infra: patch applied. autoscaler accepted new limit and started scale-up requests.
+
+infra-bot: Scaling event: hotpath-pool requested +8 nodes. ETA ~3m.
+
+maria_runtime: for #2 I'll bump token bucket refill for prod-hotpath from 1000/tick -> 5000/tick for 15m. Pushing config to runtime.
+
+emma_sre: maria, post the exact config snippet you applied please.
+
+maria_runtime: applied:
+```
+# runtime/token_buckets.yaml
+pools:
+  prod-hotpath:
+    capacity: 20000
+    refill_tokens: 5000
+    refill_interval_ms: 1000
+    burst_multiplier: 2.0
+```
+
+maria_runtime: :white_check_mark: token bucket changes pushed to runtime config. will monitor drop rate.
+
+jake_prod: starting fallback routing for non-SLA traffic to quantized-v2 model now. command:
+
+```
+routes modify --route hotpath-overflow --fallback quantized-v2 --match "!customer.sla==enterprise"
+```
+
+olivia_support: notifying affected customers: drafting message now to support channel and to account reps for acme-inc and beta-app. ETA 2m.
+
+incident-bot: Note: temporary tier policy relax in effect for 15m. Realtime traces tagged incident/1812349999.
+
+emma_sre: autoscaler nodes are coming up. GPUs are provisioning. beginning to see queue drain.
+
+maria_runtime: token bucket drop rate down from 21% -> 3% after refill bump. 429 rate dropped to baseline ~0.6%.
+
+jake_prod: quantized fallback picked up ~8% of requests; latency slightly higher for those but still within SLO for non-enterprise.
+
+olivia_support: sent customer notifications to acme-inc and beta-app, flagged as "degraded" with ETA for full recovery. rep acknowledged.
+
+raj_infra: one hiccup: a kube-proxy pod crashed on new node during join; auto-healed. no persistent impact.
+
+emma_sre: good. action items: leave token bucket change and tier relax for 15m then revert. monitor autoscaler behavior for 30m and evaluate increasing default max_nodes if traffic patterns changed.
+
+maria_runtime: starting a short-lived canary rollback test: I'll reduce refill gradually after 15m to confirm safe threshold.
+
+sam_oncall: taking over monitoring for the next 30m. if anything regresses, escalate to SRE lead. handing off.
+
+emma_sre: thanks, sam. I'll document root cause: "autoscaler pool max_nodes too low for current peak; conservative token-bucket refill settings coupled with strict tier enforcement caused 429 surge during GPU saturation." Will file follow-up RFC for permanent mitigations: increase default pool capacity, add autoscaler safety buffer, and autoscaler alert for rejected scale requests.
+
+jake_prod: also recommend adding a dynamic tier fallback rule so non-critical traffic can be routed automatically during capacity pressure.
+
+olivia_support: Support DAC updated: affected customers list + message template saved to support/incidents/1812349999.
+
+incident-bot: INCIDENT RESOLVED: service latency and 429s stabilized. Monitoring will continue for 1h. :white_check_mark:
+
+sam_oncall: ack. I'll post a short blameless postmortem draft in #postmortems after we collect logs (autoscaler, token_bucket metrics, routing decisions). assigned to raj+marie.
+
+maria_runtime: copying relevant logs to s3://ci-incidents/1812349999/ (autoscaler.log, runtime_tokenbucket.log, routing.log)
+
+emma_sre: thanks team. final note: we should add a regression alert that triggers when token_bucket_drop_rate > 10% AND autoscaler_rejections > 0 for 5m. that would've paged earlier.
+
+olivia_support: closing customer comm thread after 1h if no more errors.
+
+incident-bot: Thread closed for active updates. Handoff complete. "last_updated": 1812353700

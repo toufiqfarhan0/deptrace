@@ -1,0 +1,26 @@
+new-hires
+
+emily: hey team — quick intro + logistics Q as I ramp into sprint: who do I ping for a physical badge, who owns repo access, and who to talk to about oncall/setup? also curious who owns the ownership matrix for services so i know where to escalate.
+
+liz: welcome emily! :tada: badge is handled by facilities — email facilities@redwood.com or @liz and i can escalate for a same-day print. for building access you need the redwood-badge group.
+
+omar: for repo access, please open an access request in #eng-infra using the slash helper. example:```/access-request repo:redwood-inference/infra role:contributor reason:"first-week setup"``` then tag @omar for review.
+
+ravi: oncall: shadowing starts next week. to get pager access we need you in the oncall-sandbox PD rotation. ping @ravi-ops once your badge is sorted and i'll add you. read the runbook: https://internal.redwood/docs/oncall-basics (starter checklist at the top).
+
+jess: ownership matrix lives in the product-ownership doc (link in #product pinned). quick map: infra -> eng-infra, runtime -> eng-runtime, api & client -> eng-platform, observability -> eng-sre. if you tell us the service you care about i can point to the owner. :slightly_smiling_face:
+
+emily: thanks! for the access request snippet — is there a way to attach the ticket to my onboarding issue in jira or should i just paste the request link?
+
+omar: paste the request link into your onboarding jira, yep. ops-bot will post the request id back in the channel when created.
+
+ops-bot: [auto] access request created: AR-4521 (repo:redwood-inference/infra) — reviewer: omar — status: pending.
+
+emily: perfect — adding to Jira now. one more — who to cc for emergency escalation if a model-publishing job breaks?
+
+jess: cc eng-runtime on emergencies and eng-sre for alerts. if it affects customer routes also loop in support@redwood.com. typical sequence: triage in #eng-runtime, escalate to oncall if page persists.
+
+liz: i'll also add you to the "new-hire setup" checklist doc and ping you when badge is queued. ping me if it stalls. :thumbsup:
+
+emily: appreciate it all — feeling less lost already. will follow up if any of the requests hang.
+

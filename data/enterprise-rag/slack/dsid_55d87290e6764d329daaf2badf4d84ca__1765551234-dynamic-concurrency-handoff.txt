@@ -1,0 +1,56 @@
+eng-platform
+
+alex: Heads up: planning to flip the dynamic-concurrency flag in prod today during the 15:00 UTC quiet window. Owners: alex (deploy), maria (smoke), dylan (rollback ready).
+
+maria: Ack. What % canary first? 2% or 5%?
+
+alex: Start at 3% for 10m, then 20% for 15m if no errors, then 100% after smoke pass. If 5xx rate >0.5% or latency p95 increases >30% revert.
+
+dylan: I'll be on pager. Rollback plan: set flag to safe-default (dynamic-concurrency=false) with `rctl feature set dynamic-concurrency false --env=prod`. K8s job to drain new pool is in runbook.
+
+jess: Smoke checklist for maria: run `curl -H 'x-debug:1' https://api.redwood.com/_health` then run load script in /ops/smoke/dyn-conc.sh for 2m. Watch token-per-request metric and tail logs: `kubectl logs -f -l app=runtime -n prod | grep dynamic`
+
+maria: :thumbsup: will start 14:55 UTC, run pre-checks: infra metrics, kv-cache hitrate baseline, and existing batching latency.
+
+alex: Deploy command (iam role: infra-deploy):
+```
+rctl flag set dynamic-concurrency true --env=prod --target=3% --initiator=alex
+rctl flag set dynamic-concurrency true --env=prod --target=20% --after=10m
+```
+I'll paste outputs in thread.
+
+deploy-bot: Scheduled: dynamic-concurrency -> 3% at 15:00 UTC by alex. ETA 15:00.
+
+sre-bot: Reminder: SLO alert thresholds loaded. If any error spike alert, auto-rollback not enabled for this flag. Manual rollback only.
+
+maria: If the 3% run looks clean, I'll sign off. @dylan please keep rollback command ready, will ping here. If I don't respond within 20m, auto-advance to 20% scheduled?
+
+dylan: @maria I won't auto-advance. I will wait for your signoff. If you say go, I'll approve the 20% step.
+
+alex: OK. After 20% hold for 15m. If no objections, I'll flip to 100% and close. Runbook: https://confluence.internal/redwood/runbooks/dyn-conc-rollout
+
+maria: Pre-checks done. baseline p95=78ms, 5xx=0.02%, KV hit 92%.
+
+deploy-bot: 3% step executed at 15:00 UTC. Logs: task id abc123.
+
+maria: Monitoring: no spike at 15:05. p95 82ms (+5%), 5xx 0.03%. continuing.
+
+dylan: Rollback ready. cmd queued: `rctl feature set dynamic-concurrency false --env=prod --force`
+
+maria: 15:12 holding. No errors. Approving 20%.
+
+alex: Advancing to 20% now.
+
+deploy-bot: 20% step executed at 15:20 UTC. task id def456.
+
+maria: 20% looks clean after 15m. p95 85ms (+9%), 5xx 0.04%. Approving full flip.
+
+alex: Flipping to 100% now.
+
+deploy-bot: 100% rollout executed at 15:36 UTC. task id ghi789.
+
+jess: Post-roll: verify internal traces for request fanout, and ensure no service is backed up.
+
+maria: All checks green. Marking this as complete. :tada:
+
+alex: Thanks all. I'll update the changelog and close the ticket #INF-842.

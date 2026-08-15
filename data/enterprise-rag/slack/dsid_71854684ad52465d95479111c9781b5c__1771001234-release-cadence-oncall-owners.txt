@@ -1,0 +1,44 @@
+all-hands
+
+Anya (PM): Thanks everyone for the Q&A earlier. Quick follow-up: can we capture owners for the release cadence, oncall changes, quality bars, and SLA wording? Trying to avoid ambiguity before next week's rollout dry-run.
+
+Sam (CTO): Proposal summary: weekly canaries for critical infra and security fixes; biweekly feature windows (feature-flag-first); one monthly stabilization cut for production, and quarterly majors for breaking changes. I'll draft the cadence doc and migration notes.
+
+Raj (SRE): Oncall notes: keep primary weekly rotation, secondary 2-week rotation. New targets: sev1 ack < 5m, sev1 initial mitigation within 20m, target MTTR < 45m (we'll iterate). We'll run a practice paged drill during the dry-run week. Also proposing a 90-minute blackout around the monthly stabilization cut.
+
+Priya (QA): Quality bars: all feature PRs need 2 reviewers; infra/security PRs need 3. Every release must pass nightly regression + smoke suite. Perf budget: p95 must not regress > 2% vs baseline, p99 alert if > 10% increase. Flaky tests moved to quarantine with owner tag and a 2-sprint fix SLA.
+
+Maria (VP Eng): Add to that: release checklist must include: canary dashboard ok, end-to-end smoke running in prod canary, SLA smoke test, and an explicit rollback plan. We'll enforce gating at the CI level.
+
+Lucas (Eng): For rollbacks, what exact automated triggers are we using? Want to ensure we don't flip prematurely during traffic spikes.
+
+Sam (CTO): Good point. Draft rollback triggers (automation):
+
+```
+rollback_triggers:
+  - metric: error_rate
+    threshold: 0.005   # 0.5% absolute error rate over window
+    window: 300s
+  - metric: p99_latency
+    relative_increase: 0.25  # 25% vs baseline
+    window: 300s
+  - metric: user_errors_count
+    threshold: 50   # >50 user-facing errors in 5m window
+    window: 300s
+```
+
+If any trigger fires, automation will pause rollout, snapshot logs, and post to #releases with reason. Manual override requires two approvers. We'll refine thresholds after one-month of telemetry.
+
+Raj (SRE): Ops automation will also run an automatic health-check and attempt a circuit-breaker for the canary if p95 latency doubles for >2 consecutive minutes. We'll add that to runbooks.
+
+Anya (PM): Owners + deadlines please so I can circulate and set the follow-up meeting: Sam - cadence doc draft by Mon Apr 12; Maria - gating CI config by Apr 9; Raj - runbook + blackout policy by Apr 16; Priya - regression/perf baseline run and dashboard by Apr 10; Lucas - rollout automation hooks by Apr 14.
+
+Maria (VP Eng): I'll also coordinate with Legal for SLA wording; we should keep hosted paid at 99.9% and dedicated enterprise tiers in contract (99.95+). I'll surface any phrasing changes.
+
+ops-bot: dry-run scheduled: release-dryrun-1 on Thu 09:30-10:30 (canary + paged drill). Invite sent. :bell:
+
+Priya (QA): I'll own the post-dryrun test report template.
+
+Lucas (Eng): I'll pair with Raj on the rollback automation and add telemetry hooks.
+
+Anya (PM): Thanks all 1. I'll post a short agenda and the ownership board by EOD. Please update the doc links there. :thumbsup:

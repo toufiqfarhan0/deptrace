@@ -1,0 +1,93 @@
+2080001234
+
+incident-bot: INCIDENT created: Serving runtime node gpu-12 reported repeated CUDA OOM errors despite available headroom. Pager: https://pager.example/INC-2080. Auto-triage: suspected allocator fragmentation / reserved blocks.
+
+alex: i'm on it. seeing a spike of OOMs on node gpu-12 - multiple containers.\n
+maya: pinged. any immediate customer impact?
+
+liz: Support: ~8 active requests failed with 500s over the last 6m. customers: beta-acme (high), sandbox-team (low). I flagged both.
+
+jarod: logs from runtime: `ERROR runtime: cuda: out of memory (alloc failed) at 0x7f9...)` but headroom reports: `headroom_free=1.1 GiB` and `reserved_blocks=384 MiB`. suspect fragmented free space preventing a contiguous alloc.
+
+alex: exact failure trace? paste relevant snippet pls.
+
+jarod: here: ```
+[2026-03-15T09:07:12Z] allocation_request: 1.9 GiB
+[2026-03-15T09:07:12Z] headroom_free: 1.1 GiB
+[2026-03-15T09:07:12Z] reserved_blocks: 384 MiB pinned
+[2026-03-15T09:07:12Z] allocator: failed to find contiguous block -> CUDA OOM
+```
+
+maya: classic fragmentation. but why so many pinned reserved_blocks? any KV-cache activity?
+
+jarod: `kv_cache_reserve` shows many small pinned segments from recent multimodel runs. we also had a burst of short requests with long context windows which created many small KV entries.
+
+alex: quick mitigation options: 1) evict KV cache on that node 2) restart affected containers 3) reduce reserve buffer for new containers 4) route traffic away from node.
+
+maya: agree. can we do non-disruptive first: evict/push eviction policy and enable spill-to-disk for KV cache on that node?
+
+jarod: we have a runtime flag `RUNTIME_KV_EVICT=1` that triggers aggressive KV eviction. applying now to node gpu-12 via `kubectl set env ds/inference-runtime RUNTIME_KV_EVICT=1 -n infra --selector=kubernetes.io/hostname=gpu-12`
+
+ops-bot: deploy-bot: Update applied to DaemonSet inference-runtime on hosts matching gpu-12 selector. Rolling update started.
+
+alex: running `kubectl exec -it inference-runtime-pod -n infra -- nvidia-smi -q` show memory fragmentation? paste output.
+
+jarod: snippet from nvidia-smi: ```
+GPU 0
+    FB Memory Usage
+        Total                       : 24576 MiB
+        Used                        : 23040 MiB
+        Free                        : 1536 MiB
+        BAR1 Memory Usage
+        ...
+```
+
+alex: free=1.5GiB but failed to allocate 1.9GiB -> confirms fragmentation.
+
+liz: is there a workaround we can apply from the routing layer to reduce customer impact? small-model fallback?
+
+maya: yes - enable routing fallback to model-quantized-2.7B for routes referencing 8B/13B for a minute. config change: `route_policy: fallback_model=quant-2.7B; threshold=10%`
+
+ops-bot: routing update: fallback rules applied to service prod-api from region-us-west for 10m.
+
+alex: after eviction, monitoring logs. any change?
+
+jarod: logs: `kv-evict: reclaimed 1.1 GiB in 18s` and subsequent allocation succeeded for a previously failing request.
+
+maya: good. but this is mitigation, not root cause. we need to prevent pinned reserve accumulation. thoughts?
+
+jarod: hypothesis: `reserve_blocks` are pinned by the spare-pool allocator when new containers request `reserve_size` on startup. some recent deployments changed reserve defaults to 384MiB in scaling config. those reserves remain pinned even if not used due to fragmentation of slab allocator.
+
+alex: action items: - roll back default reserve_size to 128MiB in autoscale config - add periodic KV compaction/eviction job - add allocator defrag metric and alert - temp: set per-node routing weight to 0.2 to slow traffic to gpu-12 until defrag done
+
+maya: agreed. alex -> can you perform the rollback? i'll own alerts and runbook updates. jarod -> PR for allocator metric?
+
+alex: rolling rollback now: `kubectl patch cm autoscaler-config -n infra --type merge -p '{"data":{"reserve_size":"128Mi"}}'`
+
+ops-bot: ConfigMap patched: autoscaler-config in infra.
+
+jarod: I'll open PR for `allocator.defrag_count` and `allocator.max_fragmentation_ratio` gauges + add a Grafana panel.
+
+liz: customer comms: I'll send a short note to beta-acme: we saw transient 500s due to GPU memory fragmentation; we routed their requests to a fallback model and rebalanced nodes; we're monitoring.
+
+maya: incident severity? currently degraded but mitigated for top customers. propose Sev-2.
+
+alex: agreed. changing severity to P2.
+
+incident-bot: Severity updated to P2 by alex. Timeline URL: https://incidents.example/INC-2080/timeline
+
+maya: prepping post-incident runbook updates: add guidance on reserve_size default, how to trigger KV eviction, and steps to drain node for compaction.
+
+jarod: one more data point: on same cluster, node gpu-18 shows similar pattern but lower rate. recommend scanning fleet for nodes with free < requested single-allocation size AND non-trivial reserved_blocks. I'll script it.
+
+alex: ok run the scan and add to thread. also plan a controlled container recycle on gpu-12 in 20m if fragmentation doesn't reduce.
+
+ops-bot: scheduled rolling restart of pods on gpu-12 in 20 minutes. Use `kubectl rollout restart` for pods with label inference-runtime=true and nodeSelector gpu-12.
+
+alex: handoff: maya taking over remediation for next shift. i'll remain reachable for escalation.
+
+maya: taking handoff. will post final update when stable. :white_check_mark:
+
+liz: last note - I logged a customer incident ticket and linked internal mitigation steps.
+
+incident-bot: INCIDENT INC-2080 status: mitigated -> monitoring. Last update at 2080001820."

@@ -1,0 +1,22 @@
+partnerships
+
+Asha R: Putting this thread here to coordinate the hybrid SI onboarding (marketplace + HW bundle). We need a handoff checklist so marketplace listing + partner enablement are synchronized.
+Ben T: Agreed. Handoff items I can think of: asset package (logos, 1-pager), technical integration summary, cert badge criteria, and launch timing.
+Celia F: On the enablement side we need clear sales play notes and a short 3-step demo flow for product teams. Also a partner FAQ for marketplace reviewers.
+Dmitri K: From engineering: ensure the marketplace image includes a preconfigured Dedicated profile and a VPC quickstart. I'll add an example docker-compose and a minimal run command.
+Asha R: Good. Let's also include a "known limitations" doc for hardware combos (e.g., certain driver versions). Hardware partner asked to limit to tested driver builds.
+Ben T: For certification, recommend a lightweight "pass/fail" practical + a short checklist for the marketplace verification team. Passing gives badge and marketplace tag.
+Celia F: Marketing: we want a co-branded landing row, a short announcement (blog + tweet), and a joint webinar. Ideally webinar after first cohort completes. marketing-bot: added draft dates to calendar.
+Dmitri K: Example run command for quickstart: ```
+REDWOOD_API_KEY=xxxx REDWOOD_ENDPOINT=https://demo.redwood.ai ./run_demo.sh --model small
+```
+Asha R: Ops question: who owns support for partner trial customers during onboarding? We need a clear escalation matrix (SI -> HW partner -> Redwood).
+Ben T: Suggest SI handles L1, HW partner handles device-level L2, Redwood L3 for runtime or API issues. Put contacts in the partner portal.
+Celia F: Also we should collect success metrics: time-to-first-inference, average latency under load, and number of escalations during pilot. These map to co-sell eligibility.
+Dmitri K: I'll add a smoke-test that reports latency and token counts to a secure S3 bucket so certification can validate results automatically. ops-bot: task P-5123 created to add smoke-test artifact upload.
+LegalBot: Reminder: need co-marketing addendum and a limited liability clause for loaner hardware. I'll share a template in 48h.
+Asha R: Action items: Ben to draft handoff checklist, Dmitri to provide quickstart artifacts + smoke-test, Celia to draft marketing assets and sales play, Legal to provide addendum. Target: partner sign-off by 2025-06-01.
+Ben T: I'll post checklist tomorrow in #partnerships. Anyone volunteer to review tech assets? @Dmitri K and @Asha R?
+Dmitri K: I'll review. Asha R: I'll do final pass on docs.
+Celia F: I'll prep the webinar outline and speaker list. Would like to schedule rehearsal two days before launch.
+Asha R: Thanks all. Keeping updates in this thread only. ops-bot: task P-5123 updated: assignees Ben T, Dmitri K, Celia F. Due 2025-06-01.

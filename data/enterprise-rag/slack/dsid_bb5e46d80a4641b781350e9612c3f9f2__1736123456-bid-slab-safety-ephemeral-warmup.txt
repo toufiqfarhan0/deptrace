@@ -1,0 +1,35 @@
+eng-infra
+
+marta: Quick proposal — add a "bid slab" safety margin + ephemeral warmup pool to reduce preemptions for latency-sensitive jobs. Thinking: keep main spot pool price-optimized, but reserve a tiny capacity-optimized slab at +20% cost with TTL-backed warm nodes for <5% of throughput.
+
+raj: Can you sketch the numbers? how do we decide slab size and TTL?
+
+marta: Rough calc: for 1k qps steady we need ~40 A100s. Slab = 2-3 nodes (~5-8%) to absorb shortfalls during churn. If average interruption window is 3m, a TTL of 10m with soft-drain gives us time to migrate KV cache and re-route. Cost delta ~+18-25% on those nodes but overall spend +1-2%.
+
+ev an: would that break autoscaler assumptions? if slab nodes are prewarmed they shouldn't be part of scale-in, we mark them protected and add a small eviction hook.
+
+kevin: we should encode as policy: 
+```
+{ "pool": "spot-main", "bid_strategy": "price-optimized" },
+{ "pool": "spot-slab", "bid_strategy": "capacity-optimized", "size": 3, "ttl_min": 600, "protection": true }
+```
+
+raj: Nice. How do we handle multi-region correlation? a single slab per region or global?
+
+marta: Per-region slab preferred for latency and regional outages. But cross-region fallback route: priority queue = local main -> local slab -> remote main (with cost penalty).
+
+ev an: Interruption handling note: soft-drain hook should checkpoint model KV cache to s3 and mark requests as draining for 30s, then cordon. That reduces tail latency spikes.
+
+kevin: Agree. Also add a monitoring alert when slab fill >80% (means main pool healthy?), and a cost alarm when slab spend >3% of monthly budget.
+
+raj: One more thought: bid floor vs bid ceiling. If we use capacity-optimized slab, we should still set a conservative ceiling to avoid runaway pricing in auctions. e.g. capacity slab max bid = 1.5x on-demand.
+
+marta: Good call. I'll draft a runbook with the config snippet, rollout steps (canary in us-west-2), and a quick cost sim. Can someone pair on the sim tomorrow? @raj @evan
+
+raj: I can take the sim — will run a 48h spot-history replay and attach results.
+
+ev an: I'll validate the autoscaler hooks and soft-drain behavior.
+
+infra-bot: Deploy pipeline reminder: new pool config requires infra-review and a staged deploy across two clusters. See https://internal.redwood/infra/pools#bid-slab
+
+marta: Thanks — I'll open the PR with docs and runbook today. :thumbsup:

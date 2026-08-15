@@ -1,0 +1,58 @@
+support
+
+maria: FYI — customer reported invoice showing ~3.2M billed tokens for Feb, dashboard shows ~1.1M. They're pretty upset. Can someone help triage?
+
+devon: Do we have account id / invoice number? Usually first step is compare raw metering events vs meter-aggregation job.
+
+maria: Account ID 89234, invoice INV-2026-02-89234. They say usage spikes line up with a job that calls our API repeatedly with a small prompt prefix.
+
+liam: Small prompt prefix + continuous batching = interesting. Need to check prefix/KV cache semantics. If prefix isn't cached across connections we might serve tokens repeatedly but dashboard dedupes?
+
+ella: Wait — dashboard vs invoice discrepancy usually comes from two places: (1) post-processing grouping in dashboard (it aggregates by user session) and (2) invoiced metered_tokens are from the serving runtime counters (tokens served from GPU). They can diverge when continuous batching/prefetch behaves differently.
+
+maria: Customer provided a sample request pattern: many concurrent short requests (prompt ~12 tokens) hitting the same model, rapid reopen of sessions. They claimed they used prefix caching on their side.
+
+devon: Can we pull the raw meter events for account 89234 for Feb 1-28? billing-bot, can you dump meter_events for that account and date-range?
+
+billing-bot: Query queued: SELECT ts, model, served_tokens, billed_tokens, batch_id FROM meter_events WHERE account_id=89234 AND ts BETWEEN '2026-02-01' AND '2026-02-28' ORDER BY ts LIMIT 5000; (I'll upload CSV shortly) :hourglass_flowing_sand:
+
+liam: While we wait for CSV, quick note: our invoice logic sums "billed_tokens" from runtime counters (which count every token emitted by each serving instance). Dashboard (UI) pulls aggregated, deduped token totals per request id after prefix dedupe. If the runtime emits prefix tokens because KV cache wasn't hit, billed_tokens will be higher.
+
+maria: CSV from billing-bot attached. Quick skim shows many small served_token entries of ~80-100 each but billed totals line up to their invoice. Dashboard shows fewer requests but larger average token count.
+
+devon: That pattern screams repeated prefix being re-served. Could be continuous-batching prefetch where a worker fetches prefix for many speculative requests, then discards. Batching could cause one request's prefix to be counted multiple times across served-token counters.
+
+ella: Repro steps we should try (minimal):
+1) Reproduce locally with a loop of 500 concurrent short requests (prompt 10 tokens) to the same model/version.
+2) Enable runtime debug: RUNTIME_DEBUG=prefix_cache, RUNTIME_BATCH_LOG=1
+3) Collect meter_events and kv_cache hit/miss logs.
+
+liam: Also check model variant — quantized vs unquantized can change prefix handling because of different kernel paths. Suggest specifying model_version and region in repro.
+
+maria: I asked the customer for a minimal repro, but they said it's a user traffic pattern and hard to replicate. They're asking for an explanation to justify invoice.
+
+devon: While we attempt repro, we can prepare an explainer for the customer: short bullets + examples showing how served tokens can exceed dashboard tokens when prefetch/batching causes prefixes to be re-served or when retries occur. Keep it non-technical enough for billing contact.
+
+ella: Draft explainer snippet: "Metered (invoice) tokens reflect what was actually served by our runtime — that includes any tokens emitted internally due to batching, retries, or cache-misses. The dashboard shows aggregated request-level tokens after deduplication and smoothing for display. In some high-concurrency patterns (many short requests to the same model), the runtime may serve the same prompt prefix multiple times across workers which increases billed tokens. We're happy to run a focused audit for your account."
+
+maria: Customer wants a concrete breakdown. Devon, can you run a line-item export for Feb quantized by batch_id and request_id? They want to see which batches contributed to the extra tokens.
+
+devon: Will do. billing-bot kicked a CSV export; results show several batch_ids where served_tokens >> unique_request_token_sum. Example snippet:```
+batch_id: b-3091, served_tokens: 12480, unique_requests: 200, avg_request_tokens: 12, deduped_sum: 2400
+```
+
+liam: That example nails it. Batch prefetch served the 12-token prefix for many speculative completions and each worker counted served_tokens. Dashboard dedupe reduced to 2400, but runtime counter was 12480 so invoice higher.
+
+maria: Customer escalated to finance. Need a short write-up and a recommended remediation path they can apply.
+
+ella: Remediations: (1) On our side — improve billing attribution by correlating batch_id->request_ids and only charge unique request prefixes once when we can prove dedupe (requires infra change). (2) Short-term — offer credit for demonstrable overbilling windows after audit. (3) Customer-side — reduce concurrency or use longer-lived sessions with KV prefix pinned so cache hits are more likely. Also suggest enabling client-side request coalescing.
+
+devon: I'll prepare audit export and compute potential credit if we choose option (2). We'll flag infra ticket to evaluate attribution change.
+
+liam: For the infra ticket, add these acceptance criteria: replicate with automated test (500 short concurrent requests), show difference between runtime served_tokens and deduped dashboard tokens, propose a change that correlates per-batch attribution.
+
+maria: Thanks all. I'll reply to customer with the drafted explainer + timeline (audit in 48h). Marking this thread as escalated -> finance + eng. :white_check_mark:
+
+ella: One more thing — watch out for retries at the LB layer. If clients get 5xx and retry, runtime will re-serve tokens and billing will reflect that. Ask customer to share client-side error logs if available.
+
+maria: Good call. I asked them for client logs. Closing initial support loop until audit results are in.

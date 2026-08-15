@@ -1,0 +1,34 @@
+support
+
+maya-support: Customer reports intermittent malformed JSON from /v1/generate when using json_mode + streaming. Sometimes it's a truncated object, sometimes extra free text after the JSON. Example attached.
+ashley-ops: hmm — did they set a short client timeout? streaming gets cut if client closes socket early. any 5xx/429s in the logs?
+maya-support: client timeout is 3s. Logs show a few 502s and occasional long tail latencies in the region.
+liam-eng: common pattern: streaming + premature client close or token limit hit. Also model sometimes appends explanation text. repro steps we can try?
+maya-support: repro minimal: POST with schema mandating array of items, stream=true, max_tokens=320. sometimes response ends like: ```{"items": [{"id": "1", "val": "x"}``` (no closing ]}) and then
+"note: trimmed for brevity" after it.
+jordan-cs: two quick mitigations: 1) sentinel marker at the end of the JSON and post-process, 2) immediate self-heal re-ask up to N times.
+liam-eng: example sentinel approach:
+```
+System: you must ONLY output the JSON payload. append the sentinel "<END_JSON>" immediately after the JSON.
+Client: read until "<END_JSON>" and strip it before parsing.
+```
+jordan-cs: regex extraction for fallback:
+```
+m = re.search(r"(\{.*\}<END_JSON>)", resp_text, re.S)
+if m: clean = m.group(1).replace('<END_JSON>','')
+```
+ashley-ops: for repair chain: on parse failure do two re-asks: 1) gentle nudge "Return only corrected JSON; do not add commentary." 2) stronger instruction with original output and schema, and if still invalid -> run small heuristics (balance braces, remove trailing commas).
+maya-support: can we recommend backoff policy? customer hit rate limits + retries causing congestion.
+liam-eng: standard: exponential backoff w/ jitter: base=200ms, factor=2, max=10s, attempts=5. for 5xx/timeout use jittered backoff, for parse-only failures prefer repair attempts (no backoff) then escalate.
+convoy-bot: Incident INC-2026-047 created for repeated malformed-json from that customer :eyes:
+ashley-ops: also suggest switching to non-streaming (single-shot) for critical paths while we stabilize — reduces partial payload risk.
+liam-eng: system-level defenses: 1) detect streaming truncation with missing finish_reason and auto-trigger repair prompt; 2) prefer model variant that's more conservative (smaller temp) when schema outputs are required; 3) set server-side sentinel injection if possible.
+maya-support: I'll send repro payload + client logs to eng and ask for a short playbook for customers: include suggested prompt snippet, regex snippet, backoff config, and a 2-attempt repair chain before opening an engineering ticket.
+jordan-cs: quick prompt snippet we recommend to customers:
+```
+System: Output MUST be valid JSON and MUST match the provided schema. Do not include any explanation or markdown. Append the literal string <END_JSON> after the JSON only.
+User: <user instruction / data>
+```
+maya-support: thanks — I'll paste this in the support reply and offer to enable non-streaming toggle for them. :thumbsup:
+liam-eng: if they can share the exact malformed sample we'll try automated repair heuristics on it and push a tenant-level mitigation if it's systemic.
+maya-support: noted. escalating with logs. closing loop once eng confirms. :white_check_mark:

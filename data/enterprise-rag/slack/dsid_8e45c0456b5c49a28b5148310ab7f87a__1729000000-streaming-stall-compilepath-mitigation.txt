@@ -1,0 +1,78 @@
+eng-oncall
+
+incident-bot: :rotating_light: ALERT: Elevated decode p99 and streaming stalls detected for in-region serving pool eu-west-1. p95 -> 480ms (baseline 120ms), p99 -> 4.8s. Auto-mitigation triggered: reduced concurrency on pool-23.
+
+maya: seeing a ton of reconnects from clients, streaming sessions are pausing mid-response. A subset of nodes show repeated kernel OOM/paging logs.
+
+liam: confirmed. I can repro via curl streaming endpoint, chunked body stalls for ~3-5s then resumes. traces show decode tail jumps.
+
+maya: quick customer impact note — two customers reported increased latency and timeouts in the last 12m. Support ticket IDs: #C-1123 and #C-1124.
+
+alex: stack: TRT8 + flashattn v2.1 + new compileflags rolled to pool-23 ~04:10 UTC. Rolling back flag is low-cost if we can flip env at runtime. Kernel reboots would be expensive.
+
+liam: what flag specifically?
+
+alex: `-O3 -march=native -mtune=skylake -fno-fast-math` (we toggled a backend allocator hint and a quant kernel opt). There's also a new compilepath that changed padding behavior in decode kernels.
+
+maya: ops-bot, can you pull last 2h kernel logs for pool-23 (node tags: compilepath=2026-03-14b)?
+
+ops-bot: logs attached (trimmed). Key errors: `kernel: page allocation failure, order:0, mode:0x2000` repeated ~04:12-04:25 UTC. Also `nv decode: kv_cache_miss -> fallback` spikes.
+
+liam: looks like paging + KV cache churn. When flashattn picks aggressive workspace sizes, paging increases. That combined with the new padding optimization increases working set.
+
+maya: immediate mitigation options: A) roll flag back on pool-23 to previous compileprofile; B) disable flashattn runtime path for streaming workloads (env toggle); C) cordon affected nodes + route traffic to older pool-12; D) scale up dedicated nodes with older kernel. Which is fastest?
+
+alex: B + C is fastest. We can flip `REDWOOD_USE_FLASHATTN=false` via config agent and cordon nodes. Rollback compile requires a new build and deploy, ETA 40-60m.
+
+liam: agree. Plan: 1) set REDWOOD_USE_FLASHATTN=false for streaming route (apply via runtime config) 2) cordon pool-23 (k8s taint) for new streaming sessions 3) scale up pool-12 by +4 nodes 4) monitor p95/p99 and streaming error rate for 15m.
+
+maya: I'm on the runtime config. Patching now.
+
+maya: patched `runtime.routes.streaming.pool-23.env.REDWOOD_USE_FLASHATTN=false` -> diff: ```
+runtime:
+  routes:
+    streaming:
+      pool: pool-23
+      env:
+        REDWOOD_USE_FLASHATTN: "false"
+```
+
+deploy-bot: config apply started (job id j-4392).
+
+maya: cordoning nodes: `kubectl taint nodes -l pool=pool-23 maintenance=true:NoSchedule` to prevent new pods. Doing in batches of 3 to avoid capacity cliffs.
+
+alex: scaling pool-12: `rctl scale pool-12 --nodes +4 --type gpu-a10` (requested).
+
+ops-bot: scaling queued, expected new nodes in ~3m.
+
+liam: monitoring: p95 dropped to 210ms within 90s of config flip. p99 at 980ms and trending down. streaming error rate dropped from 2.4% -> 0.5%. Good sign.
+
+maya: support update: told customers we throttled aggressive FlashAttention path and routed to fallback; they'll get a postmortem.
+
+alex: we should still pursue a proper compilepath revert for pool-23. Root cause: combined kernel working set increase (FlashAttn workspace + compiler padding) => increased memory pressure -> page reclaim -> decode tail stalls. The compilepath change reduced buffer reuse.
+
+liam: I'll open a PR reverting the specific padding transform and add a regression test that simulates high-concurrency streaming. PR draft: https://git.redwood.ai/compilepath/pulls/789 (WIP).
+
+maya: oncall handoff note for next shift @daniela: pool-23 remains cordoned, runtime flag set, and autoscaler bumped for pool-12. Watch p99 < 1.5s and streaming error < 1% for next 2h.
+
+daniela: acknowledged. I'll follow up in 30m and push the compilepath revert if QA green.
+
+liam: one more short-term improvement: add a guard in runtime to cap flashattn workspace for streaming sessions: `max_workspace_bytes=32MB` — I'll propose a hotpatch.
+
+maya: can you draft the patch? Put it behind runtime flag `REDWOOD_MAX_FLASHATN_WS` so we can tune.
+
+liam: will do. Drafting now.
+
+deploy-bot: config job j-4392 completed: success.
+
+ops-bot: new nodes pool-12 up and healthy. Routing tables updated, draining completed for cordoned nodes.
+
+liam: quick metrics check 10m post-mitigation: p95 180ms, p99 640ms, streaming error 0.4%. KV cache miss rate down 6x. Looks stable.
+
+maya: assigning postmortem owner: liam. Include timeline, root cause, mitigation steps, RCA and follow-ups: revert compilepath, add regression test, workspace cap behind flag, better canary for kernel/compilepath.
+
+daniela: I'll do the handoff doc in ops-runbook -> incidents folder and link PMs.
+
+maya: thanks everyone. Closing live escalation — continuing tracking in incident doc. :white_check_mark:
+
+incident-bot: Incident ticket created: INC-2026-034. Severity: S2. Handoff to next on-call: daniela.

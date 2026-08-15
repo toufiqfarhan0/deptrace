@@ -1,0 +1,58 @@
+docs
+
+amanda: Hey folks — quick sanity check. I opened a PR that replaces the old naive retry snippet in the 429/timeouts error ref with a backoff+jitter example. Wanted to sync on wording and whether we should surface the circuit-breaker note.
+
+devon: thanks — linking it?
+
+amanda: https://github.com/redwood-inference/docs/pull/842 (draft) — main changes: 1) swap timeout_ms -> deadline in SDK examples, 2) add exponential backoff w/ jitter, 3) short paragraph about preferring graceful fallback over retries for user-facing endpoints.
+
+lee: skimmed — looks fine overall. two nits: use consistent param name across py/js snippets, and mention max total retry time so callers don't spin forever.
+
+andrew: re: circuit-breaker — +1 to a short note, but keep it under the Performance considerations section, not the basic quickstart.
+
+sophia: also flag: the python example still imports old helper retry library we deprecated. replace with our recommended util function and show async usage.
+
+amanda: good catches. i updated the PR with async py example and aligned param names to `deadline` in both. added max_elapsed = 10s in snippet.
+
+devon: can you paste the final code snippet here so I can copy into the runbook? small nit: use jitter function with bounded cap.
+
+amanda: sure — snippet below:```python
+# recommended pattern for transient 429s/timeouts
+import asyncio
+import random
+
+async def retry_with_backoff(fn, max_attempts=5, base=0.5, cap=5.0):
+    attempt = 0
+    elapsed = 0.0
+    while attempt < max_attempts:
+        try:
+            return await fn()
+        except TransientError:
+            attempt += 1
+            wait = min(cap, base * (2 ** (attempt - 1)))
+            jitter = random.uniform(0, wait * 0.3)
+            sleep = wait + jitter
+            elapsed += sleep
+            if elapsed > 10.0:
+                raise
+            await asyncio.sleep(sleep)
+```
+
+lee: nice. add a one-line comment about prefer fallback for interactive endpoints: "If UX is latency-sensitive, prefer returning cached/approx results instead of aggressive retries."
+
+amanda: done. also added a short note linking to the Dedicated service docs for rate-limit quotas.
+
+andrew: are there tests? we should have a tiny unit test verifying we don't exceed max total time.
+sophia: I can add a pytest in a follow-up — will mock sleep to keep CI fast.
+
+devon: pinging @docs-bot for style lint and to schedule a quick editorial pass.
+
+docs-bot: Lint-check queued for PR #842 — expected results in ~10 minutes. Use `docs-bot status 842` to check.
+
+amanda: thanks. plan: merge after lint + one approval. devon can you be the reviewer?
+devon: yep, i'll review after lint. if green i'll approve and merge. :+1:
+
+amanda: great — post-merge I'll open a short migration note in the SDK changelog and a follow-up ticket to add the pytest sophia mentioned.
+
+andrew: sounds good. small UX copy ask: add a one-sentence example response for fallback behavior so product can reuse.
+amanda: will do. thanks everyone! :rocket:

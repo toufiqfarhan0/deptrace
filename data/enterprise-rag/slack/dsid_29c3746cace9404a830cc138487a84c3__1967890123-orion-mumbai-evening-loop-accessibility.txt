@@ -1,0 +1,26 @@
+people-ops
+
+Elena (People Ops): Heads up team — candidate Orion (SWE) is in Mumbai and asked for a 20:30 IST start due to work constraints. Can we make a late-evening slot?
+Marco (Recruiter): Possible. Priyanka, can the panel do ~20:30 IST / 11:00 PT on Tue? Some EU folks can join remotely later.
+Priyanka (Hiring Manager): I can do 11:00 PT. Two ICs are tight but can shift. Suggest compressing into 3x30m blocks with a short break.
+Elena (People Ops): Candidate also requested live captions during interviews and an audio-friendly environment (no music in background). Facilities note?
+Sam (Facilities): Noted. We can reserve a quiet meeting room and enable live captions on the Zoom link. Will disable room background music.
+Marco (Recruiter): Orion asked about travel stipend if they decide to fly for an in-person follow-up. Policy recap: up to $200 USD for domestic travel, up to $400 for international with receipts. We'll share details.
+Marco (Recruiter): He also needs a loaner Windows laptop with Node + Docker for the take-home. @ITAssetBot can you reserve and ship to Mumbai pickup location (we have APAC loaner pool)?
+ITAssetBot: Reserved 1x Dell XPS (Windows 11) from APAC pool. Pickup: Redwood APAC hub, Mumbai. Hold until Tue 09:00 IST. Return label included. Tracking: APAC987654321.
+Elena (People Ops): Candidate flagged childcare timing conflict — asked if we can schedule the take-home window to allow a 90m break at 21:30 IST for family time. OK to do split schedule?
+Priyanka (Hiring Manager): Fine with split. Proposed flow: 20:3020:55 coding interview, 20:5521:30 break (take-home), 21:3022:00 systems. Panel debrief after 22:00 offline.
+Marco (Recruiter): I'll send invitation and include captions instructions and loaner pickup details. Also will attach the NDA DocuSign link — NDA required before sending take-home repo.
+Elena (People Ops): Please add notes on the calendar: "Accessibility: live captions enabled; low-volume room; 90m break available upon request." Also flag Greenhouse stage as "final loop scheduled."
+CalendarBot: Draft invite below — please review before sending:
+```
+Title: Redwood Final Loop - Orion (SWE)
+When: Tue 20:3022:05 IST (11:00 PT)
+Where: Zoom (live captions enabled) + APAC loaner pickup at Redwood Mumbai hub
+Agenda: 20:30-20:55 Tech interview (screen share), 20:55-21:30 Break & take-home task, 21:30-22:00 System design, 22:00-22:05 Panel debrief (internal)
+Notes: Candidate requests live captions and audio-friendly room. Loaner reserved (APAC987654321). NDA required before take-home. Policy: travel reimbursement per policy with receipts.
+Zoom: https://zoom.redwood.example/orion-final
+```
+Priyanka (Hiring Manager): Looks good. Marco, please confirm candidate local phone number for loaner pickup and that DocuSign is completed before 20:55 IST.
+Marco (Recruiter): Confirmed phone +91 98xxxx4321. DocuSign sent; will monitor. I'll also DM Facilities to prep the room.
+Elena (People Ops): Great. After the loop please remind panel to submit the Greenhouse scorecard within 24h. Thanks all. :white_check_mark:

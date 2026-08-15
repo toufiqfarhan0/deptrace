@@ -1,0 +1,58 @@
+devex
+
+maria: FYI after the 11:00 deploy I started seeing inconsistent embedding lengths when KV cache hits. Node SDK responses show 1536 but curl/python show 512. Repro below. :thinking:
+
+dev-bot: deploy-bot finished canary -> prod (deploy-1123) :rocket:
+
+ben: can you paste a minimal repro? seems like an SDK parity/regression or batcher issue.
+
+maria: only the embeddings endpoint so far. Steps: 1) enable KV cache in sampleapp 2) send batched request of 3 docs 3) Node SDK logs length 1536 but server returns 512.
+
+maria: node snippet:
+```js
+// node sample
+const r = await client.embeddings.create({
+  model: "open-vect-512",
+  input: ["a","b","c"],
+  batch_size: 3
+});
+console.log(r.data[0].embedding.length); // => 1536
+```
+
+maria: curl (correct):
+```bash
+curl -s -H "Authorization: Bearer $REDWOOD_KEY" -d '{"model":"open-vect-512","input":["a","b","c"]}' https://api.redwood.ai/embeddings | jq '.data[0].embedding | length'
+# => 512
+```
+
+sunil: do you see any 401s or auth refreshes in the logs?
+
+maria: yes — I see a 401 on the first attempt then refresh+retry. After the retry the SDK returned a concatenated-length (looks like three 512s joined).
+
+alex: that sounds like the SDK's batch merger/reducer is appending responses on retry instead of replacing. @sdk-team any guesses?
+
+sdk-team: can you paste the raw request/response trace and SDK version?
+
+maria: node SDK 1.4.2, python SDK 1.4.2. Minimal repro gist: https://gist.github.com/fake-repro-embed (attached). Node log snippet below.
+
+maria: log:
+```
+[11:02:05] Request batch id=abc123 size=3
+[11:02:05] Response 401
+[11:02:06] Refresh token -> success
+[11:02:06] Retrying batch id=abc123
+[11:02:06] Response 200 payload=[embedding0, embedding1, embedding2]
+[11:02:06] SDK returned embedding concatenated-length=1536
+```
+
+ben: repro'd locally in sampleapp. I added an assertion on embedding length to catch. Seems deterministic when KV cache returns a prefix and auth triggers a retry.
+
+ben: quick workaround: set `disable_auto_retry=true` in the SDK config or reduce `batch_size` to 1.
+
+maria: confirmed `disable_auto_retry` fixes it for now. Workaround acceptable for embedded infra tests.
+
+sdk-team: created INF-6732 to track this (priority: high). Root cause looks like retry path doesn't reset the batch accumulator when a cached response and retried response are merged. Will ship patch tomorrow.
+
+dev-bot: incident-bot created INF-6732 and linked it to deploy-1123.
+
+maria: thanks all — will leave `disable_auto_retry` on in staging until patch lands. :thumbsup:

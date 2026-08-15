@@ -1,0 +1,61 @@
+eng-oncall
+
+Maya R: hey team — quick evening bridge/handoff. I'm wrapping my shift, handing primary to Eli for the next 12h. Samir is OOO starting today (scheduled), Taylor is on PTO tomorrow morning so we have a secondary gap from ~02:00–16:00 UTC. tagging @Eli K — you good taking primary and on-call pager?
+
+Eli K: got it, taking primary. thanks Maya. I'm online and will monitor the queue. any known noisy alerts I should mute while I ramp?
+
+Maya R: there's been a streak of noisy low-priority latency spikes from the inference-queue alert. We tuned it down last week but traffic pattern changed. If you get >3 duplicates in 10m, escalate; otherwise follow runbook. Also note the dedicated hosts autoscale cooldown is 5m — can cause brief repeat pages.
+
+incident-bot: [AUTO] page triggered: HIGH - inference-queue-latency - route: pager - seq: 118 - started_at: 1778459250
+
+Eli K: seeing the page. I'm checking metrics.
+
+Eli K: quick note — latency spike is concentrated in us-west-2 burst window, likely model warmup after a canary deploy. CPU on pooled nodes spiked to 92%.
+
+Maya R: if it's a canary, follow the 'canary rollback' steps first. Link: https://redwood.internal/runbooks/canary-rollback (runbook section 3)
+
+ops-bot: runbook access: canary-rollback — last edited 2026-01-12 by ops-engineering.
+
+Eli K: rolling back the canary now. running: `deployctl rollback --service=inference-runtime --canary-id=canary-2026-03-14-11`
+
+Eli K: rollback initiated, will update when autoscaler stabilizes.
+
+incident-bot: page resolved: inference-queue-latency - resolved_at: 1778459555 - resolved_by: Eli K
+
+Taylor J: thanks for the heads-up. quick policy suggestion while you're primary — consider suppressing repeated low-priority latency pages between 00:00–06:00 UTC for non-prod traffic to reduce noise. We still want SEV1/2 immediate pages.
+
+Maya R: agreed. because of the secondary gap I recommended a temporary threshold adjustment earlier. I'm pasting the command we use in Console to create a temporary override: 
+
+```
+# create one-off alert override (duration in minutes)
+redwood-cli alerts override create \
+  --policy inference-queue-latency \
+  --scope non-prod \
+  --threshold 99.5 \
+  --duration-min 480 \
+  --escalation primary
+```
+
+Use with caution — this will reduce noisy pages but won't affect true degradations if the metric crosses SEV2 numbers.
+
+Eli K: can you create the override now? I want to watch behavior for the next 4 hours before we flip anything permanent.
+
+Maya R: done. override id `ovr-2026-177845` created, expires in 480m. config link: https://redwood.internal/alerts/overrides/ovr-2026-177845
+
+Eli K: saw it, thanks. I'm updating the incident timeline and leaving notes in PagerDuty: "temporary non-prod threshold override set by Maya R to reduce noise during secondary gap"
+
+Samir P: FYI — on my calendar I'm reachable for escalations via DM until 23:00 UTC if needed. Not full secondary but can assist.
+
+Eli K: perfect. I'll follow runbook: if rollback doesn't stabilize within 15m, escalate to Samir and then open a bridge.
+
+Maya R: also adjusting alert routing: non-prod noisy alerts will now route only to on-call Slack channel (no immediate phone/SMS) for the duration. SEV2/1 remains unchanged.
+
+ops-bot: alert routing update applied: policy=inference-queue-latency scope=non-prod previous_escalation=primary+sms new_escalation=primary+slack temporary=true expires_at=1778473923
+
+Eli K: noted. leaving a short checklist in the thread for whoever inherits next: 1) check `inference-queue` graph 2) verify rollback status 3) monitor host CPU and scale events 4) if >15m unresolved, open bridge and ping Samir/Taylor 5) remove override via `redwood-cli alerts override delete ovr-2026-177845` when done.
+
+Maya R: thanks Eli — I added those items to the shift notes doc: https://redwood.internal/oncall/shift-notes/2026-03-14-evening. I'm signing off in 10m.
+
+Eli K: I'll stay on primary. ping me in-thread if anything else crops up. :thumbsup:
+
+Maya R: thanks all — leaving now. :wave:

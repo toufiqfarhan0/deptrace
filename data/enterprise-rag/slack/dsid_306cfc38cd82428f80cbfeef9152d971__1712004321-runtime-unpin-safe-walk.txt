@@ -1,0 +1,40 @@
+eng-releases
+
+sam: Quick heads-up — proposing to unpin runtime v2.15 for group 'quant-heavy' tonight during the 02:00-04:00 UTC change window. Rationale: kernel micro-optimizations reduce tail P99 on longseqs, plus a small memory-growth fix. Any blockers? :eyes:
+
+deploybot: [auto] Noted. Tentatively scheduling unpin job for 2024-06-28 02:30 UTC. Command: `deploybot schedule-unpin --runtime 2.15 --cohort quant-heavy --window 02:00-04:00`
+
+maria: Quick flag — quant-v3b had a regression in A/B tests last week when paired with SDK 1.4.2. Are we constraining SDK versions for this cohort? If not, we should canary with SDK pinned to 1.4.3+ first.
+
+kevin: +1 on canarying SKDs. Also the hosted model catalog shows some instances using an older runtime shim; need to ensure the deploybot has a compatibility map. Otherwise we risk serving mismatch.
+
+elaine: Proposed rollout plan:
+- Phase 0 (02:30) canary on 3 machines in eu-west with traffic routed 0.5%
+- Phase 1 (03:00) ramp to 20% if P50/P95 within thresholds
+- Phase 2 (03:30) full rollout for cohort; monitor 15m for regressions
+Rollback triggers: increased error-rate >1.5x baseline OR token-latency P95 above 2s for 10m.
+
+sam: Good. I'll add a preflight checklist to release notes and QA harness. Key items:
+- confirm SDK compatibility matrix (kevin)
+- smoke evals: deterministic prompt set + latency run (maria)
+- observability alert pages and dashboard links (elaine / obs)
+
+observability-bot: Dashboard snapshot: https://internal.redwood/obs/dashboards/runtime-unpin-quant-heavy -> baseline captured at 2024-06-27T20:00Z. Alert rule ids: rt-unpin-err-rate, rt-unpin-latency
+
+maria: Also remind SRE to enable kv-cache warmup for these nodes — longseq workflows otherwise see cold starts. Small script we run pre-rollout:```bash
+for host in $(cat canary-hosts); do ssh $host sudo systemctl restart kv-cache && sleep 5; done
+```
+
+kevin: I'll update the compatibility map and push a short validation script to the release branch. If deploybot sees any host running SDK<=1.4.2, it should skip and mark for manual review.
+
+deploybot: Update: scheduled job created (id: s-unpin-1712004321). Preflight checks configured: `sdk-compat-check`, `canary-smoke-eval`, `kv-cache-warmup`. Will post status updates during the window.
+
+sam: Perfect. Final ask: everyone please ack if you own the action items. I'll flip the ticket to "ready for window" in 30m.
+
+maria: ack (smoke eval + kv-warmup)
+
+kevin: ack (compat map + validation script)
+
+elaine: ack (runbook + rollback automation)
+
+deploybot: [auto] Will post live run updates to this thread during execution. Good luck! :rocket:

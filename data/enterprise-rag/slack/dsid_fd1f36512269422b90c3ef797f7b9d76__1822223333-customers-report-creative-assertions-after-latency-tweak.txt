@@ -1,0 +1,66 @@
+customer-success
+
+Sara-CS: Heads up — AlphaApps just escalated. They say responses have become more 'creative' after yesterday's latency-tweak deploy. Customer reports more invented vendor names and dates in product summaries. Example attached below.
+
+Raj: thanks — can you paste the exact prompt + response?
+
+Sara-CS: Pasting the repro from their support ticket: 
+```
+PROMPT: 
+
+'Summarize AcmePay integration timeline and list key partners involved with dates.'
+
+RESPONSE (v2.9 before tweak):
+'AcmePay integrated with Stripe (2019), Plaid (2020), and BankConnect (2021). Major milestones: pilot Jan 2019, GA Sept 2019.'
+
+RESPONSE (after latency-tweak rollout):
+'AcmePay integrated with Stripe (2018), CloudPay (2019), and Trilink Partners (2022). Pilot started Feb 2018, GA Aug 2019. See docs at https://acmepay.example/docs.'
+```
+
+Sara-CS: Customer emphasises the second reply is confidently wrong — CloudPay & Trilink are made-up in this context and the URL is fabricated. They say the issue started right after deploy which changed batching windows and short-circuit prefixes.
+
+Ethan: hmm. they mention batching windows & prefix caching. @Raj did the rollout change kernel selection or quant config?
+
+Raj: I rolled out the latency-tweak at 2025-08-12 22:14 UTC — primarily reduced max batch wait from 30ms -> 10ms and enabled an experimental KV-prefetch for short prompts. No kernel/quant changes.
+
+Maya: I ran the same prompt against a pinned v2.9 instance and the answer matches customer pre-rollout. Repro on prod variant shows the creative output.
+
+Sara-CS: Customer also sent an SDK request log: 
+```
+POST /v1/generate 200 OK
+{"model":"rwd-infer-2.9-opt","prompt":"Summarize AcmePay..."}
+Response body length: 842
+latency_ms: 128
+route: us-east-1a
+Variant: rwd-infer-2.9-opt-vlatency-tweak
+```
+
+Ethan: can you capture the raw token stream? If KV-prefetch is populating stale cached suffixes it might bias creative continuations. Also need exact sampling params (top_p, temp, max_tokens).
+
+Sara-CS: Customer provided sampling: temp=0.0, top_p=0.95, max_tokens=120. They insisted temp=0 so they thought it should be deterministic.
+
+Raj: temp=0.0 + aggressive prefix caching + shorter batching windows could lead to different decode behavior if we changed micro-batching timing that interacts with KV cache warmup. Not typical to hallucinate like that though.
+
+Ethan: Agreed. Next steps: (1) get raw logits+tokens for a repro run on the tweaked variant, (2) run ablation disabling KV-prefetch, (3) compare decoding traces between pinned v2.9 and tweaked variant.
+
+Sara-CS: Customer asked for ETA on a fix. They flagged as high priority — it's causing a support churn for them.
+
+Raj: I'll roll back the KV-prefetch on one pool and flip batch wait back to 30ms for canary. DeployBot: starting rollback job now.
+
+DeployBot: rollback job queued — id rb-20250812-91. Will report status in 2–3m. :gear:
+
+Maya: FYI I captured a small repro with identical prompt and seed (SDK supports seed) and got differing outputs between variants even with seed set. I'll attach trace snippets to the ticket.
+
+Ethan: That strongly points to a change in runtime scheduling or cache state influencing generation despite same sampling seed. We'll need per-step logits to confirm.
+
+Sara-CS: I'll update the customer and request an example conversation they see in production (they have ~20 examples). Also asking if they can temporarily pin to pre-tweak variant.
+
+Raj: Rollback completed on canary pool. Observability shows decode timing reverted and KV-prefetch disabled for that pool.
+
+DeployBot: rollback job rb-20250812-91 succeeded.
+
+Sara-CS: Customer switched a small percentage of traffic back and reports immediate improvement on pinned traffic. They want a root-cause writeup and regression fix plan.
+
+Ethan: I'll start an investigation ticket for 'regression: creative assertions after latency micro-batching change' and collect traces. Assign to inference-research.
+
+Sara-CS: Thanks all — closing the loop with customer now. I'll attach the ticket and logs. :white_check_mark:

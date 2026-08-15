@@ -1,0 +1,45 @@
+eng-security
+
+neha: CI Snyk flagged CVE-2024-XXXXX in fastjson-lite v1.2.3 as HIGH and blocked the release. I investigated — we backported the vendor patch in our internal fork and the compiled artifact in the build matches the patched checksum. Requesting temporary risk acceptance to unblock the pipeline while we finish a full validation. Ticket SEC-3145. Requesting 72h window.
+
+calvin: can you paste the proof (SBOM link + hash) and the exact scanner config change you want? need to justify to infra.
+
+neha: sure. short facts:
+```
+SHA256: abcdef1234567890a1b2c3d4e5f67890123456789abcdef0123456789abcdef0
+SBOM: https://redwood.internal/sbom/abcdef1234567890
+build: ./gradlew :service:assemble -PdepPin=fastjson-lite:1.2.3
+```
+I've also opened PR that pins the dep and includes the patched source; CI artifact checksum above comes from the pipeline that built from that PR.
+
+sasha: thanks. list the compensating controls and the exact exception we need to add to the scanner so we can approve scope/timebox. also include rollback plan.
+
+neha: compensating controls: short list
+- dep pinned in master (PR merged)
+- SBOM recorded and artifact checksum stored in SEC-3145
+- temporary scanner exception scoped to release job only (not global)
+- canary deploy at 5% for first hour, increase if no errors
+- audit logs enabled for deploys and KMS-wrapped image signing (image signing key rotated last week)
+- RBAC: only release owners + eng-sre can bypass scanner for that job
+rollback plan: immediate revert of release branch + automated rollback job if canary error rate >1%
+
+neha: proposed exception snippet to add to our scanner config:
+```
+snyk:
+  exceptions:
+    - cve: CVE-2024-XXXXX
+      scope: repo:service-ci:release-job
+      reason: backported vendor patch verified, compiled artifact checksum matches
+      expires: 2026-03-24T15:00:00Z
+      ticket: SEC-3145
+```
+
+security-bot: Recorded exception request SEC-3145. Reminder: security approvals required before config change applied.
+
+auditor-bot: Please ensure this approval is attached to the ticket and retained in audit logs (timestamped).
+
+sasha: Reviewed evidence and compensating controls. Approving timeboxed risk acceptance for 72 hours ending 2026-03-24T15:00:00Z. Condition: add automated reminder to SEC-3145 to remove exception and re-run full CI scan; attach checksum proof to ticket. :white_check_mark:
+
+prod-oncall: noted. I'll watch canary metrics during rollout and escalate on anomalies.
+
+neha: thanks all — I'll add the config change to the release job only and attach everything to SEC-3145. Will update here when the allowlist is applied and when it's revoked. :thumbsup:

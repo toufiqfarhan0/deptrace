@@ -1,0 +1,52 @@
+incidents
+
+yvonne: Quick sweep — INC-834 postmortem actions. Need to confirm owners + realistic due dates before I update the RCA. TL;DR: DB failover rollback, config guard, load-test checklist, and runbook edits.
+
+carlos: I can own DB failover rollback. ETA EOD Thu (2026-03-19). Will need help from infra for snapshot verification.
+
+anya: I'll take the runbook edits. Can we get acceptance criteria? Prefer a checklist and a small diagram.
+
+kevin: Config guard (feature flag to prevent unsafe rollouts) — assigning to me. Plan: create FF + add tests. Target Mon (2026-03-23).
+
+liz: Load-test checklist — I can take load testing and perf thresholds. Need a staging cluster with 2x load; putting tentative due Wed.
+
+ron: infra effort to verify snapshots and provide the staging env — I can deliver by Tue, but need a Jira subtask and access to the staging account list.
+
+incident-bot: Action assigned: INCIDENT-834-DB-ROLLBACK -> carlos; due: 2026-03-19
+
+yvonne: Carlos — please paste the rollback playbook lines you'll run. We should include the exact commands in the RCA.
+
+carlos: Sure: ```bash
+# snapshot verify
+rdbctl verify-snapshot --id $SNAP_ID
+# rollback
+rdbctl rollback --to $SNAP_ID --safe-mode
+``` I added a note: need runbook step to force drain before failback.
+
+anya: For runbook I'll need the commands and expected outputs from Carlos and the FF names from Kevin. Let's set a shared doc: https://docs.internal/redwood/incidents/834/runbook-draft
+
+kevin: FF name: ff/rollback-protect, I'll create the JIRA and link. Tests: unit + a quick e2e smoke. ETA Mon as said.
+
+liz: Staging cluster request: @ron can you confirm node counts? Need 10k rps sim. If not, I can scale the load down.
+
+ron: I can stand up a 5-node cluster by Tue morning; for 10k rps we'll budget burst capacity — need approval from eng-platform. Pinged @carlos for cost estimate.
+
+yvonne: OK — owners + rough dates fit. I'm consolidating into the RCA. Two asks: (1) Carlos, confirm snapshot ID format (uuid?) (2) Everyone, update your Jira task with 'rca:inc834' tag.
+
+carlos: Snapshot IDs are UUID v4, e.g., 6b1f-df3a-45c2-9b0e. I'll add an example to the rollback command.
+
+kevin: JIRA created: INFRA-2891 (ff + tests). Tagged rca:inc834.
+
+liz: JIRA for load testing: PERF-1122 created, due 2026-03-18.
+
+anya: Runbook doc updated w/ checklist. I'll @reviewers in doc.
+
+yvonne: Thanks. I'll do a final pass Thu morning and bump to the execs if all owners confirmed. If anyone's blocked, call it out here.
+
+carlos: no blockers from me, just need infra snapshots visible.
+
+ron: I'm blocked on access to snapshot S3 bucket — ops needs to grant read. Pinged ops.
+
+incident-bot: Reminder: RCA draft due in 3 days (2026-03-19).
+
+yvonne: Noted. Closing this sweep — will post a short summary to #incidents and cc PMs.

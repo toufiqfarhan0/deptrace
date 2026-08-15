@@ -1,0 +1,21 @@
+devex
+
+sophia: Heads up — thinking about adding a tiny telemetry event from SDKs when a request triggers a platform routing policy. event name: policy.applied. idea: emit sampled events with {route_key, policy_version, latency_bucket}. low overhead, opt-in.
+kevin: what's the payload size? we need to avoid per-request blowup. Also PII concerns — route_key may contain customer tags.
+maria: FYI TS SDK had an enum rename earlier; any change to telemetry contract could be a breaking change if we add a new required field. Prefer opt-in flag in SDK default false.
+alex: eng-platform has a gauge on routing mismatches we can reuse. maybe we just piggyback on existing opaque header: x-rw-policy: v1|abc. then console parses that and shows "policy tile".
+kevin: piggyback header seems nice. no JSON in body. sampling still needed though.
+sophia: draft payload (for diagnostics only):
+```
+{ "event": "policy.applied", "route_key": "web-chat-1", "policy_version": "2026-03-15", "sampled": true }
+```
+maria: that JSON looks fine for internal telemetry but we should never send route_key in hosted logs for customers who opt-out. add opt-in + sampling.
+console-bot: new dashboard tile prototype deployed to staging: /console/dashboards/policy-insights — shows policy hits by model, route_key heatmap.
+kevin: question for devex: if we use header approach, do SDKs need to expose any new API? or just set header? TS/Go can set it transparently; Python already has request-hooks.
+sophia: plan: 1) opt-in SDK flag 'enable_policy_telemetry=false' default, 2) expose a sampling_rate option, 3) set x-rw-policy header when policy applied (small opaque token), 4) console tile reads header-stats and correlates with token-to-policy map pulled from control plane.
+alex: +1. I'll open an eng-platform PR to add header generation and the mapping endpoint. assign me.
+ci-bot: PR #4821 queued: eng-platform/add-policy-header -> staging (checks running)
+sophia: I can do the TS SDK change (very small): export type TelemetryOptions = { enablePolicyTelemetry?: boolean; samplingRate?: number }
+maria: please add a deprecation note for older enum consumers in the changelog. avoid forcing users to bump major.
+kevin: also add a note in console docs about sampling biases. otherwise folks will misinterpret tile counts.
+sophia: thanks — i'll draft the SDK PR and add a short RFC in docs. chopping this thread; follow-up in the PR.

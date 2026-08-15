@@ -1,0 +1,18 @@
+architecture
+
+Marta: heads up: i'm sketching an RFC for a tiny mode-plugin layer that normalizes auth/secret/telemetry plumbing across hosted/dedicated/private. want quick feedback on safety and ops constraints.
+Ken: 👍 reduce duplication sounds good. main risk is making runtime decision logic too smart/opaque. prefer explicit capability flags.
+Marta: agreed. plan is provider manifests + capability list. runtime will enforce required fields, ignore unknown advisory fields.
+Ollie: for secrets, private providers should unwrap locally and return a short-lived token, not raw plaintext keys. add audit hook.
+Marta: good call. audit hook will be opt-in per-provider and pipe to customer sink when present.
+Ken: how do we handle provider upgrades? automatic rollout?
+Marta: propose control-plane staged registration: register -> canary -> promote. runtime validates manifest signature and min/max runtime compatibility.
+Ollie: critical: if a manifest requires data-migration (kvcache format), block auto-rollback and surface a runbook link.
+sec-bot: security-check: any change touching secret-resolve must pass security review. tag: sec-review-required.
+Ken: observability: emit provider-id, manifest-hash, and selection-reason in traces. also metric for capability-mismatch fallbacks.
+Marta: tests: we'll add a fake-provider harness that can simulate latency, auth failures, and missing capabilities. tests assert graceful degradation.
+Ollie: one more: default fallback policy per hosting mode (hosted: try fallback variant, dedicated: attempt burst, private: fail-fast) but make it route-configurable.
+Marta: thanks — i'll draft the RFC with manifest schema, rollout playbook, test harness plan, and policy DSL. ping me for examples you want included.
+Ken: i'll write the policy DSL primer.
+Ollie: i'll own the private-provider security appendix.
+Marta: closing — will post RFC link later. :thumbsup:

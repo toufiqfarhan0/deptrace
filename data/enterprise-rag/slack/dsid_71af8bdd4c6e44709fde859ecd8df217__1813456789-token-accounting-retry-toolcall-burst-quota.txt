@@ -1,0 +1,26 @@
+eng-platform
+
+jordan: FYI: noticed a spike in prompt token usage for org=acme yesterday around 22:07 UTC. Billing delta ~+40% vs baseline. Triage started. Anyone looking at metering-relay?
+sam: I am. Initial dig shows tokens attributed to prompt but logs include tool_call token blocks. Might be double-counting on retry path.
+maria: Repro steps? Any sample request ids?
+jordan: Got a request_id: req_0x9a7. Sample log line: `meter: req=req_0x9a7 org=acme key=sk-prod-123 prompt=120 completion=30 toolcall=45 retry_id=retry-1`
+lee: If retry_id present we should dedupe — but current code only de-duplicates requests at the http layer, not token accounting in the aggregator. Looks like retries cause both original and retry to be counted.
+sam: Here's what I think is happening:
+```
+# simplified metering logic in metering-aggregator
+if retry_id and seen_retry(retry_id):
+    # we currently ack the retry but still forward tokens -> bug
+    forward_metrics()
+else:
+    record_tokens(prompt, completion, toolcall)
+    mark_seen(retry_id)
+```
+jordan: so the bug is forward_metrics() doesn't exclude token payload? nasty.
+maria: Also noticed burst tokens being consumed from per-org bucket, but per-key quota not reduced because key_id wasn't attached to retry blob -> leads to per-org vs per-key mismatch.
+lee: Proposed fix: 1) dedupe on retry_id inside metering-aggregator before counting tokens; 2) ensure toolcall tokens are attributed to the original key when we stitch retry blobs; 3) short-term mitigation: add console alert + soft-throttle for suspected orgs.
+quota-bot: Alert: quota_enforcer detected unusual burst usage for org=acme at 2026-03-17T22:07Z :rotating_light:
+sam: I'll open a PR for the aggregator change. Can we also add a dashboard panel: token_count_breakdown (prompt, completion, toolcall, deduped_retries) so ops can see what got deduped?
+ops-bot: Created issue infra#4567 linking logs, example requests, and sample traces.
+jordan: Assigning to @sam and @lee. Can we fast-track a canary deploy to staging and run synthetic retry traffic to validate?
+sam: Yes. Plan: land patch + unit tests then canary in eu-west-1 with 1% traffic, run synthetic retry suite and monitor token delta. ETA EOD.
+maria: :thumbsup: please also add a short console note so customers see "investigating token spike" until fix ships.

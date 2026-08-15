@@ -1,0 +1,69 @@
+slack/docs/1779990000-resume-stream-snippets-compact.json
+
+Lina Park: quick one  updating snippets for streaming + pagination — want tiny resume-on-failure examples for py/ts/go. keep them demo-only and point to retry helpers.
+
+Raj Shah: yep. show saving cursor, basic backoff, resume. short compatibility note for `next_cursor` -> `cursor`.
+
+Eve Kim: pasted minimal drafts:
+
+Eve Kim: Python:
+```python
+# demo-only: persist cursor, use SDK retry utils in prod
+def consume_stream(client, store, key):
+    cursor = store.get(key)
+    for attempt in range(4):
+        try:
+            for item, next_cursor in client.stream(cursor=cursor):
+                handle(item)
+                store[key] = next_cursor
+            return
+        except TransientError:
+            time.sleep(0.5 * (2 ** attempt))
+    raise
+```
+
+Eve Kim: TypeScript:
+```ts
+// demo-only
+async function* streamResume(client, load, save, key) {
+  let cursor = await load(key)
+  for (;;) {
+    try {
+      const iter = client.stream({ cursor })
+      for await (const { data, cursor: next } of iter) {
+        yield data
+        await save(key, next)
+      }
+      break
+    } catch (e) {
+      await delay(200)
+    }
+  }
+}
+```
+
+Eve Kim: Go:
+```go
+// demo-only
+func StreamResume(ctx context.Context, c *api.Client, load func(string) string, save func(string,string), key string) (<-chan Item, <-chan error) {
+  out := make(chan Item)
+  errs := make(chan error,1)
+  go func(){
+    defer close(out)
+    cursor := load(key)
+    for {
+      stream, err := c.Stream(ctx, cursor)
+      if err != nil { time.Sleep(100*time.Millisecond); continue }
+      for it := range stream { save(key, it.Cursor); out <- it }
+      return
+    }
+  }()
+  return out, errs
+}
+```
+
+Lina Park: perfect. add one-line note above each snippet: "demo-only; use SDK retry helpers in production" and migration line: `cursor = resp.cursor || resp.next_cursor`.
+
+docs-bot: PR opened https://github.com/redwood-inference/docs/pull/512 (Lina Park)
+
+Raj Shah: i'll review by 2pm PT. thanks!

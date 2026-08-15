@@ -1,0 +1,74 @@
+incidents
+
+alex: 00:12 UTC — getting an uptick of 503s for hosted inference ap-south. ~12% 5xx over last 5m, several customer reports of timeouts. sample error: "upstream response 503 gateway timeout". Anyone oncall?
+
+maya: on it, digging into auth proxy and gateway. seeing increased 502/503 at the edge + auth failures.
+
+oncall-bot: Pager duty triggered for #incidents (severity: high) — paging: jordan
+
+jordan: I’m onpager, joining. initial hypothesis: auth token validation timeouts causing gateway to stall and backpressure.
+
+sam: CS reporting customer A and B experiencing timeouts when sending long prompts (seqlen ~4k). we asked for request samples.
+
+maya: logs look like auth proxy is doing sync calls to KMS with spikes in latency (~1.2s/req). when combined with runtime cold starts we see queue pile-up.
+
+alex: can we repro locally? sam, any customer payloads?
+
+sam: posted sanitized curl:
+```
+curl -H "Authorization: Bearer <token>" -X POST https://api.redwood.ai/v1/generate -d '{"model":"open-llm-13b","input":"<long prompt here>"}' -v
+```
+
+maya: repro against staging: 20 concurrent long requests -> 30% requests hit 503 after auth latency climbs. stack traces show auth-proxy threadpool exhaustion.
+
+jordan: mitigation options: 1) increase auth-proxy threadpool / add short-circuit cache for token validation, 2) route long requests to dedicated inference pool with separate ingress, 3) throttle largest requests at gateway. Which first?
+
+alex: prioritize quick fix for customer impact. Jordan, can you up threadpool and add temporary client-side caching? Maya, open PR for a short-circuit cache (TTL 60s). Sam, notify affected customers with suggested retry/backoff.
+
+jordan: increasing threadpool now (rolling restart auth-proxy in eu/ap regions, will be quick).
+
+oncall-bot: deploy started by jordan — auth-proxy threadpool scale x2 (canary->rollout).
+
+maya: started small patch for in-memory token cache (60s TTL), tests running.
+
+alex: also enable fallback routing: send long sequences to dedicated-pool-2 where runtime warms KV caches aggressively. config change applied.
+
+sam: sent customer note: "we’re investigating 503s and routing long requests to a dedicated pool to reduce timeouts. ETA 30m."
+
+jordan: threadpool rollouts completed, initial telemetry: 5xx rate dropped from 12% -> 4% in ap-south. latency p95 improved from 1.8s -> 1.1s.
+
+maya: cache PR merged to staging, scheduled hotfix to prod in 15m. patch reduces KMS calls by ~60% for repeated tokens.
+
+alex: good. next: verify no regression for auth edge cases and ensure we don’t open bypass for revoked tokens. Maya, include revocation check fallback to KMS on cache miss.
+
+maya: yep, cache only used for validated tokens; on cache miss we hit KMS. added metric for cache hit/miss and revocation errors.
+
+jordan: also added temporary rate-limit rule for single-connection long sequences to avoid single-tenant pileups. rule applied and observed less queuing.
+
+sam: updated customers: they see better success rates, CS will monitor for 1h then follow up.
+
+cs-rep: customer A confirmed service restored for their workload. they want postmortem + RCA.
+
+alex: action items: [1] maya — postmortem draft w/ root cause (auth KMS latency + seqlen cold starts) + timeline, due EOD. [2] jordan — finalize threadpool config & autoscale play (prod), due 24h. [3] eng-runtime (maya + jordan) — implement token cache with revocation safe pattern & add testing harness for long requests, due 72h. [4] sam/cs-rep — customer comms & follow-ups, confirm no regressions, due 4h. [5] ops — create dashboard for long-request 5xx and auth KMS latency, owner: jordan, due 24h.
+
+maya: will include perf numbers and deploy diffs in the postmortem. plan to add canary policy for cache rollout.
+
+jordan: scheduling a 30m retro at 14:00 UTC to go through playbook gaps (repro steps, runbooks).
+
+sam: noted customer asks for SLA credit guidance — handing off to eng-sre and finance later.
+
+alex: once postmortem ready, we’ll put follow-up tickets in the incident tracker and route to PM for visibility.
+
+oncall-bot: incident severity downgraded to medium — sustained 5xx reduced, monitoring.
+
+cs-rep: sent customer status update and closed immediate escalations. will file any follow-ups.
+
+alex: thanks team. leaving notes here for the postmortem: 1) root cause = synchronous KMS auth validation latency + large-sequence runtime cold starts -> queue amplification. 2) short-term mitigations = threadpool scale, token cache, routing long requests to dedicated pool, rate-limit for long single-tenant connections. 3) long-term = token validation async path + persistent token cache backed by redis with revocation webhook + better warmup for long seqlen models.
+
+maya: adding links to deploys and logs in the postmortem doc after this thread.
+
+jordan: created dashboard and alert rule: ap-south auth-kms-latency > 400ms triggers paging.
+
+sam: confirming CS closed tickets for affected customers.
+
+cs-rep: all done here, will watch for 2h. closing thread after PM review. :white_check_mark:

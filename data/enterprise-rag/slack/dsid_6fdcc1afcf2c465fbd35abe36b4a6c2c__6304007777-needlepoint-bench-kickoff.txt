@@ -1,0 +1,19 @@
+marketing
+
+maya: Heads up — sketching a short benchmark playbook for the Needlepoint launch. Keeping it tight: 3 charts, 2 hooks, 1 live interactive demo.
+toni: Nice constraint. Which 3 charts?
+james: Heatmap (latency vs $/1k tokens), tail latency distribution (p50/p95/p99), and throughput-per-dollar (bar).
+manila: For webinar, let's make an interactive slider for batch size and a toggle for prefix-cache — attendees can see cost change in real time. :thinking_face: 
+manila: Also split messaging: SMB -> cost per convo; Enterprise -> SLA/fallbacks.
+anita: Copy idea: "Same model, different serving choices — predictable tradeoffs for speed, cost, and reliability." no absolute multipliers.
+toni: Agree, avoid flashy claims. Add methodology note and appendix link.
+james: Heatmap spec: x=QPS (1–500), y=sequence length, color=$/1k tokens. Tail plot show lines for p50,p95,p99 across representative workloads.
+manila: Routing for landing CTAs: "Request demo" -> Enterprise SDRs; "Try benchmark" -> Growth sandbox. Use utm_campaign=needlepoint_bench and hidden field for preferred deployment.
+maya: Webinar format: 25-min talk (product + bench highlights), 15-min live Q&A, 10-min interactive demo. Panelists: maya (product), james (bench lead), + 1 customer.
+benchbot: bench-run complete: model=redwood-v1-small, qps=50, batch=8, mean_latency=48ms, p95=210ms, cost_per_1k=0.27
+toni: Translate to two qualified claims: "Typical chat: 50 QPS → ~$0.27/1k tokens, p95 < 220ms" and "Batch/prefix-cache can reduce cost ~4x for batchy workloads" — mark as qualified in copy.
+anita: I'll draft landing copy + three social snippets. Aim for EOD Thursday. I'll include 3 subject lines to A/B test.
+james: I'll upload chart mocks + CSVs to the drive link and include alt text for accessibility.
+manila: Color palette check: keep heatmap colorblind-safe; I'll review. Also, add a line for platform teams about rollouts and graceful fallbacks.
+maya: Deliverables: @anita landing + social; @james charts + interactive; @toni webinar script + slide per chart. I'll compile a public one-pager and internal appendix once drafts are in. :fire:
+benchbot: next scheduled run in 24h (pipeline: nightly-needlepoint)

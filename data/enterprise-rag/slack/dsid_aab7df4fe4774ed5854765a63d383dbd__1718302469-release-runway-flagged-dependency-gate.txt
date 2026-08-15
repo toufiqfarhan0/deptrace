@@ -1,0 +1,16 @@
+eng-releases
+
+emily: Quick heads-up — I flagged a dependency that might eat our release runway for tomorrow morning. API v2.1 schema change + runtime kernel bump + console telemetry field rename + router header key tweak. Can teams confirm compat surface and rollback plans? :eyes:
+sanjay: Thanks — which runtime kernel bump is this? the 2.3.4 vectorized-attn one?
+emily: yes, runtime 2.3.4. It's got the new attention fusion kernels. We saw perf gains but a couple of edge regressions in long-context tests.
+lara: Console will need a small mapping change for telemetry.event_type -> telemetry.kind. It's backwards-compatible but might drop a few metrics if not applied. We can ship a short-lived shim.
+mike: Router change is just header rename from X-RD-Session to X-Redwood-Session. We can accept both for 48h via header-fallback middleware. I'll open a quick patch.
+emily: Good. @ops-bot can you schedule a maintenance flag and mark this thread as release-gate?
+ops-bot: deploybot: flagged thread 1718302469 as release_gate. Quiet window scheduled 2024-05-03T07:00Z–09:00Z. Rollback window: automatic if latency p50 > 200ms for 10m.
+sanjay: On runtime: I've got a canary build that exercises long-token KV usage — it failed on one test (kv-ttl) yesterday. I'll re-run with the kernel patch and push a canary to a single shard. ETA 45m.
+dev-rel: For release notes: call out the header rename and telemetry field; add a note that console shims are applied automatically for 48h. Also include the runtime caveat and the rollback criteria.
+lara: If canary passes, we can gate the console shim rollout until the router accepts both headers. That reduces blast radius.
+mike: Patch opened: PR #5849. It's a trivial header fallback. Rolling out to staging now.
+emily: Plan summary: 1) sanjay runs runtime canary (single shard) 2) mike deploys header fallback to staging -> canary 3) lara prepares console shim and feature flag 4) dev-rel prepares release notes and calls out rollback triggers 5) ops-bot monitors and enforces rollback window. If canary fails, we revert runtime kernel and hold release. Agreed?
+sanjay: Agreed. Will post canary logs here.
+emily: Thanks — please ping if anything looks off. :thumbsup:

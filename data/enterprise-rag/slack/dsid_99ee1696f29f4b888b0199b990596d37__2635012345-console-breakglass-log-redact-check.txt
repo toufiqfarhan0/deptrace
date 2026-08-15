@@ -1,0 +1,48 @@
+eng-security
+
+sasha: Hey @sec-oncall — I found a handful of user identifiers in /prod/app/logs that look like PAN-like strings. I want to do an in-place redaction on the host and re-upload a cleaned copy to S3. Can I get a break-glass console sudo for one session (30m)? Ticket INF-4821 has the incident notes.
+
+sec-oncall: What's the minimal scope you need? exact hosts, commands, and justification please. We'll need approvers + assurance logs will be captured.
+
+sasha: Scope: one bastion host (bastion-prod-3) and temporary sudo to run small file ops only (copy, sed, sha256sum). No DB creds, no export. Host path: /var/log/app/2026-03-16.log. Duration: 30 minutes. Reason: remove exposed customer identifiers before support shared the sample. I will paste the commands below and add the ticket link.
+
+sasha: ```
+# connect to bastion
+ssh -i ~/.ssh/redwood_bastion sasha@bastion-prod-3
+sudo cp /var/log/app/2026-03-16.log /tmp/2026-03-16.log.orig
+sudo sed -E 's/[0-9]{12,19}/[REDACTED-ACCOUNT]/g' /tmp/2026-03-16.log.orig > /tmp/2026-03-16.log.cleaned
+sha256sum /tmp/2026-03-16.log.orig > /tmp/2026-03-16.orig.sha256
+sha256sum /tmp/2026-03-16.log.cleaned > /tmp/2026-03-16.cleaned.sha256
+# upload cleaned file to restricted S3 bucket
+aws s3 cp /tmp/2026-03-16.log.cleaned s3://redwood-prod-redacted/INF-4821/ --acl bucket-owner-full-control
+```
+
+sasha: Ticket: https://redwood.atlassian.net/browse/INF-4821 — notes include samples and why we can't use the existing redact service because the sample includes multi-line stack traces that break parser.
+
+mike: I can approve for 30m as long as you don't pull DB dumps. Please add me on the ticket. :+1:
+
+tara: Ack from ops. I'll watch tail for any unexpected activity. Leave an audit comment in the ticket and paste sha256s here once done.
+
+sec-oncall: Need explicit approvers list in ticket (mike, tara). We'll provision role "breakglass/log-redact-2026" scoped to bastion-prod-3 only, TTL 1800s. Approvers: mike, tara. Once they 👍, I will trigger the access and the security-bot will log the window.
+
+mike: Approve INF-4821 — mike (engineering manager) — 30m ok.
+
+tara: Approve INF-4821 — tara (ops) — monitoring on standby.
+
+security-bot: Access window created: role=breakglass/log-redact-2026 user=sasha host=bastion-prod-3 ttl=1800s audit_id=sb-20260316-1582
+
+sasha: Thanks — connecting now. I'll paste the sha256s and a brief audit note here when finished.
+
+sasha: DONE: completed redaction, uploaded cleaned file. Audit notes:
+- original_sha256: 3b7f8e9a... (stored in ticket)
+- cleaned_sha256: 9f4d2c1a... (stored in ticket)
+- commands run: sed + sha256sum + aws s3 cp
+- no DB access, no external exports
+
+tara: saw activity, nothing odd. files in S3 look good. closing monitoring.
+
+mike: thanks. leaving final approval comment on ticket and marking resolved for this window.
+
+security-bot: Access window closed for user=sasha audit_id=sb-20260316-1582. All events forwarded to audit-log-prod.
+
+sasha: Appreciate the quick approvals — will follow up with a short postmortem note in INF-4821 about adding a parser-safe redact path for multiline samples.

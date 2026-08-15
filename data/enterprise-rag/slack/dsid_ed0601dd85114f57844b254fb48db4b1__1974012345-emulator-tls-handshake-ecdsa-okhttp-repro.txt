@@ -1,0 +1,35 @@
+devex
+
+anna: Quick flag - hitting intermittent connect timeouts from the Android emulator only. Retrofit + OkHttp call to our staging endpoint stalls during TLS handshake. Works on physical devices.
+raj: Which emulator image and OkHttp version?
+anna: Pixel 3a emulator, API 30 image, OkHttp 4.9.3, Retrofit 2.9.
+marc: Any cert errors or just socket timeouts?
+anna: No cert exceptions. OkHttp eventually throws SocketTimeoutException on connect. Native network/sniffer shows the client never completes the TLS handshake. Logs: 
+D/OkHttp: --> GET https://staging-internal.redwood.example/health
+W/OkHttp: TLS handshake timed out after 12000ms
+E/OkHttp: java.net.SocketTimeoutException: failed to connect to staging-internal.redwood.example/10.0.2.2 (port 443) from /10.0.2.15 (port 52412) after 12000ms
+raj: 10.0.2.2 is emulator -> host. Are you proxying (mitm) with ECDSA cert chain?
+anna: Yes, reverse proxy on host terminates TLSv1.3 with an ECDSA leaf signed by our private CA.
+emily: Emulator's TLS stack (conscrypt) sometimes mishandles certain curves/suites with TLS1.3. Could hang waiting for server.
+marc: We should try forcing TLS1.2 to confirm. Add a ConnectionSpec that prefers restricted TLS and retry. Also check whether Network Security Config is trusting the CA or only user store.
+anna: I tried forcing ConnectionSpec.RESTRICTED_TLS and it completed immediately. Installing CA into emulator user store didn't help, system store did (but that's painful).
+raj: For SDK defaults we should detect emulator and use a safer ConnectionSpec by default. Propose: if Build.FINGERPRINT contains 'generic' or 'emulator', set client.connectionSpecs to [RESTRICTED_TLS, COMPATIBLE_TLS, CLEARTEXT].
+emily: Also update sample app README with Network Security Config snippet and a one-liner to push the CA into the emulator system store for local dev. Example snippet for sample config:
+```
+<network-security-config>
+  <base-config>
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>
+```
+marc: Another approach: add a small preflight call during SDK init with a short connectTimeout (2s). If handshake doesn't succeed, flip to TLS1.2-only client and proceed. That avoids breaking real devices that prefer TLS1.3.
+anna: That preflight pattern worked in my local patch. I'll draft a tiny PR: detect emulator OR preflight fallback, and doc changes for sample app.
+raj: Please include detailed repro steps and the exact emulator image you used so QA can reproduce. Also include a matrix of OkHttp versions tested.
+anna: Repro steps: 1) Android Studio emulator Pixel 3a API 30 (default image). 2) Host reverse proxy at 10.0.2.2:443 terminating TLS1.3 with ECDSA chain signed by internal CA. 3) App with Retrofit 2.9 + OkHttp 4.9.3 calling /health. 4) Observe TLS handshake timeout -> SocketTimeoutException after connectTimeout. 5) Workarounds: a) disable TLS1.3 at proxy b) force ConnectionSpec.RESTRICTED_TLS in OkHttp c) run preflight + fallback.
+devex-bot: Issue DEVEX-4362 created: "emulator TLS handshake hang with TLS1.3/ECDSA when using OkHttp" assigned to anna.
+anna: Thanks, I'll include logs, a minimal sample app change, and test matrix in the PR.
+emily: Add a note in onboarding docs: "If calls fail only on emulator, try emulator TLS fallback or install CA into system store."
+anna: Will do. Filing PR now. :shipit:

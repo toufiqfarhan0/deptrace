@@ -1,0 +1,21 @@
+docs
+
+patrick: Heads-up — docs PR #4321 needs merge timing aligned with release v1.12.0. Feature flag `new-split-cache` will be behind FF and cutoff is EOD Wed. Who can review and approve? We need preview link and CI green.
+sophie: I can take a review today. Will check examples + migration note. @maria can you eyeball the SDK snippets?
+maria: Yep, I will check the JS + Python snippets. Any breaking param renames I should call out?
+patrick: Only a tiny rename: `cacheType` -> `cache_scope`. Please add a short migration note and update the example in migration.md.
+ashwin: FYI I ran linkcheck locally, preview deploy failed earlier due to an image path. I pushed a quick fix to the branch (see commit). Preview should regenerate in a few mins.
+ci-bot: CI update — docs-lint ✅, preview-deploy ❌ (failed: image path), linkcheck ⚠️ (1 external link). Details: https://ci.redwood.ai/4321
+ashwin: fixed path in docs/assets/diagram.png -> docs/static/diagram.png, retriggering build.
+ci-bot: preview-deploy reconciling... build queued... build succeeded. Netlify preview: https://preview.docs.redwood.ai/branches/4321
+docs-bot: Note — this PR touches versioned docs (v1.12). If merged during cutover, please bump the versioned header and ensure redirects for /docs/migration. Use the snippet in /docs/ops/versioned-merge-checklist.md
+maria: Found one outdated SDK snippet in examples/getting-started.md, updated JS and Python. Also added a short migration blurb referencing `cache_scope`.
+sophie: Quick nit: change `cache_scope` example to show default value. Otherwise LGTM.
+patrick: Ops requested merging during the release window tomorrow 09:45–10:15 PT. Can we aim for 09:50 PT so logs are warm? Also we'll run a smoke check post-merge.
+maria: Linkcheck now clear. Pushed patch.
+ci-bot: linkcheck ✅, docs-lint ✅, preview-deploy ✅
+sophie: Approved :thumbsup: — I'll do the final merge at 09:50 PT. Plan: `gh pr merge 4321 --squash` then watch /metrics/docs and the preview health dashboard for 15m.
+patrick: Thanks—I'll be on watch and have rollback branch ready (`release/v1.12-rollback`). If anything spikes, revert and notify #release-war-room.
+docs-bot: Reminder: update the changelog snippet in v1.12 release notes after merge.
+patrick: Merged at 09:50 PT. Monitoring now — no errors in the first 10m. Great job everyone.
+sophie: Nice, thanks all.

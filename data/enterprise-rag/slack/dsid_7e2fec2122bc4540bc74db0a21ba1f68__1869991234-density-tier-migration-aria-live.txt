@@ -1,0 +1,42 @@
+design
+
+ana: Quick design proposal — consolidate spacing/surface tokens into three tiers: `dense`, `default`, `spacious`. Rational: simpler config for console tables, modals, and toasts. Thoughts? cc @katie @mike
+
+katie: 👍 Three tiers sounds good. Suggest the user-facing labels be "Compact density", "Default density", "Spacious density" so intent is obvious. Dev token names can be short.
+
+mike: Accessibility concern — at `dense` focus rings can visually collide with adjacent rows on high-contrast themes. Options: add outline offset, bump z-index on :focus, or increase min-row-height for focusable rows.
+
+jordan: Modal/update: keep modal inner padding aligned to row height. Also toasts must not overlap form controls (z-index ordering + consider pointer-events).
+
+samir: AT note — toasts currently inconsistent with screen readers. Add role="status" + aria-live="polite" and include an offscreen label. Also test on iOS Safari and NVDA.
+
+ana: (typo) ana: Copy tweak: toggle currently says "Compact". Propose "Compact density" with tooltip: "Reduce vertical spacing for dense lists and tables." More explicit.
+
+katie: We'll need a migration doc mapping old tokens to new ones and a deprecation timeline. I'll draft.
+
+mike: Implementation plan: keep legacy aliases for two releases and runtime fallback. Example mapping:
+
+```json
+{
+  "--spacing-compact": "--spacing-dense",
+  "--surface-low": "--surface-elevation-1"
+}
+```
+
+ops-bot: Deploy preview for density-tokens branch: https://staging.redwood.dev/density-preview :rocket:
+
+jordan: Added quick mocks in a gist: https://gist.github.com/example/density-mocks — includes table and modal variants.
+
+samir: Reminder: inserting aria-live elements must be done in an accessible way (avoid display:none -> block). Use offscreen but present in DOM or insert by changing textContent so SRs pick it up.
+
+ana: (typo) ana: Actionables: @katie migration doc, @mike alias + tests, @jordan final figs in #design-files, @samir AT matrix. I'll update the token RFC and ping eng for review.
+
+katie: I'll post migration doc by Thu EOD.
+
+mike: I'll add unit test for focus states at dense density.
+
+jordan: Figma updated; left comments on modal padding variants.
+
+ana: (typo) ana: Thanks all :clap: Drop blockers here.
+
+katie: Copy nit: toast close button should have label "Dismiss notification" for screen readers, not just "Close".

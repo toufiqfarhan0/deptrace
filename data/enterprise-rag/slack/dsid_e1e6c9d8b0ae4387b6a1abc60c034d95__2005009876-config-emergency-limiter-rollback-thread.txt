@@ -1,0 +1,47 @@
+eng-releases
+
+deploy-bot: CONFIG-ONLY rollout started: routing-policy=weighted-v2, canary=5% for 20m.
+Changes:
+```json
+{
+  "request_timeout_s": 4,
+  "user_rate_per_min": 30,
+  "batch_window_ms": 15,
+  "routing_policy": "weighted-v2"
+}
+```
+/cc @maria @kenji @sam
+
+maria: Thanks. Monitoring p95 latency, 5xx and cache-hit. I'll set a dashboard and an alert.
+
+kenji: Pin canary traffic to model-variant:v1.9 to avoid sudden architecture switch.
+
+sam: +1 on pin. Can we also drop client-side retry window to 2s to avoid amplification?
+
+anika: Ops oncall is @alex — if alerts fire, prefer automated fallback to routing-policy=weighted-v1 (graceful) instead of full rollback.
+
+ops-bot: metric-alert created: latency_p95 > 1.2s OR error_rate > 0.5% => trigger fallback to weighted-v1 and notify #eng-oncall
+
+deploy-bot: Canary reached 5% at +9m; initial metrics: p95=0.95s, 5xx=0.12%, cache_hit=78%
+
+maria: Looks healthy so far. Extending canary to 40m to capture peak in APAC region.
+
+kenji: Confirming pin to v1.9 on canary. Also disabling client-side batching for canary clients for first 10m.
+
+sam: Noted. Rolling to 25% after 40m if no regressions.
+
+ops-bot: alert: cache_hit dropped to 62% in us-west at +28m; p95 spiked to 1.5s — rolling back canary to 0% and triggering fallback.
+
+deploy-bot: Initiating rollback: revert routing-policy -> weighted-v1, restore user_rate_per_min to 60, request_timeout_s back to 3. Canary terminated.
+
+maria: Acknowledged. Investigating cache eviction pattern; will attach logs and a reproducer.
+
+kenji: Good call on pinning — we didn't have a model switch; root cause looks like kv-cache pressure after batch-window change.
+
+sam: Next steps: iterate on batching params: try batch_window_ms=20 and enable soft-kv-warming. Reopen canary when fixes in.
+
+anika: Postmortem owners: maria (investigate), kenji (deploy controls), sam (client retry guidance). I'll schedule a quick playbook update.
+
+alex: oncall here — let me know if you want me to re-run the canary during off-peak.
+
+maria: uploading logs and a short timeline to the incident doc. Thanks all :heart:

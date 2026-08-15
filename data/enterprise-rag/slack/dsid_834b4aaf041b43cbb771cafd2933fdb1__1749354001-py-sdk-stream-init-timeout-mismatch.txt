@@ -1,0 +1,41 @@
+support
+
+maria: Customer: long streaming generations keep failing with ReadTimeout showing read timeout=3.0 even though they set a very large timeout tuple. They attached a tiny repro and logs. Raising to eng if needed.
+support-bot: Ticket created: #INC-5012 - "py sdk streaming init-timeout mismatch" :ticket:
+customer_jane: repro below. running redwood py sdk in a container. timeout=(60,600) but it dies after ~3s every time on the first chunk.
+
+```python
+from redwood import Client
+client = Client(api_key="sk-...", timeout=(60, 600), retries=2)
+stream = client.generate_stream(model="redwood-7b", prompt="<huge prompt>")
+for chunk in stream:
+    print(chunk.text)
+```
+
+customer_jane (logs):
+``
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='api.redwood.ai', port=443): Read timed out. (read timeout=3.0)
+  File "/venv/lib/python3.11/site-packages/redwood/stream.py", line 102, in _start_stream
+    resp = session.request(...)
+```
+
+sam: can you confirm the exact sdk version? we changed some streaming internals around v0.12.x and added tight handshakes in a couple spots.
+maria: they report using redwood==0.12.1.
+kevin: looking. v0.12.1 introduced a short internal "stream init" timeout intended to fail fast for broken proxies. it defaults to 3s and lives outside the requests timeout tuple. that explains the 3.0. the tuple still controls connect/read for the main request, but the SSE/chunked handshake is guarded separately.
+
+kevin: immediate workaround: set environment variable REDWOOD_STREAM_INIT_TIMEOUT to a higher value (seconds) or instantiate Client with the keyword stream_init_timeout to increase that handshake allowance. Example that the customer confirmed works:
+
+```python
+client = Client(api_key="sk-...", timeout=(60,600), retries=0, stream_init_timeout=90)
+stream = client.generate_stream(...)
+for c in stream:
+    print(c.text)
+```
+
+kevin: important note: with retries enabled you will see duplicated partial outputs if a retry happens after the first partial stream succeeded. we recommend disabling automatic retries for streaming requests (retries=0) and implementing idempotency at the app layer (request ids, dedupe of partial chunks).
+
+liz: for support copy: tell customers to bump both the requests tuple read and the stream_init_timeout on v0.12.x. older versions (<0.11) used the requests default which was more forgiving, and newer patch (planned) will align behavior.
+sam: can someone open an internal bug to (a) document stream_init_timeout, (b) ensure the requests timeout tuple can opt-in to control the handshake, and (c) add tests for long first-byte latencies?
+kevin: opened RDW-9701. patch plan: v0.13.2 will accept tuple and map to both handshake and stream read defaults, plus expose explicit params and env var. unit tests + a small e2e harness for simulated slow first byte.
+maria: passed workaround to customer; they set stream_init_timeout=90 and read 600 and confirmed the stream now stays alive for long generations. they also disabled retries while testing and reported cleaner behavior. closing unless it reappears. :white_check_mark:
+support-bot: Ticket #INC-5012 updated: assigned to eng-py-sdk (link: https://internal.redwood.ai/inc/5012)

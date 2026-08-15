@@ -1,0 +1,38 @@
+eng-runtime
+
+Ben: Hey team — noticed a weird tail-latency oscillation on staging around 09:12 UTC. p95/p99 spiked intermittently even though qps stayed flat.
+Mira: saw that, looks like bursts not sustained load. Could be admission control hysteresis? :thinking_face:
+Carlos: I pulled the scheduler logs, admission went from 60% -> 95% in <200ms then dropped. Bounce every ~30s.
+Ben: interesting — KV cache evictions line up with the same windows. eviction_rate metric jumped ~3x when the admission surged.
+Anya: posting the short profiler snapshot I grabbed:
+```
+# profiler sample (stack traces aggregated)
+serving.scheduler.admit() +0.12s
+kvcache.lookup() +0.08s
+batcher.pack_batch() +0.15s
+kernel_selector.choose() +0.03s
+gpu_submit() +0.02s
+```
+Mira: kernel_selector.choose looks cheap here. The heavy bits are pack_batch and kvcache.lookup. Suggest checking microburst sizing heuristic — maybe it overpacked during bursts and caused excessive cache churn.
+Carlos: agreed. I also matched pod CPU/IO: CPU steady, but GPU queue depth had short spikes coincident with admission pulses.
+Ben: hypothesis: small spike of incoming single-request sessions triggers admission to greedily open larger microbatches (burstpack), which fills KV cache with new prefixes -> evictions -> longer kvcache.lookup latencies -> backpressure and then admission oscillates.
+Anya: can we reproduce? I have a script to replay a Poisson arrival with occasional 10-20 request microbursts. Want me to run against staging with extra logging?
+Mira: please, set env var DEBUG_SCHEDULER=1 and enable kvcache.metrics.verbose. Also add `batcher.max_pack_time_ms=5` override so we can see difference.
+Carlos: quick grep from logs around spike window:
+```
+[09:12:03] admit: allow=22 queued=3 target_batch=32
+[09:12:03] kvcache: evict_count=181 free_slots=27
+[09:12:03] packer: emitted batch_size=30 latency_ms=18
+[09:12:03] kernel: chosen=fused_q8 latency_ms=420
+```
+Ben: hmm kernel chosen shows fused_q8 but latency high probably due to cache miss/IO. Kernel perf alone shouldn't jump that much.
+Anya: running replay now. I'll annotate timestamps with injected bursts.
+alertbot: WARNING staging-p95 > 300ms (09:12:03 -> 09:12:20) — alerted eng-runtime
+Mira: if we can repro, try reducing `batcher.max_pack_size` to 8 and see if evictions drop. If yes, we need an admission smoothing window or a pack-size cap when kvcache.eviction_rate > threshold.
+Carlos: patch idea: admission controller should consult kvcache.eviction_rate and cap target_batch_size to avoid thrashing. Also add a short-term EWMA for admitted rate so it doesn't jump instantly.
+Ben: +1. For short term: Anya, can you run: 1) baseline, 2) with pack_time override, 3) with pack_size=8. Capture p95/p99, kv evict_rate, admission oscillation.
+Anya: running all three now, each for 10 minutes. I'll upload logs and a small flamegraph. ETA ~30m.
+Mira: thanks. If repro is consistent we should schedule a quick spike-fix PR (admission smoothing + pack cap) and run canary on staging.
+Ben: agreed. Also add a unit test in scheduler that simulates frequent microbursts and asserts admission doesn't oscillate > 20% within 1s window.
+Carlos: I'll draft PR after Anya uploads results. Leaving a note: this is different from prior microbatch issues — key is KV eviction feedback into admission loop rather than kernel mismatch.
+Ben: good call. Keep thread updated. :thumbsup:

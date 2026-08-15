@@ -1,0 +1,48 @@
+customer-success
+
+maria_csm: Hey everyone — Aperture Labs asked for a temporary egress allowlist and a QPS bump for their EU pilot starting Monday. They also called out potential renewal risk if p50 latency doesn't drop ~20% after the pilot. Can ops/SRE triage?
+
+tim_sre: seen. can we get the IP ranges + exact endpoints they hit? also what burst QPS do they want?
+
+maria_csm: yes, asked for 3 CIDsR blocks and initial burst to 400 qps, steady 200 qps. they said endpoints: api.aperture-labs.eu/v1/generate and /v1/embeddings
+
+raj_sales: fyi — renewal in 6 weeks. they're evaluating provider lock-in risk. if we can't stabilise perf they'll loop in procurement. want a brief for customer tomorrow.
+
+anna_support: onboarding notes: they run 5 large concurrent streams during ingest. prefix caching not enabled yet. flagged some malformed prompts causing retries.
+
+maria_csm: ok. @tim_sre can you propose a safe temp config we can apply Friday evening? i'll draft a one-pager for the renewals convo.
+
+tim_sre: propose temp config:
+```
+route: aperture-eu-pilot
+allowlist_cidrs:
+  - 203.0.113.0/24
+  - 198.51.100.0/26
+  - 198.51.101.128/26
+limits:
+  burst_qps: 400
+  steady_qps: 200
+  per_token_rate_limit: 0.00025
+apply_window: 2027-09-17T20:00Z -> 2027-10-01T08:00Z (auto-revoke)
+```
+This keeps global SLOs sane and auto-revokes in 2 weeks. Need ops to open peering change ticket and update ACLs.
+
+ops_bot: Ticket CS-8721 created: title "Aperture Labs EU pilot - temp allowlist & QPS". Assigned to #eng-infra. ETA for ACL change: 6h after approval.
+
+maria_csm: perfect. anna, i'll send the onboarding fixes checklist and ask them to enable prefix caching in their next deploy. also cc'ing raj on the renewal note draft.
+
+raj_sales: pls add a short note about fallback policy (we can route to smaller model if perf degrades). that helps procurement conversation.
+
+tim_sre: noted. i'll add fallback route + tracing tags so we can show before/after p50 numbers.
+
+anna_support: one more thing: customer wants audit logs for who accessed the allowlist change. ops, can we enable 30d audit retention for this change?
+
+ops_bot: Audit retention increase request logged on CS-8721. Ops -> Security review required.
+
+maria_csm: thanks all. action items: tim - apply config + fallback trace; ops - ACLs + audit retention; anna - onboarding checklist; raj - renewal one-pager. i'll update customer after ACL applied. :thumbsup:
+
+tim_sre: will target Friday 19:30 UTC to apply and run quick perf validation. ping if schedule changes.
+
+ops_bot: CS-8721 status: in progress -> awaiting eng-infra approval.
+
+maria_csm: closing the thread here, will post results once perf numbers available.

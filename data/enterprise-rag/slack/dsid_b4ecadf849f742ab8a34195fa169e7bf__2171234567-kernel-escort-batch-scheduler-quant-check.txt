@@ -1,0 +1,53 @@
+eng-runtime
+
+tara: Heads up — noticed a regression on stage after yesterday's AWQ rollout for mixtral-8x. tail p99 up ~18% on long-context routes (8k). suspect kernel selector flip to generic GEMM for some head/kv shapes.
+
+liam: Do we have a bisect or the kernel id trace? which selector rule matched?
+
+tara: perf-bot posted an alert and a quick flamegraph in the job. attaching summary below. looks like fused_qk_kv went to 0 calls for a subset of requests.
+
+perf-bot: anomaly detected · route=dedicated-eu · model=mixtral-8x · quant=awq · tail_p99 +18% vs baseline · job=perf/2167 · started=2171234400
+
+dina: Could be RoPE scaling interacting badly with headwise quant kernels. For mixtral we have heads=16, kv_dim=64; AWQ headwise packing changed stride -> prefetch pattern mismatch -> cache thrash.
+
+ryan: Quick experiment: force kernel selector to prefer headwise_fused for mixtral-8x and re-run a small throughput set (N=200). Command:```./run_perf --model mixtral-8x --quant=awq --override-kernel=headwise_fused --samples=200 --route=dedicated-eu```
+
+tara: Ran that override. p99 dropped back to baseline but p50 worsened ~4% (throughput impacted). So fused helps tail but hurts average when batching is aggressive.
+
+liam: Sounds like batching heuristics interacting with kernel latency distribution. For long seqs we should tighten max_batch_ms or switch to microbatching to avoid huge coalesced batches that amplify slow kernels.
+
+dina: Proposed fix: (1) kernel selector change — add a pre-check that inspects (heads, kv_dim, rope_scale) and prefers fused_qk_kv when rope_scale <= 1.25 and kv_dim % 64 == 0; (2) runtime batching policy: if avg_seq_len > 2048 then enable microbatching with max_batch_ms=6.
+
+ryan: Calibration/accuracy play: AWQ on mixtral had ~0.7% emd drop vs GPTQ on our eval set (calib prompts focusing on long-context QA). FP8 had noisier ops but negligible accuracy delta. Need to balance cost/latency vs accuracy.
+
+tara: Quick profiling snippet from the failing window:```kernel: generic_gemm time=1.24ms calls=412
+fused_qk_kv time=0.82ms calls=0
+kv_cache_evictions=37_per_min
+prefetch_miss_rate=12%
+context_avg_len=6200
+queue_depth=24
+```Looks like evictions + prefetch misses are correlated with long contexts.
+
+perf-bot: scheduled perf job #2171 (selector + batching) · queued at 2171234700
+
+liam: Other idea: adaptive fallback — prefer fused for first N tokens (where qk is critical) and then switch to generic if batch sizes get large. That might capture warm-up benefit without throughput penalty.
+
+dina: Also check KV eviction policy: current LRU buckets=128 which is tuned for 2k contexts. For mixtral long-context workloads bumping to 512 reduced evictions in local sim. Might be a cheap win.
+
+tara: Action items I will own: 1) open PR with kernel selector heuristic (link: https://git.company/pr/4532) 2) add runtime flag --microbatch-longseq and default to off 3) queue dedicated perf job with two calibration prompt sets (calib_short / calib_long) 4) run accuracy comparisons AWQ vs GPTQ vs FP8 on truthset and record emd/bleu.
+
+ryan: Calibration command for the runs:```./calib --model mixtral-8x --quant AWQ --prompts calib_long --metrics emd,bleu --samples 1000 --seed 42```Include the --rope-scale param sweep {1.0,1.1,1.25} while you're at it.
+
+tara: I'll include rope-scale sweep. Also will test lowering LRU bucket and toggling microbatch flag. Queuing now, job id will be posted.
+
+liam: If job shows improvement, we can ship selector heuristic behind a feature flag and enable for dedicated-only first. Also add perf regression alert if p99 delta > 10% after quant changes.
+
+dina: One more note — for future quant onboarding add a short checklist: (a) head/kv shape check (b) rope-scale sensitivity (c) microbatch impact (d) kv eviction sim. Save teams time.
+
+tara: Agreed. I'll draft the checklist and attach to PR. Thanks all, will update thread with perf job results. :thumbsup:
+
+ryan: thanks — ping me if you want me to run a second-arm e2e with live traffic mirror.
+
+perf-bot: job 2171 started at 2171234765
+
+tara: ack — will monitor and report back.

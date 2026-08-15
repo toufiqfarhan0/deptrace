@@ -1,0 +1,50 @@
+product
+
+morgan: Quick design review — API token onboarding + rotate flow. Pasting notes from the session and screenshots in thread. Main concerns: empty state clarity, primary CTA density, and keyboard focus order.
+
+priya: thanks — can you call out the worst offender first?
+
+morgan: the create modal shows the secret after creation but our copy says 'Shown once' only in small gray text. Users miss it. Suggest move the warning line directly under the token, bold the important bit, and show an inline 'download .env' CTA.
+
+alex: +1 to stronger affordance. Also we should avoid modal overflow when someone pastes a very long policy name. It pushes the CTA off-screen on small devices.
+
+jordan: accessibility nit: when the secret drawer appears, NVDA reads the whole page again. We should add an aria-live="polite" region that announces: "New API token created. Copy now — this secret will not be shown again."
+
+priya: example aria snippet I tested: 
+```
+<div aria-live="polite" id="token-announcement">New API token created. Copy now — this secret will not be shown again.</div>
+```
+
+morgan: perfect. Also keyboard flow: after hitting Create we land focus on the token text field, but tabbing goes to the modal close button next, then primary CTA. That feels backwards. Desired order: token -> copy button -> download -> secondary actions -> close.
+
+sam: UX question — should the primary action in the modal be 'Copy' or 'Done'? If 'Copy' is primary, users might think they need to copy every time. If 'Done' is primary, copying gets buried.
+
+alex: lean toward 'Copy' primary for first-time reveal, then change to 'Done' after copy or when modal is re-opened. We can toggle the primary style.
+
+jordan: rotation flow: the confirmation warning currently reads: "Rotating will invalidate previous keys. Are you sure?" — that's vague. Product suggests: "Rotating will stop any clients using the current token. Create and deploy the new token before rotating." Feels more actionable.
+
+priya: also add a soft-delete grace period note: we do background retries for webhooks, but customers expect immediate cutoff. Copy should set expectations. Eg: "Rotation takes effect immediately for new calls; background retries may be retried for up to 5 minutes."
+
+morgan: empty states: the dashboard empty state copy currently: 'No API tokens yet'. Suggest we make it task-driven: 'No tokens yet — create a token to call Redwood APIs from your app.' Primary CTA: 'Create token' and a secondary link: 'See example usage'.
+
+sam: suggestion: add a tiny inline checklist for first-run: scopes, expiration, rotation policy. Expandable so it doesn't clutter.
+
+alex: visual density nit — credential rows have 3 actions inline (reveal, rotate, revoke). On mobile they wrap badly. Proposal: collapse into a kebab menu on <640px. Keep reveal as first tap target on desktop.
+
+jordan: copy tweak for revoke confirm: current: 'Revoke token?'. Proposed: 'Revoke token — this cannot be undone. Active services using this token will fail immediately.' Keep the undo option visible only in a snackbar.
+
+morgan: telemetry item: fire events for 'token_shown' and 'token_copied' so Support can investigate leaked tokens. Add context: which role created it, project id.
+
+priya: design QA ask: can engineering add a short-lived mask state for the token text with a show/hide toggle? Helps mobile shoulder-surfing.
+
+sam: implementation: mask for 500ms after generation, then keep masked until user clicks reveal. Show 'Reveal secret' button with aria-pressed state.
+
+alex: tiny microcopy ask — change 'Expires in' to 'Expires' in rows (saves width).
+
+morgan: final ask: can we run a 5-min keyboard/a11y pass and update the mockup? I can take notes and ship copy suggestions.
+
+priya: I'll schedule a quick pairing with Eng tomorrow 11:00 to validate focus order and aria-live.
+
+access-bot: Reminder: accessibility review requested by @priya. Deadline: 3 days.
+
+morgan: thanks — attaching updated Figma frame and proposed copy below. Will iterate after the pair. :thumbsup:

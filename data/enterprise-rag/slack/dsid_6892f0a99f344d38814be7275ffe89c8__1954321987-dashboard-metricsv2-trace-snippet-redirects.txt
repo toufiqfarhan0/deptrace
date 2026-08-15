@@ -1,0 +1,35 @@
+docs
+
+Alex Chen: Heads up — PR #412 updates the dashboard example to metrics v2 and tweaks the tracing hook snippet. Also ran into a broken sample link (404). Can someone take a look?
+Maya Patel: I'll review. which link is 404?
+Alex Chen: https://docs.redwood.ai/console/dashboards/sample/old-metrics
+Sam Rodriguez: That's the old path. New path should be /console/metrics/v2/dashboards/sample — I'll add a redirect but we should update the docs too.
+Irene Gomez: I pushed a tiny patch in the PR that changes the metrics query fields, but the SDK tracing snippet still calls client.start_trace() which is deprecated.
+Maya Patel: Paste the snippet so I can see.
+Irene Gomez: ```js
+// old
+const trace = client.start_trace('request');
+trace.annotate({route: '/v1/generate'});
+await trace.end();
+```
+Sam Rodriguez: New SDK uses tracer.startSpan and span.end. Example:
+```js
+const span = tracer.startSpan('request');
+span.setAttribute('route', '/v1/generate');
+await span.end();
+```
+Alex Chen: @Sam can you update the PR with that change and note that metric names switched from token.count to token_units?
+Sam Rodriguez: On it. Also saw the dashboard JSON still references cost_breakdown.v1 — needs to be cost.v2 in the sample.
+Maya Patel: I'll add a migration note and run a grep replace across the docs. Fine to add a short migration snippet in the console reference?
+Alex Chen: Yes, please. Keep it tiny: query examples for cost.v2 and a note on key renames.
+Irene Gomez: Also, docs-bot reported a failing sample test: console/snippets/dashboard_sample_test failing 2/3 assertions around tag normalization.
+Maya Patel: Sounds like the tag enum changed (region -> region_code). I'll update the snippet and re-run tests.
+Sam Rodriguez: Updated the PR: changed tracing snippet, metrics name, and cost.json -> cost.v2. PTAL.
+docs-bot: CI: docs build succeeded with warnings in console/snippets.
+deploy-bot: redirect created: /console/dashboards/sample/old-metrics -> /console/metrics/v2/dashboards/sample
+Maya Patel: Ran the snippet tests locally, fixed the tag enum. One remaining warning: an inline link points to an internal design doc with restricted access. We should either host a public excerpt or remove the link.
+Alex Chen: Remove it for now. We can create a short public appendix later.
+Irene Gomez: PR ready for merge after link removal.
+Alex Chen: Thanks everyone — merging after CI passes.
+Maya Patel: Nice work :rocket:
+Sam Rodriguez: :thumbsup:

@@ -1,0 +1,50 @@
+eng-infra
+
+maria: Heads up — after last night's GPU scale-down in us-east we've got a weird failure: requests to the headless inference svc are hanging (~30s) then failing. A bunch of pods respond intermittently or not at all. Investigating.
+
+ tom: seeing this from eu-edge too. curl to pod IP returned no response (hang). kubectl get endpointslice shows entries present though.
+
+ kevin: can you paste `kubectl get endpointslices -n inference -o wide`? wondering if endpoints are still assigned to drained nodes.
+
+ maria: output (trimmed):
+ ```
+ NAME                      ADDRESSCOUNT   ENDPOINTS
+ epslice-202  3             10.244.5.12,10.244.6.23,10.244.7.9
+ endpoints: nodeName=old-spot-17 ready=false
+ ```
+
+ tom: kube-proxy logs on affected nodes have repeated errors after the drain:
+ ```
+ E0302 02:14:01.123456   12345 proxysync.go:407] failed to ensure iptables rule: cannot remove chain: no such file or directory
+ ```
+
+ jackie: coredns on the same nodes also shows stale SRV/A records cached in node-local-dns: queries for headless svc sometimes return IPs of pods that are terminating.
+
+ ops-oncall: paging infra-sre. quick question: are pods trying to talk to each other across nodes and getting hairpinned through the NAT gateway? headless -> pod IP should be cluster-local, but egress rules might be SNATing.
+
+ kevin: good catch. tcpdump on node shows SYNs destined to pod IPs leaving via the node's default route (nat-gw ENI) instead of routing via the cluster network, so replies never reach the right node. looks like MASQUERADE/SNAT rules are being applied to cluster CIDR.
+
+ maria: `iptables-save` excerpt: 
+ ```
+ -A POSTROUTING -s 10.244.0.0/16 -j MASQUERADE
+ ```
+ That MASQUERADE shouldn't be covering cluster CIDR. Not sure what changed during the scale-down.
+
+ tom: kube-proxy is running in iptables mode (we use iptables, not ipvs). kube-proxy configmap shows `hairpin-mode: promiscuous-bridge`. But hairpin isn't relevant if SNAT forces traffic out to nat gw.
+
+ jackie: quick workaround: restarted kube-proxy on 3 affected nodes and cleared node-local-dns cache on them — two nodes recovered and pod-to-pod traffic is now local again. But this is a bandaid.
+
+ kevin: filed infra issue #2345 — root suspect is our node-egress-policy controller (recent change to route egress via NAT gateway for spot nodes) incorrectly injecting MASQUERADE for the whole pod CIDR during scale actions. PR to exclude cluster CIDR from SNAT is in progress.
+
+ tom: temporary mitigation steps I ran:
+ 1) `kubectl rollout restart daemonset/kube-proxy -n kube-system --field-selector spec.nodeName=<node>` for affected nodes
+ 2) run `iptables -t nat -D POSTROUTING -s 10.244.0.0/16 -j MASQUERADE` on nodes where it's wrong
+ 3) `systemctl restart node-local-dns` to expire stale DNS cache
+
+ jackie: confirmed those steps worked on 2/3 nodes. putting a playbook in the issue for SRE runbook.
+
+ infra-bot: deploy-bot: rolled back node-egress-policy change in us-east-1; 5 nodes patched.
+
+ maria: marking as high priority for today. follow-up action items: revert offending controller fully, add e2e to prevent SNAT of clusterCIDR, and audit scale-down hooks. I'll update the incident ticket with logs and tcpdumps. :thumbsup:
+
+ ops-oncall: will watch for reoccurence during next scale event — keep channel posted.

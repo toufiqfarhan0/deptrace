@@ -1,0 +1,57 @@
+docs
+
+sam: Heads up — running the runtime quickstart smoke test and the curl sample at /runtime/quickstart returns 403. looks like the Authorization header in the example is malformed. anyone own that page?
+
+maria: ugh, which snippet? can you paste it here?
+
+sam: sure — copied from the doc: 
+```
+curl -X POST https://api.redwood.ai/v1/generate \
+  -H "Authorization: Token{{API_KEY}}" \
+  -d '{"prompt":"hello"}'
+```
+
+sam: missing space after Token and the endpoint host is outdated (api.redwood.ai -> api-staging.redwood.ai for the quickstart smoke).
+
+jen: I can take this. small fix: change header to `Authorization: Bearer {{API_KEY}}` and update example host + add quick note about 401 vs 403. I’ll open a tiny PR. :+1:
+
+lee: pls also update the curl to use `-H 'Content-Type: application/json'` — some envs reject without it.
+
+jen: good call. my draft patch will include that and a one-liner test command.
+
+sam: thanks — can you also add a comment under the code block pointing to the smoke test script? makes future breakage easier to trace.
+
+jen: yep. adding this snippet to the PR description: 
+```
+# quick smoke test (local)
+curl -s -X POST https://api-staging.redwood.ai/v1/generate \
+  -H 'Authorization: Bearer $REDWOOD_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"smoke test"}'
+```
+
+docsbot: NOTE: docs scan flagged anchor `/runtime/quickstart#auth-sample` as a possible orphan last week (2024-11-07).
+
+maria: can you add a CODEOWNERS hint or ping the runtime docs owners? leaves it easier to triage.
+
+jen: will add `owners: @eng-runtime` in the PR body and request review from @maria and @lee.
+
+sam: awesome — ping here when PR is up and i’ll run the smoke test.
+
+jen: PR opened: https://github.com/redwood-inference/docs/pull/1428 — title: "runtime quickstart: fix curl auth header, add smoke test". requesting @maria for review. :rocket:
+
+maria: lgtm, just one nit about wording in the note. will approve after that.
+
+lee: approved from infra side — tested the curl locally and it gets 200 now.
+
+sam: verified smoke test on staging as well. thanks all! :tada:
+
+jen: done — merged and backfilled a small changelog entry. leaving a short comment in the page: "Updated curl example and added smoke test command (2024-11-10)"
+
+sam: closing the loop. do we want a quick follow-up check in the weekly docs sweep to ensure other quickstart pages don't have the same token style?
+
+maria: yes — adding to the docs sweep board as a follow-up item. cc @docsbot to re-run scan in a week.
+
+docsbot: scheduled rerun: 2024-11-17.
+
+sam: perfect. thanks everyone.

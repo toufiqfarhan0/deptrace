@@ -1,0 +1,48 @@
+incidents
+
+sre-tilly: Hey team, I'm seeing alert spikes for `pg-qual-prod` but nobody got paged. Can anyone confirm if paging integrations are healthy?
+kevin: I didn't get a page. I was oncall when the alert fired.
+incident-bot: Incident INC-2026-144 triggered for pg-qual-prod (error-rate > 5%). Attempted to page escalation policy 'SRE Primary' -> paging failed with 502 from webhook.
+maria: Paging-gateway logs show repeated 502s to `https://pagerduty.redwood/gateway/v1/notify` around the alert times.
+ops-josh: We're seeing repeated 502/504 from the paging gateway container just now. CPU is normal but proxy upstream returns 502.
+alex: Any deploys to paging stack in the last hour?
+deploy-bot: Deploy 2026.3.15.14:52 to service `paging-gateway` by @kevin — status: SUCCESS.
+kevin: I rolled a config change earlier to add a fallback route, but it passed smoke. Could be mismatch with PD webhook format.
+sre-tilly: Can someone tail the gateway logs and paste the failing request/response?
+maria: Paste of the last 5 errors:
+```
+ERROR 2026-03-15T14:54:01Z POST /gateway/v1/notify 502 upstream="pd-legacy:443" body="{\"routing_key\":...}" error="dial tcp: lookup pd-legacy: no such host"
+ERROR 2026-03-15T14:54:02Z POST /gateway/v1/notify 502 upstream="pd-legacy:443" error="tls: handshake failure"
+```
+alex: `no such host` is odd. pd-legacy should be resolved by service discovery (consul). Are DNS/consul resolvers healthy on those nodes?
+ops-josh: I'm SSH-ing into node-44 to check.
+incident-bot: Note: Paging suppressed due to repeated webhook failures. Manual escalation recommended.
+kevin: I'm going to create a manual PD incident and call the oncall phone tree. @maria can you paste PD incident link when it's up?
+maria: Created PD incident PD-5678 and started manual phone escalation. Link: https://pagerduty.com/incidents/PD-5678
+sre-tilly: Good. Meanwhile can someone roll back the config change or restart the gateway pods?
+ops-josh: Restarted paging-gateway deployment on cluster `us-east-1` (rolling restart initiated).
+kevin: Restart complete. I'm seeing DNS resolution succeed now on node-44. Running a synthetic notify to PD...
+maria: Synthetic notify succeeded, PD accepted the event.
+incident-bot: Paging resumed for escalation policy 'SRE Primary'.
+sre-tilly: Confirming: pages that were missed earlier have been manually escalated via PD incident PD-5678.
+kevin: Quick customer impact/triage note: the alert correlates with 502s from the public inference edge for ~7 minutes affecting ~3% of requests across a single AZ. No data exfil; only availability.
+maria: Logged customer-facing impact: intermittent 502s for subset of users between 14:53-15:00 UTC.
+ops-josh: Adding mitigation steps to runbook: if paging-gateway returns 5xx, restart pods, then create PD incident and manual phone escalation. Also: add alert for failed outbound webhook with >=3 repeats.
+alex: We should also add a circuit-breaker: if webhook returns 5xx thrice, fallback to direct PD API call (bypass gateway). Filing a follow-up ticket.
+sre-tilly: Agreed. Follow-up issues: 1) rollback vs fix deploy practice for paging-gateway config, 2) add monitoring/alert for webhook failures, 3) improve runbook to include manual escalation.
+kevin: I'll own the follow-ups. I'll post the ticket numbers in this thread.
+maria: Small ask: can we add a short note to customers affected (ops@) and prepare an internal incident timeline?
+sre-tilly: Yes. Timeline draft:
+- 14:52 deploy to paging-gateway (config change)
+- 14:53 alert fires, paging attempts fail (502)
+- 14:54 manual PD incident PD-5678 created and phone escalation started
+- 14:56 paging-gateway restarted
+- 14:57 synthetic notify succeeded, paging resumed
+- 15:00 incident declared mitigated (availability restored)
+kevin: Ticket created: RD-2345 (paging-gateway post-deploy validation & fallback).
+ops-josh: RD-2346 created for runbook and monitoring additions.
+incident-bot: Incident INC-2026-144 updated: state -> mitigated (manual escalation + gateway restart).
+sre-tilly: Thanks all. Please add any logs or notes here if you did manual steps (who called, who confirmed). We'll include in the postmortem. :+1:
+kevin: I did the call tree: paged team leads @alex and @maria, then escalated to SRE lead. All acknowledged.
+maria: I'll draft the customer impact blurb and share in #customer-ops for review.
+sre-tilly: Closing thread for now. We'll reopen if anything else pops.

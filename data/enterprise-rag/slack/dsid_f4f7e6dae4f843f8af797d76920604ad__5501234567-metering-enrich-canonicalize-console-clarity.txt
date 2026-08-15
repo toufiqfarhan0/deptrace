@@ -1,0 +1,36 @@
+eng-platform
+
+maria: Heads-up — console preview is showing small positive credits for some tenants after route enrichment changes this morning
+devon: saw that, looks like a few customers with +0.02 credits? odd
+alex: +0.02 on preview could be rounding, but pattern seems tied to routes with `route-enrich` enabled
+priya: can you paste an example tenant id? I want to cross-check ingested events
+maria: tenant=acme-corp, route tag set `analytics:true`, preview shows 0.02 extra tokens on daily line
+devon: fetching raw events now, but quick theory: enrichment fanout duplicates a few sideband events used for attribution, maybe double-counting ephemeral tokens
+alex: that matches a log I saw: `metering-proxy -> enrich (fanout=3) -> collector` — if one of the fanout branches gets retried we might stitch twice
+priya: do we have dedupe key on the enrichment side? I thought we used `fingerprint=v1` in headers
+maria: looks like `fingerprint` is present but different when enrichment adds route attrs 
+devon: repro query (clickhouse):
+```
+SELECT tenant_id, sum(tokens) as tokens_sum, count() as events
+FROM metering.events_1h
+WHERE tenant_id = 'acme-corp' AND ts >= toDateTime('2026-03-20')
+GROUP BY tenant_id
+```
+I see tokens_sum 102.14 vs ledger 102.12
+alex: so +0.02 indeed. That's small but will scale across many tenants
+priya: short-term mitigation: adjust console preview to dedupe on `(fingerprint, route_tag)` before summing, and add a telemetry counter for enrichment-duplicates
+maria: +1 for that. Also need to decide whether backend ledger should be patched or we fix upstream dedupe (best long term)
+devon: upstream dedupe is tricky because enrichment mutates the payload. Maybe we should canonicalize fingerprint after enrichment step (strip route attrs)
+alex: agreed — canonicalization seems safer. We should also add a canary that routes 1% of traffic through canonicalizer service and compare invoice deltas
+priya: I'll draft a quick canary plan. Questions: where to emit the new telemetry metric? enrich service or collector?
+maria: emit from both: enrich emits `enrich.outgoing_fingerprint` and collector emits `collector.ingest_fingerprint` so we can compare divergence rates
+devon: added a small sanity check in the proxy: if `X-Fingerprint` changes, add header `X-Fp-Changed: true` so we can backfill and find where it's happening
+alex: nice. For the console UX: add a tooltip explaining preview is based on best-effort deduping and that small deltas (<$0.05) are expected during rollout :thinking_face:
+maria: +1. Also, billing-bot: can you temporarily suppress alerts for invoice-preview drift under $0.05 to reduce noise?
+billing-bot: Sure — suppressing invoice-preview drift alerts for deltas < 0.05 for the next 72h. I logged incident ID BB-5521
+priya: plan: (1) quick console dedupe patch (2) emit telemetry from enrich/collector (3) deploy canonicalizer canary (4) monitor deltas for 72h (5) rollback or promote based on signal
+devon: ETA for 1) and 2) ~4 hours, 3) needs infra review, maybe tomorrow morning
+maria: ok start with the console patch and telemetry so product doesn't freak out. Priya, send the canary doc once you have it and I'll loop in infra + security
+alex: small follow-up: let's also run a backfill to compute how much this has historically drifted — we can compute weekly aggregate diff sampling 1% tenants
+priya: noted. I'll create a ticket and tag `eng-platform`, `eng-sre`, and `product`
+maria: thanks team. keeping this thread for actions. if anyone finds a tenant with > $0.10 unexplained delta, ping here immediately :hammer_and_wrench:

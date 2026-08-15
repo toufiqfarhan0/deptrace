@@ -1,0 +1,66 @@
+eng-ml
+
+mei: Quick status — initial bring-up of Argus7b-lite (Mistral-style) on Dedicated done. Started int4 quantization with our proj-layout exporter. Observing a consistent summarization quality drop versus our Llama baseline when exporter rewrites projection order. Notes + quick repro below.
+
+raj: paste the failing eval command and one bad example pls.
+
+mei: repro:
+```
+./eval/run_eval.sh --model argus7b-lite-int4 --suite summarization --batch 8 --seed 42
+```
+Failing example (truncated):
+"""
+User: Summarize conversation into 3 bullets...
+...
+Expected: clear bullets about billing confusion and action items
+Got: repeated lines, lower coherence, invented assignee for follow-up
+"""
+
+olga: did you try the non-quantized export (fp16) to isolate quant vs layout?
+
+mei: yes. fp16 export without proj-layout rewrite matches baseline. Regression only happens when both int4 quant and proj-layout re-packing are applied.
+
+harry: by proj-layout re-packing you mean converter permutes q/k/v axes into our [interleaved heads] fast layout for kernels, right?
+
+mei: exactly. converter pipeline does reshape->transpose->pack into the kernel-friendly head order. Hypothesis: for some models the original training used a different logical packing so our remap mixes head groups across q/k/v and breaks cross-head correlations.
+
+raj: could be compounded by tokenizer/vocab differences. Argus has two quirks: soft-hyphen folding and different emoji cluster tokenization vs Llama. If kv-cache index assembly is off by one, attention can address wrong positions in long-context cases.
+
+mei: I checked token diffs for the root prompt — aligned. But long-context samples show occasional off-by-one after pad alignment in the converter. Example snippet around divergence:
+```
+# fp16 baseline ids:  1203 45 678 999 2
+# int4 converted ids: 1203 45 678 1000 2  <- 999->1000 shift at eos/pad boundary
+```
+
+olga: that suggests two independent failure modes: 1) weight-layout permutation changing attention math, 2) pad/eos handling shifting token positions for kv-cache. Both would degrade generation but have different signatures.
+
+harry: quick diagnostic: run int4 model but tell runtime to read projections using original ordering (no runtime reorder). If quality returns, it's converter/packing related.
+
+mei: doing that now.
+```
+export REDWOOD_RUNTIME_FLAGS=READ_PROJ_AS_SOURCE=1
+./serve_local.sh --model argus7b-lite-int4 --port 9108 --no-autobatch
+```
+
+ci-bot: deploy-check: port 9108 up, health OK, p95 88ms (local), queued eval job.
+
+mei: update: with READ_PROJ_AS_SOURCE=1 the summaries match baseline style for ~92% of cases. So main culprit is proj-layout packing mismatch.
+
+raj: excellent. Actionable follow-ups: 1) add per-layer projection-layout fingerprinting in the converter to detect nonstandard q/k/v packing and skip repack when uncertain; 2) add a small eval unit that compares next-token logits across fp16/int4/wasm exports on a short prefix and flags silent math divergence.
+
+olga: for a short-term mitigation we can expose a converter flag to preserve source projection ordering (no repack) and add a runtime adapter shim that remaps on load if needed (avoids mass re-exports).
+
+harry: I'll prototype the runtime shim. Plan: when header.proj_fingerprint != expected, load raw weight buffer and apply per-head slice remap M such that M @ W_packed = W_source. We do similar remaps for head-concat already. Perf should be minor.
+
+mei: perf note: still seeing tiny residual diffs on long-context cases after shim — likely the tokenizer/pad off-by-one. I'll open a follow-on triage to capture emoji/soft-hyphen edgecases and kv-cache assembly tests.
+
+raj: good. Owning action items:
+- mei: open PRs with (a) converter fingerprint + skip-repack flag, (b) tokenization+kv-cache testcases including failing long-context examples (drop samples into /eval/artifacts/argus7b-lite/).
+- harry: implement runtime remap shim + run perf delta (target <2% p95 penalty).
+- olga: add eval guard that computes L2 on next-token logits across exports for first 64 tokens and flags >1e-3 diffs.
+
+mei: will upload artifacts and link PRs, thanks :thumbsup:
+
+harry: ping me for pair on remap matrix algebra.
+
+ci-bot: ticket created: #INFR-4321 "Argus7b-lite proj-layout conversion regression" assigned to mei/harry/raj, severity P2.

@@ -1,0 +1,27 @@
+eng-oncall
+
+Devon: Postmortem follow-up for the recent p95 spike tied to the feature rollout. Logging owners and short timelines here.
+
+Maya: Operational mitigations first; try not to change SLOs yet.
+
+Devon: Agreed. Proposal: per-variant p95 dashboards, temporary stricter alerts, error-budget guardrail, and a kill-switch.
+
+Samir: I'll own fixes. Hotfix: bump KV cache TTL + jitter (72h). Full fix (eviction/refactor): ~2w.
+
+Kelsey: Obs owner. I'll add per-variant p50/p95/p99, error-budget panel, and deploy overlays. ETA 3d.
+
+Priya: I'll draft customer note + CSM FAQ. Target EOD Fri.
+
+Oncall Bot: Incident logged: https://redwood/incident/INC-2026-314
+
+InfraBot: Alert created: SLO:route_p95_high (prod) threshold=150ms notify=eng-oncall.
+
+Devon: Temp freeze auto-deploys for variant (48h). Samir add kill-switch: if variant burn >2% in 1h -> fallback.
+
+Devon: Action checklist: Dashboards (Kelsey, 3d); Hotfix (Samir, 72h); Full rollout (Samir, 2w); Runbook & SLO appendix (Devon, 1w); Customer comms (Priya, EOD Fri); Maya sign-off (Mon EOD).
+
+Kelsey: Will post dashboard links and alert IDs when ready.
+
+Samir: Hotfix PR soon. Will monitor error-budget burn and report back.
+
+Devon: Reconvene at weekly SLO sync Tues to decide on SLO edits or SLA credits. Post updates if ETAs slip.

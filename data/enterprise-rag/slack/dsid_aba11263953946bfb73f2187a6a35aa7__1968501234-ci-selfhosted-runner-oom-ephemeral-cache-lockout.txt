@@ -1,0 +1,60 @@
+eng-releases
+
+devon: Heads up — release cut blocked. self-hosted runner OOMing during package step, leaves partial artifact so promotion fails.
+
+ci-bot: Workflow `release-pack` failed on self-hosted-runner-3 (exit code 137)
+
+ci-bot: logs excerpt:
+```
+Step: package
+[...]
+ERROR: tar: Unexpected EOF in archive
+ERROR: tar: Child returned status 1
+Build killed (OOM)
+```
+
+aj: which runner is this? same one that flaked earlier today?
+
+devon: yep runner-3, low ephemeral disk + memory peak during docker build. df -h shows /runner/_work at 92%.
+
+maria.dev: can we re-run on github-hosted runner as a temporary workaround? need to keep artifact provenance though.
+
+lina: re-run might be fine but different environment could change build output. we either re-run and re-sign, or fallback to last-good artifact.
+
+aj: what's the time pressure? change window ends in 45m.
+
+devon: if rerun succeeds fine. trying quick rerun with RUNNER_TMP=/mnt/ephemeral and `docker build --no-cache` to reduce container layer reuse that spikes disk. re-run now.
+
+ci-bot: Re-run triggered by devon: workflow run #4587 (re-run jobs)
+
+ci-bot: Re-run failed again: killed by OOM during `docker build` step.
+
+devon: rerun failed — still OOM. ephemeral disk fills during build, then kernel kills process.
+
+lina: short term: pin release to previous artifact SHA (abc1234). Ops, can we promote that instead and update release notes?
+
+ops-bot: Created emergency release branch `release/fallback/1968501234` from commit abc1234. Holding promotion until approvals.
+
+maria.dev: I approve promoting previous artifact for this change window to avoid missing SLA. Add note in release notes: "Used fallback artifact due to CI runner OOM during packaging." :thumbsup:
+
+aj: I'll kick off smoke and integration tests against the promoted artifact, monitoring logs.
+
+devon: promoting now to staging, running smoke tests.
+
+ci-bot: Smoke tests passed (3/3). Integration run queued.
+
+aj: integration tests passing so far, no regressions observed.
+
+devon: promoting to prod in 10m per change window. Will then open infra ticket to increase ephemeral storage on runner pool or migrate to larger instance types.
+
+lina: filed infra ticket INF-589: "self-hosted runners - increase ephemeral disk and cleanup between jobs". assigned to infra-team.
+
+devon: added runbook note: if package step OOMs, fallback flow = promote last-good artifact + open INF ticket + avoid re-run on different runner unless re-signing accepted.
+
+maria.dev: thanks all. Follow-up: we should consider pinning buildkit/dind image versions to avoid unexpected layer growth — will talk to infra next week.
+
+aj: ack, monitoring for next hour.
+
+ops-bot: Release promoted from abc1234 and deployed to prod (canary -> 100%).
+
+devon: closing thread — release completed using fallback artifact. Will coordinate infra changes off-channel.

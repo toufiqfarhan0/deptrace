@@ -1,0 +1,48 @@
+eng-infra
+
+maya: heads-up, hotpool-7 showing a rapid enqueue spike and GPU util at 98% across the board
+aj: saw the alert, queue depth up 4x, p95 latency for sync requests doubled :grimace:
+diego: alert: dedicated_pool_saturation fired for hotpool-7 (recent deploy?)
+sophia: rolling deploy finished 6m ago, but traffic profile shouldn't change that much. could be a batch / long-sequence job stomping capacity
+maya: checked pods, a couple of orgs spiking with long contexts, KV cache mis-hits. evictions climbing
+aj: need to divert non-SLA tiers to hosted ASAP. plan: staged weight shift to hosted for hotpool-7 routing policy
+sophia: +1. prefer staged so we don't swamp hosted. canary at 5% then 25% then 60% if healthy
+maya: executing step 1: runbook command
+
+```
+# CLI to nudge routing weights
+rtr set-weight --pool hotpool-7 --target hosted --pct 5 --actor maya
+```
+
+deploy-bot: routing update applied: hotpool-7 -> hosted 5% (reason: pool saturation) :white_check_mark:
+aj: monitor errors for model fallbacks and increased token costs on hosted (FYI to finance later)
+diego: tailing logs now, watch for 429s or backend-model-mismatch on hosted path
+sophia: metrics look good at 5% after 2m, no error spike, latency stable for canary orgs
+maya: proceeding to 25%
+deploy-bot: routing update applied: hotpool-7 -> hosted 25%
+aj: we're seeing a small cost bump but latency p95 improved from 420ms -> 230ms for affected orgs :thumbsup:
+ops-bot: note: autoscaler for hotpool-7 attempted scale but hit quota (gpu-reserved-limit). raising ticket to capacity-planning
+sophia: good call — open ticket with tags: urgent, pool=hotpool-7, impact=prod
+maya: created ticket INFRA-1423: request emergency GPU slots + long-term capacity review. linked in thread: https://redwood.example/INFRA-1423
+diego: suggestion: enable prefix/KV cache priming for the 3 orgs causing long sequences to reduce repeated KV loads
+aj: agreed. maya can you flip cache-priming toggle for pool7-exempt orgs?
+maya: flipping now
+
+```
+# quick toggle
+infractl cache-prime --org 6741 --pool hotpool-7 --enable
+infractl cache-prime --org 8823 --pool hotpool-7 --enable
+```
+
+maya: cache priming applied, watching hit rate
+sophia: after 8m at 25% hosted, pool pressure trending down. preparing final shift to 60% to finish drainage
+maya: moving to 60% now - if errors spike we rollback to 25%
+deploy-bot: routing update applied: hotpool-7 -> hosted 60%
+aj: hosted isn't showing model mismatch errors. cost delta tracked in #finance-alerts, tagging for follow-up
+diego: hotpool-7 GPU util down to 65%, queue depth returning to baseline
+maya: leaving a 10m cooldown before removing further traffic. post-incident follow-ups: cost review, quota increase request, and runbook update to include cache-priming step
+sophia: please add a note to runbook about staged weight schedule and cost signal thresholds
+maya: will add. thanks everyone. marking as mitigated for now :white_check_mark:
+aj: nice triage. postmortem owner? recommend diego + maya for infra actions, sophia for runbook and capacity planning
+diego: taking postmortem ownership, will draft and link to INFRA-1423
+ops-bot: incident closed for channel notification, retain logs 30d.

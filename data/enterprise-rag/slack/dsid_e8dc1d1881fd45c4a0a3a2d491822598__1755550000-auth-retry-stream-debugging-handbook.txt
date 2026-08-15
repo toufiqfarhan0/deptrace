@@ -1,0 +1,34 @@
+devex
+
+alex: quick question for the SDK maintainers — I'm landing auth + retry changes for Go and Python. Need a concise pattern for: mapping API errors -> exceptions, keeping the request-id across retries/stream resumes, and what to log at debug. TL;DR checklist welcome.
+maria: +1. Short checklist: 1) canonical status->exception map, 2) propagate RID header on internal retries, 3) debug logs include RID + attempt metadata, 4) streaming resume should re-use original RID if possible.
+sam: agree with maria. For mapping: prefer typed exceptions (AuthError, RateLimitError, BadRequestError, ServerError). Keep the underlying HTTP status and body available on the exception object.
+carla: concrete mapping we've been using in other libs: 401 -> AuthError, 403 -> PermissionError, 429 -> RateLimitError(with retry_after if present), 400/422 -> ValidationError, 5xx -> ServerError. Include the service error code from response JSON if present.
+alex: do we need a special exception for stream-resume failures (like ResumeError)?
+maria: yes. ResumeError that includes: original_rid, resume_token(if any), last_offset and the cause. That helps ops correlate.
+sam: about RID propagation — we use header: X-Request-Id ("x-rid" in some older clients). New SDKs should accept both but always set X-Request-Id on outgoing requests. On retries/resumes, if the SDK decides to preserve the original logical request, keep the same X-Request-Id. If it's a new logical attempt (user retry loop), generate new one and set X-Request-Id-Prev or X-Retry-From with previous RID.
+carla: example Go snippet we use to attach/rp on retry middleware:
+```go
+ctx := context.WithValue(req.Context(), "rid", rid)
+req.Header.Set("X-Request-Id", rid)
+// on retry: req.Header.Set("X-Retry-Count", strconv.Itoa(attempt))
+```
+example Python snippet:
+```py
+headers.setdefault('X-Request-Id', rid)
+# on retry: headers['X-Retry-From'] = prev_rid
+```
+alex: nice. What should debug logs look like? Minimal but searchable.
+maria: one-line logs at debug per request progress: "rid=<rid> attempt=<n> method=POST path=/v1/chat status=401 err=AuthError code=auth.invalid_token duration_ms=123". For streams also log resume events: "rid=<rid> stream_resume attempt=<n> token=<true/false> offset=<n> cause=<err>".
+sam: add structured fields when possible (json-structured logs), but fallback to the one-line if not available. Always include rid, attempt, and backend_code.
+carla: tests: add unit tests asserting that exceptions include .status_code, .body, .rid and that RID gets propagated on retries. Integration: a flaky test that returns 500 once then succeeds; assert SDK sets X-Request-Id consistently and logs the attempts.
+infra-bot: FYI — logging pipeline already indexes X-Request-Id, field name = request_id. If you set X-Request-Id, we auto-extract.
+sam: PR checklist for maintainers: 1) update changelog, 2) add exception mapping doc in README/errors.md, 3) add e2e to ci-flaky matrix, 4) add an entry to SDK migration notes about RID header name.
+alex: @carla @maria can you review the Go PR after lunch? I'll include the example snippets above as comments. Also adding a short troubleshooting section: How to trace a failed stream: 1) pick RID from client logs, 2) search logging UI for request_id=<rid>, 3) inspect backend spans for last successful kv cache offset.
+carla: will review. Quick note — for mobile SDKs where headers are harder to mutate, we fall back to attaching rid in the first message of the stream payload as metadata key "rid". Document it in the mobile section.
+maria: one more: make sure exception messages are stable strings (no dump of full model weights etc). Keep sensitive fields redacted (auth tokens, keys) but include non-sensitive ids (rid).
+alex: perfect. I'll assemble a small doc and the PR. Thanks all :thumbsup:
+carla: ping me if you want a short test harness to simulate resume gaps.
+sam: leaving a tiny TODO to check that the Java SDK supports X-Retry-From header behavior too.
+alex: noted. I'll open follow-up threads for mobile + java.
+infra-bot: deploy scheduled: sdk-logging-indexer v2.3 at 2025-06-02T18:00Z — will pick up X-Request-Id automatically.

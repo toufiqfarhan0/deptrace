@@ -1,0 +1,37 @@
+eng-oncall
+
+incident-bot: :rotating_light: PagerDuty alert PD-78421 fired for service "redwood-serving" - metric queue.latency.p95 > 700ms (threshold 500ms)
+
+maria (oncall): seeing the page, jumping into dashboards and logs
+
+pagerduty-bot: PD-78421 acknowledged by maria (oncall)
+
+maria (oncall): I can see a short, high-amplitude burst originating from shard eu-west-2-prod-17 — qlen spikes, not widespread
+
+sahil: @maria ok can add a temporary rate cap at the ingress. Want me to apply a shard-level throttle?
+
+maria (oncall): yes please. applying an edge throttle now via API: `curl -XPOST https://ingress/api/limit -d '{"shard":"eu-west-2-prod-17","rate":50}'`
+
+sahil: done, LB rule added too (`/lb/rate-limit add shard=eu-west-2-prod-17 rate=50`). monitoring
+
+maria (oncall): metrics dropping back toward baseline, p95 down from ~760ms to ~120ms in the last 20s
+
+incident-bot: PD-78421: escalation timer reset (auto-escalation window shortened due to automation)
+
+tj (oncall-2): jumping in for visibility. any 5xxs or client errors?
+
+maria (oncall): no 5xxs. only higher queueing latency in worker pools. looks like a misbehaving batch job from that customer shard. no user-facing errors observed
+
+sahil: corroborated by access logs — one client issuing large fanout. throttled it, backlog drained
+
+incident-bot: Alert auto-resolved (PD-78421) after 42s of normal metrics. Automation note: transient burst matched noise filter, applied auto-resolve.
+
+maria (oncall): closing loop — no customer impact, mitigation applied (edge throttle + LB rule). will file a follow-up ticket to tune alert sensitivity and add shard-based suppression to runbook
+
+tj (oncall-2): agree. low-effort: add rule to ignore single-shard spikes <60s or correlate with shard cardinality before paging
+
+sahil: creating ops ticket now: OPS-2985 with proposed threshold/logic + sample logs
+
+maria (oncall): handing off to tj for the rest of shift, notes in ops ticket and console. marking as resolved locally. :white_check_mark:
+
+pagerduty-bot: PD-78421 status changed to "resolved" by automation (auto-resolve rules).

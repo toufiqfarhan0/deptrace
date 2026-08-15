@@ -1,0 +1,28 @@
+customer-success
+
+Maria (CS Manager): FYI — embeddings pipeline degraded for a subset of onboarding and dedicated accounts. We have an incident open: https://redwood.internal/incident/INC-2026-048. Drafting customer comms now, need quick alignment on messaging for 3 high-renewal-risk accounts.
+Jason (CS Lead): Thanks. Can you paste the rough impact summary here? Which customers and what SLA exposure? :eyes:
+Lee (Onboarding Eng): Technical short: a rolling quantization job caused higher memory pressure on pool-03, leading to 503s for batched embedding backfills between 02:10–03:40 UTC. Root cause investigation in progress.
+Aaron (Eng Incident Lead): Confirmed — we rolled an experimental quantize rollout to dedicated nodes. Autoscaler didn't evict quickly enough; KV cache thrash exacerbated CPU. Mitigation: rollback complete at 03:42 UTC, backlog drain started.
+Priya (Account Exec): Which 3 accounts are at renewal risk? I need tailored notes for each.
+Maria (CS Manager): High-risk: AcmeHealth (onboarding batch stuck), BeaconAnalytics (production embeddings, slow), NovaRetail (dedicated pool fallback triggered). I have draft email templates — one for onboarding, one for production, and one for billing/credits.
+Sophia (Solutions Eng): Suggest we include a short technical appendix for BeaconAnalytics: what happened, what we changed, and recommended client-side retries. Small code snippet to include: ``if err == 503 { retryWithBackoff() }``
+Jason (CS Lead): Good. Priya, do you want the onboarding template to offer a 30-day free dedicated burst and a 10% invoice credit, or do we keep credits negotiable?
+Priya (Account Exec): For AcmeHealth (enterprise, >$120k ARR) we should offer a 30-day burst + 15% credit. For NovaRetail, standard 10%. BeaconAnalytics — offer engineering hours + monitoring review. I'll own outreach after templates finalized.
+Maria (CS Manager): Noted. Aaron — can you give an ETA for complete queue drain and a short RCA blurb we can paste into the customer-facing note? Need something customer-friendly, non-blamey.
+Aaron (Eng Incident Lead): ETA: backlog should be drained by 12:00 UTC; monitoring shows tokens-per-second back to baseline. Customer-friendly RCA: "An internal optimization was rolled to a small subset of serving nodes which increased resource contention under certain batch shapes, briefly reducing capacity. We rolled back the change, restored capacity, and are implementing a safer rollout guard to prevent recurrence."
+Lee (Onboarding Eng): Ops note for the comms: For impacted onboarding jobs we recommend customers re-run backfill after 2 hours; system will auto-retry most jobs. If they need manual assistance, tag us and we'll prioritize.
+Maria (CS Manager): Draft email snippets uploaded to the doc: https://docs.google.com/document/d/INC-2026-048-cs-comms — please add any edits inline. I'll send to AcmeHealth and NovaRetail templates in next 30m unless objections.
+Jason (CS Lead): Quick checklist before send: 1) Confirm credit numbers w/finance, 2) Engineering approval on RCA text (Aaron), 3) Add contact for escalations (Priya).
+Priya (Account Exec): Finance OK with proposed credits for AcmeHealth and NovaRetail. Tagging for exec review: @maria: please attach quote of credits in the email so finance can track.
+incident-bot: Incident INC-2026-048 updated: severity -> P2, status -> monitoring. See timeline: https://redwood.internal/incident/INC-2026-048/timeline
+Sophia (Solutions Eng): One more ask — include a short FAQ bullet for customers using dedicated pools: "Will my data or models be affected?" Answer: "No, user data and models were not modified; only inference capacity was temporarily impacted."
+Maria (CS Manager): Perfect. I'll finalize drafts and drop them here. Priya will lead outreach. Jason — can you prep a post-send internal note for Customer Success leaders summarizing decisions (credits, timing, escalation path)?
+Jason (CS Lead): On it.
+Priya (Account Exec): Ready to send once Maria posts final drafts. Will cc engineering and finance.
+Maria (CS Manager): Final drafts posted, proceeding to send to AcmeHealth and NovaRetail now. Will update thread when sent. :email:
+Maria (CS Manager): Sent to AcmeHealth and NovaRetail at 10:17 UTC. BeaconAnalytics outreach scheduled after a quick engineering call in 20m.
+Aaron (Eng Incident Lead): Follow-up: we've added a rollout guard to the quantization job and a pre-check for memory pressure. Long-term action item created: INC-2026-048-A1 (better canaryting).
+Jason (CS Lead): Thanks team. Capture any customer replies here and we'll iterate.
+Priya (Account Exec): If AcmeHealth asks for extended credits, I'll escalate.
+Maria (CS Manager): Thread closed for drafting. Reopen if customer replies require changes. :white_check_mark:

@@ -1,0 +1,46 @@
+support
+
+maria (Support): customer acme-inc reports promo code 'ACME-TRIAL' won't apply via admin console. support console shows a 500 when trying to grant credits. trial ends in ~48h, customer is asking for immediate extension. can someone triage?
+
+ops-bot: created incident INC-2026-042 and paged @jon (SRE).
+
+kevin (Infra): pulling logs now. I can repro in staging using the same promo id. admin-console -> backoffice-grants timing out. quick log snippet:
+```
+ERROR grants-service: POST /v1/grants applyPromo code=ACME-TRIAL user=acct_1234 err=action_timeout: request timed out after 10s
+at grants/handler.go:142
+at grants/worker.go:87
+```
+
+maria (Support): thanks @kevin — customer is breathing down us for credits. any quick workaround?
+
+kevin (Infra): manual CLI grant works (bypass UI). ran this in staging to validate: `./backoffice grant --user acct_1234 --credits 1000 --reason "trial extension - support"`
+
+maria (Support): ok can you run that in prod for acct_1234? I'll notify the customer.
+
+jon (SRE): holding off until I confirm root cause in prod. initial hypothesis: recent backoffice-grants deploy changed DB access pattern causing lock waits >10s which trip our request timeout. seeing higher p99 latency on grants DB queries.
+
+kevin (Infra): here's the query stack showing contention:
+```
+SELECT id FROM promo_grants WHERE promo_id = $1 FOR UPDATE
+-- lock wait 12.3s, blocked by txn 78910
+```
+
+nina (Support Lead): customer impact = 1 enterprise account stuck on trial. please prioritize. I'll message account team. :exclamation:
+
+jon (SRE): I'm going to revert the grants-service change (PR #3123) and redeploy the canary. if revert fixes, we'll roll to prod. prepping rollback now.
+
+kevin (Infra): rollback deployed to canary at 1746127852. canary traffic shows promo apply success. pushing to prod in 2m.
+
+maria (Support): while you're rolling, I used the CLI workaround in prod to grant 1000 credits to acct_1234 and left a note on their ticket. customer confirmed receipt.
+
+jon (SRE): rolled to prod at 1746127888. confirmed grant endpoint success and normal latencies. setting incident to acknow. will open postmortem and track permanent fix (transaction tuning + better retry/backoff).
+
+nina (Support Lead): great work team. please add the workaround and timeline to the ticket and tag engineering for a follow-up.
+
+maria (Support): ticket updated, customer emailed. closing on our side but leaving incident open until postmortem. :white_check_mark:
+
+kevin (Infra): follow-up items: add tests for promo concurrency, increase grants-service request timeout to 30s while we tune DB, and add alert for lock-wait > 5s.
+
+jon (SRE): noted. I'll create JIRA ENG-5478 for the DB/TX fix and ENG-5479 for the tests/alerts.
+
+maria (Support): thanks everyone — I will mark the support ticket resolved after postmortem links in the incident.

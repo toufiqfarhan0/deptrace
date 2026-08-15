@@ -1,0 +1,38 @@
+incidents
+
+alice: hotpatch rolled at 13:11 PT (1734567890). Seeing a sustained 502/504 spike on /v1/generate; error rate went from ~0.5% to ~12% in ~3m :rotating_light:
+mike: oncall here, looking. any correlation with canary config?
+alice: yes — deployed canary variant 'fast-kernel-v2' + feature flag `infer_new_kernel=true` to 5% but traffic jumped to 100% for some slices
+sara: logs show router matched on `slice=seed` incorrectly. looks like flag selector was too broad and hit non-canary pools
+alice: repro (from support env):
+```
+curl -X POST https://api.redwood.ai/v1/generate \\ 
+  -H "Authorization: Bearer $KEY" \\ 
+  -H "X-Client-Id: test" \\ 
+  -d '{"model":"fast-kernel-v2","input":"hi"}' -i
+# response: HTTP/1.1 502 Bad Gateway
+# body: {"error":"upstream timeout"}
+```
+mike: confirming from routing metrics — traffic to fast-kernel-v2 jumped from ~5% -> ~85% after the flag flip at 1734567880
+jade: quick note: deploy-bot shows flag promotion job targeted "prod" selector. human error when specifying target group. we should avoid manual string targets next time
+sara: root cause hypothesis: feature-flag evaluated against route tag `env` but the rollout job used label `environment=prod` instead of `environment=canary` so selector matched prod routers
+alice: customer impact: multiple support tickets, increased retry charges, some timeouts surfaced in logs
+support: forwarding affected request ids: 4431, 4432, 4439 — all show upstream timeouts and 502 responses, customers are asking for an update
+deploy-bot: deploy 1734567880 completed by @devops-ci — feature_flag infer_new_kernel=true target: all (misconfigured)
+mike: immediate plan: 1) set flag target to 0 2) scale down fast-kernel-v2 pool 3) if needed, rollback routing config 4) notify customers and billing
+sara: to revert flag quickly (control plane):
+```
+curl -X POST https://control.redwood.ai/v1/flags/infer_new_kernel \\ 
+  -H "Authorization: Bearer $ADMIN" \\ 
+  -d '{"target":"0"}'
+```
+mike: executing step 1 now
+alice: please announce to #support and paste a short customer-facing blurb
+support: sent proactive notifications to affected customers and opened billing hold for retry charges; legal looped in
+jade: after flag flip, run quick smoke: `curl -sS -w "%{http_code}" -o /dev/null -H "Authorization: Bearer $KEY" https://api.redwood.ai/v1/health` expecting 200
+mike: step 1 done at 1734567930 — flag set to 0, initiating scale-down of fast-kernel-v2
+sara: metrics trending back toward baseline, 502 rate falling from 12% -> 1.2% in last 3m
+alice: keeping thread open until stable for 15m and until support confirms customer follow-ups
+mike: will file a postmortem and attach deploy-runbook action items (prevent broad selector, add guardrail on flag promotion)
+support: customers updated, billing hold in place, will follow up individually
+alice: :thumbsup: thanks team, please add remediation task to next sprint and include stricter CI validation for flag targets

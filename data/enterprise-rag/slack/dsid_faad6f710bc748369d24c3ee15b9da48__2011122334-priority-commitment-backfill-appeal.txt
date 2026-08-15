@@ -1,0 +1,32 @@
+eng-infra
+
+Maria L. (eng-infra): FYI we just got an enterprise demo request for next Tues that needs a stable pool of 8x A100s for 3 hours. The team's current reserved commitment doesn't cover it. Can we fast-track a commitment backfill?
+Kevin S. (eng-sre): Is this for Hosted or Dedicated? We have different lanes.
+Maria L. (eng-infra): Dedicated customer demo — they want traffic through their Dedicated capacity in us-west-2.
+Olga V. (finance): Last-minute commitments usually need billing approval — can you share the booking code / customer PoC?
+Sam P. (product): It's for AcmeCorp POC — revenue likely in Q2. They asked for a hard SLA during the demo.
+Tara G. (solutions): We can pare down to 6 GPUs if that helps, but they'd prefer 8 for parallel runs.
+Kevin S. (eng-sre): Current reserved pool for us-west-2 has 12 active A100s across teams, but 6 are already pinned by other commitments during that window. We could do a manual override to reassign 2 from a flexible pool, but we'd need approval and a backfill plan.
+Maria L. (eng-infra): Proposal: temporary override -> allocate 2 from flexible pool + move 4 from upcoming commit (scheduled in 10 days) to this window; then backfill later with spot or cross-region fallback.
+Olga V. (finance): Financially, moving committed capacity earlier affects cost recognition. We need the customer PO or a signed term sheet to justify accelerating. Without that, we may treat it as a one-off at list rate.
+Sam P. (product): I'll get the PO by EOD. Can we queue the override pending PO?
+Kevin S. (eng-sre): We can create a manual reservation override in the infra queue. Tag it "priority:demo" and require 2 approvals (eng-infra lead + finance). capacity-bot will record the action.
+Maria L. (eng-infra): Sounds good. How do I trigger the queue entry?
+Kevin S. (eng-sre): Run: ```rictl reservations request --region=us-west-2 --gpus=8 --window='2025-05-06T14:00:00Z/2025-05-06T17:00:00Z' --priority=urgent --note='AcmeCorp demo, pending PO'```
+Kevin S. (eng-sre): Then ping me + @Olga for approvals. I'll also add a manual rollback policy: if backfill fails, we fall back to cross-region in us-east-1 with degraded latency.
+capacity-bot: reservation request 45567 created (status: pending_approvals). Approvals required: 2.
+Olga V. (finance): I approved conditionally in the queue (comment: approve once PO attached). Please attach PO so finance team can finalize billing treatment.
+Maria L. (eng-infra): PO attached: https://confluence.internal/acmecorp/po-12345.pdf — added to the request.
+capacity-bot: reservation request 45567 updated (status: pending_confirmations) — PO attached.
+Kevin S. (eng-sre): Approved. I'll run the preflight checks tonight: network ACLs, NVLink health, and kernel driver versions across the nodes. If anything fails, we'll downgrade to 6 GPUs and use spot for the remaining capacity.
+Tara G. (solutions): Noted. I'll prepare runbooks for the demo team in case we hit throttling.
+Sam P. (product): Great. If we can confirm by EOD we can lock the slot. Thanks everyone. :thumbsup:
+Maria L. (eng-infra): One more ask — can we set a temporary rate-limit exemption for the demo routes? Low risk but avoids client-facing throttling.
+Kevin S. (eng-sre): We can apply a per-customer bypass for that demo route. I'll add the rule under /configs/rate-limits/demo-acmecorp.json and push a canary. Command: ```git checkout -b demo-acme-bypass && vim configs/rate-limits/demo-acmecorp.json && ri-deploy canary --route=acmecorp-demo```
+Kevin S. (eng-sre): If anyone sees anything odd after I push, ping me directly.
+capacity-bot: reservation 45567 approved by Kevin S. and Olga V. — allocation scheduled.
+Maria L. (eng-infra): Allocation scheduled, thanks all. Logging the post-mortem steps for the backfill so we don't penalize other teams unfairly.
+Olga V. (finance): I'll create an accounting ticket to track early-commitment adjustments (acct# 2025-ACME-DEMO).
+Sam P. (product): Closing loop — product will confirm demo config and share any special perf profiles by tomorrow.
+Tara G. (solutions): Leaving runbook notes here for the demo team: short checklist + fallback contact numbers.
+Maria L. (eng-infra): End-to-end done, will update if the backfill requires manual action. Thanks!

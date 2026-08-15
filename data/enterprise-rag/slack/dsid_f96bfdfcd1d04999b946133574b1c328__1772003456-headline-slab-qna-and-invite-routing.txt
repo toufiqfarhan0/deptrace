@@ -1,0 +1,45 @@
+marketing
+
+emma: Quick pass — putting the launch post headline slab and 3 Q&A hooks here. Need a shortlist for publish tomorrow.
+priya: Dropping the three headline options: 
+1) 'Ship Faster, Pay Less: Introducing Redwood Dedicated'
+2) 'Predictable Inference at Scale — Meet Redwood Dedicated'
+3) 'Lower latency, lower cost: Redwood for production LLMs'
+liam: I like 2 for enterprise tone. 1 feels too promo-y.
+jas: Agree w/ @liam. Also we need a 1-line hero claim that is legal-cleared.
+carlos: On routing: once people register for the webinar, map to HubSpot list: `webinar_post_launch_2026`. Can we also add a hidden property to mark benchmark interest?
+maria: Yes — please add a boolean property `interested_in_benchmarks` so SDRs can prioritize.
+emma: Cool — Priya can you add that field to the registration CTA copy? something like: 'Stay in the loop on our performance benchmarks' (checkbox).
+priya: Will do. Draft CTA copy options: 
+- 'Get the launch demo + benchmarks'
+- 'Save my seat + benchmark updates'
+- 'Join demo; send me benchmark results'
+liam: Prefer option 2. Short and clear.
+jas: For the webinar invite flow: Carlos, can you confirm who gets the leads? Last time overflow went to general SDR queue and it slowed follow-up.
+carlos: Proposed routing: primary -> Enterprise SDR queue (if company size >200); else -> Growth SDR queue. Overflow -> marketing-followup@redwood. Also tag source=blog_post.
+emma: Can you paste the actual mapping we can hand to ENG to add to the HubSpot webhook?
+carlos: Pasting mapping:```
+trigger: registration_form
+actions:
+  - if company_size >= 200 -> assign_queue: enterprise_sdr
+  - else -> assign_queue: growth_sdr
+  - always: add_list: webinar_post_launch_2026
+  - always: set_field: source = blog_post
+```
+priya: Nice. Legal check: can we review the hero claim and the benchmark callouts? @legal-bot, pinging you for a quick sweep — especially any percentile numbers or latency claims.
+legal-bot: Noted. Quick questions: are we using exact P95 numbers or ranges? Also need citation for 'lower cost' phrasing.
+maria: For the blog we'll reference internal benchmark report v3.0 and use ranges (e.g., 'up to 40% lower token cost on typical prompts'). Legal wants ranges and a link to the methodology appendix.
+emma: OK — Priya update the hero and add a parenthetical link to methodology. Also add CTA variant for webinar registration.
+priya: Draft updated. Copy sample: 'Predictable inference at scale — with predictable costs (see methodology)'. CTA: 'Reserve your spot — demo + benchmarks'.
+liam: Can we add a small inline visual callout on the blog for the 40% stat? Design needs a simple badge. @maria can you tag design?
+maria: Done. I'll ask design for a badge that reads 'Typical token cost reduction: up to 40%*' with an asterisk linking to methodology.
+jas: Timeline check: publish draft ready for final review by 10:30 PT tomorrow, webinar invite created and HS mapping live by EOD. Is that OK?
+emma: (typo) I meant emma: yes that's the target.
+carlos: I'll implement HubSpot routing by EOD and share the webhook payload.
+legal-bot: I'll aim to finish review within 6 hours once copy is in.
+priya: Putting final copy into the doc now, will ping when legal copy is inline.
+liam: Small ask — can we A/B headline 2 vs 3 for email subject during pre-send? If so, tag subject variants in campaign.
+emma: Good call. Add subject variants to campaign: A=headline 2, B=headline 3.
+jas: Last thing — demo seats: we have 150 seats. Can we surface a waitlist flag and auto-enroll from waitlist into a recording follow-up?
+maria: Will add waitlist field and auto-send recording + benchmark link.
+emma: Thanks everyone — please react with :thumbsup: when your piece is done so I can close the loop.

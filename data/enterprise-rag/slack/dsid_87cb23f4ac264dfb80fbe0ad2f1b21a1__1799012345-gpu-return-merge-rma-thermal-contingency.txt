@@ -1,0 +1,26 @@
+vendors
+
+Maya (SupplyOps): Vendor flagged 3x H100 returns as DOA during inbound inspection. They propose merging into one RMA to cut fees. Need quick call: merge + one MAWB or process separate to keep customs simple?
+Ben (Logistics): Can you paste AWBs + weights? Consolidation usually saves ~$750 but may add 1 biz day at the hub.
+Maya (SupplyOps): AWBs:
+```
+AWB: ZF-305-112 (28kg)
+AWB: ZF-305-113 (27kg)
+AWB: ZF-305-114 (29kg)
+Proposed MAWB: ZF-MAWB-5500
+ETA if merged: 2026-04-08
+```
+Claire (Infra): These were destined for eu-west-1 reserved pool. If merge adds >24h we need to pull a spare from DE pool to avoid provisioning impact. Thermal hold for returns is ~72h.
+Iris (Procurement): Vendor suggests declared value $330k and will credit $500 brokerage if consolidation paperwork caused the issue. I'll ask for invoice lines and push for $1k credit.
+ops-bot: RMA created: RMA-9900. Please attach photos and manifest.
+Ben (Logistics): I'll ask the forwarder for consolidated house manifest to speed customs. If they can't produce it, prefer separate shipments.
+Maya (SupplyOps): Risk tradeoff: consolidate if brokerage <= $400 and forwarder provides house manifest. Else ship separate.
+Claire (Infra): I'll prepare crossdock from DE spares as contingency. If merge delay >18h I'll trigger swap.
+Iris (Procurement): Vendor replied: provisional credit $600. Pushing to $1k.
+Ben (Logistics): Forwarder replied: can consolidate, brokerage quoted $320, house manifest available. Uploading now.
+ops-bot: Manifest uploaded to RMA-9900: https://files.redwood/rma/RMA-9900/manifest.zip
+Maya (SupplyOps): Good — proceeding with consolidation. Action items: Iris confirm invoice + vendor credit in PO note, Claire hold crossdock as T2, Ben confirm final MAWB AWB pairing and labels.
+Ben (Logistics): Confirmed labels created. Will update manifest if any change. :white_check_mark:
+Iris (Procurement): Noted. Logging amendment under PO-7781-AMD2.
+Claire (Infra): Monitoring enabled; will notify oncall if spare swap needed.
+Maya (SupplyOps): Closing loop in INC-2026-211. Ping here for docs or customs questions.

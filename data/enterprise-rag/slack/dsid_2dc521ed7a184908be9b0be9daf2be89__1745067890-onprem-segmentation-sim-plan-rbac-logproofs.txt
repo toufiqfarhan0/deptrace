@@ -1,0 +1,32 @@
+eng-security
+
+Alex: FYI scheduling a smalltable tomorrow 09:30 PT to simulate a tenant-fenced escalation on an onprem/private deployment. Goal: validate RBAC changes, audit log coverage to SIEM, and that KMS access doesn’t leak during conntrack/egress surge.
+Maria: sounds good. do we have a runbook draft?
+Alex: short one here — we’ll toggle a limited RBAC change for a test svcacct, push a mocked heavy SYN+UDP flood to trigger conntrack saturation on the private edge, and then attempt a decrypt flow via the service account to check KMS audit events. rollback path included.
+Dennis: can we scope it to a single AZ/cluster slice? don’t want blast radius.
+Alex: yes — slice=cluster-priv-usw2-test1. agents will be cordoned, and we’ll use a synthetic tenant namespace.
+Leah: what do we expect from netpol? put the exact steps pls.
+Alex: steps: 1) create namespace tenant-sim-42 2) apply tightened NetworkPolicy that only allows app->keystore on port 443 and denies metadata API access 3) create svcacct test-decrypt and bind role that allows kms:Decrypt 4) ramp conntrack with tcpreplay on edge node 5) try decrypt from inside tenant pod 6) check audit trail in Splunk/elastic for KMS and API gateway logs.
+Maria: can we add a quick script to toggle logging level so we can capture packet drops and netfilter counters?
+Dennis: yep. I have a small snippet: ```bash
+# run on edge node
+sudo sysctl -w net.netfilter.nf_conntrack_max=1000
+watch -n1 'cat /proc/net/nf_conntrack | wc -l; sudo iptables -L -v -n'
+```
+Emily: a couple of questions: a) will KMS calls be proxied through the control plane or go direct to HSM? b) how do we prevent test creds from being reused?
+Alex: a) in private deploy we proxy through keystore-proxy which uses mTLS to HSM. We will simulate proxy being slow. b) test svcacct creds are ephemeral (1m TTL) and will be revoked via the runbook at end; logs will include the token id.
+Leah: on the audit side we should ensure correlation ids are present across layers: tenant pod -> proxy -> kms -> control-plane. add a unique trace id in the pod env before starting.
+Maria: can we make the NetPolicy more restrictive to surface any unexpected hostNetwork fallbacks? add a deny-all hostNetwork exception and watch for pods with hostNetwork: true.
+Alex: good call. we’ll also script a quick detector that lists pods with hostNetwork and flags them.
+Dennis: during conntrack saturation, how will routing fallback behave? will requests be NATed to a different egress or dropped?
+Alex: depends on CNI. For our test CNI it should drop new flows once conntrack table full; existing flows stay. That’s the condition we want to test — ensure decrypt attempts fail cleanly and don’t silently escalate to other control-plane paths.
+sre-bot: Incident Simulation Reminder — runbook uploaded to /runbooks/priv-isolation-sim.md. Scheduled at 09:30 PT. Participants: Alex, Maria, Dennis, Leah, Emily.
+Emily: postmortem hooks: capture stack traces, kernel logs (dmesg), conntrack dump, kube-apiserver audit logs, proxy logs and KMS audit events. Also snapshot iptables/netpol policy state.
+Alex: agreed. assign roles in the doc: controller (Maria), netpol lead (Leah), KMS/audit (Emily), attack sim (Dennis), runbook owner (Alex).
+Maria: quick vuln note — while testing we should simulate a leaked token scenario: issue a token with slightly elevated scopes and ensure alerting fires on SIEM rules (suspicious decrypt outside normal pids).
+Leah: I’ll add detection rules for anomalous KMS principals and unusual source CIDRs.
+Dennis: timeline ok for 09:30. I’ll prep the tcpreplay artifacts and the conntrack stress harness.
+Alex: thanks. final ask — folks add any required firewall whitelist entries for the egress proxy in the runbook before end of day. we’ll keep the lab isolated. :thumbsup:
+Maria: ack. will update runbook and post the link here when done.
+Emily: I’ll add Kibana dashboards for the correlation ids and a saved search for KMS audit entries.
+Alex: perfect. see you tomorrow.

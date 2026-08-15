@@ -1,0 +1,27 @@
+eng-infra
+
+Maria: Heads-up — scheduling a rolling kernel + NIC microcode reboot for eu-west2 tonight 02:00-05:00 UTC. Affects four racks (r5..r8). Plan: staggered cordon -> drain -> reboot -> kv-cache warm -> uncordon.
+Santosh: Quick Q — will this hit Dedicated pools or only shared?
+Maria: Dedicated pools on the affected racks will be drained off those racks. We have spare capacity in the region to backfill but expect transient queueing. Tenant-priority reservations get precedence.
+Derek: Need expected capacity delta and latency hit for support notes. Numbers pls.
+Maria: Estimate ~18% GPU capacity reduction region-wide during each cohort. Allocation queuing could add 30-90s for batch jobs; interactive/streaming P95 +50-150ms. Extra cross-region backfill cost ~ $1.2k for window.
+Jen: Can we enable cross-region routing for high-priority tenants (e.g., route to us-east1) if latency >200ms? Data residency caveats aside.
+Leo: We have a routing fallback but several tenants flagged for residency — will escalate to Product for approvals.
+Alice: ops-bot created job `maintenance(eu-west2)-6798765432`. Timeline and cohort IDs attached in job.
+ops-bot: maintenance job created by Maria. Cohort schedule: A(r5) start 02:00, B(r6) 02:45, C(r7) 03:30, D(r8) 04:15. Health checks run post-uncordon.
+Santosh: :thumbsup: Add KV-cache reseed/prime steps — last time cold-cache caused event storms.
+Maria: KV seed command will run between uncordon and traffic ramp: ```
+kvseed --pools=small,medium --target=90
+``` We'll also throttle low-priority routes with temporary QPS backpressure.
+Derek: Who owns rollback? If a rack doesn't come back healthy, what's our fallback?
+Maria: Rollback plan: if rack not healthy within 15m after reboot, mark rack degraded and move affected tenants off. Priority=1 tenants first. Support opens SRs automatically. We can pause the window for that cohort and run deeper diagnostics.
+Jen: Customer comms — draft a short notice for reserved-capacity tenants and a public blurb for status page. I'll help edit.
+Maria: Draft posted in #customer-success/drafts: "Planned maintenance in eu-west2 may route requests to other pools; expect minor latency fluctuations." Please review.
+Leo: Running a dry-run cordon+drain in staging at 23:30 UTC to validate hooks and kvseed timing.
+ops-bot: Reminder scheduled: staging dry-run 23:30 UTC. Logs will be posted to /alerts/maintenance-eu-west2.
+Alice: Logging change: bump sampling on P99 paths for 1h after each cohort and increase retention for maintenance window analytics.
+Maria: Final checklist: docs updated, support pinned, routing checks in place, KV seed configured, dry-run verified. Any objections?
+Derek: :eyes: no objections from infra side.
+Santosh: Fine from capacity planning. I'll standby for cost reconciliation after.
+Jen: I'll coordinate the tenant notices at T-4h and T-30m.
+Maria: Thanks — will proceed unless someone raises a block in the next 30m.

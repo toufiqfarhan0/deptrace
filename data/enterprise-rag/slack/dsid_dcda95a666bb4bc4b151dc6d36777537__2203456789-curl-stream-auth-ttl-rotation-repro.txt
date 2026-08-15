@@ -1,0 +1,108 @@
+support
+
+Alex G: Customer reported streaming connections that work for ~4–6 minutes, then the stream abruptly returns a 401 and closes. Happens only on long-running SSE connections behind our proxy layer. Request ID in logs: req_20220304_7f9a.
+
+Maria S: thanks — can you paste the minimal curl repro they used? do we have the raw headers/trace?
+
+Alex G: They shared this simplified curl:```
+curl -v -N \
+  -H "Authorization: Bearer <short-lived-token>" \
+  -H "Accept: text/event-stream" \
+  https://api.redwood.example/v1/streams/generate?model=rwx-large
+```
+Says it disconnects after ~5m with a 401 body: `{"error":"Unauthorized","code":401}`
+
+Ian (support): two quick asks: (1) can you confirm the token TTL and whether the client is refreshing tokens mid-stream? (2) capture the response headers right before the 401 — we need `Date`, `Server-Timestamp`, and any `x-request-id` headers.
+
+Alex G: token is a short-lived session token (ttl 6m). customer says they refresh and re-auth, but stream doesn't resume; the server returns 401 instead of a 401 + `retry` event. Log snippet from their proxy:```
+[2026-03-10T12:05:22Z] proxied req_20220304_7f9a forwarded to redwood, client_conn_time=0.2s
+[2026-03-10T12:11:41Z] upstream returned 401 for req_20220304_7f9a, body={"error":"Unauthorized"}
+```
+
+Sam (sre): likely edge-case: token rotation during keepalive may cause auth middleware to drop SSE connection instead of handing off to a resilient path. We should repro locally with a token that expires mid-connection. Steps: create a short TTL token, open SSE, then rotate token server-side.
+
+Maria S: can someone run a curl that simulates token expiry mid-stream? use `--header 'Authorization: Bearer <token>'` and a small loop that prints headers. Also include `-v --no-buffer` so we see chunked frames. Example repro I tried locally:```
+TOKEN=$(./dev/make_token --ttl 120)
+curl -v -N -H "Authorization: Bearer $TOKEN" -H "Accept: text/event-stream" \
+  "https://staging.api.redwood.local/v1/streams/test?model=rwx-small"
+```
+Then after 70s rotate token via the control API:```
+curl -X POST "http://localhost:8080/admin/rotate-token" -d '{"sub":"test-client"}'
+```
+
+Ian (support): when you run that, collect: the initial response headers, any `100-continue` or keep-alive frames, `Connection:` header, and the exact `Authorization` header value at time of disconnect. Please attach `curl -v` output.
+
+Alex G: ran Maria's local repro. Here's truncated curl -v output:```
+* Connected to staging.api.redwood.local (127.0.0.1) port 443 (#0)
+> GET /v1/streams/test?model=rwx-small HTTP/1.1
+> Host: staging.api.redwood.local
+> Authorization: Bearer eyJhbGciOi...short...
+> Accept: text/event-stream
+> User-Agent: curl/7.86.0
+> 
+< HTTP/1.1 200 OK
+< content-type: text/event-stream
+< cache-control: no-cache
+< x-request-id: req_local_abc123
+< date: Tue, 10 Mar 2026 12:10:20 GMT
+
+:event: chunk
+data: {"partial":"foo"}
+
+* about 70s passes...
+< HTTP/1.1 401 Unauthorized
+< content-type: application/json
+< x-request-id: req_local_abc123
+< date: Tue, 10 Mar 2026 12:11:41 GMT
+< content-length: 25
+
+{"error":"Unauthorized"}
+* Connection #0 to host staging.api.redwood.local left intact
+```
+
+Sam (sre): important observations: x-request-id preserved across the 200 -> 401 in the upstream logs — good. The `Connection` state is odd: curl says `left intact` but stream closed. Could be the auth middleware sending a short 401 on the same socket rather than streaming a `retry:` SSE event.
+
+Maria S: request: can we get a full packet capture or at least TCP-level timings? if customer's infra blocks pcap, get a `curl --trace-time --trace-ascii curl.trace ...` dump. Example:```
+curl --trace-time --trace-ascii curl.trace -v -N -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: text/event-stream" "https://.../v1/streams/..."
+```
+Attach `curl.trace` and the application logs.
+
+Ian (support): also ask customer to include the request headers they send at the time of reconnect/refresh. If they re-auth on a parallel TCP connection while SSE is open, the refresh flow should create a new SSE; but if they reuse the same connection and only update token on server side, middleware may be confused.
+
+Alex G: customer pushed `curl --no-buffer --http1.1` and got same 401, they shared trace with `x-server-version: edge-2.1.5` header.
+
+Sam (sre): next action from infra: add debug toggles to auth middleware to log token expiry vs token rejection reason and whether code path called `drop_connection()` or `emit_sse_retry()`. For immediate help: we can implement a workaround in edge that, when token expires mid-stream and the client provides a new token on a follow-up request, we should map/route reauth to an SSE `retry:` payload where supported.
+
+Maria S: for support ticket, collect minimal reproducible bundle: (1) the curl.trace (2) the `curl -v` output (3) server auth logs for req id (4) token TTL and generation command (5) note whether customer is using client side re-use of TCP. Put those in the support ticket and mark P1 if customer is blocked.
+
+Ian (support): @deploy-bot can you spin a short-lived staging env with token-ttl=90s so we can all repro?
+
+deploy-bot: staging env `sse-ttl-test` created at https://staging.redwood.example/sse-ttl-test, creds uploaded to vault.
+
+Alex G: I'll ask customer to run their curl against `sse-ttl-test` and upload `curl.trace` + `curl-v.log`. I'll update the ticket once they respond. Thanks team :thumbsup:
+
+Maria S: great. If anyone finds an immediate fix in auth middleware, ping here and we'll coordinate a hotfix.
+
+Sam (sre): filing an internal follow-up: we should add an integration test that simulates token rotation mid-SSE and asserts we return SSE `event: retry` instead of closing socket. Creating jira INF-1189.
+
+Ian (support): low-noise checklist to send to customer:```
+1) Run reproducible curl:
+   TOKEN=$(./dev/make_token --ttl 120)
+   curl --trace-time --trace-ascii curl.trace -v -N -H "Authorization: Bearer $TOKEN" \
+     -H "Accept: text/event-stream" "https://staging.redwood.example/v1/streams/test"
+2) After ~70s rotate token via control API.
+3) Upload curl.trace and curl.trace.ascii plus `curl -v` output.
+4) Provide server `x-request-id` header(s) from initial 200 and final 401.
+5) Note whether you reused the same TCP connection for refresh or established a new one.
+```
+
+Alex G: sending checklist now. Will close thread after customer uploads bundle.
+
+Ian (support): thanks — keeping this open until we have their bundle and a clear repro on staging.
+
+Maria S: adding tag `#repro-needed` to the ticket.
+
+Alex G: customer just uploaded files (curl.trace + server logs) — attaching to ticket. Will post follow-up once I parse them.
+
+Ian (support): awesome, thanks.

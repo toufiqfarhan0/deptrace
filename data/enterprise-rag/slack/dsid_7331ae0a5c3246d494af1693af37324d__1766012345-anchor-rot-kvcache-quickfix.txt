@@ -1,0 +1,17 @@
+docs
+
+sara: heads up24 the nightly link scanner rolled up some 404s from the runtime examples (kv-cache area). anyone able to pick this up? I can do a tiny PR if needed. :wave:
+mike: can you paste the scanner output or the failing links?
+sara: yep, scanner showed: `https://internal.redwood/runtime/kv-cache#prefetch-policy` and `https://cdn.redwood/assets/kv-cache-diagram.png`
+jose: my quick guess: first one is a stale fragment 2 we changed a heading when refactoring the guide. second looks like a CDN path swap 2 saw a batch rotate last week.
+lina: i can rehost the image under /docs-assets and set a stable redirect from the old path. give me 15.
+mike: i'll grep the repo for the old fragment and update the example snippet to use `#kv-prefetching` (that was the new anchor). will open a tiny PR.
+sara: perfect. mike 2 please request a review from me once it's up. lina 2 post the new image URL here so i can sanity-check staging.
+docs-bot: link-scanner: LS-2026-512 created 2 assigned to #docs for triage.
+lina: uploaded `https://cdn.redwood/docs-assets/kv-cache-diagram-v3.png` and configured redirect. posted the link in the commit.
+mike: PR: `fix/docs-kvcache-anchor-176601` 2 replaces fragment, updates snippet, and bumps alt text. cc @sara for review.
+sara: preview looks good on staging. the anchor jump works and the diagram loads.
+jose: tiny suggestion: add a one-line changelog entry so we have a trail when anchors are renamed.
+sara: yep, added a backlog ticket "docs: anchor-stability checklist" and linked it in the PR description.
+mike: merging after CI passes. tagged the PR with `docs-maintenance` label.
+sara: thanks all 2 closing this thread. :white_check_mark:

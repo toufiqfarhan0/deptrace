@@ -1,0 +1,59 @@
+support
+
+jess_cust: hit a 400 on toolcall with 'Unexpected end of string' — sending body below. Happens when we include emoji in comment.
+
+jess_cust: curl -X POST https://api.redwood.ai/v1/tools/run -H "Authorization: Bearer ..." -H "Content-Type: application/json" -d @- <<'PAYLOAD'
+{
+  "tool": "annotate",
+  "args": {
+    "text": "Research notes: love the model \uD83D"
+  }
+}
+PAYLOAD
+
+maria_support: thanks — can you paste the full response body and request_id?
+
+jess_cust: response: {"error":"Invalid JSON","message":"Unexpected end of string in JSON at position 75","request_id":"req_0ab3f"}
+
+maria_support: repro'ing locally... @dave_eng can you take a look? I'm seeing the server JSON parser rejects unpaired high surrogate.
+
+dave_eng: looking now. quick question: is the emoji being double-encoded by your client (utf16 surrogate left alone)? what's the client language?
+
+jess_cust: Node 18, using our in-house wrapper around fetch. It only does JSON.stringify(body). No extra transforms.
+
+dave_eng: able to reproduce with that exact payload. Node's JSON.stringify produces "\uD83D" when the string contains a lone high surrogate. Our Go JSON decoder (encoding/json) rejects it as invalid UTF-8 in string literal. Error map: Unexpected end of string.
+
+dave_eng: minimal repro curl below — server returns 400
+
+```bash
+curl -s -X POST https://api.redwood.ai/v1/tools/run \
+ -H "Authorization: Bearer $TOKEN" \
+ -H "Content-Type: application/json" \
+ -d '{"tool":"annotate","args":{"text":"test lone surrogate: \uD83D"}}'
+```
+
+maria_support: triage: looks like some clients generate unpaired surrogates when handling certain emoji sequences. Can we return a clearer validation error: 'unpaired UTF-16 surrogate in JSON string' and include which field?
+
+dave_eng: agree. short-term: patch to validate incoming JSON strings for unpaired surrogates and return 400 with friendly message. Long-term: update SDKs to normalize/escape/replace invalid codepoints. I'll open a PR and hotfix the API gateway to detect this pattern before handing to Go runtime.
+
+triage_lee: prioritizing P2 for now, P1 if we see outage. Are there customer-facing workarounds? (e.g., URL-encode, remove emoji)
+
+maria_support: for customers: suggest removing the trailing half-surrogate or sending the emoji as actual UTF-8 char (👍) or using full escaped pair \uD83D\uDC4D. Also advise to upgrade our official JS SDK (we'll add fix)
+
+jess_cust: thanks — can we get ETA? This blocks a reproducible pipeline in our app.
+
+dave_eng: ETA for patch + deploy to staging ~4h, production ~24-36h if no regressions. I'll also add clearer error text to helpdesk.
+
+deploy-bot: Started deploy of hotfix branch to staging at 2026-03-17T14:10:00Z :rocket:
+
+dave_eng: pushed PR https://git.redwood.ai/r/redwood/api/+/2345 — includes strict JSON string validation and testcases.
+
+maria_support: tagging in support doc and will reply to customer with workaround + expect follow-up once prod fix is live :thumbsup:
+
+jess_cust: appreciated. sending logs if helpful: req_0ab3f shows payload_size: 234, ip: 198.51.100.23
+
+maria_support: got it — leaving thread open. If you need an immediate workaround we can proxy your requests and filter lone surrogates for you.
+
+jess_cust: temporary proxy would work, pls DM details.
+
+maria_support: will DM. closing here when prod is live.

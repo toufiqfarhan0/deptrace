@@ -1,0 +1,60 @@
+eng-ml
+
+ajay: Quick sync — planning to enable a very small int4 precision profile for matchmaking-service traffic tomorrow 09:00 UTC. Wanted to call out rollout gates and get quick 👍/asks.
+
+lina: Sounds good. what's the flag name and canary audience?
+
+ajay: Flag is `precision_profiles.matchmaking=profile_int4_v1` (server-side toggle). Canary = 2% of traffic, scoped to non-billing orgs + low-risk feature-flag cohort.
+
+maria: +1 for low-risk cohort. can we do 0.5% first then 2%? keen to limit blast radius.
+
+ajay: We can. plan: 0.5% -> 2% (30m) -> 10% (2h) -> 25% (6h) -> 100% (24h). manual stop at any stage.
+
+tobi: Quick checklist of metrics to monitor?
+
+ajay: Primary: increase in request error rate, p99 latency, token generation failure rate (new metric: `gen.failure_rate`), and eval regression on the smoke prompt set (safety & quality). Secondary: CPU/GPU utilization and cost per token.
+
+eva: what's the smoke eval threshold? last time we used BLEU-ish heuristics — can we rely on a token-level similarity + human spot checks?
+
+maria: Suggested thresholds: quality regression <= 1.5% (on our prompt set top-line pass fraction), hallucination increase <= 0.5% absolute, gen.failure_rate delta <= 0.2%. if any of these trip, auto rollback.
+
+ajay: Added: p99 latency increase <= 25ms absolute, error rate delta <= 0.1% absolute. If any metric violates, the runbook says immediate flip-off and page eng-oncall.
+
+lina: How will the experiment be routed? will we use the runtime router to pin model variants or the feature flag only?
+
+ajay: Router will select quantized binary at runtime. Flag controls which profile gets compiled/served. we'll use the routing key `auditor.v1` so we can replay easily.
+
+canary-bot: deploy-bot: canary policy attached. monitoring: dashboards created at /dashboards/eng-ml/precision-rollouts/matchmaking-int4. Alerts: `rollout_quality_alert`, `rollout_latency_alert`.
+
+maria: Who's owning each gate? I can watch quality and run spot-checks, Tobi can watch infra/latency, Lina keep an eye on routing and flag flips. Ajay will coordinate the flips and runbook.
+
+lina: Code review ping: PR #4482 updates the toggle logic + telemetry. ajay can you approve? small change in `routing/precision.go`.
+
+ajay: I'll review now. if green, I'll merge and stage tomorrow 07:30 UTC.
+
+tobi: If we need to rollback, what's the fastest path?
+
+ajay: Flip `precision_profiles.matchmaking` to `profile_fp16` then the router will immediately stop sending int4 binaries. also kill any queued compilation jobs. That should converge in ~30s for live traffic; full drain may take 2-3 minutes.
+
+eva: Can we include a quick local validation snippet for smoke? e.g.:
+
+```bash
+# run 50 sample prompts through the int4 path
+python tests/run_smoke.py --model matchmaking --profile profile_int4_v1 --samples 50 --report out.json
+```
+
+maria: perfect. I'll run that 1h before flip and attach results.
+
+ajay: One more: approval from product for this cohort? product already ok'd low-risk cohort in the PM thread.
+
+canary-bot: alert: `rollout_quality_alert` configured with auto-rollback on breach.
+
+lina: Anyone object to schedule (tomorrow 09:00 UTC) or want to shift?
+
+maria: fine from quality.
+
+tobi: fine from infra.
+
+ej: (not in participants) — n/a
+
+ajay: Great. I'll post the runbook link and start the PR review now. Thanks all, will ping again at 07:45 UTC for pre-flight checks. :rocket:

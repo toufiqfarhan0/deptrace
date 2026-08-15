@@ -1,0 +1,21 @@
+all-hands
+
+Eli: thanks everyone for joining the all-hands — quick encore: mascot moonwalk GIF incoming 🎩🕺 https://giphy.com/gifs/moonwalk-mascot-abc123
+Priya: LOL that is dangerously smooth
+Kai: who taught the mascot to moonwalk? my dog? :joy: 
+Jamal: clapping so hard my keyboard rattled :clap: 
+Alex: can we get a sticker/t-shirt drop? please
+ops-bot: Poll: react with :hand: for sticker pack, :tshirt: for t-shirt, :laughing: for just vibes
+Sam: :hand:
+Emma: T-shirt sizes: me M
+Priya: L
+Kai: S
+Eli: recording + slides will be posted in #all-hands-recordings in ~10m
+Alex: putting a 10/10 on the snack selection tonight (not a meme)
+Jamal: someone add the GIF to the company handbook pls
+Infra-Bot: deploy bot: live deploy for website-footer v2 started by @alex — 2 tests running
+Kai: nice multitasking, Alex :sunglasses:
+Eli: two small shoutouts — 1) Priya on the infra migration, huge thanks 2) Jamal for the witty demo micro-animations :heart:
+Priya: thanks! team effort :raised_hands:
+Alex: thanks all — heading to the virtual afterparty, gif-sticker-off
+Sam: :confetti_ball:

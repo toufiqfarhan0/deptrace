@@ -1,0 +1,100 @@
+incidents
+
+incident-bot: PagerDuty SEV2 — Smart routing: potential data residency policy violation detected for customer 'FinMate' (eu-west). Alert: 42 requests routed to us-west while X-Data-Residency=eu. Rule: residency_fallback_policy returned 'allow' for these sessions. Paging sara (oncall).
+sara: Ack. On-call taking. Looking at alerts now. :eyes:
+mike: I see the same in the routing trace dashboard — spike starting 00:03 UTC. Filtered logs: sessions with residency=eu but route.region=us-west-2.
+sara: Can we confirm if this is a single model-variant fallback or a routing-policy decision? If fallback, we need to stop auto-fallback immediately.
+ethan: Early read: config-service shows an unintended policy change at 00:01 UTC — a rollout of `smart-fallback: global-allow` that didn't include residency exception. Deploy ID: cfg-rollout-20260302-15.
+natalie: Security here. Customer data locality is critical. FinMate is under GDPR constraints; need full scope ASAP. Tagging legal/CC.
+jason: Support: FinMate opened a ticket reporting increased latency and odd region attribution this morning. They suspected EU routing problems. They've not been notified of data locality issues.
+sara: Paging Mike and Natalie to triage. Mike, can you dump a quick query to identify affected request ids and count per minute?
+mike: Running query now. Snippet:
+```
+SELECT request_id, user_id, header_X_Data_Residency, routed_region, timestamp
+FROM routing_logs
+WHERE header_X_Data_Residency = 'eu' AND routed_region != 'eu-west-1'
+AND timestamp >= '2026-03-02T00:00:00Z'
+LIMIT 10000;
+```
+
+mike: Results: ~3,120 requests misrouted over 9 minutes; majority to us-west-2. Top affected client: FinMate (tenant_id= fm-928). Sample log: `{id: 7f2c, tenant: fm-928, header: eu, route: us-west-2, model: rlm-large-int8, policy_decision: fallback_allowed}`
+
+incident-bot: Changing incident severity to SEV1 due to cross-border data exposure risk. Notifying execs.
+
+sara: Temporarily disable global fallback for residency-tagged requests. Mike, can you push a config override to block fallback for any request with header X-Data-Residency? Use emergency flag.
+
+mike: On it. Command:
+```
+curl -XPOST https://config.internal/api/overrides -H 'Authorization: Bearer REDACT' -d '{"path":"/routing/policies/smart-fallback","override":"if header.X-Data-Residency == 'eu' then allow_fallback=false" , "emergency": true }'
+```
+
+deploy-bot: cfg-rollout-20260302-15-override applied to region controllers. Propagating in ~30s.
+
+ethan: Confirming controllers loaded new override. Routed test with header eu: now returns eu-west-1 as expected. Good.
+
+natalie: Next: assess data egress. We need to find payloads that were processed in us-west-2 and determine retention and logs. Mike, can you get storage write counts and whether PII was persisted?
+
+mike: Checking write logs to object-store-us-west-2 for fm-928. Running lookup on object prefixes containing fm-928 and timestamps.
+
+mike: Preliminary: 210 writes associated with fm-928 in us-west-2 during the window. Most are transient model KV caches and token logs. Need to narrow to persistent storage buckets where customer data could be kept.
+
+jason: Support: informing FinMate with a holding statement: "We detected routing misconfiguration that may have routed a subset of your requests outside EU. We're investigating and will follow up with details and remediation." Approved by Natalie.
+
+sara: Good. Mitigation checklist:
+- [x] Disable fallback for residency-tagged requests (done)
+- [x] Block new cross-region routing for tenants with residency tags (done)
+- [ ] Identify persisted data and initiate deletion/retention review
+- [ ] Customer notification follow-up with exact scope
+- [ ] Postmortem + root cause and rollback plan
+
+mike: Ran query against object-store metadata:
+```
+SELECT object_key, bucket, size_bytes, last_modified
+FROM s3_access_logs
+WHERE tenant_id = 'fm-928' AND region = 'us-west-2' AND timestamp BETWEEN '2026-03-02T00:00:00Z' AND '2026-03-02T00:10:00Z';
+```
+
+mike: Found 18 user-visible artifacts (logs and small payloads). Asked storage team to snapshot and prepare for deletion once legal signs off.
+
+natalie: Legal requested list of artifacts and whether any contained PII. Send list to legal@redwood with label CONFIDENTIAL.
+
+ethan: Root cause initial hypothesis: policy rollout script defaulted a missing residency matrix to 'global-allow' when upstream policy entry was omitted. In cfg-rollout-20260302-15 the new policy block lacked the residency exception because a YAML anchor didn't resolve.
+
+sara: Who authored the rollout? Trace shows deployment by deploy-bot triggered by PR #4823 (author: infra-automation). Need PR review and revert/patch.
+
+mike: Created a hotfix PR (#4827) that reintroduces residency exclusion and adds automated unit tests for residency enforcement. Preparing to merge with emergency approval.
+
+deploy-bot: Hotfix PR #4827 merged and rolled to config-service. change-id: hotfix-4827. Rollout status: success (controllers report hash match).
+
+sara: Verify no further misroutes. Mike please run the original misroute query again and confirm counts fall to zero.
+
+mike: Re-run query — zero matches in the last 5 minutes. Monitoring for another 30m.
+
+jason: Customer update: Sent follow-up to FinMate with the preliminary scope and our mitigation actions. They asked for deletion confirmation and timeline.
+
+natalie: For compliance, we should offer proof-of-deletion or an audit of transient data and an incident-specific SOC report. I'll draft.
+
+sara: Handoff: I'm going offline for a scheduled break in 20m. Mike, you'll take primary until we close — please continue monitoring and coordinate with Natalie for legal/customer asks. Ethan, you own the post-incident RCA and remediation plan.
+
+mike: Acknowledged. I'll keep watches on routing dashboard, storage writes, and alert if anything pops.
+
+incident-bot: Incident status: Mitigated -> Containment. SEV1 -> Monitoring. Assigned owners: Mike (operations), Natalie (security/legal), Ethan (RCA). Estimated public update by EOD.
+
+sara: Thanks team. Postmortem owners: Ethan (author), Mike (data analysis), Natalie (compliance appendix). We'll schedule a blameless review tomorrow 14:00 UTC.
+
+support-bot: Ticket fm-928 updated: customer notified; severity escalated to P1. Reference incident 1812506789.
+
+mike: Quick lessons captured:
+- Add explicit residency exceptions to all fallback rules; fail closed if unknown
+- Add CI tests for policy YAML anchors and rollout safety checks
+- Add metric: count of header.X-Data-Residency != routed_region -> alert threshold
+
+sara: Closing loop: any open action items? If not, we'll move to monitoring and postmortem.
+
+natalie: I'll start the data-scope and legal notification draft after compiling the artifact list. Expect first draft in 2h.
+
+ethan: I'll own RCA write-up. Draft will include timeline, diff of cfg-rollout-20260302-15, and remediation steps including safer rollout gating and canary checks.
+
+jason: I'll keep the customer updated and coordinate deletion confirmations once legal gives thumbs up.
+
+incident-bot: This thread will be archived when incident state = resolved. For immediate follow-up, please open a dedicated postmortem thread referencing 1812506789."

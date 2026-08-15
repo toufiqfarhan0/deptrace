@@ -1,0 +1,30 @@
+eng-oncall
+
+pagerbot: :rotating_light: Pager: HIGH error-rate spike on /v1/generate (model-prod-4) · 3xx/5xx ratio > 10% · impact: some user requests failing. Incident: https://incidents.redwood.example/INC-8241
+jamal: saw the alert. oncall here. quick status — is this global or region-specific?
+sophia: I'm seeing elevated 502s coming from the eu-west pool, but latency also creeping in for na-east. could be routing flake.
+lee: paging in from monitoring — autoscaler threw a failure earlier, some workers restarted and didn't rejoin. logs show KV cache mismatches on restart.
+marta: hey all — i'm on holiday but available for the next 90m. happy to take primary if needed. not sure if i can hold for long.
+jamal: thanks @marta. current plan: i'll take primary for stabilizing and hand off to @marta for the next 60-90m if we get to steady-state. @lee can you surface the node restart details and where to check runbook?
+lee: root cause hypothesis: kernel panic on 2 workers during rolling deploy. they restarted but didn't flush prefix cache leading to evictions. logs: ```/var/log/worker-120/errors.log: OOM killer invoked; KV handle invalidation failed```
+lee: runbook roundup: https://runbooks.redwood.example/oncall/inference-cache-rejoin - follow "cache-rejoin" section. TL;DR: validate worker state, force kv-sync, then drain if still unhealthy.
+sophia: concurrent user-facing fallback: enable model-variant fallback in router to prod-3 while we remediate prod-4. that will divert some traffic and reduce 5xx. can someone flip the route?
+jamal: I can flip it. command: ```curl -X POST https://api.redwood.example/routing/switch -d '{"from":"model-prod-4","to":"model-prod-3","weight":0.5}' -H 'Authorization: Bearer $REDEP_KEY'``` Doing it now.
+jamal: done — traffic diverted 50% to prod-3. monitoring shows 5xx rate dropping in na-east, eu-west still noisy.
+marta: i'll take over primary in 20m if we still need oncall. can you post handoff checklist? also note timezone: i'm UK-based, happy to cover until my local midnight.
+jamal: handoff checklist (short): 1) ensure KV sync completed for restarted workers (check /metrics/kv_sync{status="ok"}) 2) monitor 5xx and latency for 15m 3) if errors persist, isolate worker and scale up reserved pool 4) update incident with customer impact and mitigation steps.
+lee: quick helper commands: ```# check kv sync
+curl -s http://metrics.internal/metrics | grep kv_sync
+# force kv sync
+kubectl exec -it worker-120 -- /opt/redwood/bin/kv-sync --force
+# drain unhealthy
+kubectl cordon worker-120 && kubectl drain worker-120 --ignore-daemonsets --delete-local-data```
+sophia: I've messaged platform to request a temporary burst from dedicated pool (reserve add +2 GPUs) — should be approved in ~10m. that will help if we need capacity while nodes rejoin.
+pagerbot: Incident update: ASSIGNED to jamal · priority=high · customers possibly affected: synced-prod-keyusers. Link: https://incidents.redwood.example/INC-8241 · pagerid=PB-924
+jamal: quick customer impact check: user-facing errors reported by 3 paying customers (ticket IDs: #4201, #4204, #4207). ops-slo alert triggered. Adding note to incident.
+marta: I'm standing by. if you want me to takeover earlier say the word. If warm-handoff, drop me the incident page and current runbook pointer.
+jamal: handing off now to @marta. current state: 5xx reduced to 2% on na-east, eu-west still ~8%. KV sync in progress on remaining nodes, forced sync attempted on worker-120, node cordoned. scaling request pending. I'll post any outstanding tasks in 15m.
+marta: got it — taking primary. I will watch for next 30-60m, escalate if eu-west doesn't hit <3% 5xx or latency SLO breaches. Also will keep customers updated with post-incident note.
+lee: follow-up: created a short patch to prevent kv invalidation on restart; will queue for canary once incident stable. PR: https://git.redwood.example/r/infra/kv-rejoin/mergerequests/18
+sophia: thanks everyone. note for after-action: add runbook step to avoid auto-reboot on OOM during rolling deploys.
+jamal: thanks @marta for picking up. closing paging thread for now — will update incident timeline if anything changes. :white_check_mark:

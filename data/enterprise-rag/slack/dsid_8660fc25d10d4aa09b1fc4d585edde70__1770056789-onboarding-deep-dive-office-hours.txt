@@ -1,0 +1,59 @@
+customer-success
+
+Jamal_R: Quick heads-up — I want to run a 90m onboarding deep-dive / office hours for three mid-market accounts (NimblePay, ArcFleet, BlueCart). Main goals: unblock streaming integration, surface cost controls, and agree next-step rollout timelines. Who can help run and what windows work this week?
+
+Sophia_CS: I can take NimblePay. timezone check — they're PST. Available Wed 10-12 or Thu 14-16 PST. :calendar:
+
+Alex_M: BlueCart is showing a renewal risk (usage lag + latency complaints). Recommend separate 30m exec sync, but okay to include them if we prioritize their issues. Thu 14 PST overlaps with my calendar though.
+
+Maria_Onboarding: I can lead ArcFleet and host the demo for streaming + fallback patterns. Prefer Wed afternoon (PST) or Fri morning. Also drafted a strawman agenda — posting below.
+
+Maria_Onboarding: ```
+Agenda (90m)
+- 0–10m: intros + session goals
+- 10–25m: account status snapshots (NimblePay / ArcFleet / BlueCart) — 5m each + 5m buffer
+- 25–50m: live demo — streaming, KV cache, prefix caching, and example fallback flows
+- 50–70m: ops & cost controls — batching, quant profiles, route policies, token cost breakdowns
+- 70–85m: capture action items, owners, and deadlines
+- 85–90m: quick survey link + close
+```
+
+Olivia_Product: Love the agenda. Suggest adding a 5m section earlier to show the current SDK snippet we recommend for streaming: `client.stream({model:"rwd-medium", chunk_size:512})` — keep it practical.
+
+Jamal_R: Good call. Also want a short feedback capture at the end — quick form for: clarity of next steps, blockers, and willingness to commit to pilot. I'll make a one-question form and share.
+
+Sophia_CS: For scheduling: NimblePay prefers Wed 11:00 PST. ArcFleet (contacted) can do Wed 15:00 PST or Fri 10:00 PST. BlueCart asked for Thu afternoon but is ok Wed if we can push to 16:00 their time (EST).
+
+Alex_M: Since BlueCart is high-risk, I vote we do a separate 30m exec briefing. Can we schedule the deep-dive for NimblePay + ArcFleet Wed 11 PST and Wed 15 PST (back-to-back), then exec for BlueCart Thu 14 EST?
+
+Maria_Onboarding: Confirming Wed 15 PST works for ArcFleet. I can prep the demo and send pre-reads (short config checklist + sample prompt tests).
+
+Jamal_R: Plan: 
+- Wed 11:00 PST — NimblePay (Sophia lead)
+- Wed 15:00 PST — ArcFleet (Maria lead)
+- Thu 14:00 EST — BlueCart exec briefing (Alex lead, Jamal joining)
+
+I will create calendar invites and include the pre-read + our short feedback form. Can people add suggested attendees (customer-side + internal) now?
+
+Olivia_Product: Add: product PM for NimblePay (Lina), infra contact for ArcFleet (Raj), and CSM manager for BlueCart (Sara).
+
+Sophia_CS: Adding Lina and customer engineer Miguel for NimblePay invite.
+
+Alex_M: I'll add Sara and our solutions architect Carlos for BlueCart exec. Also flagging renewal manager for a brief update doc.
+
+CalendarBot: Created invite: Wed 2026-03-25 11:00 PST — NimblePay deep-dive. Link: https://calendar.redwood.ai/event/abc123 (please RSVP)
+
+CalendarBot: Created invite: Wed 2026-03-25 15:00 PST — ArcFleet onboarding deep-dive. Link: https://calendar.redwood.ai/event/def456
+
+Jamal_R: Thanks — I'll post the feedback form and pre-read in the invites. Also capturing action items: 
+- Sophia: prep NimblePay checklist + join link (due Tue EOD)
+- Maria: demo runbook + test prompts (due Tue EOD)
+- Alex: exec brief template for BlueCart + renewal risk summary (due Wed EOD)
+
+Maria_Onboarding: I'll run a quick dry-run with the demo infra Wed morning and share any fragile bits.
+
+Sophia_CS: Noted. Will prepare one concrete ask for NimblePay (they need help with tokenization storage pattern).
+
+Alex_M: Thx team. If exec wants deeper SLA discussion, we should include Product + Infra on call.
+
+Jamal_R: Closing — thanks all. I'll follow up with the pre-reads and the one-question feedback form. :thumbsup:

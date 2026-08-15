@@ -1,0 +1,81 @@
+generated: rerank timeout + 5xx investigation thread
+
+david_customer: Hey team — we're seeing a surge of 502/504s from the /v1/rerank endpoint during our nightly replay load test. p95 latency jumped from ~1.1s to ~6s. Clients are retrying and that seems to make it worse. Sample repro below, happens in us-west1 on model rdrk-rerank-1.0-q4.
+
+ashley_support: Thanks for reporting, @david_customer. Can you paste a minimal repro payload and one of the failing request IDs? Also which SDK/version and whether you're using client-side retries?
+
+david_customer: Repro steps — run this curl in a loop (we run 50 concurrent workers):
+```bash
+for i in $(seq 1 200); do \ 
+  curl -s -X POST https://api.redwood.example/v1/rerank \ 
+    -H "Authorization: Bearer $API_KEY" \ 
+    -H "Content-Type: application/json" \ 
+    -d '{"query":"best italian restaurants","candidates":[{"id":"a","text":"...long text..."},{"id":"b","text":"..."},...],"max_candidates":200}' &\
+done
+```
+Example payload (trimmed):
+```json
+{"query":"best italian restaurants","candidates":[{"id":"a","text":"Very long review text..."}, {"id":"b","text":"Short"}], "max_candidates":200}
+```
+Failing request-id examples from client logs: req_01F7A, req_01F8B, req_01F9C
+We also saw a couple of responses with scores 0 or "NaN" for many candidates.
+
+rerank_bot: [alert] 1792001000 - rerank.p95 spike (us-west1) • p95=5.8s (baseline 1.1s) • 502_count=123 (10m) • 504_gateway=87 • infra.group=rerank • link: https://dash.redwood/alerts/1792001000
+
+olivia_sre: I'm on it. Can you attach raw response bodies for one of the req IDs? Also does this happen on lower concurrency? Often retries+concurrency create a thundering herd.
+
+mike_infra: Looking at pod logs in the us-west1 autoscaling group — seeing a lot of: 
+```
+ERROR: handler.go:312 context deadline exceeded while waiting for token lookup
+WARN: queue.go:81 worker queue full, dropping request
+ERROR: gateway: upstream returned 502 Bad Gateway
+```
+Also counts show worker_pool saturation and GC pauses on some nodes around the spike window.
+
+ashley_support: Quick checks for you to try (low friction mitigations):
+1) Stop client-side retries for 5xx while we investigate (set retry policy->no retries on 5xx).
+2) Reduce concurrency or cap workers to 16 per client.
+3) Set a lower "max_candidates" (e.g., 50) in requests to see if latency recovers.
+4) Send one or two failing request-ids + full headers to support bundle.
+
+sarah_prodeng: Two things to call out: first, large candidate lists dramatically increase KV/cache pressure and pin memory for scoring. Second, some q4 quantized variants have slower single-threaded tail latencies when candidate count > 128. For a quick server-side mitigation we've toggled a soft cap in the rerank service: rerank.max_batch_size=32 and request_timeout_ms=5000 for the canary.
+
+mike_infra: On the retries — stack shows downstream clients retrying on 502 which re-enters the gateway and fills the worker queue. Recommend server-side protection plus config suggestions for customers:
+- enforce per-API key concurrency limits
+- return 429 when queue is full instead of forwarding to worker
+- short-circuit heavy requests (too many candidates) with 400 if over hard limit
+
+ashley_support: For your immediate testing, try this modified curl that disables SDK retries and reduces size: 
+```bash
+curl -X POST https://api.redwood.example/v1/rerank \ 
+  -H "Authorization: Bearer $API_KEY" \ 
+  -H "Content-Type: application/json" \ 
+  -H "X-Rerank-Client-Retry: none" \ 
+  -d '{"query":"best italian restaurants","candidates":[{"id":"a","text":"..."}], "max_candidates":50}'
+```
+Let us know if that stabilizes p95.
+
+_david_customer (10m later): Did the reduced payload and disabling retries — p95 dropped back to ~1.4s. Thanks. But now we observed intermittent responses where many candidate scores are 0 or null. Example response snippet (trimmed):
+```json
+{"request_id":"req_01F9C","scores":[{"id":"a","score":0.0},{"id":"b","score":0.0}], "note":"incomplete_scores"}
+```
+
+mike_infra: Those 0/null scores are likely from upstream scoring step that short-circuits when input length overflows or when model returns an error for that slice. Two actionable checks: validate candidate lengths client-side and ensure you pass "max_candidates" that the server advertises. Also check that you're not truncating candidate text to an odd byte boundary which can cause tokenization issues.
+
+sarah_prodeng: Quick validation snippet (python) to enforce limits before send:
+```python
+MAX_CANDIDATES=100
+MAX_TEXT_LEN=6000  # bytes
+candidates = [c for c in candidates if len(c['text'].encode('utf-8')) <= MAX_TEXT_LEN][:MAX_CANDIDATES]
+```
+If you still see 0 scores after validation, grab the full response body — it contains an "error_detail" we can correlate.
+
+olivia_sre: Long term we'll implement: smarter backpressure (return 429), request-level queue limits, and a rerank autoscaler buffer so we don't hit GC/saturation on sudden replays. I've opened ENG-RUNTIME ticket #ENG-4721 and assigned to @mike_infra and @sarah_prodeng for follow-up.
+
+ashley_support: Thanks everyone — @david_customer, we'll keep monitoring. Please upload the support bundle (full raw responses + failing request-ids + timestamp window). I'll follow up with a timeline and notify you when ENG-4721 has a patch/rollout plan. :thumbsup:
+
+david_customer: Uploaded bundle to the ticket, confirmed p95 stable with mitigations, will re-run a full replay tomorrow. Appreciate the quick turnaround.
+
+rerank_bot: [note] ENG-4721 created by olivia_sre • priority=P2 • link: https://tracker.redwood/ENG-4721
+
+ashley_support: Closing this thread for now — if you see regressions after the replay re-open or ping here.

@@ -1,0 +1,66 @@
+devex
+
+lena: quick thread 1: saw user-reported duplicates in the python sample app when auth refresh and app retries line up. looks like parity mismatch between py/node backoff behavior.
+
+tom: can you summarize the mismatch?
+
+lena: sketch: node sdk uses full jitter backoff for token refresh, py was using exponential with no jitter. result: py scattered attempts align with app retry window more often -> more duplicate creates.
+
+arya: ouch. any logs? minimal repro?
+
+lena: pasted repro steps in issue RW-5371 but minimal log excerpt: 
+
+```
+POST /orders -> 401 token_expired
+app: start retry request (client retry)
+sdk(py): starting token refresh attempt 1 -> sleep 100ms (no jitter)
+sdk(py): attempt 2 -> sleep 200ms
+app: retry sends POST /orders -> no Idempotency header
+sdk(py): refresh succeeded during app retry
+backend: two orders created within 50ms
+```
+
+paul: so two independent retries (app + sdk) again. Difference is timing due to backoff. node was fine because jitter spread refresh out and avoided collision.
+
+tom: what's our recommended short-term fix for sample app? ask users to set Idempotency-Key?
+
+lena: yes, but also want sdk parity fix. propose: 1) change python default refresh backoff to full_jitter (align with node/go) 2) sample-app tests should enforce Idempotency-Key for mutating endpoints 3) introduce small `replay_guard_window_ms` in sdk (default 300ms) that suppresses sdk-initiated resend when request hash matches recent sent request.
+
+arya: small note: auto-generated idempotency keys are risky across multi-instance apps. prefer requiring app-supplied keys, but a short suppression window is safe and opt-out.
+
+paul: agreed. we can ship suppression as opt-in flag `sdk.enable_short_replay_guard=true` for now, then consider default later. also expose metric `sdk.replay_guard.triggered` and log when suppression happens.
+
+lena: sample-app mitigation: add tiny debounce on client retry path and add header in example code:
+
+```
+headers = { 'Idempotency-Key': str(uuid4()) }
+# client retry handler
+await sleep(uniform(0.05, 0.2))
+retry_send()
+```
+
+paul: tests: i'll add an integration test that simulates rapid dbl-retry and asserts backend saw only 1 create. also add unit test for backoff math parity.
+
+tom: about docs: update "onboarding/mutating-requests.md" snippet to always recommend Idempotency-Key and include example for Node/Python/Go. call out token-refresh edge cases.
+
+arya: will you coordinate parity across repos? we need same flag names and same default backoff profiles. listing: `refresh.backoff.strategy`, `refresh.backoff.base_ms`, `sdk.enable_short_replay_guard`.
+
+lena: new PRs planned: py-sdk#142, node-sdk no change, go-sdk PR to confirm parity. I'll open the python PR and include changelog.
+
+dev-bot: CI run queued for py-sdk#142 at 2045679000.
+
+paul: ops note: add a light-weight detector on the platform side to correlate create events that have same request-hash within 1s and increment `platform.duplicate_side_effects` metric. will help catch if suppression missed something.
+
+arya: good idea. that detector can also emit an onboarding alert if duplicates > threshold for new tenants.
+
+lena: one more: we should avoid generating strong Idempotency-Keys in SDK unless app opts in. instead generated keys should be weak (request-hash + short nonce) and only used for short replay guard. document clearly.
+
+tom: timeline? can we get python PR and sample-app test in a few days?
+
+lena: aiming EOD +2. paul will add platform detector next week. dev-bot: will post CI status.
+
+dev-bot: py-sdk#142 CI: all checks passed :white_check_mark:
+
+paul: merged sample-app test and added a failing-case to ensure future regressions fail CI if Idempotency-Key missing on POSTs.
+
+lena: ok closing loop here. filed follow-ups: RW-5371 (parity/backoff + replay guard), RW-5372 (platform duplicate detector), and docs task RW-5373. thanks all. :party:

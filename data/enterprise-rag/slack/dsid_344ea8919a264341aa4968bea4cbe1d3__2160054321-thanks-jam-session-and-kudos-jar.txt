@@ -1,0 +1,15 @@
+random
+
+zara: Huge thanks to everyone who pitched in during the client walkthrough earlier. That level of calm coordination was awesome :heart:
+tom: shoutout to @gina for the last-minute config tweak that stopped the rate-limit spike. legend. :star2:
+gina: no problem! found a flaky header in the proxy. small patch went out:
+```yaml
+proxy:
+  sanitize_headers: true
+```
+infra-bot: [auto] Deploy DEV-2389 successful. Canary passed 10m health checks. Logs: https://infra.internal/logs/DEV-2389
+harry: I'm dropping $30 in the "kudos jar" and picking up ice cream for the team tomorrow (flavors: pistachio = best). also +1 for a tiny "thanks" note in the weekly digest so remote folks see love. :ice_cream:
+zara: seconded. remote folks deserve love. also thinking of a fun plaque for the kitchen "when you help a teammate, you get a spoon" idea. low effort, high morale :laughing:
+tom: can we run a 1-question poll: plaque vs sticker vs donut? i'll set it up. :ballot_box_with_check:
+gina: vote = sticker. minimalist + wearable.
+zara: sticker it is then. thanks again team  really appreciate the speed and kindness last hour. :tada:

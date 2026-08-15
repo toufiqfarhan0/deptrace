@@ -1,0 +1,43 @@
+eng-security
+
+nate: Auditor wants evidence: RBAC change approvals for service-account changes between 2025-11-01 and 2026-01-31, plus KMS decrypt logs tied to those service accounts. Can we produce a sampling set?
+
+maria: ok. do we have CorrelationID mapping from RBAC changes to deploy IDs?
+
+tom: yes — policy changes stored in gitops repo and GH approvals in the PR. I can gather PRs + approver list. @maria can you pull KMS logs? :slightly_smiling_face:
+
+maria: I can, but need timeframe for CloudKMS vs our EKM. Auditor asked for decrypt events, key IDs, and principal email. Sampling size? 
+
+nate: auditor_jane said 3 examples per control + a CSV with full indices. They also want pre-signed S3 link to evidence bundle. 
+
+jane.auditor: quick note — examples should include one routine RBAC change, one emergency admin escalation, one rollback. For KMS logs include request/response metadata and any key rotation entries. Hashes ok. Happy to redact IPs.
+
+tom: I'll export PRs: `git log --pretty=format:'%h|%an|%ad|%s' --since='2025-11-01' --until='2026-01-31' -- path:iam/policies` and drop into CSV. 
+
+maria: splunk query for decrypts: 
+```
+index=kms sourcetype=kms:cloud request_type=Decrypt earliest=2025-11-01 latest=2026-01-31 | table _time, key_id, principal, request_id, status
+```
+I'll sample 3 decrypt events per key where principal is service-account@redwood.com
+
+deploybot: evidence export started: bundle id e-20260301-42, uploading to s3://redwood-audit-exports/tmp/e-20260301-42.tar.gz
+
+nate: thanks — after uploads I'll assemble manifest mapping PRs -> deploy IDs -> KMS request_ids -> incident tickets (if any). Also need proof of approval: GH review links + timestamped approve events.
+
+maria: one note: service-account emails sometimes show as `svc-<team>@redwood-internal` in KMS logs. I'll normalize in CSV and include original field.
+
+tom: vuln triage note — auditor asked about whether any RBAC change coincided with vulnerability patching. I ran a quick cross-check, one PR touched kube manifest and included CVE-2025-9999 notice. Linking in bundle.
+
+nate: action items: 1) tom -> PR CSV + GH approve links (due EOD) 2) maria -> KMS decrypt CSV + normalized principal field (due midday tomorrow) 3) deploybot -> provide pre-signed link (done when upload finishes) 4) nate -> assemble manifest and upload. 
+
+jane.auditor: thanks all — please include short readme describing redaction rules and the sampling method. :thumbsup:
+
+maria: noted. I'll add README.txt with query used + redaction log.
+
+tom: sending PR export now. link: https://github.com/redwood-inference/infra/pull/1345
+
+deploybot: upload complete: https://s3.console.aws.amazon.com/s3/object/redwood-audit-exports/e-20260301-42.tar.gz?region=us-west-2&presign=true
+
+nate: received. I'll verify manifest and ping auditor if anything else needed.
+
+jane.auditor: received, will review tomorrow morning and send any follow-ups. thanks!

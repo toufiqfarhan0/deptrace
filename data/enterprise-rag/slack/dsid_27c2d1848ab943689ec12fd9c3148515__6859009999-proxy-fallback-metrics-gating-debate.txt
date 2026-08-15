@@ -1,0 +1,39 @@
+eng-platform
+
+sam: Quick heads-up: we've been seeing a ~2k/min spike where the proxy falls back to the org-default route when a service-account key hits its per-project quota. Client apps report higher latency and some timeouts. Anyone seen this pattern? cc @alexa
+
+alexa: yup saw it around 10:14 — traces show an extra RPC to authz/route-decider during fallback adding ~120-180ms. Pulling traces now.
+
+devon: is the fallback path doing a token-exchange? that would explain the extra hop. current behavior: if per-project quota returns 429 we route to org-default. maybe short-circuit and return 429 earlier instead of fallback?
+
+ida: short-circuit would hurt product adoption — product asked for automatic fallback to keep apps alive. We need better telemetry first: count fallback hits and measure added latency per route + key.
+
+sam: proposal: gate fallback by customer tier (only pro/enterprise get automatic fallback). for others return 429. also emit metrics: proxy.fallback.count and proxy.fallback.extra_latency_ms (histogram).
+
+devon: agree on gate. rollout plan: feature flag proxy_fallback_affinity default ON, staged 10% -> 50% -> 100% with alarms on fallback.rate and tail latency. console should expose fallback ratio per API key.
+
+alexa: i'll wire up traces and add a header so downstream logs know fallback was used. suggestion for header:
+```
+X-Redwood-Fallback: org-default
+```
+
+ida: add reason too:
+```
+X-Redwood-Fallback: org-default;reason=quota
+```
+That way we can filter by reason in dashboards.
+
+ops-bot: canary: proxy:v2.3 deployed with fallback flag at 10% in us-east-1 :rocket:
+
+sam: perf optimization idea: the extra RPC is to authz service — we could keep a small TTL cache in proxy for routing decisions (ttl ~10s) to absorb short bursts instead of calling authz every time.
+
+devon: cache is risky for revocations but TTL=10s seems reasonable if we emit a stale_warning metric when cached decision used. i'll prototype with a circuit-breaker.
+
+alexa: console-side: product asked for a "Fallbacks" card on per-key dashboard showing fallback ratio, latency delta, and links to sample traces. also a toggle to opt-out of fallback per-key.
+
+sam: action items: @alexa wire traces + header change; @devon implement metrics + flag + cache prototype; @ida design console card mock; i'll write rollout doc and schedule 11am sync tomorrow.
+
+alexa: on it
+devon: will PR today
+ida: mock by EOD
+sam: thanks everyone :thumbsup:

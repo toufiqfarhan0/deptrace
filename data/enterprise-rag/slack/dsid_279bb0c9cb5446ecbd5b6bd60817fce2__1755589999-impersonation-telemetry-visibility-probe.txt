@@ -1,0 +1,27 @@
+eng-platform
+
+sylvia: Noticing a gap in our console around impersonated requests. Billing shows the caller project but no trace to the service account that actually executed the request.
+derek: Example? is this on hosted or dedicated?
+sylvia: Hosted. Flow: user API key -> auth-proxy -> impersonate SA -> invoke model. Console says user project used tokens but nothing links to SA.
+ryan: That's confusing for customers. Our metering tags by incoming_api_key_project only.
+leah: Does this break quota enforcement or just visibility/alerts?
+sylvia: Enforcement works (quota charged to project X), but telemetry/alerts group on origin key so SRE pages don't point to the right principal.
+derek: Could we emit an extra identity header from the proxy like `X-RW-Effective-Principal: sa:proj-abc/service-account` and keep the origin header?
+ryan: Yep. Then attach `effective_principal` to spans and metric tags. Need to be careful: SAs are high-cardinality.
+sre-bot: Reminder: any new metric tag must pass cardinality review and not break billing ETL.
+leah: UX concerns: we must not leak cross-org SA names in the UI. Show link only if viewer has access; otherwise show "principal hidden" with tooltip.
+derek: Implementation plan: 1) proxy emits both `X-RW-Origin` and `X-RW-Effective`. 2) runtime appends both to request traces. 3) metering pipeline stores `effective_principal` as optional dimension.
+ryan: For alerts, add an option in rule config to aggregate by origin or effective. Default stays origin to avoid noise.
+sylvia: Rollout: enable header emission behind internal flag ASAP (48h), collect metrics, then enable console column behind a feature flag.
+leah: For telemetry storage let's cap to top-K principals per org and roll smaller ones into `other_principal` to control cardinality. Also capture `impersonation_depth` (int) so ops can spot chains.
+derek: Backfill: when we have `X-RW-Effective` in traces we can run a short backfill job for recent days to populate dashboards. Must coordinate with billing team so ETL isn't affected.
+ryan: Security: ensure the header is authenticated/signed to prevent spoofing by external clients. Only proxies can set it.
+sre-bot: RFC ticket created: `impersonation-metrics-visibility` — include perf numbers and privacy gating.
+sylvia: I'll draft the RFC and attach sample cardinality numbers when Ryan runs the 30d sample.
+leah: UI mock: add toggle in usage table to show "View by effective principal" and an access check overlay. Will post designs later.
+derek: Also add a short-lived opt-in for alerts to evaluate signal quality before rolling wide.
+ryan: OK I'll run analysis Monday and post counts. If SA unique count under threshold we can opt to keep the dimension; otherwise use rollup strategy.
+sylvia: Thanks all. Ping #eng-oncall if any alert regressions during the probe window. :thumbsup:
+leah: small note: proxy chaining -> we persist only the final effective principal for now, and emit chain length as metric if present.
+ryan: Great. Putting a draft PR for header emission today behind flag.
+sre-bot: Action items logged for RFC owners.

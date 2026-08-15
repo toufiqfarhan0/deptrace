@@ -1,0 +1,118 @@
+incidents
+
+incident-bot: :rotating_light: Paging: SEV2 detected - cross-AZ request routing anomalies affecting serving in us-east-az1 -> sporadic misroutes to us-east-az3 starting 2024-04-09T04:13:09Z. Auto-alerts from route-monitor triggered.
+
+alice (oncall): I’m on it. seeing increased 5xxs and elevated p95 latency in us-east. Can anyone confirm if any infra change rolled out in the last hour?
+
+bobby (neteng): No infra deploys from net stack. We pushed a minor BGP policy tweak earlier but that was >6h ago. I’ll check routing tables and recent control-plane traces.
+
+carol (sre): Symptoms: customer sessions from us-east region intermittently land in az3, then fail TLS handshake for a subset of backends. Likely affinity/TTL mismatch or DNS cache churn.
+
+dan (runtime): Can you paste sample request ids? I’ll trace the KV cache and connection reuse.
+
+alice (oncall): Example trace id: 0b3a9c4b. Logs show initial connect to us-east-az1, then internal redirect to us-east-az3 with 502 from model pool.
+
+bobby (neteng): Fetching route decision dump now. Running:`
+
+# query route-decisions for trace 0b3a9c4b
+rtctl dump --trace 0b3a9c4b --fields decision,policy,ttl,src_az,dst_az
+`
+
+bobby (neteng): output snippet:
+
+```
+0b3a9c4b decision=STEER policy=latency-based src_az=us-east-az1 dst_az=us-east-az3 ttl=30s
+0b3a9c4b decision=PIN_OVERRIDE policy=pin src_az=us-east-az1 dst_az=us-east-az1 ttl=300s
+```
+
+bobby (neteng): Looks like conflicting policies: latency-steer is firing, but pin overrides exist; TTLs are short (30s) on steer decisions and pin TTLs sometimes not honored by edge caches. That mismatch could cause oscillation.
+
+carol (sre): Support impact: several customers report request spikes and partial failures, major PLG apps see elevated error budgets. Recommend temporary mitigation to stabilize routing.
+
+alice (oncall): Propose immediate mitigation: 1) disable latency-based steer for us-east for 5m 2) extend pin TTLs to 10m 3) add a temporary routing shim to prefer local AZ when pin exists. Thoughts?
+
+bobby (neteng): I can toggle steer off at the global controller. Rolling rollback to previous routing policy will take ~30s to propagate.
+
+alice (oncall): Do it. Execute and post the command.
+
+bobby (neteng): Executing now:`
+
+```
+routectl set-policy --region us-east --policy latency-based --state disabled --reason "mitigate steer/pin oscillation"
+```
+
+incident-bot: Policy change recorded by bobby (neteng) at 2024-04-09T04:21:05Z. Propagation to edge controllers started.
+
+carol (sre): Monitoring... p95 latency dropping in the next window?
+
+alice (oncall): Quick check: sampling dns cache on edge node 10.4.2.11:`
+
+```
+$ dig +short service.us-east.redwood.example @10.4.2.11
+10.10.1.23  # us-east-az1 pool
+10.10.3.45  # us-east-az3 pool (stale entry)
+```
+
+alice (oncall): There are still stale entries on some edge resolvers with TTLs ~15s. I’ll flush caches where possible.
+
+bobby (neteng): Flushing edge DNS caches across the region now (parallel):`
+
+```
+for n in $(edge-nodes --region us-east); do ssh $n "sudo systemctl restart redwood-dns-cache" & done
+```
+
+incident-bot: Action logged: DNS cache flush initiated by bobby (neteng).
+
+eve (support): Noting that a subset of customers saw 502s between 04:13-04:22. We should prepare a customer-safe postmortem note and potential RFO details.
+
+frank (pm): Can we capture a list of impacted tenants and duration? Need to coordinate comms.
+
+gaurav (cust-eng): I have a list from support: tenants A, D, F with session failures. I’ll attach a timeline after we stabilize.
+
+carol (sre): After policy toggle and cache flush, traffic looks stable. p95 latency back to baseline, errors falling. I still see a small oscillation window on a couple of nodes.
+
+dan (runtime): Found a runtime bug where pin TTLs are not written to the edge header when steer decisions occur in the same millisecond; race condition. Patch ready, will push canary to a single AZ.
+
+alice (oncall): Can you canary the fix to us-east-az1 only and keep steer disabled until validated?
+
+dan (runtime): Yes — deploying canary now to az1. Canary command:`
+
+```
+deployctl apply --service runtime-routing --image runtime-routing:fix-pin-ttl-race --subset us-east-az1
+```
+
+incident-bot: Canary deploy started by dan (runtime). Health checks will report in 60s.
+
+carol (sre): Health checks green for canary, behavior looks good: pin headers set, no oscillation on test traffic.
+
+bobby (neteng): Re-enabling latency-steer but with higher steer TTL (120s) to reduce flip rate. Will monitor.
+
+bobby (neteng): command:`
+
+```
+routectl set-policy --region us-east --policy latency-based --state enabled --params ttl=120s
+```
+
+incident-bot: Policy change recorded by bobby (neteng) at 2024-04-09T04:48:10Z.
+
+alice (oncall): After re-enable, I want 15m of quiet before we close pager. Keep guardrails: alert if error rate > 1.5x baseline or p95 increases > 25%.
+
+frank (pm): Thanks. I’ll draft a short note for affected customers with ETA for postmortem.
+
+gaurav (cust-eng): Sending victim tenant list to frank and eve. Also adding recommended mitigation steps for customers (client retry backoff & prefer region header).
+
+eve (support): Logged incident in ticketing system: INC-20240409-4321, hooking into postmortem template.
+
+carol (sre): Root cause summary for now (draft): interaction between short-lived latency-steer decisions and existing pin overrides combined with a runtime race that prevented pin TTL propagation to edge headers -> routing oscillation and intermittent failures for pinned sessions.
+
+alice (oncall): Handoff: I’m handing to night oncall (alice -> bob_night) in 10m. If anything flares, page SRE lead.
+
+bobby (neteng): Leaving a note: follow-up actions: 1) runtime patch rollout across region 2) change default steer TTL to 120s 3) add instrumentation to detect TTL mismatches 4) automation to quiesce steer when pins exist.
+
+dan (runtime): I’ll open PR for rollout plan and post the canary metrics.
+
+frank (pm): Timeline: incident start 04:13Z, mitigation (policy off + flush) at 04:21Z, stable after canary/TTL tweak by 04:50Z. Draft comms will reflect that.
+
+alice (oncall): Closing pager in 15m if no regressions. Great teamwork. :thumbsup:
+
+incident-bot: Pager resolved by alice (oncall) at 2024-04-09T05:10:00Z. Incident state updated to "mitigated".

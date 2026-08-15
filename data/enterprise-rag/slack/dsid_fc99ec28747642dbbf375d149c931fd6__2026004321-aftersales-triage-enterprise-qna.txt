@@ -1,0 +1,47 @@
+sales
+
+Maya (AE): quick async triage — afternoon check: a few enterprise asks surfaced, want to align. 
+Maya (AE): 1) Nova Health asking about customer-managed KMS + key rotation timeline.
+Maya (AE): 2) MacroHealth legal asking about data residency + DPA.
+Maya (AE): 3) Coresight wants clarification on Dedicated SLA (latency/uptime).
+Maya (AE): any obvious blockers?
+
+Jonas (SE): For Nova KMS we support envelope encryption + CMKs, onboarding checklist exists.
+Jonas (SE): @Kelsey can you drop the KMS checklist link here?
+
+Kelsey (Solutions): putting checklist here: https://intranet.redwood/kms-onboarding (internal).
+Kelsey (Solutions): typical work: config + test key access — expect 3-5 business days from when infra approves.
+
+Ravi (CISO): MacroHealth note: they require SOC2 + EU data residency (eu-west-1). SOC2 OK, residency means Hosted in region or Private.
+Ravi (CISO): also flagged a short security questionnaire — link below.
+
+Maya (AE): MacroHealth can start on hosted if we sign DPA and pin region to eu-west-1. Sales needs Eng to confirm region enable + KMS.
+
+Jonas (SE): region enable is doable but needs capacity ticket for eu-west-1 GPUs. I'll open an infra request (ticket queued). ETA ~48 hours for capacity estimate.
+Jonas (SE): note: if they push hard on latency SLA we might recommend Dedicated.
+
+Leo (SalesOps): FYI I reopened ticket #1234 for on-prem packaging and copied PSE.
+
+Kelsey (Solutions): for Coresight SLA ask — can offer 99.9% on Dedicated but need pricing delta signoff. @Maya we'll run numbers.
+
+Maya (AE): blockers for me: waiting on Eng infra capacity estimate + legal sign for DPA. Today I'll follow up with infra and draft a DPA for MacroHealth.
+
+sec-bot: Security reminder: please complete the vendor security questionnaire at https://security.redwood/aq/forms — MacroHealth and Nova Health flagged as high priority.
+
+Jonas (SE): quick CR ping: PR #452 updates model routing policy docs + adds fallback behavior. Can someone review? @Ravi for security review?
+
+Ravi (CISO): I'll take a look after lunch. :thumbsup:
+
+Kelsey (Solutions): left comments on PR #452 — small nit on structured logs + retention.
+
+Maya (AE): thanks — if infra + legal clear by EOD I'll push a proposal to MacroHealth. :rocket:
+
+Jonas (SE): opened infra ticket TKT-2026 and linked here.
+
+Maya (AE): last ask — any other deal blockers to surface? If not, I'll close this thread and follow up in deal desk.
+
+Kelsey (Solutions): none from my side.
+
+Leo (SalesOps): none.
+
+Maya (AE): cool, closing — will ping if anything changes. :eyes:

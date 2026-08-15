@@ -1,0 +1,58 @@
+eng-runtime
+
+ashley: quick heads up — CI canary for mixtral-moerouter rolled back. p95 latency jumped ~45% after last kernel change. noticing a lot of small requests getting serialised into single-host hotspots.
+
+jia: saw that in traces too. repro steps: run mixtral 64b tokens workload with batch_window=5ms, top_k=3. baseline (yesterday) p50=82ms p95=210ms, after change p50=95ms p95=305ms.
+
+perf-bot: Canary run summary: job/2026-03-17-evict-sim — errors 0, avg_tokens/s -12%, KV-evictions/s up 7.4x. link: https://perf.redwood/sessions/2026-03-17-evict-sim
+
+nate: got a small flamegraph from profiling: router softmax has wider tails after kernel reorder. suggests numerical drift on logits -> topk picks fewer experts -> load imbalance. attaching snip:
+```
+# flamegraph snippet
+router_softmax_kernel
+  softmax_reduce
+  topk_select
+  dispatch_copy
+```
+
+lina: also saw KV cache churn — per-expert cache eviction spikes correlate with hotspots. eviction_rate: 0.2% -> 7.4% as perf-bot said. that causes extra memcpy and slower dispatch.
+
+ashley: hypothesis: kernel reorder changed fp32 accumulation order -> softmax numeric shift for near-tied logits. effect amplified by top_k=3 and small batch sizes. options: increase top_k, add softmax_shift/temperature, or widen batch_window.
+
+jia: short experiment proposal: A) softmax_shift = -0.05, temperature = 0.9; B) top_k = 5; C) batch_window = 8ms; D) expert_parallelism = 2 for hot experts. run each for 30m canary.
+
+nate: agree. also try enabling per-expert kv_reserve=1.5x for hot experts to reduce eviction thrash. small config snippet to test: 
+```
+moe_router:
+  top_k: 5
+  softmax_shift: -0.05
+  temperature: 0.9
+  batch_window_ms: 8
+expert_pool:
+  default_parallelism: 1
+  overrides:
+    hot_experts: { parallelism: 2, kv_reserve_factor: 1.5 }
+kv_cache:
+  eviction_policy: lru_ttl
+  ttl_ms: 600000
+```
+
+lina: will add counters: per-expert dispatch_count, kv_hits, kv_evictions, dispatch_latency_histogram. need those before canary.
+
+ashley: timeline: add counters now, schedule the four-canary run at 03:30 UTC tomorrow. if A/B shows top_k=5 or softmax_shift fixes imbalance w/o increasing token cost -> prefer softmax_shift because it doesn't change routing fanout.
+
+jia: one more note — kernel revert is an option but costly. try config knobs first. if we can't recover p95 within 10% of baseline we revert.
+
+sre-bot: creating incident stub for tracking: INC-2026-1143 (mixtral router perf regression). paged oncall.
+
+nate: quick bookmark — observed off-by-epsilon effect in fhqint kernel historically (see ticket #3512). might be same pattern.
+
+ashley: ok — volunteers? jia + lina to run counters and start canary, nate to push experiment config. I'll own rollback plan and incident doc.
+
+jia: starting counters now. ETA ~45m.
+
+lina: preparing canary config, will drop link here when ready. :gear:
+
+perf-bot: note: update perf dashboard to show topk fanout and per-expert qps.
+
+ashley: thanks all — let's keep thread updates short. post results + perf graphs in this thread. :thumbsup:

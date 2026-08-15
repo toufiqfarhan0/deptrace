@@ -1,0 +1,60 @@
+eng
+
+Maya Patel: Quick sync — we want to start a region-aware canary for model v13 today. Plan: 5% NA -> 5% EU -> 2% APAC over 2h windows. Reply with +1/concerns.
+
+Samir Gupta: +1. Which feature flag and where is the rollout config?
+
+Maya Patel: Flag is `feature/model_v13_canary`. Config in infra-configs -> `canaries/model_v13.yaml`. Minimal snippet below: 
+
+```
+flag: feature/model_v13_canary
+steps:
+  - region: na
+    percent: 5
+    hold_minutes: 120
+  - region: eu
+    percent: 5
+    hold_minutes: 120
+  - region: apac
+    percent: 2
+    hold_minutes: 120
+rollback_triggers:
+  - metric: error_rate_1m
+    operator: '>'
+    threshold: 0.015
+  - metric: p95_latency_ms
+    operator: '>'
+    threshold: 800
+  - metric: quality_delta_pts
+    operator: '<'
+    threshold: -2
+```
+
+Juan Rodriguez: Two quick checks: 1) can we short-circuit EU if we hit quota throttles? 2) who executes the initial flip?
+
+Tasha Lee: For quota throttles we have a routing policy to fallback to a smaller quantized variant — added note in config to route to v13-quant. I can flip NA and watch for the first 30m, then hand off to oncall for overnight.
+
+oncall-bot: IncidentOps: paging schedule updated — oncall rotation for 03/18 includes Tasha Lee (primary) and Juan Rodriguez (secondary).
+
+Samir Gupta: Smoke test for verification: 
+```
+curl -X POST https://api.redwood-inference.internal/generate \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"model":"model-v13","input":"summarize: quick test"}'
+```
+
+Maya Patel: Rollout timelines: start NA @ 14:00 PT -> EU @ 16:30 PT (if NA stable) -> APAC next day 02:00 PT. Please call out any calendar conflicts.
+
+Juan Rodriguez: Noted, I'll monitor latency dashboards + model-quality evals (prompt-set: regressions/smoke-100). If I see quality_delta_pts < -1 I'll flag immediately.
+
+Tasha Lee: I'll add a brief runbook section under the canary config and post link after creating: https://runbooks.internal/redwood/canaries/model_v13 (WIP).
+
+Maya Patel: Approve to proceed at 13:45 PT. If no objections by then we start the NA flip at 14:00. :thumbsup:
+
+Samir Gupta: ack
+
+Juan Rodriguez: ack
+
+Tasha Lee: ack — will be standing by for metrics and can do manual rollback if needed.
+
+oncall-bot: Reminder scheduled: Tasha Lee will receive metric alerts for 1762107777-canary-v13 for the next 6 hours.

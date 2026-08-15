@@ -1,0 +1,62 @@
+eng-runtime
+
+sanjay: Heads-up — after the CUDA 15.2 driver roll in us-west we saw kernel selection flip for mid-length sequences (32-256) on H100. p50 token latency +18% and throughput -22% on the generation benchmark.
+
+maria: yikes. is this the autotuner picking aten paths instead of our fused kernels?
+
+kevin: looks like it. profiler shows increased kernel_launch time and more small kernel dispatches. KV cache prefetch hit-rate is fine, but the per-step kernel overhead is higher.
+
+olivia: I pulled a flamegraph: most time now in `aten_matmul_kernel` vs `fused_attn_unfused`. sequencing histogram shifted to favor a different tiling heuristic from the driver.
+
+sanjay: exact. autotune telemetry shows the ranking score for our fused path dropped after the driver NVRTC behavior changed. the heuristic that used device_pci_brand+sm_version tripped differently.
+
+kevin: repro script here: ```bash
+# run on h100
+python perf/run_gen.py --model redwood-small --seq 128 --batch 4 --gpu 0
+``` got the logs attached.
+
+maria: can we force the old kernel path while we triage? a flag or env override?
+
+lee: yes, there's `RW_KERNEL_PREF` env we use in canaries. set `RW_KERNEL_PREF=fused` to pin. also can flip `AUTOTUNE_DISABLE=true` to force static picks.
+
+sanjay: ops, can we patch the deployment with `RW_KERNEL_PREF=fused` for the canary shard and see if p50 goes back down?
+
+infra-bot: deploybot: will start canary patch to cluster h100-canary-2 in 2m. patch: set RW_KERNEL_PREF=fused on agent image rw-serving:stable.
+
+kevin: while canary runs, I'll dig into the autotuner scoring delta. hypothesis: driver changed PTX JIT scheduling so small kernels now have higher latency variance, autotuner penalized fused path because its kernel latency sample had higher outliers.
+
+olivia: if that's true, a short-term fix is to change the autotune scoring to prefer lower median latency over lower P95. that'll stabilize picks across noisy driver changes.
+
+maria: agree. but that's a config-level fix; we should also plan a rollback of the driver if it's clearly the root cause. do we have rollback plan/criteria?
+
+lee: ops: driver rollback policy — if canary fails to recover (<5% latency improvement) or error rate increases, rollback window opens. need oncall approval + infra-sig signoff.
+
+sanjay: propose attack plan:
+1) pin kernel via `RW_KERNEL_PREF` for all canaries immediately
+2) tweak autotune scoring to median-biased for next 24h
+3) run longer perf sweep (seq 8/32/128/512) and KV-cache workloads
+4) if no improvement, schedule driver rollback to 15.1 in maintenance window
+
+kevin: also add telemetry: log selected kernel id + autotune score on every model boot so we can replay decisions.
+
+olivia: added quick patch to scoring in sandbox. early numbers: median latency back within 2% of baseline, throughput recovers ~19% on 128 seq.
+
+maria: nice. ops, proceed with canary patch; ping me when 3/3 canaries look good then we push to prod.
+
+infra-bot: deploybot: canary patch applied to h100-canary-2, h100-canary-5, h100-canary-7. healthchecks running.
+
+lee: monitoring: dashboards updated to show kernel_id and median_latency per route. alert if median > baseline*1.12 for 15m.
+
+sanjay: if driver rollback needed, who owns the rollback? infra + hw-ops. timeline estimate ~2 hours including validation.
+
+maria: also file an upstream bug with Nvidia with the kernel-launch latency traces and our repro scripts.
+
+kevin: noted. I'll open a ticket with attachments.
+
+olivia: small note — KV cache prefetch heuristics survived, but batching heuristics saw more fragmentation. we should run a batching sweep to retune batch windows after scoring tweak.
+
+sanjay: thanks everyone. next steps: (a) confirm canary perf in 30m (b) if stable, roll scoring config to prod (c) run broad sweep and only rollback driver if we get no improvement. keep thread updates short.
+
+maria: ping me when infra-bot posts canary results.
+
+infra-bot: perf-checker: canary metrics (30m): p50 tokens +1.5% vs baseline, throughput -2% -> within acceptable window. alert_state: OK.

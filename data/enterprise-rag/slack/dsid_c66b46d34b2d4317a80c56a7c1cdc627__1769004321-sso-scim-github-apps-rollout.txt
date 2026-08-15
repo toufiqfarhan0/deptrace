@@ -1,0 +1,37 @@
+eng-security
+
+maya: Quick heads-up — security is rolling out org-level GitHub SSO enforcement + SCIM provisioning next Wed 2026-02-04 22:00 UTC. We'll also onboard the 'redwood-ci' GitHub App and decommission legacy PAT-based service accounts. Expect a ~15-30m org settings window.
+
+jordan: Thanks Maya — is this tied to the CI runner token changes or separate? Do repos need manual changes?
+
+maya: Separate from the runner token migration. Repos that rely on PAT-based service accounts for automation will lose access unless we switch them to the new GitHub App or app installations. We built a migration helper script and a scanner to find at-risk repos. Runbook: https://go.redwood/runbooks/sso-scim-migration
+
+samir: What about third-party integrations that don't support GitHub Apps (eg legacy Jira connectors)?
+
+olivia: We did an audit of high-risk apps. For anything that can't be migrated, there's an exceptions workflow — open a request in #eng-security-exceptions by Mon EOD. We'll evaluate and provide temporary controls.
+
+jordan: Is there a safe way to preview which repos will break? I'd like to run that before the org change.
+
+maya: Yes — use the scanner locally: 
+```
+python infra/tools/gh_scim_scan.py --org redwood-inference --output scim-report.csv
+```
+I'll also run the scan this afternoon and attach the CSV to the runbook.
+
+deploy-bot: Scheduled maintenance: GitHub org policy enforcement scheduled Wed 2026-02-04 22:00 UTC. Estimated duration: 30m. Ticket: JIRA-8421
+
+kai: If something goes wrong during enforcement, what is the rollback plan?
+
+maya: Rollback is immediate disable of enforcement (takes ~2s) + run the permission-restore script we snapshot before the change. Runbook section 'rollback' has exact commands and who to call.
+
+samir: Can we do a canary on a couple of teams (platform + internal-tools) first, rather than org-wide at once?
+
+maya: Yep — plan is to canary to platform and internal-tools for 24h. If green, we'll widen. Canary list and criteria are in the runbook.
+
+olivia: We'll send a short heads-up email to Product and Support teams tomorrow with steps for common integrations.
+
+jordan: I'll coordinate infra to run the scanner and open PRs to swap automations to app installations.
+
+maya: Perfect — please tag me in any high-risk repos. Also: if you manage any service accounts, add them to the migration spreadsheet in the runbook so we can track. :thumbsup:
+
+maya: TL;DR: SSO enforcement + SCIM onboarding, Feb 4 22:00 UTC, canary first, migration tools + rollback available, exceptions process open.

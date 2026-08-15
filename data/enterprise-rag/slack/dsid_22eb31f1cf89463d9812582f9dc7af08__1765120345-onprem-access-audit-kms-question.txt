@@ -1,0 +1,36 @@
+eng-security
+
+samir: Heads-up — a large on‑prem customer reported that their onprem admin role could not rotate KMS keys via the private control plane. They get a 403 with "permission_denied: kms.keys.update" right after we applied the VPC allowlist change yesterday. Anyone seen this pattern?
+
+nina: Which customer / env? Got any request IDs or logs? Could be principal mapping got dropped during the RBAC refactor last week.
+
+audits: Audit snippet from control-plane logs (redacted):
+```
+2026-01-29T14:12:03Z principal=serviceAccount:customer-pcp-admin@c.example.com action=kms.keys.update resource=projects/cust/locations/global/keyRings/r1/cryptoKeys/key1 result=DENIED reason=policy:principal_not_mapped_to_role
+```
+
+maria: That "principal_not_mapped_to_role" is the key. We shipped the new role-binding scheme in the pcp admin refactor; some legacy principals (onprem service accounts) weren't included in the new binding generator. VPC allowlist change probably surfaced it because the allowlist now forces bindings to be validated against the control plane mapping before network checks.
+
+samir: So the flow is: allowlist check -> fetch principal->validate role mapping -> then KMS permission check. If mapping missing, we short-circuit with DENIED. Makes sense. Is this a config bug or a missing fallback?
+
+maria: Proposing two fixes: 1) emergency fix: add explicit binding for legacy onprem service accounts to the "onprem_admin" role in the private control plane. 2) medium-term: update binding generator to include legacyPrincipalSet and add a migration job that backfills mappings for existing customers. Also add an eval to Redwood Optimize to detect key rotation regression. Example emergency binding: 
+```json
+{
+  "role": "onprem_admin",
+  "members": [
+    "serviceAccount:customer-pcp-admin@c.example.com",
+    "serviceAccount:legacy-onprem-sa@c.example.com"
+  ],
+  "conditions": {"env": "private"}
+}
+```
+
+josh: I'll open a PR for the emergency binding + test that simulates KMS rotation in a VPC-allowlisted private control plane. Also adding an audit-alert rule: if action=kms.keys.update AND result=DENIED AND reason contains "principal_not_mapped_to_role" -> page security-oncall.
+
+samir: Good. Also need to confirm KMS IAM grants didn't regress. @maria can you validate that the actual KMS policy includes roles/cloudkms.admin or equivalent for onprem_admin after binding added?
+
+maria: Yep will validate and add a smoke test.
+
+deploy-bot: Created INC-2026-0987 (private-controlplane-kms-access) and linked PR #4312.
+
+josh: assigning to @maria for review, tagging eng-ops + security. Will patch tomorrow morning PST, then coordinate a short maintenance window for onprem customers to apply the binding. :white_check_mark:

@@ -1,0 +1,48 @@
+sales
+
+sarah (sales): Hey team, ACME POC is getting intermittent 429s on /v1/embeddings during their batch runs. Demo tomorrow morning — can we triage now?
+
+ben (sre): Which route exactly? per-route cap, tenant quota, or concurrency? Any request ids or sample logs?
+
+sarah (sales): It's the embeddings route specifically. Error from their side:
+`HTTP 429: rate limit exceeded: per-route cap`
+They send batches of ~32 embeddings concurrently (8 threads).
+
+maria (customer): example request id: r-0f3a1b2c (10:17 PST). Payload ~120k tokens total across the burst.
+
+kai (eng): I'm checking runtime logs now. Can someone paste the exact request headers (x-request-id) if available?
+
+ben (sre): Found entries matching r-0f3a1b2c. Ingress log snippet:
+```
+time=2026-08-12T18:17:03Z level=warn quota_check route=/v1/embeddings tenant=acme tokens=120345 window=60s per_route_cap=100000 result=deny
+```
+Looks like per-route token cap of 100k/60s was exceeded.
+
+kai (eng): That matches. Their client concurrency * batch size is multiplying token consumption. Per-route cap triggered before tenant quota. Two remediation paths: client-side throttling (reduce concurrency/batch) or temp bump per-route cap for demo.
+
+olivia (acctmgmt): If we bump, do we need an approvals workflow? Also want to flag potential billing impact.
+
+ben (sre): For an emergency demo bump we can apply a soft per-route increase scoped to tenant `acme` for a short window. Will reserve the increase so it doesn't steal capacity from others. Command I'm going to run:
+```
+/admin/update-route-cap --tenant acme --route /v1/embeddings --cap 500000 --window 60 --scope temporary --expires 2026-08-13T04:00:00Z
+```
+
+ben (sre): Applied. Monitor tailing logs now.
+
+kai (eng): Also pushing a quick mitigation suggestion for their integration: cap concurrency to 2 and reduce batch to 16, or implement client-side token budgeting + exponential backoff. Example patch:
+```
+// pseudo
+const MAX_CONCURRENCY = 2
+await pLimit(MAX_CONCURRENCY)
+// keep batch <= 16 for embeddings
+```
+
+maria (customer): We reduced concurrency and batch size as advised. After the bump the 429s stopped during the demo load. Thank you! :tada:
+
+sarah (sales): Awesome — please capture the exact token/time profile so we can scope a permanent change and update pricing.
+
+olivia (acctmgmt): I'll open a billing note and propose two options: 1) short-term committed burst + overage, 2) move to Dedicated for predictable throughput.
+
+ratebot: automated note: quota-change applied by ben (sre) at 2026-08-12T18:14:23Z (per-route cap increased for tenant=acme)
+
+sarah (sales): Closing this swarm — follow-up meeting set to scope permanent quota, pricing, and client-side best practices. Thanks all!

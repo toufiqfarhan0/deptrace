@@ -1,0 +1,67 @@
+vendors
+
+maya_procurement: Heads up — vendor just sent a revision: allocation for our Q2 H100 top‑off reduced by 12 units, and they propose a split ship (sea for bulk, air for the 12 prioritized units). Need a decision today, customs + RMA implications unclear.
+
+alex_ops: Ouch. Which regions are impacted? Any ETA deltas?
+
+maya_procurement: EU & APAC mostly. Sea shipment now ETA ~18 days, air for prioritized ~4 days. Vendor flagged pending customs docs for EU (HS code recheck).
+
+liam_vendor: Sorry about the bump — DHL gave us an air uplift window but insurance cost + brokerage add ~€1.8k for the 12 units. Sea option is cheaper but delays delivery and requires consolidated RMA paperwork for the returns flow. We can attach provisional AWBs for the air pieces.
+
+alex_ops: Can you break out the numbers per unit? Need to compare against lost revenue risk if clusters starve.
+
+liam_vendor: Sure — rough calc: air uplift + expedited brokerage = ~€150 per unit (shipping) + €1,200 one‑time brokerage/handling for EU customs. Sea route = ~€40 per unit + possible port storage fees (~€80/day after free days). Insurance for air is included; sea needs separate marine insurance (~€350 for the lot).
+
+sophia_logistics: For EU, customs paperwork hinges on HS 8471 vs 8542 classification for GPUs. If HS 8542 we pay higher duty and slower clearance. @liam_vendor can your forwarder confirm HS declared on commercial invoice?
+
+liam_vendor: Forwarder confirms declared HS 8471 in the draft CI, but customs flagged mismatch at origin — they asked for component docs. We can request correction but it adds 24–48h.
+
+maya_procurement: From procurement POV: air for 12 prioritized to avoid cluster degradation in EU regions. Can we reduce brokerage by splitting AWBs across two carriers (partial consolidation)?
+
+liam_vendor: Yes — split into two AWBs reduces single brokerage invoice but increases handling fee ~€300. Net still cheaper than full single‑broker surge on air.
+
+alex_ops: Operational ask — if those 12 arrive, we need serial mapping + RMA label flow ready. Current depot expects vendor RMA manifest format. Can opsbot create a temporary manifest template?
+
+opsbot: Generated temp RMA manifest template: https://redwood.internal/sops/rma-manifest-temp (use CSV columns: serial, model, vendor_awb, depot_id, return_mode).
+
+sophia_logistics: We'll need to pre‑authorize depot space for immediate intake to avoid demurrage. I can hold 6 intake slots day of arrival; need arrival ETA + AWB numbers 24h prior.
+
+maya_procurement: @liam_vendor please push AWB details and provisional commercial invoice by EOD. Also confirm whether vendor will accept partial RMA returns routed back to origin forwarder or require depot return to vendor warehouse (affects lead time).
+
+liam_vendor: Confirming: vendor accepts depot returns for DOA/RMA cases within warranty window, but origin forwarder returns will be faster for mass returns. For mixed routing we propose: inbound air units -> deploy; failed units -> depot -> vendor pickup weekly (consolidated).
+
+alex_ops: That pickup cadence is okay if we get temporary loaner policy for EU clusters to avoid capacity dips while returns float. Any loaner cost?
+
+liam_vendor: Loaner units available at no extra charge for first 14 days, after that €200/unit/week. Need SKUs locked.
+
+maya_procurement: Good. Final ask: vendor to send a short note confirming insurance coverage, declared HS, and sample AWB numbers. If we get all three today, proceed with air split.
+
+liam_vendor: Will send doc + AWBs now. Sample AWBs in draft:
+
+```
+AWB1: DHL 123-45678901
+AWB2: DHL 123-45678902
+AWB3: FFW 987-65432100
+```
+
+liam_vendor: Also attaching provisional CI reference: INV-RED-2026-331 (declares HS 8471).
+
+sophia_logistics: Once AWBs arrive I'll prebook intake slots and trigger depot pre‑labels via opsbot.
+
+opsbot: Pre‑labels generated (temporary): https://redwood.internal/labels/pre-12345.csv — replace with final AWB to generate manifest.
+
+alex_ops: Ping me when AWBs + CI arrive. If customs flags reclass again, we may have to fallback to expedited sea (ugh).
+
+maya_procurement: Thanks all — I'll wait for the vendor confirmation and then route approval to finance for the extra €1.8k uplift. :thumbsup:
+
+liam_vendor: Sent confirmation via email + uploaded docs to shared drive. Notifying forwarder to prep corrected CI if customs requests it. Apologies for churn.
+
+alex_ops: Solid — once those 12 clear, we should run a quick healthcheck on the EU GPU pool and enable auto‑borrow from US spare pool if shortages persist.
+
+sophia_logistics: Noted. I'll coordinate depot slots and weekly pickup cadence — will update thread with final AWB+intake slot times.
+
+maya_procurement: Closing loop: finance approved uplift, proceed with split air shipment. Please cc me on final AWB and CI.
+
+liam_vendor: Roger — final AWBs and CI uploaded at 1788088125.
+
+opsbot: Thread archived to vendors:shipping at 1788088250.

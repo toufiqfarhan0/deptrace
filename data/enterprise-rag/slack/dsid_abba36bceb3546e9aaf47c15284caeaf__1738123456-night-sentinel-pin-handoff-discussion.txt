@@ -1,0 +1,25 @@
+eng-runtime
+
+maria: quick sync — planning to put quant-kernel v4.3 into the night sentinel slot (00:30-02:00 UTC). proposing a 3% canary -> 20% ramp -> sticky pin for 2h if green. deploying to staging now for last smoke.
+jonathan: ack. what's the rollback signal set?
+lee: minimal: p95 token latency +80ms over baseline OR 500+ errors/5m, also any correctness regression on the eval set.
+sam: add a pragmatic traffic hold: if canary fails, deploybot should pin back to runtime-engine@v4.2 and abort the rollout automatically. can we automate that?
+maria: yes, deploybot rule will be: if error_rate > 1.0% OR p95_delta > 80ms for 10m, auto-pin to v4.2 and throttle traffic to 0 for the new variant. manual rollback allowed earlier.
+lee: can we also watch the prefix-cache miss rate? quant changes sometimes bump small-seq cache behaviour. threshold: +15% miss rate.
+jonathan: noted. i'll add SLO alarms and a short-circuit playbook to the runbook. tagging oncall for the night bucket.
+deploy-bot: pinned runtime-engine@v4.3-canary (scope: night-sentinel, slice: 3%, ttl: 7200s) :thumbsup:
+maria: staging smoke passed: `embed-smoke` tokens ok, no OOM, kv-cache stable. moving to canary at 3% in 15m.
+sam: drafting release-note blurb: "kernel: quant v4.3 — improved matmul throughput, tightened FP->int rounding, experimental prefix-cache tuning". will circulate in #eng-releases.
+lee: one more ask: attach the eval-diff for the top-50 prompt set to the rollout metadata. if any BLEU/qa-drop > 0.5% flag.
+maria: will attach. also adding a short handover for midnight: if oncall not responding, trigger automatic revert after the TTL.
+jonathan: double-checked thermal gating for night region: if GPU temp alerts spike, abort the canary.
+sam: ok added to release note: rollback criteria and pin TTL behavior. also uploading the brief to the release tracker.
+maria: starting the 3% canary now. ping here when you see any odd telemetry.
+jonathan: watching dashboards. alert hooks set.
+lee: watching eval diffs — nothing suspicious yet.
+deploy-bot: canary traffic increased to 20% (timestamp 1738123500) per rollout plan.
+maria: holding. if no alarms by 00:50 UTC we sticky-pin for 2h and promote to dedicated night window.
+sam: after sticky-pin we'll publish the release note and a short ops blurb.
+jonathan: thumbs up. standby for any roll actions.
+lee: thanks — will follow up with a post-roll metric snapshot in morning.
+maria: thanks team, keeping this thread as single source for the rollback decisions / notes.

@@ -1,0 +1,148 @@
+eng-platform
+
+Allison Grant: hey folks — need a quick dashboard pass for the FP8/INT8 sprint.
+
+Looking for TTFT + TPOT + tokens/s broken down by:
+- model (top hosted list)
+- GPU SKU (H100 / A100 / L4)
+- kernel mode (baseline / fp8 / int8)
+- region (at least us-east / eu-west)
+
+This is for both benchmark runs and perf canary rollout monitoring. Can someone help spec + wire a Grafana dashboard? Ideally linkable in the runbook + canary page.
+
+Julian Moore: +1. we just added scheduler prefill/decode split metrics (queue depth + backpressure counters) and it’d be nice if the dashboard has those too, at least as “debug” panels.
+
+Marcus Reed: do we already have `kernel_mode` as a label on the runtime histograms? i know PR for tagging is in flight but not sure it hit prod.
+
+Rina Kobayashi: right now in staging we have `quant_mode=fp8|int8|fp16` on some counters but not consistently on histograms. can do a first pass with what’s available, but the “real” breakdown will need the metrics-tagging PR (i think 19934) to land.
+
+Allison Grant: yep, that’s the thing. SRE is asking for “no more screenshots” and wants a single place to triage regressions by model/GPU/mode. Even if the first version is partial, let’s at least have the skeleton + filters.
+
+Rafael Mendes: from canary side: must have p95 TTFT and p95 TPOT with a baseline overlay. Also error rate. If we don’t see “baseline vs canary” on the same panel it’s hard to justify rollbacks.
+
+Vanessa Ortiz: capacity question: are we slicing by cluster too? would prefer region-level first to avoid leaking which clusters are in use (and reduce cardinality).
+
+Allison Grant: agree — region is enough. cluster can be a hidden debug var if we really need it.
+
+Irene Choi: fwiw H100 nodes differ by driver in a couple clusters right now (we’re pinning in the benchmark runner but not everywhere). if you can show `driver_version` somewhere it’ll save time when variance pops up.
+
+Marcus Reed: careful on cardinality. adding `driver_version` label to all the histograms will explode. could show it as a table from build metadata / node exporter? or just as an annotation when the runner is pinned.
+
+Allison Grant: ok let’s scope:
+1) main panels (canary): TTFT p50/p95, TPOT p50/p95, tokens/s, error rate
+2) debug: prefill/decode time breakdown, queue depth, GPU util/mem, saturation (if we have it)
+3) templating vars: model, gpu_sku, kernel_mode, region, cohort (baseline vs canary)
+
+Rina — can you confirm exact metric names we should use?
+
+Rina Kobayashi: current names in prod:
+- `rw_inference_ttft_ms` (histogram)
+- `rw_inference_tpot_ms` (histogram)
+- `rw_inference_tokens_per_sec` (gauge)
+- `rw_inference_requests_total{status=...}`
+labels: `model`, `region`, `gpu_sku` exist. `kernel_mode` only in staging for now.
+
+we can still do per-model/per-gpu dashboards now and leave kernel_mode as “coming soon” var.
+
+Julian Moore: scheduler metrics (new):
+- `rw_sched_prefill_ms` (hist)
+- `rw_sched_decode_ms` (hist)
+- `rw_sched_queue_depth` (hist)
+- `rw_sched_backpressure_events_total` (counter)
+labels include `model`, `region`, `gpu_sku` (same set)
+
+Marcus Reed: for overlay baseline/canary, we can use `cohort` label? do we have that consistently?
+
+Rafael Mendes: canary adds `cohort=perf-canary` on the canary fleet only. baseline doesn’t have cohort label (empty). we can either treat “missing cohort” as baseline or we add a relabel rule to set cohort=baseline. i’d prefer the latter.
+
+Allison Grant: +1 relabel baseline. otherwise PromQL gets gross and people copy/paste it wrong.
+
+Grafana Bot: Allison Grant created dashboard draft “FP8/INT8: Runtime Perf Canary (WIP)” in folder “Serving Runtime / Perf”.
+
+Allison Grant: ok, draft is up but it’s ugly. here’s what I have so far:
+https://grafana.redwoodinference.net/d/rt-fp8int8-canary/runtime-fp8-int8-canary?orgId=1
+
+Notes / gaps:
+- kernel_mode var is stubbed (no data yet)
+- TTFT/TPOT panels work but no baseline overlay yet
+- tokens/s is noisy when sample is small
+
+Can someone sanity check the queries?
+
+Marcus Reed: looking. for TTFT p95 you have:
+`histogram_quantile(0.95, sum by (le) (rate(rw_inference_ttft_ms_bucket{model=~"$model",region=~"$region",gpu_sku=~"$gpu"}[5m])))`
+
+You’re missing cohort + also need to preserve cohort in the `sum by` so we can compare baseline vs perf-canary on same graph:
+
+Try:
+`histogram_quantile(0.95, sum by (le, cohort) (rate(rw_inference_ttft_ms_bucket{model=~"$model",region=~"$region",gpu_sku=~"$gpu",cohort=~"$cohort"}[5m])))`
+
+Then set `$cohort` default to `baseline|perf-canary`.
+
+Allison Grant: yep that’s better. i’ll patch.
+
+Rafael Mendes: also set min sample size? we had false positives from tiny volumes. even a panel that shows request count over the window would help.
+
+Allison Grant: good call. adding “reqs/min” and “tokens/min” panels.
+
+Rina Kobayashi: for request rate:
+`sum by (cohort) (rate(rw_inference_requests_total{model=~"$model",region=~"$region",gpu_sku=~"$gpu",cohort=~"$cohort"}[5m]))`
+
+Error rate panel:
+`sum(rate(rw_inference_requests_total{status=~"5..",...}[5m])) / sum(rate(rw_inference_requests_total{...}[5m]))`
+
+Make sure to exclude `status="canceled"` if that’s present in the series.
+
+Julian Moore: if you have room, add a panel for “prefill fraction”:
+`sum(rate(rw_sched_prefill_ms_sum{...}[5m])) / (sum(rate(rw_sched_prefill_ms_sum{...}[5m])) + sum(rate(rw_sched_decode_ms_sum{...}[5m])))`
+
+helps explain cases where kernels win microbench but not end-to-end.
+
+Allison Grant: added. also dropped in queue depth p95.
+
+Irene Choi: on the driver stuff: can we at least annotate dashboard with runner metadata when it’s a benchmark run? (not prod traffic). we have the benchmark artifact metadata json; could scrape into Loki and show a table.
+
+Allison Grant: for now I’ll add a text panel: “benchmark runs must be pinned driver/CUDA; see benchmark-runner PR-851”. Longer term we can add a Loki panel.
+
+Vanessa Ortiz: +1 keep it simple for sprint. i mostly want something that tells us “is eu-west worse on H100 fp8 canary” quickly.
+
+Allison Grant: updated dashboard with cohort overlay + req count.
+
+Link (v2):
+https://grafana.redwoodinference.net/d/rt-fp8int8-canary/runtime-fp8-int8-canary?orgId=1&refresh=30s
+
+Panels:
+- TTFT p50/p95 (baseline vs perf-canary)
+- TPOT p50/p95 (baseline vs perf-canary)
+- tokens/s (avg) + req/min
+- error rate (5xx)
+- debug row: prefill ms, decode ms, prefill fraction, queue depth p95, backpressure events
+
+kernel_mode is still hidden until tagging lands.
+
+Marcus Reed: looks good. one nit: tokens/s panel should also split by cohort, otherwise people assume it’s comparable.
+
+Allison Grant: fixed.
+
+Rafael Mendes: can we add a quick “diff” stat? e.g., canary p95 / baseline p95 for TTFT + TPOT. makes go/no-go faster.
+
+Allison Grant: added two stat panels at top:
+- TTFT p95 ratio (perf-canary / baseline)
+- TPOT p95 ratio (perf-canary / baseline)
+
+They’re crude but will help.
+
+Julian Moore: :thumbsup: also once kernel_mode label is live, we’ll want cohort *and* kernel_mode — i.e. baseline fp16 vs canary fp8 is the main compare.
+
+Rina Kobayashi: metrics-tagging PR should land tomorrow; once that’s in prod we can expose `$kernel_mode` var and add a “mode compare” row.
+
+Allison Grant: cool. i’ll hold off on extra panels until the label exists.
+
+Action items:
+- Allison: update runbook to link this dashboard
+- Rina: ping when kernel_mode tag is live; we’ll add the mode filter
+- Rafael: confirm cohort relabel rule for baseline (so queries don’t require missing-label hacks)
+
+Rafael Mendes: baseline relabel is in the canary config PR, should roll with next deploy. will confirm in #eng-sre when it’s in.
+
+Allison Grant: thanks all. please drop comments directly on the dashboard if you want changes; i’ll keep iterating as the sprint goes.

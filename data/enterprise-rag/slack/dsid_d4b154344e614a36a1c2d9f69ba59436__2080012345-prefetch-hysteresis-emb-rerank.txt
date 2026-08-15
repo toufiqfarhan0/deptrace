@@ -1,0 +1,46 @@
+eng-runtime
+
+maya: quick heads-up — after yesterday's kernel selector tweak on canary (prefer int8 path for small seqs) we saw a 9-12% p95 latency regression on the reranker embeddings endpoint for non-chat workloads. attaching quick profile summary.
+jin: ugh. saw that in the dashboard, thanks for flagging. is this only for short-seq rerank requests or for the whole traffic mix?
+maya: mostly short sequences (avg 64 tokens). long sequences (~512) unchanged. perf flame shows increased kernel-launch stalls during batch formation + more KV cache misses.
+carlo: interesting — could be the kernel fit causing more fragmented batches and higher kernel-switch overhead. any change to continuous-batcher config recently?
+maya: we toggled prefer_int8_kernel = true on canary. batcher config unchanged. queue logs show more small-window drains — prefill not holding to token budget.
+henry: logs? can you paste the batching metrics snippet?
+maya: sure:
+```
+batch_formation: avg_size=6 -> 3.2 after toggle
+token_budget_target: 512 -> configured 1024
+prefill_hysteresis_ms: 20 -> 0
+kvcache_hit_rate: 0.84 -> 0.61
+kernel_switches_per_sec: +18%
+```
+jin: dropping prefill_hysteresis to 0 would make the batcher over-eager to flush small batches when kernel decision delays occur. that matches the smaller avg_size.
+carlo: kvcache hit rate drop is concerning — int8 path might evict differently due to slot allocation differences on GPU, or we messed with KV layout.
+maya: confirmed — the int8 kernel uses a slightly different KV layout (compact per-shard) which increases eviction churn for short-lived tokens. hypothesis: more KV misses -> more recompute -> longer per-request time -> batcher times out.
+henry: makes sense. possible mitigations: 1) add hysteresis to prefill (don't flush until Xms after first token), 2) slot-aware prefetch (fill to min_batch_size before selecting kernel), 3) token-budget adaptive window that scales with observed KV hit rate.
+jin: I'd prefer (2) + (1). slot-aware prefetch: we reserve slots for requests until kernel decision completes, then commit the batch. prevents premature drain. hysteresis avoids thrash.
+maya: prototyping a slot-hold implementation now. quick pseudo:
+```
+# when request arrives:
+if batcher.slots_free>0:
+  reserve_slot(request)
+  start_kernel_probe(request)
+else:
+  enqueue(request)
+# flush rule:
+if now - first_reserve_ts > prefill_hysteresis_ms and reserved_slots>0 and (reserved_tokens >= token_budget_target or reserved_count >= min_batch):
+  flush_reserved()
+```
+carlo: add a guard to not hold beyond max_hold_ms to avoid latency blowouts for single-request tails.
+henry: let's A/B test: baseline canary (int8, no-hysteresis) vs int8+slot-hold+hysteresis vs fallback-to-fp16 if kvcache_hit_rate<70%. measure p95/p50 and kvcache_hit_rate and kernel_switches.
+ops-bot: deploy canary-210 started by maya — 2080012355
+maya: launched experiment with slot-hold=30ms, prefill_hysteresis=25ms, min_batch=8, max_hold=120ms. will watch for 2 hours.
+jin: also add metric for "reserved_but_evicted" to ensure we aren't increasing eviction churn by holding slots.
+henry: early numbers after 30m: p95 down ~6% vs int8-no-hysteresis, kvcache_hit_rate up to 0.78, avg_batch_size=6.7. still slightly worse than fp16 baseline but improving.
+carlo: good. if we still lag fp16, consider kernel fallback policy: prefer int8, but if kernel_switches_per_sec > threshold OR kvcache_hit_rate < threshold then use fp16 for that shard.
+maya: logged a follow-up ticket with experiment details and thresholds. next steps: roll adjustments to staging and run full traffic sim.
+jin: thanks — prioritize telemetry hook for reserved_slots and reserved_latency. small follow-up: update the rollout policy to allow automatic rollback if p95 regresses >5% for 10min.
+maya: noted. will post final results in ~3h.
+henry: :thumbsup: good investigative thread. let's sync after experiment and decide whether kernel selection needs a persistent config change or a dynamic policy.
+carlo: also add a note to docs about kernel-specific KV layout differences so model onboarding is aware.
+maya: agreed. ping me if you want the flame graphs. end of thread for now.

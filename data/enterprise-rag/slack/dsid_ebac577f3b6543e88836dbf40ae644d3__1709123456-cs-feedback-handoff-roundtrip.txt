@@ -1,0 +1,55 @@
+customer-success
+
+aisha: Hey team — quick post-call notes from Novus Health onboarding today. They had three recurring asks we should capture into product: 1) clearer per-route cost visibility in the console, 2) an embeddings staleness alert (they push nightly data and need a TTL check), 3) an easier way to pin older model versions for fallback during rollout.
+
+marco: Thanks — can you paste the raw bits so I can turn into a ticket? Also cc'ing @jin for rollout/pinning details.
+
+aisha: Pasting the verbatim snippets we captured: 
+- "Our finance team needs per-route cost lines, we can't tie spikes to specific feature flags."
+- "We have nightly ETL; embeddings go stale and relevance drops after ~48h."
+- "When we roll a new model we want a one-click pin to previous stable version for 1:1 fallbacks."
+
+jin: +1 on the pin request — sounds like a simple API toggle and console affordance. Could be scoped as UI + backend safety check.
+
+priya: For the embeddings TTL: do they want an alert or an automated refresh? Asking because auto-refresh could be infra-heavy.
+
+aisha: They asked for an alert first (email/console) with recommended thresholds, then later consider auto-refresh.
+
+marco: Ok, triage suggestion: 
+- Per-route cost visibility = priority P1 for onboarding cohort (finance blockers).
+- Embeddings staleness alert = P2 (observability + alerts).
+- Pin older model versions = P2 (UX + small API change).
+
+marco: Assigning owners: per-route cost -> @aisha (CS) + @product_finance; staleness alert -> @priya (DevEx); model pinning -> @jin (Onboarding/Product infra).
+
+aisha: Created a lightweight capture template. Copy-paste for tickets: 
+```
+Customer: Novus Health
+Problem: [short description]
+Impact: [who/how many workflows affected]
+Ask: [customer asks]
+Suggested priority: [P1/P2]
+Notes: [quotes, links]
+```
+
+marco: Perfect. Can you open cards in our board and drop links here? Recommend one epic for "onboarding telemetry & safety" and individual tasks as subtasks.
+
+aisha: Cards created: https://ourboard.example/epic/8342 (Onboarding telemetry & safety) and tasks: https://ourboard.example/task/9123 (Per-route cost) https://ourboard.example/task/9124 (Embeddings TTL alert) https://ourboard.example/task/9125 (Model pin UI). Added initial estimates and customer priority.
+
+jin: Quick note on rollout: model pin should default to require two-step confirmation and a recovery window param. I'll sketch API in the task comments.
+
+priya: For the embeddings alert, I'll propose a lightweight eval: monitor top-k similarity drop > X% over 24h then fire alert. Will post suggested threshold after digging into their dataset size.
+
+survey-bot: quick-poll: Which item should we try to ship as a follow-up hotfix this sprint? React with :one: Per-route cost, :two: Embeddings alert, :three: Model pin. Poll ends in 24h.
+
+aisha: FYI Novus is on a renewal checkpoint in 6 weeks. If we can land the per-route cost quickwin/visibility they flagged, it materially reduces churn risk.
+
+marco: Understood. Let's aim for a small console view for per-route cost (read-only) in this sprint, then iterate on export & filter next.
+
+aisha: I'll follow up with Novus to confirm the thresholds and offer a two-week pilot for the console view. Will report back here after the pilot kickoff.
+
+jin: Thanks. I'll drop initial API sketch by EOD.
+
+priya: I'll scope the alerting effort and link any infra needs.
+
+marco: Great thread — reassigning to the owners and closing the loop. :thumbsup:

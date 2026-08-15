@@ -1,0 +1,27 @@
+partnerships
+
+alex_cheng: Heads up — VendorX asked if we can coordinate a joint marketplace listing + HSM/KMS connector announcement next month. They want SSO + SCIM in the same roll.
+jamie_lewis: Sounds good. Do we have the SAML metadata finalized for VendorX? Need to share before vendor legal signs off.
+sara_ops: I have the metadata draft. Quick question: VendorX requires signed assertions and SP-initiated flows only. Is that supported by our IdP config?
+olga_sec: Yes — we support signed assertions and SP-init. Need to confirm algs: they want RSA-SHA256 and want x509 cert rotation every 90 days.
+alex_cheng: @olga_sec can you drop the cert rotation steps for their onboarding doc? VendorX ops will run it in their cloud.
+olga_sec: Will do. I'll paste the config snippet and a cron sample.
+jamie_lewis: For SCIM, VendorX expects group mapping for "engineers" and "platform-owners". Do we expose SCIM group push or just user attrs?
+sara_ops: We support groups in our SCIM endpoint (enterprise tier). We need to map our internal role -> SCIM group names; i'll prepare mapping table.
+ravi_partners: On the partner side they want the KMS/HSM integration highlighted in the listing — specifically mentioning FIPS 140-2 cert and HSM-backed keywrap. Can security confirm we can publicize that?
+olga_sec: We can confirm FIPS 140-2 validated HSM usage for key wrapping; cannot expose internal KMS endpoints. We'll provide an architecture diagram and compliance statement.
+alex_cheng: Great. Marketing wants a short blurb for the marketplace tile. Something like: "Redwood + VendorX: secure inference with HSM-backed key management and enterprise SSO + SCIM" — is that accurate?
+olga_sec: Accurate but add "customer-managed keys optional" if they want it clear.
+jamie_lewis: Timeline check: partner asked for marketplace submission by 2028-04-10. That gives us 3 weeks. Need SAML metadata, SCIM mapping, security blurb, and joint press draft by then.
+sara_ops: I'll open a small PR with the SCIM mapping and an example API call (curl) to provision a group.
+marketplace_bot: Reminder: marketplace listing schema requires a minimum 300-char description and at least two screenshots. See https://marketplace.example/guide
+ravi_partners: Can we include a short demo GIF of the onboarding flow? VendorX said yes if we keep it generic.
+ajex_typo: sorry typo — alex_cheng: +1 on the GIF. Keep user data redacted.
+jamie_lewis: Also need to confirm SSO test accounts. @VendorX will we get a staging SP? (ravi: can you chase?)
+ravi_partners: I'll ping their partner PM and ask for staging SP and test accounts today. ETA EOD.
+olga_sec: I'll prepare the SAML metadata and rotation instructions. Expect to drop them into the shared folder by tomorrow AM.
+sara_ops: PR link once ready: https://git.internal/redwood/integrations/vendorx/scim-mapping
+alex_cheng: Thanks team — next sync Friday 10:30am to finalize marketplace assets. If anything blocks earlier, flag here.
+jamie_lewis: Added to calendar. :thumbsup:
+marketplace_bot: Note: embargo window requested by VendorX until 2028-04-24 — add embargo tag when submitting.
+alex_cheng: Noted. We'll keep draft content internal until vendor confirms release date.

@@ -1,0 +1,36 @@
+eng-ml
+
+maya: Morning folks — quick async check (what I did / blockers / today). Onboarded synthia-v4-smallq and ran the nightly evals. Basic completions look fine but seeing entity-drop in long-context (>1024 tokens). Uploading a couple failing samples to the model-intake folder :eyes:
+
+sam: nice, can you paste one of the failing prompts/output inline? helps me triage faster
+
+maya: sure — example:
+```
+PROMPT: "Customer: My order 8921-XY, placed on Jan 3, should have a shipping code CN-42. Can you confirm?"
+EXPECTED: contains order id and shipping code
+MODEL_OUTPUT: "Sure, the order has been shipped."  <-- drops order id and code when context expands
+```
+
+ci-bot: nightly-evals/synthia-v4-smallq: completed — 42/50 tests passed, 8 regressions (regressions flagged under folder /ci/eval/regressions/6891234567). Full report: https://ci.internal/reports/6891234567 :warning:
+
+ravi: could be KV-cache alignment or quant mismatch with the smallq profile. Did we use the new prefix-truncate patch? @maya
+
+maya: yes using prefix-truncate v0.2.1 and smallq quant profile. The failures correlate with longctx shards that hit 2048 token boundary.
+
+ana: I'll take 2 of the regressions this morning — plan: repro locally with staging slot, test with/without prefix-truncate and with int8 fallback. If it's quant, we can push a quick reprofile.
+
+jordan: small ping — maya can you add a short note in PR #1234 describing the longctx repro steps? I'm queued for review but want to see how to test locally.
+
+maya: PR link: https://git.redwood/p/synthia/pulls/1234 — added repro steps and a tiny test. (Also added the failing sample under tests/longctx/8921.json) :thumbsup:
+
+sam: ack, will review after standup. No blockers from my side today — continuing with promptset curation for spanish-domain.
+
+ravi: blocking: need a staging gpu slot to repro with 8k context. I pinged eng-infra earlier — @eng-infra-bot any chance to reserve?
+
+eng-infra-bot: reserved: staging-gpu-3 for maya,ravi from now for 2h. If you need longer, reply here. :gear:
+
+maya: thanks — I'll start repro + debug. If I hit quant mismatch I'll try int8 fallback and report back here with before/after eval numbers.
+
+ana: i'll post findings and a short checklist so we can gate the rollout if we push a reprofile.
+
+jordan: thx team — keep updates short here, flag any urgent regressions and we'll triage.

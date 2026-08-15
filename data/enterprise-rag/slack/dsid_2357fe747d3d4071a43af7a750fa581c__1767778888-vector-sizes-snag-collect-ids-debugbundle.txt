@@ -1,0 +1,49 @@
+support
+
+alex: hey team — customer (Acme Search) reports rerank pipeline failing intermittently after embeddings. they send batched vectors (batch_size=16) and some requests return 400 'vector size mismatch'. example req ids: req_02b4f6a1, req_02b4f6a9. attaching server error snippet I grabbed.
+
+support-bot: got it — creating a ticket and tagging eng-runtime. please collect curl repro + request bodies, and any x-request-id headers from the client.
+
+maria: can you paste a minimal curl they used? also confirm model and client SDK version. sometimes SDKs add trailing commas in arrays.
+
+alex: here's the raw error we got from node gpu-07:
+```
+{"error":"vector length mismatch: expected 768 but got 769","request_id":"req_02b4f6a9","node":"gpu-07","timestamp":"2026-03-12T18:42:03Z"}
+```
+
+maria: ok that suggests a serialization bug on client side or an encoding/roundtrip extra token. try repro with this curl (note --compressed and no extra newline):
+```
+curl -i -X POST https://api.redwood.ai/v1/embeddings \n  -H "Authorization: Bearer REDACTED" \n  -H "Content-Type: application/json" \n  --data-raw '{"model":"vec-768","input":[[0.12,0.34,...]]}' \n  --compressed
+```
+
+devon: if you can share a minimal failing payload, I'll run it against a local inference replica. also check gzip middleware — we had a bug where Content-Encoding mismatch caused a byte shift.
+
+kai: to collect node logs for req_02b4f6a9:
+```
+ssh gpu-07
+sudo journalctl -u inference-serve -o cat | grep -n "req_02b4f6a9" -A6 -B3
+```
+and grab the raw HTTP body from /var/log/inference/raw_bodies/ if available.
+
+alex: customer says they're using python-sdk v0.7.3 and sending numpy arrays serialized with .tolist(). they said it worked earlier today. sample request id for a successful call: req_02b4f6a2
+
+maria: please get:
+- the original client payload (or mime-signed raw), 
+- the curl that reproduces, 
+- the x-request-id headers (x-rw-req) from the client logs,
+- and duration + node that served the failing call.
+I'll assemble a debug bundle and upload to the triage runbook.
+
+devon: noted. I'll try to reproduce with python-sdk v0.7.3 and post the minimal script I'm running. :eyes:
+
+(devon posted a local repro snippet)
+```
+python - <<'PY'
+import requests, json
+p = {"model":"vec-768","input":[[0.12,0.34, ...]]}
+r = requests.post("https://api.redwood.ai/v1/embeddings", headers={"Authorization":"Bearer REDACTED","Content-Type":"application/json"}, json=p)
+print(r.status_code, r.text)
+PY
+```
+
+maria: great, if you can attach the resulting request ids I'll pull the full trace. if not, ask customer to run the curl above and paste the failing id. closing loop after we have raw payloads.

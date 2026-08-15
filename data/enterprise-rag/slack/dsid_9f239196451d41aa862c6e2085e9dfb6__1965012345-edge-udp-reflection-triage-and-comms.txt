@@ -1,0 +1,30 @@
+incidents
+
+deploy-bot: ALERT: unusual UDP egress pattern from edge-proxy-7 (hosted-eu1). Volume spike to many distinct destinations on ports 53/123 starting 1965012340. Probable reflected/amplification traffic. Flow sample attached.
+lee-sre: I'm on it. Can someone confirm whether this is legitimate internal job or external probe?
+maria-sec: Not seeing any scheduled jobs. Looks like amplification (DNS/NTP). Started adding flow logs to bucket. Need pcap from 10.12.7.3 if possible.
+sam-net: I can push quick ACLs at the edge and announce a community to drop to null for affected prefixes. Proposing temporary egress rate-limit for UDP common-amp ports first.
+lee-sre: +1 rate-limit now, blackhole next if it doesn't drop. Command to push on proxies: 
+```
+edgectl policy add-rate-limit --name ddos-udp-amp --proto udp --ports 53,123 --pps 500 --targets edge-proxy-7
+```
+lee-sre: Pushing rule now. Expect partial mitigation in ~30s.
+deploy-bot: rule ddos-udp-amp applied to edge-proxy-7 at 1965012358. Observed 60% reduction in pps.
+maria-sec: Good. Please capture pcap (tcpdump -w /tmp/edge7-udp-amp.pcap -s 0 udp and port 53 or port 123) and ship to secure-bucket encrypted with KMS key arn:aws:kms:eu:123...:key/rdw-incident. Make sure S3 server-side encryption and obj ACLs are private.
+lee-sre: pcap captured and uploaded to s3://rdw-incidents/1965012345/edge7.pcap (encrypted).
+infra-bot: Alert: IAM access: service-account-ops needs kms:Decrypt on rdw-incident key to fetch logs.
+maria-sec: Grant temporary kms:Decrypt for service-account-ops and enable audit logging for edge-proxy-7 for 24h. We need full audit trails for compliance and customer inquiries.
+sam-net: BGP nullroute prepared for prefixes: 45.32.0.0/16 and 203.0.113.0/24 (these are largest contributors). Will announce if rate-limit doesn't hold.
+ops-pm: Heads-up to support: potential customer impact on embedding ingest in eu1 if we start blackholing prefixes. Carla, can you prep a short customer comms draft and point to status page?
+carla-support: Drafting. Suggested copy: "We're mitigating an outbound reflection/abuse pattern affecting a subset of edge hosts in EU region. We're applying targeted rate-limits and may temporarily block some traffic to preserve service for customers. No data exfiltration detected. We'll update as we have more details." Thoughts?
+legal-lin: Good. Add line about we will retain logs and cooperate with lawful requests; avoid speculative cause language.
+maria-sec: Also: post-incident actions: 1) update RBAC so only approved operators can apply edge-level rate limits; 2) add automated detection for volumetric UDP egress to the Alerting runbook; 3) ensure KMS key rotation and key access audit for incident artifacts.
+lee-sre: Noted. I'll file follow-ups: INC-1965012345-1 add RBAC rule, INC-1965012345-2 add runbook detection, INC-1965012345-3 retention of pcaps + kms audit.
+sam-net: Holding off on BGP nullroute. Rate-limit seems stable, total PPS down ~70% vs peak. If we see another increase > 20% of baseline in next 10m we nullroute.
+deploy-bot: Metric update: 70% reduction, downstream latency stable.
+carla-support: Customer comms posted to status.redwood.ai/incidents/1965012345. Short update sent to top-affected billing accounts.
+lee-sre: Running vulnerability triage: check for exposed DNS/NTP amplifiers in our infra and any misconfig'd proxies. Initial search: no internal daemons responding to recursive DNS.
+maria-sec: Good. Postmortem owners: lee-sre (mitigation timeline), sam-net (network policy & BGP decisions), maria-sec (compliance artifacts + KMS), carla-support (customer comms).
+legal-lin: If any customers request forensics, route requests through security@ and we'll coordinate.
+ops-pm: Great work. Moving to monitoring state, we'll reconvene for a post-incident review in 48h.
+lee-sre: Closing active triage. Leaving rate-limit in place for 6 hours and audit logging enabled. :thumbsup:
