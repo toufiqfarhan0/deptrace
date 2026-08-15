@@ -8,12 +8,15 @@ DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tr
 deptrace/
 ├── backend/
 │   ├── graph/
-│   │   ├── README.md             # HydraDB compatibility & setup guide
-│   │   ├── schema.py             # Canonical graph ontology & query definitions
-│   │   └── test_hydra.py         # HydraDB smoke test and query validation script
+│   │   ├── README.md                 # HydraDB compatibility & setup guide
+│   │   ├── schema.py                 # Canonical graph ontology & query definitions
+│   │   └── test_hydra.py             # HydraDB smoke test and query validation script
 │   └── ingestion/
-│       └── parse_slack.py        # Slack dump parser converting text threads to JSONL
-├── frontend/                     # DepTrace UI client
+│       ├── parse_slack.py            # Slack dump parser converting text threads to JSONL
+│       └── build_graph_candidates.py # Deterministic structural graph candidate generator
+├── tests/
+│   └── test_build_graph_candidates.py # Unit tests for candidate generation
+├── frontend/                         # DepTrace UI client
 ├── .gitignore
 └── README.md
 ```
@@ -21,6 +24,7 @@ deptrace/
 ## Features
 
 - **HydraDB Graph Foundation**: Canonical ontology (`Person`, `Team`, `Customer`, `Incident`, `ConfigurationChange`, etc.) with standalone `MERGE` write patterns and multi-hop Cypher queries.
+- **Deterministic Graph Candidate Generation**: Constructs structural graph elements (`Document`, `Channel`, `Message`, `Person`, `Team`) and relationships (`IN_CHANNEL`, `AUTHORED`, `MEMBER_OF`, `PART_OF`) with stable 63-bit integer IDs.
 - **Slack Log Parsing & Normalization**: Extracts channel metadata, author, team, and multi-line message threads into structured JSONL documents.
 
 ## Getting Started
@@ -59,10 +63,19 @@ deptrace/
    python backend/graph/test_hydra.py
    ```
 
-### Slack Log Ingestion
+### Slack Log Ingestion & Graph Candidates
 
-To parse raw Slack export files into structured JSONL:
+1. Parse raw Slack export files into structured JSONL:
+   ```bash
+   python backend/ingestion/parse_slack.py
+   ```
 
-```bash
-python backend/ingestion/parse_slack.py
-```
+2. Generate deterministic graph candidate records:
+   ```bash
+   python backend/ingestion/build_graph_candidates.py
+   ```
+
+3. Run unit test suite:
+   ```bash
+   python -m unittest discover tests
+   ```
