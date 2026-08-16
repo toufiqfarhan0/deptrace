@@ -1,5 +1,5 @@
 """
-Offline unit tests for Graph RAG Pipeline (Step 8).
+Offline unit tests for Graph RAG Pipeline & Gemini Answer Generator (Step 8 / Step 10).
 
 Validates:
 1. Successful grounded answer with valid citations [E1], [E2]
@@ -7,13 +7,13 @@ Validates:
 3. Invented evidence ID detection (e.g. [E99] -> grounded=False)
 4. Answer with no citations (grounded=False)
 5. Explicit insufficient evidence response (grounded=True)
-6. Empty / whitespace question handling
+6. Empty and whitespace question handling
 7. Empty retrieval result fallback
 8. Multiple evidence items and deterministic E1...En labeling
 9. Deterministic evidence ID formatting
-10. Gemini API error handling
-11. Malformed Gemini response handling
-12. Retrieval failure propagation
+10. Gemini API error handling and sanitized error reporting
+11. Retrieval failure propagation
+12. Default model configuration (gemini-3.5-flash-lite)
 13. 100% offline execution with zero Gemini API calls
 """
 
@@ -23,12 +23,16 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 import pytest
 
-from backend.rag.answer_generator import format_evidence_bundle
+from backend.rag.answer_generator import (
+    GeminiAnswerGenerator,
+    format_evidence_bundle,
+)
 from backend.rag.models import AnswerRequest, AnswerResponse
 from backend.rag.rag_pipeline import (
     GraphRAGPipeline,
     answer_question,
     parse_citations,
+    sanitize_error,
 )
 from backend.retrieval.models import EvidenceItem, RetrievalResponse
 
@@ -53,9 +57,10 @@ class MockRetriever:
 class MockGenerator:
     """Mock generator returning pre-configured response strings."""
 
-    def __init__(self, response_text: str = "", fail: bool = False) -> None:
+    def __init__(self, response_text: str = "", fail: bool = False, fail_exc: Exception | None = None) -> None:
         self.response_text = response_text
         self.fail = fail
+        self.fail_exc = fail_exc
         self.last_question = ""
         self.last_labeled_evidence: list[tuple[str, EvidenceItem]] = []
 
@@ -65,7 +70,7 @@ class MockGenerator:
         self.last_question = question
         self.last_labeled_evidence = labeled_evidence
         if self.fail:
-            raise RuntimeError("API request failed: 429 Quota Exceeded")
+            raise self.fail_exc or RuntimeError("API request failed: 429 ResourceExhausted")
         return self.response_text
 
 
@@ -117,6 +122,23 @@ def test_format_evidence_bundle(sample_evidence) -> None:
     assert "REL-311" in formatted
     assert "8537794879600693670" in formatted
     assert format_evidence_bundle([]) == "No evidence retrieved."
+
+
+def test_gemini_answer_generator_default_model() -> None:
+    generator = GeminiAnswerGenerator.__new__(GeminiAnswerGenerator)
+    generator.model = "gemini-3.5-flash-lite"
+    assert generator.model == "gemini-3.5-flash-lite"
+
+
+def test_sanitize_error_strips_secrets() -> None:
+    sensitive_exc = RuntimeError("Failed request with key TEST_KEY_DUMMY_12345678901234567890 and Bearer secret_token_xyz")
+    sanitized = sanitize_error(sensitive_exc)
+
+    assert "TEST_REDACTED_PREFIX" not in sanitized
+    assert "secret_token_xyz" not in sanitized
+    assert "[REDACTED_API_KEY]" in sanitized
+    assert "Bearer [REDACTED]" in sanitized
+    assert "RuntimeError" in sanitized
 
 
 def test_successful_grounded_answer(sample_evidence) -> None:
@@ -188,6 +210,25 @@ def test_explicit_insufficient_evidence_response(sample_evidence) -> None:
     assert resp.cited_evidence_ids == []
 
 
+def test_generator_api_error_sanitized_reporting(sample_evidence) -> None:
+    retriever = MockRetriever(evidence=sample_evidence)
+    sensitive_err = RuntimeError("429 ResourceExhausted: quota for key TEST_KEY_DUMMY_98765432109876543210 exceeded")
+    generator = MockGenerator(fail=True, fail_exc=sensitive_err)
+
+    resp = answer_question(
+        question="What happened?",
+        retriever=retriever,
+        generator=generator,
+    )
+
+    assert resp.grounded is False
+    assert resp.confidence == 0.0
+    assert resp.error is not None
+    assert "TEST_KEY_DUMMY" not in resp.error
+    assert "[REDACTED_API_KEY]" in resp.error
+    assert "RuntimeError" in resp.error
+
+
 def test_empty_and_whitespace_question() -> None:
     resp1 = answer_question(question="")
     assert resp1.grounded is False
@@ -211,24 +252,7 @@ def test_empty_retrieval_result() -> None:
     assert resp.grounded is True
     assert "insufficient" in resp.answer.lower()
     assert resp.evidence == []
-    # Generator was not called because evidence was empty
     assert generator.last_question == ""
-
-
-def test_generator_api_error_handling(sample_evidence) -> None:
-    retriever = MockRetriever(evidence=sample_evidence)
-    generator = MockGenerator(fail=True)
-
-    resp = answer_question(
-        question="What happened?",
-        retriever=retriever,
-        generator=generator,
-    )
-
-    assert resp.grounded is False
-    assert resp.confidence == 0.0
-    assert resp.error is not None
-    assert "Model generation error" in resp.error
 
 
 def test_retrieval_failure_propagation() -> None:

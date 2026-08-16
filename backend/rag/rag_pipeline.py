@@ -1,8 +1,8 @@
 """
-Graph RAG Pipeline (Step 8).
+Graph RAG Pipeline (Step 8 / Step 10).
 
 Coordinates deterministic HydraDB retrieval, evidence labeling [E1, E2, ...],
-Gemini answer generation, and strict citation/grounding verification.
+Gemini Interactions API answer generation, and strict citation/grounding verification.
 """
 
 from __future__ import annotations
@@ -36,6 +36,27 @@ class GeneratorProtocol(Protocol):
     def generate_answer(
         self, question: str, labeled_evidence: list[tuple[str, EvidenceItem]]
     ) -> str: ...
+
+
+def sanitize_error(exc: Exception) -> str:
+    """
+    Sanitize error message to report safe diagnostic information without leaking secrets.
+    """
+    exc_type = type(exc).__name__
+    raw_msg = str(exc)
+
+    # Extract status code if available
+    status_code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    status_str = f" [status={status_code}]" if status_code is not None else ""
+
+    # Sanitize API keys and bearer tokens
+    sanitized = re.sub(r"AIza[0-9A-Za-z\-_]{25,}", "[REDACTED_API_KEY]", raw_msg)
+    sanitized = re.sub(r"Bearer\s+[A-Za-z0-9_\-\.]+", "Bearer [REDACTED]", sanitized)
+    sanitized = re.sub(r"key=[A-Za-z0-9_\-]+", "key=[REDACTED]", sanitized)
+    sanitized = re.sub(r"token=[A-Za-z0-9_\-]+", "token=[REDACTED]", sanitized)
+
+
+    return f"{exc_type}{status_str}: {sanitized}"
 
 
 def parse_citations(text: str) -> list[str]:
@@ -91,13 +112,14 @@ class GraphRAGPipeline:
             retrieval_res = self.retriever.retrieve(query=clean_question, limit=retrieval_limit)
             raw_evidence = retrieval_res.results
         except Exception as exc:
+            sanitized = sanitize_error(exc)
             return AnswerResponse(
                 question=clean_question,
                 answer="Failed to retrieve evidence from HydraDB graph.",
                 evidence=[],
                 confidence=0.0,
                 grounded=False,
-                error=f"Retrieval error: {exc}",
+                error=f"Retrieval error: {sanitized}",
             )
 
         # 3. Label evidence deterministically [E1, E2, ...]
@@ -123,13 +145,14 @@ class GraphRAGPipeline:
             try:
                 generator = GeminiAnswerGenerator()
             except Exception as exc:
+                sanitized = sanitize_error(exc)
                 return AnswerResponse(
                     question=clean_question,
                     answer="Gemini answer generator is not available (e.g. missing API key or client config).",
                     evidence=raw_evidence,
                     confidence=0.0,
                     grounded=False,
-                    error=f"Generator init error: {exc}",
+                    error=f"Generator init error: {sanitized}",
                 )
 
         # 6. Generate answer
@@ -139,13 +162,14 @@ class GraphRAGPipeline:
                 labeled_evidence=labeled_evidence,
             )
         except Exception as exc:
+            sanitized = sanitize_error(exc)
             return AnswerResponse(
                 question=clean_question,
                 answer="Failed to generate answer from model.",
                 evidence=raw_evidence,
                 confidence=0.0,
                 grounded=False,
-                error=f"Model generation error: {exc}",
+                error=f"Model generation error: {sanitized}",
             )
 
         # 7. Parse and validate citations
