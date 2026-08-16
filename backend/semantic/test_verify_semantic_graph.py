@@ -1,11 +1,12 @@
 """
-Unit tests for Step 6H count-independent semantic graph verification.
+Unit tests for Step 6J count-independent semantic graph verification.
 
 Validates:
 - Scalar count parsing for integer cells
 - Count-independent invariant assertions (0, 7, 9, 20, 50, 100 items)
 - Detection of provenance mismatches
 - Discrepancy detection between COUNT(*) and traversed relationship count
+- Statement -> ABOUT -> Entity relationship count verification
 - 100% offline testing with mocked query engine
 """
 
@@ -56,6 +57,13 @@ def test_verify_semantic_graph_mocked_invariants_arbitrary_sizes() -> None:
         mock_stmts_rows = {
             "rows": [[{"value": "fact"}, {"value": f"Statement {i}"}] for i in range(min(count * 3, 20))]
         }
+        mock_about_count = {"rows": [[{"type": "integer", "value": count * 4}]]}
+        mock_about_rows = {
+            "rows": [
+                [{"value": 3000 + i}, {"value": f"Statement {i}"}, {"value": f"Entity-{i}"}]
+                for i in range(min(count * 4, 20))
+            ]
+        }
 
         with patch("backend.semantic.verify_semantic_graph.query") as mock_q:
             mock_q.side_effect = [
@@ -65,12 +73,15 @@ def test_verify_semantic_graph_mocked_invariants_arbitrary_sizes() -> None:
                 mock_entities_rows,
                 mock_stmts_count,
                 mock_stmts_rows,
+                mock_about_count,
+                mock_about_rows,
             ]
 
             stats = verify_semantic_graph()
             assert stats["extractions"] == count
             assert stats["entities"] == count * 2
             assert stats["statements"] == count * 3
+            assert stats["about_links"] == count * 4
             assert stats["provenance_errors"] == 0
 
 
@@ -90,6 +101,8 @@ def test_verify_semantic_graph_catches_provenance_errors() -> None:
     mock_entities_rows = {"rows": []}
     mock_stmts_count = {"rows": [[{"type": "integer", "value": 0}]]}
     mock_stmts_rows = {"rows": []}
+    mock_about_count = {"rows": [[{"type": "integer", "value": 0}]]}
+    mock_about_rows = {"rows": []}
 
     with patch("backend.semantic.verify_semantic_graph.query") as mock_q:
         mock_q.side_effect = [
@@ -99,6 +112,8 @@ def test_verify_semantic_graph_catches_provenance_errors() -> None:
             mock_entities_rows,
             mock_stmts_count,
             mock_stmts_rows,
+            mock_about_count,
+            mock_about_rows,
         ]
 
         with pytest.raises(AssertionError, match="Expected 0 provenance errors"):
@@ -121,6 +136,8 @@ def test_verify_semantic_graph_catches_count_mismatch() -> None:
     mock_entities_rows = {"rows": []}
     mock_stmts_count = {"rows": [[{"type": "integer", "value": 0}]]}
     mock_stmts_rows = {"rows": []}
+    mock_about_count = {"rows": [[{"type": "integer", "value": 0}]]}
+    mock_about_rows = {"rows": []}
 
     with patch("backend.semantic.verify_semantic_graph.query") as mock_q:
         mock_q.side_effect = [
@@ -130,6 +147,8 @@ def test_verify_semantic_graph_catches_count_mismatch() -> None:
             mock_entities_rows,
             mock_stmts_count,
             mock_stmts_rows,
+            mock_about_count,
+            mock_about_rows,
         ]
 
         with pytest.raises(AssertionError, match="does not match traversed rows"):

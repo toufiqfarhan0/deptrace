@@ -1,10 +1,11 @@
 """
-HydraDB Verification for Semantic Knowledge Graph (Step 6H).
+HydraDB Verification for Semantic Knowledge Graph (Step 6J).
 
 Verifies the ingested semantic graph components using count-independent invariants:
 1. Message -> SemanticExtraction (HAS_SEMANTIC_EXTRACTION)
 2. SemanticExtraction -> Entity (MENTIONS)
 3. SemanticExtraction -> Statement (EXPRESSES)
+4. Statement -> Entity (ABOUT)
 
 Distinguishes between exact COUNT(*) totals and sample displayed rows (LIMIT).
 """
@@ -167,13 +168,44 @@ def verify_semantic_graph() -> dict[str, Any]:
     if total_statements > len(sample_statements):
         print(f"   ... ({total_statements - len(sample_statements)} more statements)")
 
+    # 4. Total Statement -> ABOUT -> Entity relationships via COUNT(*)
+    res_about_count = query(
+        """
+        MATCH (s:Statement)-[:ABOUT]->(e)
+        RETURN count(*) AS total_about_links
+        """
+    )
+    total_about_links = extract_scalar_count(res_about_count)
+
+    # 4b. Sample Statement -> ABOUT -> Entity links
+    res_about_sample = query(
+        """
+        MATCH (s:Statement)-[:ABOUT]->(e)
+        RETURN s.id AS statement_id, s.text AS statement, e.name AS entity_name
+        LIMIT 20
+        """
+    )
+    raw_rows_about = res_about_sample.get("rows", [])
+    sample_about = [
+        [cell.get("value") if isinstance(cell, dict) else cell for cell in row]
+        for row in raw_rows_about
+    ]
+    print(f"\n4. STATEMENT -> ENTITY (ABOUT): {total_about_links} total links (displaying sample up to 20)")
+    for row in sample_about:
+        stmt_snippet = str(row[1])[:50] if len(row) > 1 and row[1] is not None else ""
+        ent_name = str(row[2]) if len(row) > 2 and row[2] is not None else ""
+        print(f"   Statement [{stmt_snippet}...] -> ABOUT -> Entity ({ent_name})")
+    if total_about_links > len(sample_about):
+        print(f"   ... ({total_about_links - len(sample_about)} more ABOUT links)")
+
     print("\n" + "=" * 70)
     print("VERIFICATION SUMMARY")
     print("=" * 70)
-    print(f"Semantic extractions (COUNT*): {total_extractions}")
-    print(f"Entity mentions (COUNT*):      {total_entities}")
-    print(f"Statements (COUNT*):           {total_statements}")
-    print(f"Provenance errors:             {provenance_errors}")
+    print(f"Semantic extractions (COUNT*):      {total_extractions}")
+    print(f"Entity mentions (COUNT*):           {total_entities}")
+    print(f"Statements (COUNT*):                {total_statements}")
+    print(f"Statement->Entity ABOUT (COUNT*):   {total_about_links}")
+    print(f"Provenance errors:                  {provenance_errors}")
     print("=" * 70)
 
     # Invariant assertions
@@ -184,22 +216,30 @@ def verify_semantic_graph() -> dict[str, Any]:
     assert total_extractions >= 0, f"Extraction count must be non-negative: {total_extractions}"
     assert total_entities >= 0, f"Entity count must be non-negative: {total_entities}"
     assert total_statements >= 0, f"Statement count must be non-negative: {total_statements}"
+    assert total_about_links >= 0, f"ABOUT links count must be non-negative: {total_about_links}"
 
     return {
         "extractions": total_extractions,
         "entities": total_entities,
         "statements": total_statements,
+        "about_links": total_about_links,
         "provenance_errors": provenance_errors,
         "extraction_rows": extractions,
         "sample_entities": sample_entities,
         "sample_statements": sample_statements,
+        "sample_about": sample_about,
     }
 
 
 def main() -> None:
     stats = verify_semantic_graph()
     print("\nALL HYDRADB SEMANTIC INVARIANT CHECKS PASSED!")
-    print(f"Verified {stats['extractions']} extractions, {stats['entities']} entity mentions, {stats['statements']} statements.")
+    print(
+        f"Verified {stats['extractions']} extractions, "
+        f"{stats['entities']} entity mentions, "
+        f"{stats['statements']} statements, "
+        f"{stats['about_links']} ABOUT links."
+    )
 
 
 if __name__ == "__main__":
