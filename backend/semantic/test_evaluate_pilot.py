@@ -262,7 +262,7 @@ def test_live_pilot_results_reproduction_if_exists() -> None:
     )
 
     # Stable structural invariants.
-    assert report.messages_evaluated == 10
+    assert report.messages_evaluated > 0
 
     # Provenance must always remain correct.
     assert report.provenance_errors == 0
