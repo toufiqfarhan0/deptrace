@@ -1,8 +1,8 @@
 """
-Gemini Answer Generator for Graph RAG (Step 8).
+Gemini Answer Generator for Graph RAG (Step 8 / Step 10).
 
 Formats deterministic evidence bundles with explicit stable identifiers [E1, E2, ...]
-and calls Gemini via the google-genai SDK under strict grounding instructions.
+and calls Gemini via the Google GenAI SDK Interactions API under strict grounding instructions.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from google import genai
-from google.genai import types
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -27,7 +26,6 @@ except ImportError:
 
 try:
     from backend.retrieval.models import EvidenceItem
-
 except ImportError:
     from models import EvidenceItem  # type: ignore[no-redef]
 
@@ -73,7 +71,7 @@ class GeminiAnswerGenerator:
 
     def __init__(
         self,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.5-flash-lite",
     ) -> None:
         self.client = genai.Client()
         self.model = model
@@ -84,7 +82,8 @@ class GeminiAnswerGenerator:
         labeled_evidence: list[tuple[str, EvidenceItem]],
     ) -> str:
         """
-        Generate a grounded answer for the user question given the labeled evidence bundle.
+        Generate a grounded answer for the user question given the labeled evidence bundle
+        using the Gemini Interactions API.
         """
         formatted_evidence = format_evidence_bundle(labeled_evidence)
 
@@ -96,18 +95,17 @@ RETRIEVED EVIDENCE BUNDLE:
 
 Please provide a concise, grounded answer citing the relevant evidence items ([E1], [E2], etc.)."""
 
-        config = types.GenerateContentConfig(
-            system_instruction=RAG_SYSTEM_INSTRUCTIONS,
-            temperature=0.0,
-        )
-
-        response = self.client.models.generate_content(
+        interaction = self.client.interactions.create(
             model=self.model,
-            contents=user_content,
-            config=config,
+            input=user_content,
+            system_instruction=RAG_SYSTEM_INSTRUCTIONS,
         )
 
-        if not response or not response.text:
-            return "Unable to generate answer from model."
+        output_text = getattr(interaction, "output_text", None) or getattr(interaction, "text", None)
+        if not output_text and hasattr(interaction, "outputs"):
+            output_text = "".join(str(o) for o in interaction.outputs)
 
-        return response.text.strip()
+        if not output_text:
+            raise RuntimeError("Gemini returned an empty response.")
+
+        return str(output_text).strip()
