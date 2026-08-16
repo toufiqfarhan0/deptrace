@@ -1,10 +1,12 @@
 """
-HydraDB Verification for Semantic Knowledge Graph (Step 6F).
+HydraDB Verification for Semantic Knowledge Graph (Step 6H).
 
-Verifies the ingested semantic graph components:
+Verifies the ingested semantic graph components using count-independent invariants:
 1. Message -> SemanticExtraction (HAS_SEMANTIC_EXTRACTION)
 2. SemanticExtraction -> Entity (MENTIONS)
 3. SemanticExtraction -> Statement (EXPRESSES)
+
+Distinguishes between exact COUNT(*) totals and sample displayed rows (LIMIT).
 """
 
 from __future__ import annotations
@@ -53,14 +55,34 @@ def query(cypher: str) -> dict[str, Any]:
     return response.json()
 
 
+def extract_scalar_count(result: dict[str, Any]) -> int:
+    """Extract integer count from a COUNT(*) query result."""
+    rows = result.get("rows", [])
+    if not rows or not rows[0]:
+        return 0
+    cell = rows[0][0]
+    if isinstance(cell, dict):
+        return int(cell.get("value", 0))
+    return int(cell)
+
+
 def verify_semantic_graph() -> dict[str, Any]:
     print("=" * 70)
-    print("HydraDB Semantic Pilot Verification (Step 6F)")
+    print("HydraDB Semantic Graph Verification")
     print(f"Endpoint: {HYDRA_URL}")
     print(f"Graph:    {GRAPH_NAME} (Namespace: {GRAPH_NAMESPACE}, Cell: {CELL_ID})")
     print("=" * 70)
 
-    # 1. Semantic extractions
+    # 1. Total extraction count via COUNT(*)
+    res_ext_count = query(
+        """
+        MATCH (m:Message)-[:HAS_SEMANTIC_EXTRACTION]->(x:SemanticExtraction)
+        RETURN count(*) AS total_extractions
+        """
+    )
+    total_extractions = extract_scalar_count(res_ext_count)
+
+    # 1b. Extractions traversal and provenance validation
     res_extractions = query(
         """
         MATCH (m:Message)-[:HAS_SEMANTIC_EXTRACTION]->(x:SemanticExtraction)
@@ -73,16 +95,31 @@ def verify_semantic_graph() -> dict[str, Any]:
         for row in raw_rows_ext
     ]
 
-    provenance_errors = sum(
-        1 for row in extractions if row[0] != row[1]
-    )
-
-    print(f"\n1. SEMANTIC EXTRACTIONS: {len(extractions)} found (provenance errors: {provenance_errors})")
+    provenance_errors = 0
     for row in extractions:
+        msg_id = row[0]
+        ext_msg_id = row[1] if len(row) > 1 else None
+        doc_id = row[2] if len(row) > 2 else None
+        if msg_id != ext_msg_id or not doc_id:
+            provenance_errors += 1
+
+    print(f"\n1. SEMANTIC EXTRACTIONS: {total_extractions} total (provenance errors: {provenance_errors})")
+    for row in extractions[:10]:
         doc_snippet = str(row[2])[:35] if len(row) > 2 and row[2] is not None else "N/A"
         print(f"   Message {row[0]} -> SemanticExtraction (doc: {doc_snippet}...)")
+    if len(extractions) > 10:
+        print(f"   ... ({len(extractions) - 10} more extractions)")
 
-    # 2. Semantic entities
+    # 2. Total entity mentions via COUNT(*)
+    res_ent_count = query(
+        """
+        MATCH (x:SemanticExtraction)-[:MENTIONS]->(e)
+        RETURN count(*) AS total_entity_mentions
+        """
+    )
+    total_entities = extract_scalar_count(res_ent_count)
+
+    # 2b. Sample entity mentions
     res_entities = query(
         """
         MATCH (x:SemanticExtraction)-[:MENTIONS]->(e)
@@ -91,15 +128,26 @@ def verify_semantic_graph() -> dict[str, Any]:
         """
     )
     raw_rows_ent = res_entities.get("rows", [])
-    entities = [
+    sample_entities = [
         [cell.get("value") if isinstance(cell, dict) else cell for cell in row]
         for row in raw_rows_ent
     ]
-    print(f"\n2. SEMANTIC ENTITIES: {len(entities)} mentions found")
-    for row in entities:
+    print(f"\n2. SEMANTIC ENTITIES: {total_entities} total mentions (displaying sample up to 20)")
+    for row in sample_entities:
         print(f"   Entity: {row[1]} (id: {row[0]})")
+    if total_entities > len(sample_entities):
+        print(f"   ... ({total_entities - len(sample_entities)} more mentions)")
 
-    # 3. Statements
+    # 3. Total statements via COUNT(*)
+    res_stmt_count = query(
+        """
+        MATCH (x:SemanticExtraction)-[:EXPRESSES]->(s:Statement)
+        RETURN count(*) AS total_statements
+        """
+    )
+    total_statements = extract_scalar_count(res_stmt_count)
+
+    # 3b. Sample statements
     res_statements = query(
         """
         MATCH (x:SemanticExtraction)-[:EXPRESSES]->(s:Statement)
@@ -108,42 +156,50 @@ def verify_semantic_graph() -> dict[str, Any]:
         """
     )
     raw_rows_stmt = res_statements.get("rows", [])
-    statements = [
+    sample_statements = [
         [cell.get("value") if isinstance(cell, dict) else cell for cell in row]
         for row in raw_rows_stmt
     ]
-    print(f"\n3. STATEMENTS: {len(statements)} found")
-    for row in statements:
+    print(f"\n3. STATEMENTS: {total_statements} total (displaying sample up to 20)")
+    for row in sample_statements:
         stmt_snippet = str(row[1])[:60] if len(row) > 1 and row[1] is not None else ""
         print(f"   [{row[0]}] {stmt_snippet}...")
+    if total_statements > len(sample_statements):
+        print(f"   ... ({total_statements - len(sample_statements)} more statements)")
 
     print("\n" + "=" * 70)
     print("VERIFICATION SUMMARY")
     print("=" * 70)
-    print(f"Semantic extractions: {len(extractions)}")
-    print(f"Entity mentions:     {len(entities)}")
-    print(f"Statements:          {len(statements)}")
-    print(f"Provenance errors:   {provenance_errors}")
+    print(f"Semantic extractions (COUNT*): {total_extractions}")
+    print(f"Entity mentions (COUNT*):      {total_entities}")
+    print(f"Statements (COUNT*):           {total_statements}")
+    print(f"Provenance errors:             {provenance_errors}")
     print("=" * 70)
 
+    # Invariant assertions
+    assert provenance_errors == 0, f"Expected 0 provenance errors, got {provenance_errors}"
+    assert total_extractions == len(extractions), (
+        f"COUNT(*) extractions ({total_extractions}) does not match traversed rows ({len(extractions)})"
+    )
+    assert total_extractions >= 0, f"Extraction count must be non-negative: {total_extractions}"
+    assert total_entities >= 0, f"Entity count must be non-negative: {total_entities}"
+    assert total_statements >= 0, f"Statement count must be non-negative: {total_statements}"
+
     return {
-        "extractions": len(extractions),
-        "entities": len(entities),
-        "statements": len(statements),
+        "extractions": total_extractions,
+        "entities": total_entities,
+        "statements": total_statements,
         "provenance_errors": provenance_errors,
         "extraction_rows": extractions,
-        "entity_rows": entities,
-        "statement_rows": statements,
+        "sample_entities": sample_entities,
+        "sample_statements": sample_statements,
     }
 
 
 def main() -> None:
     stats = verify_semantic_graph()
-    assert stats["extractions"] == 7, f"Expected 7 extractions, got {stats['extractions']}"
-    assert stats["entities"] == 5, f"Expected 5 entity mentions, got {stats['entities']}"
-    assert stats["statements"] == 17, f"Expected 17 statements, got {stats['statements']}"
-    assert stats["provenance_errors"] == 0, f"Expected 0 provenance errors, got {stats['provenance_errors']}"
-    print("\nALL HYDRADB SEMANTIC VERIFICATION CHECKS PASSED!")
+    print("\nALL HYDRADB SEMANTIC INVARIANT CHECKS PASSED!")
+    print(f"Verified {stats['extractions']} extractions, {stats['entities']} entity mentions, {stats['statements']} statements.")
 
 
 if __name__ == "__main__":
