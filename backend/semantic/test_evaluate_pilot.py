@@ -8,9 +8,11 @@ import pytest
 
 from backend.semantic.evaluate_pilot import (
     DEFAULT_INPUT_FILE,
+    LEGACY_INPUT_FILE,
     evaluate_pilot,
     evaluate_results,
 )
+
 
 
 def test_entity_type_counting() -> None:
@@ -252,14 +254,13 @@ def test_live_pilot_results_reproduction_if_exists() -> None:
     model, or taxonomy rules are refined.
     """
 
-    if not DEFAULT_INPUT_FILE.exists():
+    if not DEFAULT_INPUT_FILE.exists() and not LEGACY_INPUT_FILE.exists():
         pytest.skip(
-            f"{DEFAULT_INPUT_FILE} does not exist on disk."
+            f"Neither {DEFAULT_INPUT_FILE} nor {LEGACY_INPUT_FILE} exists on disk."
         )
 
-    report = evaluate_pilot(
-        DEFAULT_INPUT_FILE
-    )
+    report = evaluate_pilot()
+
 
     # Stable structural invariants.
     assert report.messages_evaluated > 0

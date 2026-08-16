@@ -39,13 +39,22 @@ try:
 except ImportError:
     from ids import stable_id  # type: ignore[no-redef]
 
-INPUT_FILE = (
+DEFAULT_INPUT_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "enterprise-rag"
+    / "semantic-samples"
+    / "pilot_results.jsonl"
+)
+
+LEGACY_INPUT_FILE = (
     PROJECT_ROOT
     / "data"
     / "enterprise-rag"
     / "semantic-samples"
     / "pilot_10_results.jsonl"
 )
+
 
 HYDRA_URL = os.getenv(
     "HYDRA_URL",
@@ -142,8 +151,15 @@ def run_query(query: str) -> dict[str, Any]:
     return response.json()
 
 
-def load_records(input_file: Path | str = INPUT_FILE) -> list[dict[str, Any]]:
-    path = Path(input_file)
+def load_records(input_file: Path | str | None = None) -> list[dict[str, Any]]:
+    if input_file is None:
+        if DEFAULT_INPUT_FILE.exists():
+            path = DEFAULT_INPUT_FILE
+        else:
+            path = LEGACY_INPUT_FILE
+    else:
+        path = Path(input_file)
+
     if not path.exists():
         raise FileNotFoundError(f"Semantic pilot file not found: {path}")
 
@@ -154,6 +170,7 @@ def load_records(input_file: Path | str = INPUT_FILE) -> list[dict[str, Any]]:
             if line:
                 records.append(json.loads(line))
     return records
+
 
 
 def build_semantic_extraction_query(

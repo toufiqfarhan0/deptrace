@@ -18,7 +18,8 @@ import pytest
 
 from backend.semantic.ids import stable_id
 from backend.semantic.ingest_semantic import (
-    INPUT_FILE,
+    DEFAULT_INPUT_FILE,
+    LEGACY_INPUT_FILE,
     VALID_ENTITY_TYPES,
     VALID_STATEMENT_TYPES,
     build_entity_query,
@@ -29,6 +30,7 @@ from backend.semantic.ingest_semantic import (
     load_records,
     validate_identifier,
 )
+
 
 
 def test_stable_id_deterministic() -> None:
@@ -152,16 +154,16 @@ def test_invalid_entity_or_statement_rejected() -> None:
 
 def test_existing_pilot_records_offline_validation() -> None:
     """
-    Validate the existing 7 records from pilot_10_results.jsonl offline:
+    Validate the existing 7 records from pilot_10_results.jsonl or pilot_results.jsonl offline:
     - Exactly 7 records
     - 5 total entities
     - 17 total statements
     - 0 provenance errors
     """
-    if not INPUT_FILE.exists():
-        pytest.skip(f"{INPUT_FILE} does not exist.")
+    if not DEFAULT_INPUT_FILE.exists() and not LEGACY_INPUT_FILE.exists():
+        pytest.skip(f"Neither {DEFAULT_INPUT_FILE} nor {LEGACY_INPUT_FILE} exists.")
 
-    records = load_records(INPUT_FILE)
+    records = load_records()
     assert len(records) == 7
 
     total_entities = 0
@@ -199,10 +201,10 @@ def test_existing_pilot_records_offline_validation() -> None:
 
 def test_ingest_semantic_records_idempotent_mocked() -> None:
     """Validate ingestion counts and idempotency with mocked database."""
-    if not INPUT_FILE.exists():
-        pytest.skip(f"{INPUT_FILE} does not exist.")
+    if not DEFAULT_INPUT_FILE.exists() and not LEGACY_INPUT_FILE.exists():
+        pytest.skip(f"Neither {DEFAULT_INPUT_FILE} nor {LEGACY_INPUT_FILE} exists.")
 
-    records = load_records(INPUT_FILE)
+    records = load_records()
 
     with patch("backend.semantic.ingest_semantic.run_query", return_value={"ok": True}) as mock_query:
         counts1 = ingest_semantic_records(records)
@@ -215,3 +217,4 @@ def test_ingest_semantic_records_idempotent_mocked() -> None:
         counts2 = ingest_semantic_records(records)
         assert counts2 == counts1
         assert mock_query.call_count == 29
+
