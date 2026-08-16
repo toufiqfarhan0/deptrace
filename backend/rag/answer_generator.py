@@ -20,7 +20,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
+except ImportError:
+    pass
+
+try:
     from backend.retrieval.models import EvidenceItem
+
 except ImportError:
     from models import EvidenceItem  # type: ignore[no-redef]
 
