@@ -2,19 +2,25 @@
 Offline unit tests for Graph RAG Pipeline & Gemini Answer Generator (Step 8 / Step 10).
 
 Validates:
-1. Successful grounded answer with valid citations [E1], [E2]
-2. Evidence citation validation and parsing
+1. Successful grounded answer with single and grouped citations:
+   - [E1]
+   - [E1, E2]
+   - [E1,E2]
+   - [E1, E3, E5]
+   - Whitespace variants [ E1 ,  E2 ]
+2. Grouped citation parsing and deduplication
 3. Invented evidence ID detection (e.g. [E99] -> grounded=False)
-4. Answer with no citations (grounded=False)
-5. Explicit insufficient evidence response (grounded=True)
-6. Empty and whitespace question handling
-7. Empty retrieval result fallback
-8. Multiple evidence items and deterministic E1...En labeling
-9. Deterministic evidence ID formatting
-10. Gemini API error handling and sanitized error reporting
-11. Retrieval failure propagation
-12. Default model configuration (gemini-3.5-flash-lite)
-13. 100% offline execution with zero Gemini API calls
+4. Mixed valid/invalid citations (e.g. [E1, E99] -> grounded=False)
+5. Answer with no citations (grounded=False)
+6. Explicit insufficient evidence response (grounded=True)
+7. Empty and whitespace question handling
+8. Empty retrieval result fallback
+9. Multiple evidence items and deterministic E1...En labeling
+10. Deterministic evidence ID formatting
+11. Gemini API error handling and sanitized error reporting
+12. Retrieval failure propagation
+13. Default model configuration (gemini-3.5-flash-lite)
+14. 100% offline execution with zero Gemini API calls
 """
 
 from __future__ import annotations
@@ -95,6 +101,15 @@ def sample_evidence() -> list[EvidenceItem]:
             relationship="ABOUT",
             match_type="exact_entity",
         ),
+        EvidenceItem(
+            message_id=8537794879600693670,
+            document_id="doc_beta",
+            entity_name="api-search",
+            statement="Omar flagged the issue in api-search.",
+            statement_type="fact",
+            relationship="ABOUT",
+            match_type="exact_entity",
+        ),
     ]
 
 
@@ -107,10 +122,26 @@ def test_answer_request_model() -> None:
         AnswerRequest(question="   ")
 
 
+def test_parse_citations_single() -> None:
+    assert parse_citations("Incident tracked in [E1].") == ["E1"]
+    assert parse_citations("Incident tracked in [E2].") == ["E2"]
+
+
+def test_parse_citations_grouped() -> None:
+    assert parse_citations("Tracked in [E1, E2].") == ["E1", "E2"]
+    assert parse_citations("Tracked in [E1,E2].") == ["E1", "E2"]
+    assert parse_citations("Tracked in [E1, E3, E5].") == ["E1", "E3", "E5"]
+
+
+def test_parse_citations_whitespace_and_case() -> None:
+    assert parse_citations("Tracked in [  E1 ,   E2  ].") == ["E1", "E2"]
+    assert parse_citations("Tracked in [e1, E2].") == ["E1", "E2"]
+
+
 def test_parse_citations_ordering_and_deduplication() -> None:
-    text = "The issue was caused by [E2] and confirmed in [E1]. Later, [E2] was mentioned again."
+    text = "The issue was caused by [E2] and confirmed in [E1, E2]. Later, [E3] was mentioned."
     citations = parse_citations(text)
-    assert citations == ["E2", "E1"]
+    assert citations == ["E2", "E1", "E3"]
 
 
 def test_format_evidence_bundle(sample_evidence) -> None:
@@ -141,10 +172,10 @@ def test_sanitize_error_strips_secrets() -> None:
     assert "RuntimeError" in sanitized
 
 
-def test_successful_grounded_answer(sample_evidence) -> None:
+def test_successful_grounded_answer_single_citations(sample_evidence) -> None:
     retriever = MockRetriever(evidence=sample_evidence)
     generator = MockGenerator(
-        response_text="Support ticket REL-311 was created to track the issue [E1], and a test was launched [E2]."
+        response_text="Support ticket REL-311 was created [E1], and a test was launched [E2]."
     )
 
     resp = answer_question(
@@ -156,11 +187,29 @@ def test_successful_grounded_answer(sample_evidence) -> None:
     assert resp.grounded is True
     assert resp.confidence == 1.0
     assert resp.cited_evidence_ids == ["E1", "E2"]
-    assert len(resp.evidence) == 2
+    assert len(resp.evidence) == 3
+
+
+def test_successful_grounded_answer_grouped_citations(sample_evidence) -> None:
+    retriever = MockRetriever(evidence=sample_evidence)
+    # Exact scenario from live Gemini output
+    generator = MockGenerator(
+        response_text="Support ticket REL-311 has been created, linking release notes, and it is set up to alert support if a rollback occurs [E1, E2]."
+    )
+
+    resp = answer_question(
+        question="What happened with REL-311?",
+        retriever=retriever,
+        generator=generator,
+    )
+
+    assert resp.grounded is True
+    assert resp.confidence == 1.0
+    assert resp.cited_evidence_ids == ["E1", "E2"]
 
 
 def test_invented_evidence_id_detection(sample_evidence) -> None:
-    retriever = MockRetriever(evidence=sample_evidence)  # Has E1 and E2
+    retriever = MockRetriever(evidence=sample_evidence)  # Has E1, E2, E3
     generator = MockGenerator(
         response_text="This is an answer citing an invented citation [E99] and [E1]."
     )
@@ -174,6 +223,22 @@ def test_invented_evidence_id_detection(sample_evidence) -> None:
     # Invalid citation [E99] causes grounding to fail
     assert resp.grounded is False
     assert resp.confidence == 0.5
+    assert resp.cited_evidence_ids == ["E1"]
+
+
+def test_mixed_valid_invalid_grouped_citation(sample_evidence) -> None:
+    retriever = MockRetriever(evidence=sample_evidence)  # Has E1, E2, E3
+    generator = MockGenerator(
+        response_text="This references evidence [E1, E99]."
+    )
+
+    resp = answer_question(
+        question="What happened?",
+        retriever=retriever,
+        generator=generator,
+    )
+
+    assert resp.grounded is False
     assert resp.cited_evidence_ids == ["E1"]
 
 
