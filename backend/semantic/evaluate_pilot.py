@@ -23,6 +23,14 @@ DEFAULT_INPUT_FILE = (
     / "data"
     / "enterprise-rag"
     / "semantic-samples"
+    / "pilot_results.jsonl"
+)
+
+LEGACY_INPUT_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "enterprise-rag"
+    / "semantic-samples"
     / "pilot_10_results.jsonl"
 )
 
@@ -48,11 +56,19 @@ class PilotEvaluationReport:
         return asdict(self)
 
 
-def load_results(input_file: Path | str = DEFAULT_INPUT_FILE) -> list[dict[str, Any]]:
+def load_results(input_file: Path | str | None = None) -> list[dict[str, Any]]:
     """Load JSONL pilot results file."""
-    path = Path(input_file)
+    if input_file is None:
+        if DEFAULT_INPUT_FILE.exists():
+            path = DEFAULT_INPUT_FILE
+        else:
+            path = LEGACY_INPUT_FILE
+    else:
+        path = Path(input_file)
+
     if not path.exists():
         raise FileNotFoundError(f"Pilot results file not found: {path}")
+
 
     results: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
@@ -177,7 +193,7 @@ def print_evaluation_report(report: PilotEvaluationReport) -> None:
 
 
 def evaluate_pilot(
-    input_file: Path | str = DEFAULT_INPUT_FILE,
+    input_file: Path | str | None = None,
 ) -> PilotEvaluationReport:
     """Load results, compute metrics, and print evaluation summary."""
     results = load_results(input_file)
