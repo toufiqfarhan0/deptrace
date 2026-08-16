@@ -100,11 +100,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     displayQuestion.textContent = data.question;
 
-    // Format answer text with interactive [E#] citation pills
+    // Format answer text with interactive [E#] citation pills (supports single and grouped [E1, E2])
     const rawAnswer = data.answer || "No response generated.";
-    const formattedAnswer = rawAnswer.replace(/\[E(\d+)\]/g, (match, p1) => {
-      return `<button class="citation-pill" data-target="evidence-E${p1}">[E${p1}]</button>`;
+    const formattedAnswer = rawAnswer.replace(/\[(.*?)\]/g, (match, inner) => {
+      const eMatches = inner.match(/\bE\d+\b/gi);
+      if (!eMatches) return match;
+      return eMatches
+        .map((tag) => {
+          const norm = tag.toUpperCase();
+          return `<button class="citation-pill" data-target="evidence-${norm}">[${norm}]</button>`;
+        })
+        .join(" ");
     });
+
 
     answerBody.innerHTML = formattedAnswer;
 
