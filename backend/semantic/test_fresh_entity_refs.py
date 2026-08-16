@@ -9,6 +9,7 @@ Validates:
 - Rejection of cross-message entity references
 - Handling of duplicate and empty entity_refs
 - Deterministic ABOUT relationship IDs
+- Step 6K verifier execution and structural invariant validation
 - 100% offline execution without calling Gemini API
 """
 
@@ -35,6 +36,7 @@ from backend.semantic.schema import (
     SemanticExtraction,
     SemanticStatement,
 )
+from backend.semantic.verify_entity_refs import verify_fresh_entity_refs
 
 
 class MockPilotExtractor:
@@ -231,3 +233,67 @@ def test_build_about_query_deterministic_id() -> None:
     assert query1 == query2
     assert "-[:ABOUT {" in query1
     assert "INC-1234" in query1
+
+
+def test_verify_fresh_entity_refs_missing_file(tmp_path: Path) -> None:
+    missing_file = tmp_path / "non_existent.jsonl"
+    stats = verify_fresh_entity_refs(missing_file)
+    assert stats["extractions"] == 0
+    assert stats["about_links"] == 0
+    assert stats["provenance_errors"] == 0
+
+
+def test_verify_fresh_entity_refs_mocked_success(tmp_path: Path) -> None:
+    test_file = tmp_path / "fresh_mock.jsonl"
+    records = [
+        {
+            "message_id": 901,
+            "document_id": "doc_901",
+            "extraction": {
+                "message_id": 901,
+                "document_id": "doc_901",
+                "entities": [
+                    {"type": "ConfigurationChange", "name": "setting_a", "confidence": 0.95}
+                ],
+                "statements": [
+                    {"type": "action", "text": "Set setting_a.", "confidence": 0.9, "entity_refs": ["setting_a"]}
+                ],
+            },
+        }
+    ]
+    with test_file.open("w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+
+    # Mock query responses for ingestion and verification
+    mock_ext_rows = {
+        "rows": [
+            [{"value": 901}, {"value": 901}, {"value": "doc_901"}]
+        ]
+    }
+    mock_about_count = {"rows": [[{"type": "integer", "value": 1}]]}
+    mock_about_samples = {
+        "rows": [
+            [
+                {"value": 111},
+                {"value": "action"},
+                {"value": 222},
+                {"value": "setting_a"},
+                {"value": "Set setting_a."},
+            ]
+        ]
+    }
+
+    with patch("backend.semantic.ingest_semantic.run_query", return_value={"ok": True}):
+        with patch("backend.semantic.verify_entity_refs.query") as mock_q:
+            mock_q.side_effect = [
+                mock_ext_rows,
+                mock_about_count,
+                mock_about_samples,
+            ]
+            stats = verify_fresh_entity_refs(test_file)
+            assert stats["extractions"] == 1
+            assert stats["entities"] == 1
+            assert stats["statements"] == 1
+            assert stats["about_links"] == 1
+            assert stats["provenance_errors"] == 0
