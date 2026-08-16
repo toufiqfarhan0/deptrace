@@ -1,12 +1,14 @@
 """
-Unit tests for Step 6F Gemini Semantic Ingestion into HydraDB.
+Unit tests for Step 6J Gemini Semantic Ingestion into HydraDB.
 
 Validates:
 - Deterministic ID generation for semantic nodes and relationships
 - Supported one-hop MERGE query formatting and escaping
+- Statement -> ABOUT -> Entity one-hop MERGE relationship generation
+- Exact same-message entity matching for entity_refs
 - Provenance preservation and validation
 - Handling empty entity and statement lists
-- Offline validation of the 7 existing pilot records
+- Offline validation of existing pilot records
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from backend.semantic.ingest_semantic import (
     LEGACY_INPUT_FILE,
     VALID_ENTITY_TYPES,
     VALID_STATEMENT_TYPES,
+    build_about_query,
     build_entity_query,
     build_semantic_extraction_query,
     build_statement_query,
@@ -30,7 +33,6 @@ from backend.semantic.ingest_semantic import (
     load_records,
     validate_identifier,
 )
-
 
 
 def test_stable_id_deterministic() -> None:
@@ -135,6 +137,25 @@ def test_build_statement_query() -> None:
     assert f"(s:Statement {{\n        id: {stmt_id},\n        statement_type: 'action',\n        text: 'Prototype a fallback rule snippet'\n    }})" in query
 
 
+def test_build_about_query() -> None:
+    """Validate Statement -> ABOUT -> Entity one-hop MERGE query."""
+    stmt_id = 55555
+    entity = {
+        "type": "ConfigurationChange",
+        "name": "strict_model:true",
+        "confidence": 0.95,
+    }
+
+    rel_id, query = build_about_query(stmt_id, entity)
+
+    assert rel_id >= 0
+    assert "MERGE" in query
+    assert f"(s:Statement {{\n        id: {stmt_id}\n    }})" in query
+    assert f"-[:ABOUT {{\n        id: {rel_id}\n    }}]->" in query
+    assert f"name: 'strict_model:true'" in query
+    assert f"(e:ConfigurationChange" in query
+
+
 def test_invalid_entity_or_statement_rejected() -> None:
     """Validate rejection of invalid entity types, statement types, or empty values."""
     ext_id = 10001
@@ -150,6 +171,12 @@ def test_invalid_entity_or_statement_rejected() -> None:
 
     with pytest.raises(ValueError, match="Statement text cannot be empty"):
         build_statement_query(ext_id, {"type": "fact", "text": "   "}, 1)
+
+    with pytest.raises(ValueError, match="Unsupported semantic entity type"):
+        build_about_query(12345, {"type": "UnknownType", "name": "foo"})
+
+    with pytest.raises(ValueError, match="Semantic entity name cannot be empty"):
+        build_about_query(12345, {"type": "Customer", "name": "   "})
 
 
 def test_existing_pilot_records_offline_validation() -> None:
@@ -221,3 +248,52 @@ def test_ingest_semantic_records_idempotent_mocked() -> None:
         assert mock_query.call_count == len(records) + expected_entities + expected_statements
 
 
+def test_ingest_semantic_records_about_linking_mocked() -> None:
+    """Validate that ABOUT edges are created for exact same-message matches and skipped otherwise."""
+    synthetic_records = [
+        {
+            "message_id": 9901,
+            "document_id": "doc_9901",
+            "extraction": {
+                "message_id": 9901,
+                "document_id": "doc_9901",
+                "entities": [
+                    {"type": "ConfigurationChange", "name": "strict_model:true", "confidence": 0.95},
+                    {"type": "Entity", "name": "Grafana", "confidence": 0.9},
+                ],
+                "statements": [
+                    {
+                        "type": "action",
+                        "text": "Enable strict_model:true flag.",
+                        "confidence": 0.95,
+                        "entity_refs": ["strict_model:true", "UnknownEntity", "strict_model:true"],  # duplicate + unknown
+                    },
+                    {
+                        "type": "fact",
+                        "text": "General discussion without entity refs.",
+                        "confidence": 0.8,
+                        "entity_refs": [],
+                    },
+                    {
+                        "type": "claim",
+                        "text": "Grafana shows latency reduction after strict_model:true rollout.",
+                        "confidence": 0.9,
+                        "entity_refs": ["Grafana", "strict_model:true"],
+                    },
+                ],
+            },
+        }
+    ]
+
+    with patch("backend.semantic.ingest_semantic.run_query", return_value={"ok": True}) as mock_query:
+        counts = ingest_semantic_records(synthetic_records)
+        assert counts["extractions"] == 1
+        assert counts["entities"] == 2
+        assert counts["statements"] == 3
+        # Statement 1 matched strict_model:true (1 edge)
+        # Statement 2 had no refs (0 edges)
+        # Statement 3 matched Grafana + strict_model:true (2 edges)
+        # Total ABOUT edges = 3
+        assert counts["about_links"] == 3
+        # Total queries: 1 extraction + 2 entities + 3 statements + 3 about edges = 9
+        assert mock_query.call_count == 9

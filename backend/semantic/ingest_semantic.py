@@ -1,5 +1,5 @@
 """
-Ingest Gemini semantic extraction results into HydraDB (Step 6F).
+Ingest Gemini semantic extraction results into HydraDB (Step 6J).
 
 IMPORTANT:
 The current HydraDB Query engine only supports one-hop MERGE
@@ -54,7 +54,6 @@ LEGACY_INPUT_FILE = (
     / "semantic-samples"
     / "pilot_10_results.jsonl"
 )
-
 
 HYDRA_URL = os.getenv(
     "HYDRA_URL",
@@ -170,7 +169,6 @@ def load_records(input_file: Path | str | None = None) -> list[dict[str, Any]]:
             if line:
                 records.append(json.loads(line))
     return records
-
 
 
 def build_semantic_extraction_query(
@@ -320,10 +318,59 @@ def merge_statement_from_extraction(
     return statement_id
 
 
+def build_about_query(
+    statement_id: int,
+    entity: dict[str, Any],
+) -> tuple[int, str]:
+    """
+    Generate query to upsert:
+        Statement -> ABOUT -> Entity
+    """
+    entity_type = validate_identifier(str(entity["type"]))
+    if entity_type not in VALID_ENTITY_TYPES:
+        raise ValueError(f"Unsupported semantic entity type: {entity_type}")
+
+    name = str(entity["name"]).strip()
+    if not name:
+        raise ValueError("Semantic entity name cannot be empty.")
+
+    entity_id = stable_id(entity_type, name)
+    relationship_id = stable_id(
+        "relationship",
+        f"statement:{statement_id}:about:{entity_type}:{entity_id}",
+    )
+
+    query = f"""
+    MERGE
+    (s:Statement {{
+        id: {statement_id}
+    }})
+    -[:ABOUT {{
+        id: {relationship_id}
+    }}]->
+    (e:{entity_type} {{
+        id: {entity_id},
+        name: {cypher_string(name)}
+    }})
+    """.strip()
+
+    return relationship_id, query
+
+
+def merge_statement_about_entity(
+    statement_id: int,
+    entity: dict[str, Any],
+) -> int:
+    relationship_id, query = build_about_query(statement_id, entity)
+    run_query(query)
+    return relationship_id
+
+
 def ingest_semantic_records(records: list[dict[str, Any]]) -> dict[str, int]:
     extraction_count = 0
     entity_count = 0
     statement_count = 0
+    about_count = 0
 
     for record_index, record in enumerate(records, start=1):
         message_id = int(record["message_id"])
@@ -336,14 +383,31 @@ def ingest_semantic_records(records: list[dict[str, Any]]) -> dict[str, int]:
         extraction_count += 1
 
         entities = extraction.get("entities", [])
+        entities_by_name: dict[str, dict[str, Any]] = {}
         for entity in entities:
             merge_entity_from_extraction(extraction_id, entity)
             entity_count += 1
+            name = str(entity.get("name", "")).strip()
+            if name and name not in entities_by_name:
+                entities_by_name[name] = entity
 
         statements = extraction.get("statements", [])
         for index, statement in enumerate(statements, start=1):
-            merge_statement_from_extraction(extraction_id, statement, index)
+            statement_id = merge_statement_from_extraction(extraction_id, statement, index)
             statement_count += 1
+
+            # Create Statement -> ABOUT -> Entity for exact same-message entity matches
+            entity_refs = statement.get("entity_refs", [])
+            seen_refs: set[str] = set()
+            for ref in entity_refs:
+                if not isinstance(ref, str):
+                    continue
+                ref_norm = ref.strip()
+                if ref_norm and ref_norm in entities_by_name and ref_norm not in seen_refs:
+                    seen_refs.add(ref_norm)
+                    matched_entity = entities_by_name[ref_norm]
+                    merge_statement_about_entity(statement_id, matched_entity)
+                    about_count += 1
 
         print(f"  entities={len(entities)} statements={len(statements)}")
 
@@ -351,6 +415,7 @@ def ingest_semantic_records(records: list[dict[str, Any]]) -> dict[str, int]:
         "extractions": extraction_count,
         "entities": entity_count,
         "statements": statement_count,
+        "about_links": about_count,
     }
 
 
@@ -366,6 +431,7 @@ def main() -> None:
     print(f"Extractions:  {counts['extractions']}")
     print(f"Entities:     {counts['entities']}")
     print(f"Statements:   {counts['statements']}")
+    print(f"About links:  {counts['about_links']}")
 
 
 if __name__ == "__main__":
