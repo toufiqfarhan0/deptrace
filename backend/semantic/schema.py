@@ -45,6 +45,7 @@ class SemanticStatement(BaseModel):
     text: str = Field(min_length=1)
     type: StatementType
     confidence: float = Field(ge=0.0, le=1.0)
+    entity_refs: list[str] = Field(default_factory=list)
 
     @field_validator("text")
     @classmethod
@@ -57,6 +58,24 @@ class SemanticStatement(BaseModel):
             )
 
         return value
+
+    @field_validator("entity_refs")
+    @classmethod
+    def validate_entity_refs(cls, refs: list[str]) -> list[str]:
+        cleaned_refs: list[str] = []
+        seen: set[str] = set()
+
+        for ref in refs:
+            if not isinstance(ref, str):
+                continue
+            normalized = ref.strip()
+            if not normalized:
+                continue
+            if normalized not in seen:
+                seen.add(normalized)
+                cleaned_refs.append(normalized)
+
+        return cleaned_refs
 
 
 class SemanticExtraction(BaseModel):
