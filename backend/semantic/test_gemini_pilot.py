@@ -13,7 +13,15 @@ from backend.semantic.schema import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PILOT_RESULTS_FILE = (
+DEFAULT_PILOT_RESULTS_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "enterprise-rag"
+    / "semantic-samples"
+    / "pilot_results.jsonl"
+)
+
+LEGACY_PILOT_RESULTS_FILE = (
     PROJECT_ROOT
     / "data"
     / "enterprise-rag"
@@ -22,12 +30,14 @@ PILOT_RESULTS_FILE = (
 )
 
 
-def test_pilot_10_results_validation_if_exists() -> None:
-    if not PILOT_RESULTS_FILE.exists():
-        pytest.skip(f"{PILOT_RESULTS_FILE} does not exist on disk.")
+def test_pilot_results_validation_if_exists() -> None:
+    target_file = DEFAULT_PILOT_RESULTS_FILE if DEFAULT_PILOT_RESULTS_FILE.exists() else LEGACY_PILOT_RESULTS_FILE
+    if not target_file.exists():
+        pytest.skip(f"Neither {DEFAULT_PILOT_RESULTS_FILE} nor {LEGACY_PILOT_RESULTS_FILE} exists on disk.")
 
     records = []
-    with PILOT_RESULTS_FILE.open("r", encoding="utf-8") as handle:
+    with target_file.open("r", encoding="utf-8") as handle:
+
         for line in handle:
             line = line.strip()
             if line:
