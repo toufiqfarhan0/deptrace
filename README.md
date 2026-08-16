@@ -7,16 +7,18 @@ DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tr
 ```
 deptrace/
 ├── backend/
-│   ├── semantic/                     # Semantic extraction schema, sampling & Gemini pilot (Step 6)
+│   ├── semantic/                     # Semantic extraction schema, sampling, Gemini pilot & evaluation (Step 6)
 │   │   ├── __init__.py
 │   │   ├── schema.py                 # Semantic entity, statement & extraction models (Pydantic)
 │   │   ├── gemini_extractor.py       # Gemini Interactions API extractor (Step 6C)
 │   │   ├── pilot.py                  # 10-message Gemini extraction pilot runner
+│   │   ├── evaluate_pilot.py         # Deterministic pilot evaluation & metrics (Step 6D)
 │   │   ├── sample_messages.py        # Deterministic 100-message evaluation sampler (Step 6B)
 │   │   ├── test_schema.py            # Schema validation unit tests
 │   │   ├── test_sample_messages.py   # Sampler invariant and coverage unit tests
 │   │   ├── test_gemini_one.py        # Single message Gemini extraction sanity check
-│   │   └── test_gemini_pilot.py      # Pilot results verification unit test
+│   │   ├── test_gemini_pilot.py      # Pilot results verification unit test
+│   │   └── test_evaluate_pilot.py    # Quality evaluation unit tests
 │   ├── extraction/                   # Semantic extraction foundation & slice runner
 │   │   ├── __init__.py
 │   │   ├── schema.py                 # Semantic entity and statement schemas + provenance
@@ -44,6 +46,7 @@ deptrace/
 
 ## Features
 
+- **Semantic Extraction Quality Evaluation (Step 6D)**: Automated evaluation suite computing entity/statement distributions, provenance verification, confidence tracking, and generic entity ratio analysis.
 - **Gemini Semantic Extraction Pilot (Step 6C)**: Extracts structured entities (`Customer`, `Project`, `Incident`, `Decision`, `ConfigurationChange`, `Entity`) and statements (`fact`, `decision`, `claim`, `action`, `outcome`) via the Google GenAI Interactions API (`gemini-2.5-flash` / `gemini-3.6-flash`).
 - **Deterministic Evaluation Sampler (Step 6B)**: Generates a balanced, reproducible 100-message benchmark sample across customer, incident, decision, code, long, short, relationship, and bot categories.
 - **Semantic Extraction Schema & Validation (Step 6A)**: Standardized, strongly-typed semantic extraction contract (`SemanticExtraction`, `SemanticEntity`, `SemanticStatement`) with strict validation rules and provenance tracking.
@@ -113,7 +116,7 @@ deptrace/
    python backend/graph/verify_ingestion.py
    ```
 
-### Deterministic Semantic Extraction Sample & Gemini Pilot (Step 6)
+### Deterministic Semantic Extraction Pipeline (Step 6)
 
 1. Generate the 100-message representative sample:
    ```bash
@@ -128,6 +131,11 @@ deptrace/
 3. Run the 10-message Gemini extraction pilot:
    ```bash
    python backend/semantic/pilot.py
+   ```
+
+4. Evaluate pilot extraction quality metrics:
+   ```bash
+   python backend/semantic/evaluate_pilot.py
    ```
 
 ### Running Tests
