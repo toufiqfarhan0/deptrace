@@ -60,17 +60,30 @@ def sanitize_error(exc: Exception) -> str:
 
 
 def parse_citations(text: str) -> list[str]:
-    """Extract all [E#] citation tags from generated text in order of appearance."""
-    matches = re.findall(r"\[E(\d+)\]", text)
-    # Deduplicate while preserving appearance order
+    """
+    Extract all E# citation tags from generated text in order of appearance.
+    Supports single [E1], [E2] and grouped citations like [E1, E2], [E1,E2], [E1, E3, E5].
+    """
+    if not text:
+        return []
+
     seen: set[str] = set()
     ordered: list[str] = []
-    for m in matches:
-        tag = f"E{m}"
-        if tag not in seen:
-            seen.add(tag)
-            ordered.append(tag)
+
+    # Find all bracketed contents e.g. [E1, E2], [E1]
+    bracket_pattern = re.compile(r"\[(.*?)\]")
+    for match in bracket_pattern.finditer(text):
+        bracket_content = match.group(1)
+        # Extract all E# references inside the bracket group
+        e_matches = re.findall(r"\bE(\d+)\b", bracket_content, re.IGNORECASE)
+        for num in e_matches:
+            tag = f"E{int(num)}"
+            if tag not in seen:
+                seen.add(tag)
+                ordered.append(tag)
+
     return ordered
+
 
 
 class GraphRAGPipeline:
