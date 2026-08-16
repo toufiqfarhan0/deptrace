@@ -1,10 +1,3 @@
-"""
-Gemini Semantic Extraction 10-Message Pilot Runner (Step 6C).
-
-Extracts semantic knowledge from the first 10 sample messages using
-the Gemini Interactions API and writes results to JSONL.
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,76 +33,97 @@ OUTPUT_FILE = (
 PILOT_SIZE = 10
 
 
-def load_messages(limit: int = PILOT_SIZE) -> list[dict]:
-    """Load up to `limit` messages from the 100-message sample file."""
-    if not INPUT_FILE.exists():
-        raise FileNotFoundError(f"Input file not found: {INPUT_FILE}")
-
+def load_messages() -> list[dict]:
     messages: list[dict] = []
-    with INPUT_FILE.open("r", encoding="utf-8") as handle:
+
+    with INPUT_FILE.open(
+        "r",
+        encoding="utf-8",
+    ) as handle:
         for line in handle:
-            line = line.strip()
-            if not line:
+            if not line.strip():
                 continue
 
-            messages.append(json.loads(line))
-            if len(messages) >= limit:
+            messages.append(
+                json.loads(line)
+            )
+
+            if len(messages) >= PILOT_SIZE:
                 break
 
     return messages
 
 
-def run_pilot(
-    input_file: Path | str = INPUT_FILE,
-    output_file: Path | str = OUTPUT_FILE,
-    limit: int = PILOT_SIZE,
-    model: str = "gemini-2.5-flash",
-) -> list[dict]:
-    """Execute Gemini semantic extraction on the pilot message batch."""
-    messages = load_messages(limit=limit)
-    if len(messages) != limit:
-        raise RuntimeError(f"Expected {limit} messages, found {len(messages)}")
+def run_pilot() -> None:
+    messages = load_messages()
 
-    extractor = GeminiSemanticExtractor(model=model)
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if len(messages) != PILOT_SIZE:
+        raise RuntimeError(
+            f"Expected {PILOT_SIZE} messages, "
+            f"found {len(messages)}"
+        )
 
-    results: list[dict] = []
+    extractor = GeminiSemanticExtractor()
+
+    OUTPUT_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     print("=" * 70)
-    print("Gemini Semantic Extraction Pilot (Step 6C)")
-    print(f"Model:       {model}")
-    print(f"Messages:    {limit}")
-    print(f"Input file:  {input_file}")
-    print(f"Output file: {output_path}")
+    print("Semantic Extraction Pilot")
+    print("=" * 70)
+    print("Provider:    Gemini")
+    print(f"Model:       {extractor.model}")
+    print(f"Messages:    {PILOT_SIZE}")
+    print(f"Input file:  {INPUT_FILE}")
+    print(f"Output file: {OUTPUT_FILE}")
     print("=" * 70)
 
-    with output_path.open("w", encoding="utf-8") as output:
-        for index, message in enumerate(messages, start=1):
-            msg_id = message["message_id"]
-            doc_id = message["document_id"]
-            print(f"[{index}/{limit}] Extracting msg_id={msg_id} (doc={doc_id[:35]}...)")
+    with OUTPUT_FILE.open(
+        "w",
+        encoding="utf-8",
+    ) as output:
 
-            result = extractor.extract(message)
+        for index, message in enumerate(
+            messages,
+            start=1,
+        ):
+            print(
+                f"[{index}/{PILOT_SIZE}] "
+                f"Extracting msg_id={message['message_id']} "
+                f"(doc={message['document_id'][:40]}...)"
+            )
+
+            result = extractor.extract(
+                message
+            )
 
             record = {
-                "message_id": msg_id,
-                "document_id": doc_id,
+                "message_id": message[
+                    "message_id"
+                ],
+                "document_id": message[
+                    "document_id"
+                ],
                 "source_message": message,
-                "extraction": result.model_dump(mode="json"),
+                "extraction": result.model_dump(
+                    mode="json"
+                ),
             }
 
-            results.append(record)
-            output.write(json.dumps(record, ensure_ascii=False) + "\n")
+            output.write(
+                json.dumps(
+                    record,
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
 
     print()
-    print("=" * 70)
-    print("Pilot Finished Successfully.")
-    print(f"Messages processed: {len(results)}")
-    print(f"Output written to:  {output_path}")
-    print("=" * 70)
-
-    return results
+    print("Pilot complete.")
+    print(f"Messages: {PILOT_SIZE}")
+    print(f"Output:   {OUTPUT_FILE}")
 
 
 def main() -> None:
