@@ -14,11 +14,19 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
 import requests
 
+_root = Path(__file__).resolve().parents[2]
+try:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=_root / ".env", override=False)
+except ImportError:
+    pass
 
 HYDRA_URL = os.getenv("HYDRA_URL", "http://127.0.0.1:8443")
+
 TOKEN = os.getenv("HYDRA_TOKEN", "local-development-token-32-bytes")
 GRAPH_NAME = os.getenv("HYDRA_GRAPH", "default")
 GRAPH_NAMESPACE = os.getenv("HYDRA_NAMESPACE", "default")
