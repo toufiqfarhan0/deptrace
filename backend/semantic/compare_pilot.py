@@ -7,7 +7,15 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-PILOT_FILE = (
+DEFAULT_PILOT_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "enterprise-rag"
+    / "semantic-samples"
+    / "pilot_results.jsonl"
+)
+
+LEGACY_PILOT_FILE = (
     PROJECT_ROOT
     / "data"
     / "enterprise-rag"
@@ -17,6 +25,10 @@ PILOT_FILE = (
 
 
 def main() -> None:
+    pilot_file = DEFAULT_PILOT_FILE if DEFAULT_PILOT_FILE.exists() else LEGACY_PILOT_FILE
+    if not pilot_file.exists():
+        raise FileNotFoundError(f"Pilot results file not found: {DEFAULT_PILOT_FILE} or {LEGACY_PILOT_FILE}")
+
     entity_counts = Counter()
     statement_counts = Counter()
 
@@ -24,10 +36,11 @@ def main() -> None:
     total_entities = 0
     generic_entities = 0
 
-    with PILOT_FILE.open(
+    with pilot_file.open(
         "r",
         encoding="utf-8",
     ) as handle:
+
 
         for line in handle:
             if not line.strip():
