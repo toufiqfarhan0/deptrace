@@ -167,7 +167,7 @@ def run_resumable_pilot(
     output_file: Path | str = DEFAULT_OUTPUT_FILE,
     limit: int = DEFAULT_LIMIT,
     resume: bool = True,
-    model: str = "gemini-3.5-flash",
+    model: str = "gemini-3.6-flash",
     extractor: Any | None = None,
 ) -> list[dict[str, Any]]:
     """
@@ -305,8 +305,8 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default="gemini-3.5-flash",
-        help="Gemini model identifier (default: gemini-3.5-flash)",
+        default="gemini-3.6-flash",
+        help="Gemini model identifier (default: gemini-3.6-flash)",
     )
 
     args = parser.parse_args()

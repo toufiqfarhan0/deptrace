@@ -438,11 +438,11 @@ class GeminiSemanticExtractor:
 
     def __init__(
         self,
-        model: str = "gemini-3.5-flash",
+        model: str | None = None,
     ) -> None:
 
         self.client = genai.Client()
-        self.model = model
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
     def extract(
         self,

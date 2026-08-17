@@ -66,7 +66,7 @@ class AppConfig:
 
     @classmethod
     def get_gemini_model(cls) -> str:
-        return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        return os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
     @classmethod
     def get_port(cls) -> int:
