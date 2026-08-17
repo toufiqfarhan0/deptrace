@@ -1,4 +1,5 @@
 import React from 'react'
+import { getHydraStatusLabel, getHydraDotClass, getHydraAriaLabel } from '../utils/hydraStatus.js'
 
 export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome }) {
   const navItems = [
@@ -64,17 +65,17 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
       </nav>
 
       <div className="sidebar-footer">
-        <div className="status-line">
+        <div
+          className="status-line"
+          role="status"
+          aria-label={getHydraAriaLabel(hydraStatus)}
+        >
           <span
-            className={`status-dot ${isLoading ? 'loading' : isOnline ? 'ok' : 'err'}`}
+            className={`status-dot ${getHydraDotClass(hydraStatus)}`}
             aria-hidden="true"
           />
           <span>
-            {isLoading
-              ? 'Checking HydraDB...'
-              : isOnline
-              ? 'HydraDB Online'
-              : 'HydraDB Offline'}
+            {getHydraStatusLabel(hydraStatus, { format: 'sidebar' })}
           </span>
         </div>
       </div>

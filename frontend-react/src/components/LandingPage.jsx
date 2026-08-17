@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react"
 import ThemeToggle from "./ThemeToggle.jsx"
+import { isHydraOnline, getHydraStatusLabel, getHydraAriaLabel } from "../utils/hydraStatus.js"
 
 function SignalFlowDiagram() {
   const [lit, setLit] = useState(false)
@@ -286,7 +287,7 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
     window.addEventListener("scroll", onScroll, { passive: true })
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
-  const isOnline = hydraStatus?.hydradb === "ok"
+  const isOnline = isHydraOnline(hydraStatus)
   return (
     <div className="lp-root">
       <header className={`lp-nav${scrolled ? " lp-nav--scrolled" : ""}`} role="banner">
@@ -305,9 +306,13 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
             {theme && onToggleTheme && (
               <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
             )}
-            <div className="lp-nav-status">
+            <div
+              className="lp-nav-status"
+              role="status"
+              aria-label={getHydraAriaLabel(hydraStatus)}
+            >
               <span className={`lp-nav-status-dot${isOnline ? " lp-nav-status-dot--ok" : ""}`} />
-              <span>{isOnline ? "HYDRADB ONLINE" : "CONNECTING..."}</span>
+              <span>{getHydraStatusLabel(hydraStatus, { format: "landing" })}</span>
             </div>
             <button className="lp-btn-primary lp-btn-sm" onClick={() => onEnterConsole("ask")} id="lp-nav-open-console">OPEN CONSOLE</button>
           </div>
