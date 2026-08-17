@@ -1,147 +1,190 @@
-# DepTrace
+# Veridex (DeTrace) — Hackathon Track 1
 
-DepTrace is an Enterprise RAG (Retrieval-Augmented Generation) and Dependency Tracing system designed to analyze cross-team discussions, operational issues, and engineering dependency chains.
+**Evidence-first dependency intelligence and grounded investigation console over HydraDB.**
+
+Veridex investigates incidents, operational changes, and cross-team dependencies across unstructured enterprise communications. By leveraging **HydraDB** as a deterministic semantic knowledge graph and provenance layer, Veridex resolves typed facts, actions, and decisions without hallucinated linkages.
+
+---
+
+## Veridex Architecture
+
+```
+                    EnterpriseRAG-Bench Dataset
+                                │
+                                ▼
+                   Deterministic Slack Parser
+                                │
+                                ▼
+                       HydraDB Graph Layer
+            ┌───────────────────┴───────────────────┐
+            ▼                                       ▼
+    Semantic Entities & Statements           Source Provenance
+ (MENTIONS, EXPRESSES, ABOUT)             (message_id, document_id)
+            └───────────────────┬───────────────────┘
+                                │
+                                ▼
+                 Deterministic Graph Retriever
+                                │
+                                ▼
+                     Evidence Bundle [E1, E2]
+                                │
+                                ▼
+                   Grounded Gemini Graph RAG
+                                │
+                                ▼
+                    Evidence-Backed Synthesis
+                                │
+                                ▼
+                Multi-Hop Dependency Tracer (BFS)
+                                │
+                                ▼
+               Veridex Investigation Console (React)
+```
+
+---
+
+## Why HydraDB is Essential to Veridex
+
+Veridex does **not** treat the database as simple vector storage or passive context caching:
+
+1. **Deterministic Graph Resolution**: Rather than asking an LLM to search or guess relationships, HydraDB resolves typed statements (`fact`, `action`, `decision`, `outcome`, `claim`) and direct `(Statement)-[:ABOUT]->(Entity)` edges deterministically via OpenCypher queries.
+2. **Bounded Evidence Packaging**: Retrieval constructs discrete, stable evidence items `[E1], [E2], ...` mapped to explicit graph nodes and relationships.
+3. **Strict Grounded Synthesis**: Gemini operates strictly on the deterministic evidence bundle, citing bracketed evidence tags `[E1, E2]` for every factual assertion.
+4. **Zero-Hallucination Dependency Tracing**: Multi-hop BFS tracing explores real graph edges with cycle protection and bounded depth. If teams, authors, or channels are not present in the graph, Veridex explicitly reports *"Not available in current graph"* instead of hallucinating links.
+5. **Verifiable Provenance Invariants**: Every evidence item, dependency hop, and chronological timeline event preserves immutable source message and document IDs.
+
+---
+
+## 3–5 Minute Hackathon Demo Flow
+
+### Narrative: "What happened with REL-311?"
+
+1. **Launch Investigation**: Enter `"What happened with REL-311?"` in the Veridex Query Console.
+2. **Deterministic Retrieval**: HydraDB queries find relevant `ABOUT` edges and typed statements across the graph slice in **<80ms**.
+3. **Provenance-Preserved Evidence**: Evidence items `[E1]`, `[E2]` display exact statement type badges (`FACT`, `ACTION`), graph relationships (`ABOUT`), and source provenance (`msg:8537794879600693670`).
+4. **Grounded Synthesis**: Gemini synthesizes the answer citing `[E1, E2]`. Citation pills are interactive—clicking `[E1]` scrolls and highlights the underlying evidence row.
+5. **Grounding Verification**: The console verifies citations against retrieved IDs and displays `GROUNDED · Evidence-backed synthesis`.
+6. **Multi-Hop Dependency Trace**: Switch to the **Trace** tab for `REL-311` (depth=2). HydraDB traverses the graph:
+   ```
+   REL-311 ⟷ api-search ⟷ v3.1.1-legacy-tokenizer ⟷ v3.1.1-legacy-tokenizer pinned to 1%
+   ```
+7. **Chronological Timeline**: View the exact ordered timeline of actions (`01 [fact] Monitor snapshot in eu-west`, `02 [action] Variant test rollout`, `03 [fact] Release notes and support alert link`).
+8. **Live Evaluation & Invariants**: Open **Why HydraDB?** to execute the live benchmark and verify 100% provenance integrity across all graph items.
+
+---
 
 ## Project Structure
 
 ```
 deptrace/
 ├── backend/
-│   ├── semantic/                     # Semantic extraction schema, sampling, Gemini pilot & evaluation (Step 6)
-│   │   ├── __init__.py
+│   ├── semantic/                     # Semantic schema, extraction & HydraDB ingestion (Step 6)
 │   │   ├── schema.py                 # Semantic entity, statement & extraction models (Pydantic)
-│   │   ├── gemini_extractor.py       # Gemini Interactions API extractor (Step 6C)
-│   │   ├── pilot.py                  # 10-message Gemini extraction pilot runner
-│   │   ├── evaluate_pilot.py         # Deterministic pilot evaluation & metrics (Step 6D)
-│   │   ├── sample_messages.py        # Deterministic 100-message evaluation sampler (Step 6B)
-│   │   ├── test_schema.py            # Schema validation unit tests
-│   │   ├── test_sample_messages.py   # Sampler invariant and coverage unit tests
-│   │   ├── test_gemini_one.py        # Single message Gemini extraction sanity check
-│   │   ├── test_gemini_pilot.py      # Pilot results verification unit test
-│   │   └── test_evaluate_pilot.py    # Quality evaluation unit tests
-│   ├── extraction/                   # Semantic extraction foundation & slice runner
-│   │   ├── __init__.py
-│   │   ├── schema.py                 # Semantic entity and statement schemas + provenance
-│   │   ├── base.py                   # Extractor interfaces and heuristic baseline
-│   │   ├── selector.py               # Deterministic message selection utilities
-│   │   └── extract_slice.py          # Message slice semantic extraction runner
-│   ├── graph/
-│   │   ├── README.md                 # HydraDB compatibility & setup guide
-│   │   ├── schema.py                 # Canonical graph ontology & query definitions
-│   │   ├── test_hydra.py             # HydraDB smoke test and query validation script
-│   │   ├── ingest_candidates.py      # Ingests deterministic candidate graph into HydraDB
-│   │   └── verify_ingestion.py       # Multi-hop graph traversal verification script
-│   └── ingestion/
-│       ├── parse_slack.py            # Slack dump parser converting text threads to JSONL
-│       ├── validate_slack_parse.py   # Dataset validation and integrity audit
-│       └── build_graph_candidates.py # Deterministic structural graph candidate generator
-├── tests/
-│   ├── test_build_graph_candidates.py # Unit tests for candidate generation
-│   ├── test_ingest_candidates.py      # Unit tests for HydraDB candidate ingestion
-├── frontend-react/                   # Veridex React investigation UI client
+│   │   ├── ingest_semantic.py        # Ingests semantic pilot results into HydraDB (MERGE patterns)
+│   │   ├── verify_semantic_graph.py  # Graph query helper & validation routines
+│   │   └── ids.py                    # Deterministic 63-bit integer ID generator (MurmurHash3)
+│   ├── retrieval/                    # Deterministic retrieval & dependency tracing (Step 7, Step 11)
+│   │   ├── hydra_retriever.py        # OpenCypher graph snapshot queries & evidence ranking
+│   │   ├── dependency_tracer.py      # Multi-hop BFS dependency tracer & timeline generator
+│   │   ├── models.py                 # Retrieval & Trace Pydantic data contracts
+│   │   └── verify_trace.py           # Dependency tracing verification script
+│   ├── rag/                          # Grounded Graph RAG & Citation Validation (Step 8, Step 10)
+│   │   ├── answer_generator.py       # Google GenAI SDK Gemini Interactions API generator
+│   │   ├── rag_pipeline.py           # Citation parsing [E1, E2] & grounding verifier
+│   │   └── models.py                 # RAG query and response models
+│   ├── evaluation/                   # Hackathon Evaluation, Provenance & Ablation (Step 12)
+│   │   ├── evaluation_runner.py      # Benchmark runner, invariant verifier & ablation engine
+│   │   ├── models.py                 # Evaluation report & invariant data models
+│   │   └── verify_evaluation.py      # Standalone evaluation & ablation validation script
+│   └── api/                          # FastAPI REST Application (Step 9)
+│       ├── app.py                    # FastAPI application factory & React SPA server
+│       ├── routes.py                 # Endpoints (/api/health, /api/ask, /api/trace, /api/evaluation)
+│       └── verify_api.py             # API endpoint verification script
+├── frontend-react/                   # Veridex Investigation Console (React 19 + Vite 6)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Sidebar.jsx           # Technical navigation sidebar & HydraDB telemetry
+│   │   │   ├── InvestigationView.jsx # Terminal query console & dense evidence rows
+│   │   │   ├── TraceView.jsx         # Multi-hop path visualizer & statement timeline
+│   │   │   ├── EntityExplorer.jsx    # Graph entity catalog with filterable search
+│   │   │   ├── GraphHealth.jsx       # Real-time HydraDB connection health & API catalog
+│   │   │   └── WhyHydraDB.jsx        # Architecture principles & live ablation benchmark
+│   │   ├── index.css                 # Technical console design system (Amber / JetBrains Mono)
+│   │   └── App.jsx                   # Main application workspace shell
+├── tests/                            # Comprehensive offline pytest suite (133 tests)
 ├── .gitignore
 └── README.md
-
 ```
 
-## Features
-
-- **Semantic Extraction Quality Evaluation (Step 6D)**: Automated evaluation suite computing entity/statement distributions, provenance verification, confidence tracking, and generic entity ratio analysis.
-- **Gemini Semantic Extraction Pilot (Step 6C)**: Extracts structured entities (`Customer`, `Project`, `Incident`, `Decision`, `ConfigurationChange`, `Entity`) and statements (`fact`, `decision`, `claim`, `action`, `outcome`) via the Google GenAI Interactions API (`gemini-2.5-flash` / `gemini-3.6-flash`).
-- **Deterministic Evaluation Sampler (Step 6B)**: Generates a balanced, reproducible 100-message benchmark sample across customer, incident, decision, code, long, short, relationship, and bot categories.
-- **Semantic Extraction Schema & Validation (Step 6A)**: Standardized, strongly-typed semantic extraction contract (`SemanticExtraction`, `SemanticEntity`, `SemanticStatement`) with strict validation rules and provenance tracking.
-- **HydraDB Graph Foundation**: Canonical ontology with standalone `MERGE` write patterns and multi-hop Cypher queries.
-- **Deterministic Candidate Ingestion (Step 5B)**: Converts candidate graphs into supported standalone `MERGE` statements with embedded properties and integer IDs into HydraDB.
-- **Deterministic Graph Candidate Generation (Step 5A)**: Constructs structural graph elements (`Document`, `Channel`, `Message`, `Person`, `Team`) and relationships (`IN_CHANNEL`, `AUTHORED`, `MEMBER_OF`, `PART_OF`) with stable 63-bit integer IDs.
-- **Slack Log Parsing & Normalization (Step 5C)**: Extracts channel metadata, author, team, and multi-line message threads with fenced code block and header validation.
+---
 
 ## Getting Started
 
 ### Prerequisites
 
 - Python 3.9+
+- Node.js 18+ and npm
 - Docker (for local HydraDB instance)
-- `requests` (`pip install requests`)
-- `pytest` (`pip install pytest`)
-- `google-genai` (`pip install google-genai`)
-- `pydantic` (`pip install pydantic`)
+- Google Gemini API key (optional for UI review; all tests and evaluations run offline)
 
-### HydraDB Graph Setup & Smoke Test
-
-1. Start HydraDB with in-memory storage provider:
-   ```bash
-   docker run -d --name hydradb \
-     -p 8443:8443 \
-     -p 7687:7687 \
-     -e CLOUD_PROVIDER=memory \
-     -e GRAPH_ALLOW_PLAINTEXT=true \
-     ghcr.io/hydra-db/hydradb:latest
-   ```
-
-2. Set environment variables:
-   ```bash
-   # PowerShell
-   $env:HYDRA_TOKEN = (docker exec hydradb cat /data/auth-token)
-   $env:HYDRA_URL = "http://127.0.0.1:8443"
-
-   # Bash
-   export HYDRA_TOKEN=$(docker exec hydradb cat /data/auth-token)
-   export HYDRA_URL="http://127.0.0.1:8443"
-   ```
-
-3. Run smoke test:
-   ```bash
-   python backend/graph/test_hydra.py
-   ```
-
-### Slack Log Ingestion & Candidate Graph Pipeline
-
-1. Parse raw Slack export files into structured JSONL:
-   ```bash
-   python backend/ingestion/parse_slack.py
-   ```
-
-2. Generate deterministic graph candidate records:
-   ```bash
-   python backend/ingestion/build_graph_candidates.py
-   ```
-
-3. Ingest candidate documents into HydraDB (default: initial 10 documents):
-   ```bash
-   python backend/graph/ingest_candidates.py
-   ```
-
-4. Verify multi-hop graph reads in HydraDB:
-   ```bash
-   python backend/graph/verify_ingestion.py
-   ```
-
-### Deterministic Semantic Extraction Pipeline (Step 6)
-
-1. Generate the 100-message representative sample:
-   ```bash
-   python backend/semantic/sample_messages.py
-   ```
-
-2. Run single message Gemini extraction sanity test:
-   ```bash
-   python backend/semantic/test_gemini_one.py
-   ```
-
-3. Run the 10-message Gemini extraction pilot:
-   ```bash
-   python backend/semantic/pilot.py
-   ```
-
-4. Evaluate pilot extraction quality metrics:
-   ```bash
-   python backend/semantic/evaluate_pilot.py
-   ```
-
-### Running Tests
-
-Run pytest for full test suite:
+### 1. Start Local HydraDB Instance
 
 ```bash
+docker run -d --name hydradb \
+  -p 8443:8443 \
+  -p 7687:7687 \
+  -e CLOUD_PROVIDER=memory \
+  -e GRAPH_ALLOW_PLAINTEXT=true \
+  ghcr.io/hydra-db/hydradb:latest
+```
+
+Set environment variables:
+```bash
+# PowerShell
+$env:HYDRA_TOKEN = (docker exec hydradb cat /data/auth-token)
+$env:HYDRA_URL = "http://127.0.0.1:8443"
+
+# Linux / macOS
+export HYDRA_TOKEN=$(docker exec hydradb cat /data/auth-token)
+export HYDRA_URL="http://127.0.0.1:8443"
+```
+
+### 2. Ingest Semantic Knowledge Graph Slice
+
+```bash
+python -m backend.semantic.ingest_semantic
+```
+
+### 3. Build Frontend & Start Veridex Console
+
+```bash
+# Build React application
+npm run build --prefix frontend-react
+
+# Start FastAPI backend
+uvicorn backend.api.app:app --reload --port 8000
+```
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
+
+---
+
+## Verification & Testing Commands
+
+All unit tests and benchmark suites execute **100% offline** without consuming Gemini API quota:
+
+```bash
+# 1. Run full offline unit test suite (133 tests)
 python -m pytest -q
+
+# 2. Run Step 12 Evaluation, Provenance Invariant Check, & Ablation Benchmark
+python -m backend.evaluation.verify_evaluation
+
+# 3. Run Step 11 Dependency Tracing Verification
+python -m backend.retrieval.verify_trace
+
+# 4. Run Step 9 Web API Verification
+python -m backend.api.verify_api
+
+# 5. Build React production bundle
+npm run build --prefix frontend-react
 ```

@@ -18,10 +18,12 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus }) {
     {
       group: 'SYSTEM',
       items: [
+        { id: 'why-hydra', label: 'Why HydraDB?', icon: <ArchitectureIcon /> },
         { id: 'health', label: 'Graph Health', icon: <HealthIcon /> },
       ],
     },
   ]
+
 
   const isOnline = hydraStatus?.hydradb === 'ok'
   const isLoading = hydraStatus?.status === 'loading'
@@ -110,3 +112,13 @@ function HealthIcon() {
     </svg>
   )
 }
+
+function ArchitectureIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>
+    </svg>
+  )
+}
+

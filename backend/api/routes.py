@@ -178,3 +178,30 @@ def trace_dependencies_endpoint(
             detail=f"Dependency tracing error: {type(exc).__name__}",
         ) from exc
 
+
+@router.get("/evaluation")
+def get_evaluation_report_endpoint(runner=None) -> dict[str, Any]:
+    """
+    Run and return the deterministic HydraDB evaluation and ablation benchmark report.
+    """
+    try:
+        from backend.evaluation.evaluation_runner import EvaluationRunner
+        ev_runner = runner or EvaluationRunner()
+        report = ev_runner.run_evaluation()
+        return report.model_dump()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Evaluation runner error: {type(exc).__name__}",
+        ) from exc
+
+
+@router.get("/demo/queries")
+def get_demo_queries_endpoint() -> list[dict[str, str]]:
+    """
+    Return pre-configured demo and evaluation investigation queries.
+    """
+    from backend.evaluation.evaluation_runner import BENCHMARK_QUERIES
+    return BENCHMARK_QUERIES
+
+

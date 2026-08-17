@@ -4,6 +4,7 @@ import InvestigationView from './components/InvestigationView.jsx'
 import TraceView from './components/TraceView.jsx'
 import EntityExplorer from './components/EntityExplorer.jsx'
 import GraphHealth from './components/GraphHealth.jsx'
+import WhyHydraDB from './components/WhyHydraDB.jsx'
 
 export default function App() {
   const [activeView, setActiveView] = useState('ask')
@@ -41,6 +42,8 @@ export default function App() {
         return 'INVESTIGATE / Trace'
       case 'entities':
         return 'EXPLORE / Entities'
+      case 'why-hydra':
+        return 'SYSTEM / Why HydraDB?'
       case 'health':
         return 'SYSTEM / Graph Health'
       default:
@@ -94,6 +97,7 @@ export default function App() {
           {activeView === 'entities' && (
             <EntityExplorer onTraceEntity={navigateToTrace} />
           )}
+          {activeView === 'why-hydra' && <WhyHydraDB />}
           {activeView === 'health' && (
             <GraphHealth hydraStatus={hydraStatus} />
           )}
@@ -102,3 +106,4 @@ export default function App() {
     </div>
   )
 }
+
