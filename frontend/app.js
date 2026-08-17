@@ -1,26 +1,75 @@
 /**
- * DeTrace Web Application Logic (Step 9).
+ * DeTrace Web Application Logic (Step 9 / Step 11).
+ * Supports Graph RAG question answering and deterministic multi-hop Dependency Tracing.
  */
 
 document.addEventListener("DOMContentLoaded", () => {
-  const questionInput = document.getElementById("questionInput");
-  const askBtn = document.getElementById("askBtn");
+  // Elements: Navigation Tabs
+  const tabAsk = document.getElementById("tabAsk");
+  const tabTrace = document.getElementById("tabTrace");
+  const viewAsk = document.getElementById("viewAsk");
+  const viewTrace = document.getElementById("viewTrace");
+
+  // Elements: Health Badge
   const healthBadge = document.getElementById("healthBadge");
   const healthText = document.getElementById("healthText");
 
+  // Elements: View 1 (Ask)
+  const questionInput = document.getElementById("questionInput");
+  const askBtn = document.getElementById("askBtn");
   const loadingSection = document.getElementById("loadingSection");
   const errorSection = document.getElementById("errorSection");
   const errorMessage = document.getElementById("errorMessage");
   const resultSection = document.getElementById("resultSection");
   const emptySection = document.getElementById("emptySection");
-
   const displayQuestion = document.getElementById("displayQuestion");
   const answerBody = document.getElementById("answerBody");
   const groundingBadge = document.getElementById("groundingBadge");
   const evidenceCount = document.getElementById("evidenceCount");
   const evidenceGrid = document.getElementById("evidenceGrid");
 
-  // Check HydraDB Health on Startup
+  // Elements: View 2 (Trace)
+  const traceEntityInput = document.getElementById("traceEntityInput");
+  const traceDepthSelect = document.getElementById("traceDepthSelect");
+  const traceBtn = document.getElementById("traceBtn");
+  const traceLoadingSection = document.getElementById("traceLoadingSection");
+  const traceErrorSection = document.getElementById("traceErrorSection");
+  const traceErrorMessage = document.getElementById("traceErrorMessage");
+  const traceResultSection = document.getElementById("traceResultSection");
+  const traceEmptySection = document.getElementById("traceEmptySection");
+
+  const traceRootHeading = document.getElementById("traceRootHeading");
+  const metricLinkedCount = document.getElementById("metricLinkedCount");
+  const metricStmtCount = document.getElementById("metricStmtCount");
+  const metricDepth = document.getElementById("metricDepth");
+  const metricMsgCount = document.getElementById("metricMsgCount");
+  const linkedComponentsChips = document.getElementById("linkedComponentsChips");
+  const stmtBreakdownChips = document.getElementById("stmtBreakdownChips");
+  const hopsCount = document.getElementById("hopsCount");
+  const hopsGrid = document.getElementById("hopsGrid");
+  const timelineCount = document.getElementById("timelineCount");
+  const timelineList = document.getElementById("timelineList");
+
+  // -------------------------------------------------------------------
+  // Tab Switching
+  // -------------------------------------------------------------------
+  tabAsk.addEventListener("click", () => {
+    tabAsk.classList.add("active");
+    tabTrace.classList.remove("active");
+    viewAsk.classList.remove("hidden");
+    viewTrace.classList.add("hidden");
+  });
+
+  tabTrace.addEventListener("click", () => {
+    tabTrace.classList.add("active");
+    tabAsk.classList.remove("active");
+    viewTrace.classList.remove("hidden");
+    viewAsk.classList.add("hidden");
+  });
+
+  // -------------------------------------------------------------------
+  // Check HydraDB Health & Entity List on Startup
+  // -------------------------------------------------------------------
   async function checkHealth() {
     try {
       const res = await fetch("/api/health");
@@ -41,8 +90,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   checkHealth();
 
-  // Quick Prompt Chips
-  document.querySelectorAll(".chip").forEach((chip) => {
+  // -------------------------------------------------------------------
+  // VIEW 1: ASK GRAPH RAG
+  // -------------------------------------------------------------------
+  document.querySelectorAll(".chip:not(.trace-chip)").forEach((chip) => {
     chip.addEventListener("click", () => {
       const query = chip.getAttribute("data-query");
       if (query) {
@@ -52,7 +103,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Enter / Ctrl+Enter key listener
   questionInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -69,9 +119,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // UI State: Loading
-    setLoading(true);
-    hideError();
+    setAskLoading(true);
+    hideAskError();
 
     try {
       const response = await fetch("/api/ask", {
@@ -86,15 +135,15 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error(data.detail || data.error || `Server returned HTTP ${response.status}`);
       }
 
-      renderResult(data);
+      renderAskResult(data);
     } catch (err) {
-      showError(err.message || "Failed to communicate with Graph RAG service.");
+      showAskError(err.message || "Failed to communicate with Graph RAG service.");
     } finally {
-      setLoading(false);
+      setAskLoading(false);
     }
   }
 
-  function renderResult(data) {
+  function renderAskResult(data) {
     emptySection.classList.add("hidden");
     resultSection.classList.remove("hidden");
 
@@ -112,7 +161,6 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .join(" ");
     });
-
 
     answerBody.innerHTML = formattedAnswer;
 
@@ -194,7 +242,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function setLoading(isLoading) {
+  function setAskLoading(isLoading) {
     if (isLoading) {
       askBtn.disabled = true;
       loadingSection.classList.remove("hidden");
@@ -205,14 +253,205 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function showError(msg) {
+  function showAskError(msg) {
     errorMessage.textContent = msg;
     errorSection.classList.remove("hidden");
     resultSection.classList.add("hidden");
   }
 
-  function hideError() {
+  function hideAskError() {
     errorSection.classList.add("hidden");
+  }
+
+  // -------------------------------------------------------------------
+  // VIEW 2: DEPENDENCY TRACER
+  // -------------------------------------------------------------------
+  document.querySelectorAll(".trace-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const entity = chip.getAttribute("data-entity");
+      if (entity) {
+        traceEntityInput.value = entity;
+        handleTrace();
+      }
+    });
+  });
+
+  traceEntityInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTrace();
+    }
+  });
+
+  traceBtn.addEventListener("click", handleTrace);
+
+  async function handleTrace() {
+    const entity = traceEntityInput.value.trim();
+    if (!entity) {
+      traceEntityInput.focus();
+      return;
+    }
+
+    const max_depth = parseInt(traceDepthSelect.value, 10) || 2;
+
+    setTraceLoading(true);
+    hideTraceError();
+
+    try {
+      const response = await fetch("/api/trace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entity, max_depth, limit: 25 }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || `Server returned HTTP ${response.status}`);
+      }
+
+      if (!data.found) {
+        showTraceError(data.error || `Entity '${entity}' not found in knowledge graph.`);
+        return;
+      }
+
+      renderTraceResult(data);
+    } catch (err) {
+      showTraceError(err.message || "Failed to execute dependency trace.");
+    } finally {
+      setTraceLoading(false);
+    }
+  }
+
+  function renderTraceResult(data) {
+    traceEmptySection.classList.add("hidden");
+    traceResultSection.classList.remove("hidden");
+
+    const summary = data.impact_summary || {};
+    traceRootHeading.textContent = `Root Entity: ${data.root_entity}`;
+
+    metricLinkedCount.textContent = summary.total_linked_entities || 0;
+    metricStmtCount.textContent = summary.total_statements || 0;
+    metricDepth.textContent = summary.traversal_depth || 0;
+    metricMsgCount.textContent = (summary.affected_messages || []).length;
+
+    // Render linked component badges
+    linkedComponentsChips.innerHTML = "";
+    const components = summary.affected_components || [];
+    if (components.length === 0) {
+      linkedComponentsChips.innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem;">No secondary linked components</span>`;
+    } else {
+      components.forEach((comp) => {
+        const chip = document.createElement("span");
+        chip.className = "mini-badge badge-action";
+        chip.style.cursor = "pointer";
+        chip.textContent = comp;
+        chip.addEventListener("click", () => {
+          traceEntityInput.value = comp;
+          handleTrace();
+        });
+        linkedComponentsChips.appendChild(chip);
+      });
+    }
+
+    // Render statement breakdown badges
+    stmtBreakdownChips.innerHTML = "";
+    const breakdown = summary.statements_by_type || {};
+    Object.entries(breakdown).forEach(([type, count]) => {
+      const badge = document.createElement("span");
+      badge.className = `mini-badge badge-${type.toLowerCase()}`;
+      badge.textContent = `${count} ${type}${count === 1 ? "" : "s"}`;
+      stmtBreakdownChips.appendChild(badge);
+    });
+
+    // Render Dependency Hops
+    const hops = data.dependency_hops || [];
+    hopsCount.textContent = `${hops.length} hop${hops.length === 1 ? "" : "s"}`;
+    hopsGrid.innerHTML = "";
+
+    if (hops.length === 0) {
+      hopsGrid.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem;">No multi-hop links discovered.</p>`;
+    } else {
+      hops.forEach((hop) => {
+        const card = document.createElement("div");
+        card.className = "hop-card";
+
+        const stmtsHtml = (hop.statements || [])
+          .map((s) => `<div>${escapeHtml(s)}</div>`)
+          .join("");
+
+        card.innerHTML = `
+          <div class="hop-card-header">
+            <span class="mini-badge badge-rel">Hop Distance: ${hop.hop_distance}</span>
+            <span class="mini-badge badge-action">${hop.relationship}</span>
+          </div>
+          <div class="hop-route">
+            <span>${escapeHtml(hop.source_entity)}</span>
+            <span class="hop-arrow">&rarr;</span>
+            <span style="color: #38bdf8;">${escapeHtml(hop.target_entity)}</span>
+          </div>
+          <div class="hop-statements">
+            ${stmtsHtml}
+          </div>
+          <div class="evidence-provenance">
+            <span><strong>Via Message:</strong> ${hop.via_message_id}</span>
+            <span><strong>Document:</strong> ${escapeHtml(hop.document_id)}</span>
+          </div>
+        `;
+        hopsGrid.appendChild(card);
+      });
+    }
+
+    // Render Statement Timeline
+    const timeline = data.timeline || [];
+    timelineCount.textContent = `${timeline.length} event${timeline.length === 1 ? "" : "s"}`;
+    timelineList.innerHTML = "";
+
+    if (timeline.length === 0) {
+      timelineList.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem;">No statements recorded on this dependency path.</p>`;
+    } else {
+      timeline.forEach((item) => {
+        const itemEl = document.createElement("div");
+        itemEl.className = "timeline-item";
+
+        itemEl.innerHTML = `
+          <div class="timeline-index-badge">#${item.order_index}</div>
+          <div class="timeline-body">
+            <div class="timeline-meta">
+              <span class="mini-badge badge-${item.statement_type.toLowerCase()}">${item.statement_type}</span>
+              <span class="mini-badge badge-rel">${item.relationship}: ${escapeHtml(item.associated_entity)}</span>
+            </div>
+            <div class="timeline-statement-text">${escapeHtml(item.statement)}</div>
+            <div class="evidence-provenance">
+              <span><strong>Message ID:</strong> ${item.message_id}</span>
+              <span><strong>Document:</strong> ${escapeHtml(item.document_id)}</span>
+            </div>
+          </div>
+        `;
+        timelineList.appendChild(itemEl);
+      });
+    }
+  }
+
+  function setTraceLoading(isLoading) {
+    if (isLoading) {
+      traceBtn.disabled = true;
+      traceLoadingSection.classList.remove("hidden");
+      traceResultSection.classList.add("hidden");
+    } else {
+      traceBtn.disabled = false;
+      traceLoadingSection.classList.add("hidden");
+    }
+  }
+
+  function showTraceError(msg) {
+    traceErrorMessage.textContent = msg;
+    traceErrorSection.classList.remove("hidden");
+    traceResultSection.classList.add("hidden");
+  }
+
+  function hideTraceError() {
+    traceErrorSection.classList.add("hidden");
   }
 
   function escapeHtml(str) {

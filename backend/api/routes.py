@@ -1,5 +1,5 @@
 """
-HTTP API routes for DeTrace Graph RAG application (Step 9).
+HTTP API routes for DeTrace Graph RAG & Dependency Tracing application (Step 9 / Step 11).
 """
 
 from __future__ import annotations
@@ -16,6 +16,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.rag.rag_pipeline import answer_question
+from backend.retrieval.dependency_tracer import DependencyTracer
+from backend.retrieval.models import (
+    DependencyTraceRequest,
+    DependencyTraceResponse,
+)
 from backend.semantic.verify_semantic_graph import query as default_query_fn
 
 router = APIRouter(prefix="/api", tags=["rag"])
@@ -67,6 +72,13 @@ class AskResponse(BaseModel):
     evidence: list[EvidenceResponseItem] = Field(default_factory=list)
     cited_evidence_ids: list[str] = Field(default_factory=list)
     error: str | None = None
+
+
+class EntityListResponse(BaseModel):
+    """List of available entities present in the knowledge graph."""
+
+    entities: list[str] = Field(default_factory=list)
+    total_count: int = 0
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -132,3 +144,37 @@ def ask_question_endpoint(
         cited_evidence_ids=rag_res.cited_evidence_ids,
         error=rag_res.error,
     )
+
+
+@router.get("/trace/entities", response_model=EntityListResponse)
+def get_trace_entities_endpoint(tracer=None) -> EntityListResponse:
+    """
+    Get all unique entities in HydraDB available for dependency tracing.
+    """
+    dt = tracer or DependencyTracer()
+    entities = dt.get_available_entities()
+    return EntityListResponse(entities=entities, total_count=len(entities))
+
+
+@router.post("/trace", response_model=DependencyTraceResponse)
+def trace_dependencies_endpoint(
+    payload: DependencyTraceRequest,
+    tracer=None,
+) -> DependencyTraceResponse:
+    """
+    Execute deterministic multi-hop dependency tracing starting from a target entity.
+    """
+    dt = tracer or DependencyTracer()
+    try:
+        res = dt.trace(
+            entity=payload.entity,
+            max_depth=payload.max_depth,
+            limit=payload.limit,
+        )
+        return res
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dependency tracing error: {type(exc).__name__}",
+        ) from exc
+
