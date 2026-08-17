@@ -36,6 +36,23 @@ async function run() {
     console.log('Inquiry queries:', suggestionsMod.getInquiryQueries())
     console.log('Quick trace entities:', suggestionsMod.getQuickTraceEntities())
 
+    console.log('--- TEST 1B: Test hydraStatus.js helper ---')
+    const statusMod = await server.ssrLoadModule('/src/utils/hydraStatus.js')
+    const cloudStatus = { status: 'ok', hydradb: 'ok (cloud: veridex-hackhydra)' }
+    const localStatus = { status: 'ok', hydradb: 'ok' }
+    const loadingStatus = { status: 'loading', hydradb: '' }
+    const errorStatus = { status: 'degraded', hydradb: 'unreachable' }
+
+    if (statusMod.getHydraStatusMode(cloudStatus) !== 'cloud') throw new Error('Cloud mode detection failed')
+    if (statusMod.getHydraStatusLabel(cloudStatus) !== 'HYDRADB CLOUD  CONNECTED') throw new Error('Cloud label failed')
+    if (statusMod.getHydraStatusMode(localStatus) !== 'local') throw new Error('Local mode detection failed')
+    if (statusMod.getHydraStatusLabel(localStatus) !== 'HYDRADB LOCAL  CONNECTED') throw new Error('Local label failed')
+    if (statusMod.getHydraStatusMode(loadingStatus) !== 'loading') throw new Error('Loading mode detection failed')
+    if (statusMod.getHydraStatusLabel(loadingStatus) !== 'CONNECTING...') throw new Error('Loading label failed')
+    if (statusMod.getHydraStatusMode(errorStatus) !== 'error') throw new Error('Error mode detection failed')
+    if (statusMod.getHydraStatusLabel(errorStatus) !== 'HYDRADB OFFLINE') throw new Error('Error label failed')
+    console.log('hydraStatus helper tests: ALL PASSED')
+
     console.log('--- TEST 2: Load and render LandingPage ---')
     const LandingMod = await server.ssrLoadModule('/src/components/LandingPage.jsx')
     const Landing = LandingMod.default
