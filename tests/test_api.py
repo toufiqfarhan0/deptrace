@@ -1,11 +1,12 @@
 """
-Offline integration tests for DeTrace FastAPI web application (Step 9).
+Offline integration tests for DeTrace FastAPI web application & Dependency Tracing (Step 9 / Step 11).
 
 Validates:
 - GET /api/health with healthy and degraded HydraDB states
-- POST /api/ask with grounded, ungrounded (invalid citations, missing citations), and insufficient evidence scenarios
-- Offline generator fallback behavior (proves grounded=False is correct when LLM is offline)
-- Validation errors for empty/whitespace questions
+- POST /api/ask with grounded, ungrounded, and offline fallback scenarios
+- GET /api/trace/entities returns list of available graph entities
+- POST /api/trace returns multi-hop dependency hops and impact metrics
+- Validation errors for empty/whitespace questions and entities
 - Static frontend index.html and asset serving
 - 100% offline execution with zero Gemini API calls
 """
@@ -19,7 +20,14 @@ from fastapi.testclient import TestClient
 
 from backend.api.app import create_app
 from backend.rag.models import AnswerResponse
-from backend.retrieval.models import EvidenceItem, RetrievalResponse
+from backend.retrieval.models import (
+    DependencyTraceResponse,
+    EvidenceItem,
+    RetrievalResponse,
+    StatementTimelineItem,
+    TraceHop,
+    TraceImpactSummary,
+)
 
 
 @pytest.fixture
@@ -153,7 +161,6 @@ def test_ask_endpoint_ungrounded_no_citations(client: TestClient) -> None:
 
 
 def test_ask_endpoint_offline_generator_fallback(client: TestClient) -> None:
-    """Proves that when LLM generator is offline, evidence is preserved and grounded=False is returned."""
     mock_evidence = [
         EvidenceItem(
             message_id=8537794879600693670,
@@ -182,7 +189,6 @@ def test_ask_endpoint_offline_generator_fallback(client: TestClient) -> None:
         )
         assert res.status_code == 200
         data = res.json()
-        # Essential: grounded must be False because fallback text is not synthesized/cited
         assert data["grounded"] is False
         assert len(data["evidence"]) == 1
         assert data["evidence"][0]["entity_name"] == "REL-311"
@@ -216,6 +222,87 @@ def test_ask_endpoint_empty_and_whitespace_question(client: TestClient) -> None:
     assert res1.status_code == 422
 
     res2 = client.post("/api/ask", json={"question": "   "})
+    assert res2.status_code == 422
+
+
+# ===========================================================================
+# Step 11: Dependency Tracing Endpoint Tests
+# ===========================================================================
+
+
+def test_trace_entities_endpoint(client: TestClient) -> None:
+    mock_tracer = MagicMock()
+    mock_tracer.get_available_entities.return_value = ["REL-311", "kernel-selector", "api-search"]
+
+    with patch("backend.api.routes.DependencyTracer", return_value=mock_tracer):
+        res = client.get("/api/trace/entities")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total_count"] == 3
+        assert data["entities"] == ["REL-311", "kernel-selector", "api-search"]
+
+
+def test_trace_dependencies_endpoint_success(client: TestClient) -> None:
+    mock_summary = TraceImpactSummary(
+        root_entity="REL-311",
+        traversal_depth=2,
+        total_linked_entities=2,
+        total_statements=2,
+        statements_by_type={"fact": 1, "action": 1},
+        affected_components=["api-search", "v3.1.1-legacy-tokenizer"],
+        affected_messages=[8537794879600693670],
+        affected_documents=["doc_beta"],
+    )
+
+    mock_trace_res = DependencyTraceResponse(
+        root_entity="REL-311",
+        found=True,
+        impact_summary=mock_summary,
+        timeline=[
+            StatementTimelineItem(
+                order_index=1,
+                message_id=8537794879600693670,
+                document_id="doc_beta",
+                statement_type="fact",
+                statement="Support ticket REL-311 has been created.",
+                associated_entity="REL-311",
+                relationship="ABOUT",
+            )
+        ],
+        dependency_hops=[
+            TraceHop(
+                source_entity="REL-311",
+                target_entity="api-search",
+                hop_distance=1,
+                via_message_id=8537794879600693670,
+                document_id="doc_beta",
+                relationship="CO_OCCURS_IN_MESSAGE",
+                statements=["[fact] Support ticket REL-311 has been created."],
+            )
+        ],
+        raw_evidence=[],
+        error=None,
+    )
+
+    mock_tracer = MagicMock()
+    mock_tracer.trace.return_value = mock_trace_res
+
+    with patch("backend.api.routes.DependencyTracer", return_value=mock_tracer):
+        res = client.post("/api/trace", json={"entity": "REL-311", "max_depth": 2})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["found"] is True
+        assert data["root_entity"] == "REL-311"
+        assert data["impact_summary"]["total_linked_entities"] == 2
+        assert len(data["timeline"]) == 1
+        assert len(data["dependency_hops"]) == 1
+
+
+def test_trace_dependencies_endpoint_empty_entity(client: TestClient) -> None:
+    res1 = client.post("/api/trace", json={"entity": ""})
+    assert res1.status_code == 422
+
+    res2 = client.post("/api/trace", json={"entity": "   "})
     assert res2.status_code == 422
 
 
