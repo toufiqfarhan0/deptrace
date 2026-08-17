@@ -7,13 +7,19 @@ const SUGGESTIONS = [
   { label: 'strict_model:true', query: 'What is strict_model:true?' },
 ]
 
+const STARTER_QUERIES = [
+  'What happened with REL-311?',
+  'What is connected to api-search?',
+  'What changed around kernel-selector?',
+]
+
 function CitationPill({ id, onClick, highlighted }) {
   return (
     <button
-      className="citation-pill"
+      className={`citation-pill ${highlighted ? 'highlighted' : ''}`}
       onClick={() => onClick(id)}
-      aria-label={`Jump to evidence ${id}`}
-      style={highlighted ? { background: 'var(--c-accent)', color: '#000' } : undefined}
+      aria-label={`Jump to evidence [${id}]`}
+      type="button"
     >
       [{id}]
     </button>
@@ -30,7 +36,7 @@ function formatAnswerWithCitations(answer, onCitationClick, highlightedId) {
       const eMatches = citMatch[1].match(/E\d+/gi)
       if (eMatches && eMatches.length > 0) {
         return (
-          <span key={i}>
+          <span key={i} className="citation-group">
             {eMatches.map((tag, j) => {
               const norm = tag.toUpperCase()
               return (
@@ -63,15 +69,29 @@ function getGroundingState(grounded, answer) {
 function GroundingIndicator({ state }) {
   if (!state) return null
   const config = {
-    grounded: { dot: '●', text: 'GROUNDED · Evidence-backed synthesis' },
-    ungrounded: { dot: '○', text: 'UNVERIFIED · Model response not verified against evidence' },
-    insufficient: { dot: '◐', text: 'INSUFFICIENT EVIDENCE · Graph did not contain enough data' },
+    grounded: {
+      dot: '●',
+      badge: 'GROUNDED',
+      text: 'Evidence-backed synthesis',
+    },
+    ungrounded: {
+      dot: '○',
+      badge: 'UNVERIFIED',
+      text: 'Model response not verified against evidence',
+    },
+    insufficient: {
+      dot: '◐',
+      badge: 'INSUFFICIENT EVIDENCE',
+      text: 'Graph did not contain enough data',
+    },
   }
-  const { dot, text } = config[state] || config.ungrounded
+  const { dot, badge, text } = config[state] || config.ungrounded
   return (
     <div className={`grounding-indicator ${state}`} role="status" aria-live="polite">
-      <span aria-hidden="true">{dot}</span>
-      <span>{text}</span>
+      <span className="grounding-dot" aria-hidden="true">{dot}</span>
+      <span className="grounding-badge-tag">{badge}</span>
+      <span className="grounding-sep" aria-hidden="true">·</span>
+      <span className="grounding-text">{text}</span>
     </div>
   )
 }
@@ -79,12 +99,13 @@ function GroundingIndicator({ state }) {
 function EvidenceRows({ items, highlightedId, onHighlight }) {
   if (!items || items.length === 0) {
     return (
-      <div className="empty-block" style={{ padding: '16px' }}>
-        <div className="empty-label">No Evidence</div>
-        <div className="empty-desc">No items retrieved from HydraDB for this query.</div>
+      <div className="empty-block" style={{ padding: '24px 20px' }}>
+        <div className="empty-label">No Evidence Retrieved</div>
+        <div className="empty-desc">No structural or semantic records matched this query in HydraDB.</div>
       </div>
     )
   }
+
   return (
     <div className="evidence-rows">
       {items.map((item) => (
@@ -97,6 +118,7 @@ function EvidenceRows({ items, highlightedId, onHighlight }) {
           tabIndex={0}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
               onHighlight(item.id === highlightedId ? null : item.id)
             }
           }}
@@ -118,18 +140,40 @@ function EvidenceRows({ items, highlightedId, onHighlight }) {
               {item.relationship && (
                 <span className="type-badge rel">{item.relationship}</span>
               )}
+              {item.match_type && (
+                <span className="match-tag">{item.match_type}</span>
+              )}
             </div>
-            {item.statement && (
+
+            {item.statement ? (
               <div className="evidence-statement">{item.statement}</div>
+            ) : (
+              <div className="evidence-statement-empty">
+                Direct graph reference without explicit statement text.
+              </div>
             )}
+
             <div className="evidence-meta">
-              {item.message_id ? <span><strong>msg:</strong> {item.message_id}</span> : null}
-              {item.document_id ? (
+              {item.source && (
+                <span className="source-tag">
+                  <strong>src:</strong> {item.source}
+                </span>
+              )}
+              {item.message_id ? (
                 <span>
-                  <strong>doc:</strong> {item.document_id.length > 25 ? `${item.document_id.slice(0, 25)}...` : item.document_id}
+                  <strong>msg:</strong> {item.message_id}
                 </span>
               ) : null}
-              {item.match_type ? <span><strong>match:</strong> {item.match_type}</span> : null}
+              {item.document_id ? (
+                <span>
+                  <strong>doc:</strong>{' '}
+                  <span title={item.document_id}>
+                    {item.document_id.length > 22
+                      ? `${item.document_id.slice(0, 22)}...`
+                      : item.document_id}
+                  </span>
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -198,10 +242,12 @@ export default function InvestigationView() {
   const groundingState = result ? getGroundingState(result.grounded, result.answer) : null
 
   return (
-    <section aria-label="Investigation workspace">
-      <div className="view-title">Investigate</div>
-      <div className="view-subtitle">
-        Trace incident causes, architectural decisions, and verify evidence across HydraDB.
+    <section aria-label="Investigation workspace" className="investigation-section">
+      <div className="view-header">
+        <h1 className="view-title">Investigate</h1>
+        <div className="view-subtitle">
+          Trace incident causes, architectural decisions, and verify evidence across HydraDB.
+        </div>
       </div>
 
       {/* Query Console */}
@@ -216,48 +262,66 @@ export default function InvestigationView() {
             onKeyDown={handleKeyDown}
             placeholder="What happened with REL-311? or Why did the team change model routing?"
             rows={2}
-            aria-label="Investigation query"
+            aria-label="Investigation query input"
             disabled={loading}
           />
           <button
-            className="query-execute-btn"
+            className={`query-execute-btn ${loading ? 'loading' : ''}`}
             onClick={() => handleExecute()}
             disabled={loading || !query.trim()}
             aria-label="Execute query"
+            type="button"
           >
-            {loading ? '...' : 'EXECUTE →'}
+            {loading ? (
+              <>
+                <span className="btn-spinner" aria-hidden="true" />
+                <span>ANALYZING</span>
+              </>
+            ) : (
+              <>
+                <span className="btn-state-tag">READY</span>
+                <span>EXECUTE →</span>
+              </>
+            )}
           </button>
         </div>
-        <div className="query-suggestions" aria-label="Query suggestions">
-          <span className="suggestion-prefix">Demo Inquiries:</span>
-          {SUGGESTIONS.map((s, i) => (
-            <span key={s.label} style={{ display: 'flex', alignItems: 'center' }}>
+
+        {/* Command Suggestions */}
+        <div className="query-suggestions" aria-label="Suggested investigations">
+          <span className="suggestion-prefix">Suggested:</span>
+          <div className="suggestion-pills">
+            {SUGGESTIONS.map((s) => (
               <button
+                key={s.label}
                 className="suggestion-btn"
                 onClick={() => handleSelectSuggestion(s.query)}
                 aria-label={`Run investigation: ${s.label}`}
+                type="button"
               >
-                {s.label}
+                <span className="suggestion-icon" aria-hidden="true">&gt;_</span>
+                <span>{s.label}</span>
               </button>
-              {i < SUGGESTIONS.length - 1 && <span className="suggestion-sep">·</span>}
-            </span>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Loading */}
+      {/* Loading State */}
       {loading && (
-        <div className="state-block" role="status" aria-live="polite">
-          <div className="loading-text">
-            Querying HydraDB graph
-            <div className="loading-dots" aria-hidden="true">
-              <span/><span/><span/>
+        <div className="state-block loading-state" role="status" aria-live="polite">
+          <div className="loading-card">
+            <div className="loading-spinner-ring" aria-hidden="true" />
+            <div className="loading-content">
+              <div className="loading-title">ANALYZING QUERY...</div>
+              <div className="loading-desc">
+                Traversing HydraDB graph relationships and assembling bounded evidence bundle
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Error */}
+      {/* Error State */}
       {error && (
         <div className="error-block" role="alert">
           <div className="error-label">Investigation Error</div>
@@ -265,21 +329,38 @@ export default function InvestigationView() {
         </div>
       )}
 
-      {/* Result */}
+      {/* Results Area */}
       {result && !loading && (
         <div className="result-area">
-          <div className="query-display" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <div>
-              <div className="query-label-small">QUERY</div>
-              <div className="query-text-display">&ldquo;{result.question}&rdquo;</div>
+          {/* Query Bar */}
+          <div className="query-meta-bar">
+            <div className="query-meta-left">
+              <span className="query-label-small">QUERY</span>
+              <span className="query-text-display">&ldquo;{result.question}&rdquo;</span>
             </div>
             {latencyMs !== null && (
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-text-3)' }}>
-                LATENCY: <span style={{ color: 'var(--c-accent)' }}>{latencyMs} ms</span>
+              <div className="query-latency-tag">
+                <span className="latency-lbl">LATENCY</span>
+                <span className="latency-val">{latencyMs} ms</span>
               </div>
             )}
           </div>
 
+          {/* Insufficient Evidence Warning Banner if applicable */}
+          {groundingState === 'insufficient' && (
+            <div className="insufficient-alert" role="status">
+              <div className="insufficient-alert-header">
+                <span className="insufficient-icon" aria-hidden="true">◐</span>
+                <strong>INSUFFICIENT EVIDENCE</strong>
+              </div>
+              <p className="insufficient-alert-body">
+                HydraDB resolved partial graph entities, but the evidence bundle does not contain
+                enough verified facts to answer the question conclusively without risking ungrounded extrapolation.
+              </p>
+            </div>
+          )}
+
+          {/* Synthesis Block */}
           <div className="synthesis-block">
             <div className="synthesis-header">
               <span className="synthesis-label">SYNTHESIS</span>
@@ -294,12 +375,24 @@ export default function InvestigationView() {
             </div>
           </div>
 
+          {/* Evidence Block */}
           <div className="evidence-block">
             <div className="evidence-header">
-              <span className="evidence-header-label">EVIDENCE</span>
-              <span className="evidence-count">
-                {result.evidence?.length ?? 0} item{result.evidence?.length === 1 ? '' : 's'} retrieved from HydraDB
-              </span>
+              <div className="evidence-header-left">
+                <span className="evidence-header-label">EVIDENCE</span>
+                <span className="evidence-count">
+                  {result.evidence?.length ?? 0} item{result.evidence?.length === 1 ? '' : 's'} retrieved from HydraDB
+                </span>
+              </div>
+              {highlightedId && (
+                <button
+                  className="evidence-clear-btn"
+                  onClick={() => setHighlightedId(null)}
+                  type="button"
+                >
+                  Clear Highlight [{highlightedId}]
+                </button>
+              )}
             </div>
             <EvidenceRows
               items={result.evidence}
@@ -310,13 +403,28 @@ export default function InvestigationView() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty State */}
       {!result && !loading && !error && (
-        <div className="empty-block">
-          <div className="empty-label">Console Ready</div>
+        <div className="empty-block starter-empty-block">
+          <div className="starter-icon" aria-hidden="true">&gt;_</div>
+          <div className="empty-label">INVESTIGATION CONSOLE</div>
           <div className="empty-desc">
-            Submit a query above or choose a demo inquiry prompt to retrieve deterministic
-            graph facts, actions, and verified provenance.
+            Ask Veridex about incidents, components, tickets, dependencies, or engineering decisions across the HydraDB graph.
+          </div>
+          <div className="starter-queries-row">
+            <span className="starter-queries-label">Try an investigation query:</span>
+            <div className="starter-buttons">
+              {STARTER_QUERIES.map((sq) => (
+                <button
+                  key={sq}
+                  className="starter-query-btn"
+                  onClick={() => handleSelectSuggestion(sq)}
+                  type="button"
+                >
+                  &ldquo;{sq}&rdquo;
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
