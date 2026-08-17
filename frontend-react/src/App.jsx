@@ -6,8 +6,36 @@ import TraceView from './components/TraceView.jsx'
 import EntityExplorer from './components/EntityExplorer.jsx'
 import GraphHealth from './components/GraphHealth.jsx'
 import WhyHydraDB from './components/WhyHydraDB.jsx'
+import ThemeToggle from './components/ThemeToggle.jsx'
 
 export default function App() {
+  // Theme System: default dark, persisted in localStorage, respects system preference on first visit
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem('veridex-theme')
+      if (saved === 'light' || saved === 'dark') return saved
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        return 'light'
+      }
+    } catch {
+      // Ignore localStorage access failures
+    }
+    return 'dark'
+  })
+
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('data-theme', theme)
+      localStorage.setItem('veridex-theme', theme)
+    } catch {
+      // Ignore storage errors
+    }
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+  }, [])
+
   // 'landing' shows the product entry page; any console view key shows the console
   const [view, setView] = useState('landing')
   const [activeView, setActiveView] = useState('ask')
@@ -64,6 +92,8 @@ export default function App() {
         onEnterConsole={enterConsole}
         onNavigateToWhyHydra={navigateToWhyHydra}
         hydraStatus={hydraStatus}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     )
   }
@@ -89,18 +119,21 @@ export default function App() {
             <span className="breadcrumb-sep">/</span>
             <span className="breadcrumb-active">{getBreadcrumb()}</span>
           </nav>
-          <div className="header-status">
-            <span
-              className={`status-dot ${
-                hydraStatus.status === 'loading' ? 'loading'
-                  : hydraStatus.hydradb === 'ok' ? 'ok' : 'err'
-              }`}
-              aria-hidden="true"
-            />
-            <span>
-              {hydraStatus.status === 'loading' ? 'CHECKING...'
-                : hydraStatus.hydradb === 'ok' ? 'HYDRADB ONLINE' : 'HYDRADB OFFLINE'}
-            </span>
+          <div className="header-actions">
+            <ThemeToggle theme={theme} onToggleTheme={toggleTheme} />
+            <div className="header-status">
+              <span
+                className={`status-dot ${
+                  hydraStatus.status === 'loading' ? 'loading'
+                    : hydraStatus.hydradb === 'ok' ? 'ok' : 'err'
+                }`}
+                aria-hidden="true"
+              />
+              <span>
+                {hydraStatus.status === 'loading' ? 'CHECKING...'
+                  : hydraStatus.hydradb === 'ok' ? 'HYDRADB ONLINE' : 'HYDRADB OFFLINE'}
+              </span>
+            </div>
           </div>
         </header>
 
