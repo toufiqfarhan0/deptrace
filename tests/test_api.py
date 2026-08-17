@@ -312,3 +312,45 @@ def test_frontend_serving(client: TestClient) -> None:
     assert "text/html" in res.headers["content-type"]
     assert "Veridex" in res.text or "DeTrace" in res.text
 
+
+def test_demo_queries_endpoint(client: TestClient) -> None:
+    res = client.get("/api/demo/queries")
+    assert res.status_code == 200
+    data = res.json()
+    assert isinstance(data, list)
+    assert len(data) >= 5
+    assert any("REL-311" in q["query"] for q in data)
+
+
+def test_evaluation_endpoint(client: TestClient) -> None:
+    from backend.evaluation.models import EvaluationReport, ProvenanceCheckResult
+
+    mock_report = EvaluationReport(
+        total_queries=2,
+        successful_queries=2,
+        total_evidence_retrieved=4,
+        total_hops_traversed=2,
+        provenance_integrity=ProvenanceCheckResult(
+            total_items_checked=6,
+            valid_items=6,
+            missing_message_ids=0,
+            missing_document_ids=0,
+            is_valid=True,
+        ),
+        average_retrieval_latency_ms=12.5,
+        average_trace_latency_ms=15.2,
+        hydradb_status="ONLINE",
+    )
+
+    mock_runner = MagicMock()
+    mock_runner.run_evaluation.return_value = mock_report
+
+    with patch("backend.evaluation.evaluation_runner.EvaluationRunner", return_value=mock_runner):
+        res = client.get("/api/evaluation")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["total_queries"] == 2
+        assert data["provenance_integrity"]["is_valid"] is True
+        assert data["hydradb_status"] == "ONLINE"
+
+
