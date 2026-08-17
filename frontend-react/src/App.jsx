@@ -3,6 +3,7 @@ import LandingPage from './components/LandingPage.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import InvestigationView from './components/InvestigationView.jsx'
 import TraceView from './components/TraceView.jsx'
+import SuggestionsView from './components/SuggestionsView.jsx'
 import EntityExplorer from './components/EntityExplorer.jsx'
 import GraphHealth from './components/GraphHealth.jsx'
 import WhyHydraDB from './components/WhyHydraDB.jsx'
@@ -40,6 +41,7 @@ export default function App() {
   const [view, setView] = useState('landing')
   const [activeView, setActiveView] = useState('ask')
   const [hydraStatus, setHydraStatus] = useState({ status: 'loading', hydradb: '' })
+  const [askQuery, setAskQuery] = useState('')
   const [traceEntity, setTraceEntity] = useState('')
 
   const checkHealth = useCallback(async () => {
@@ -58,7 +60,13 @@ export default function App() {
     return () => clearInterval(interval)
   }, [checkHealth])
 
-  const navigateToTrace = useCallback((entity) => {
+  const navigateToAsk = useCallback((query = '') => {
+    setAskQuery(query)
+    setActiveView('ask')
+    setView('console')
+  }, [])
+
+  const navigateToTrace = useCallback((entity = '') => {
     setTraceEntity(entity)
     setActiveView('trace')
     setView('console')
@@ -79,6 +87,7 @@ export default function App() {
     switch (activeView) {
       case 'ask': return 'INVESTIGATE / Ask'
       case 'trace': return 'INVESTIGATE / Trace'
+      case 'suggestions': return 'INVESTIGATE / Suggestions'
       case 'entities': return 'EXPLORE / Entities'
       case 'why-hydra': return 'SYSTEM / Why HydraDB?'
       case 'health': return 'SYSTEM / Graph Health'
@@ -138,12 +147,31 @@ export default function App() {
         </header>
 
         <main className="workspace-body" id="main-content" role="main">
-          {activeView === 'ask' && <InvestigationView />}
+          {activeView === 'ask' && (
+            <InvestigationView
+              initialQuery={askQuery}
+              onQueryChange={setAskQuery}
+              onNavigateToTrace={navigateToTrace}
+            />
+          )}
           {activeView === 'trace' && (
-            <TraceView initialEntity={traceEntity} onEntityChange={setTraceEntity} />
+            <TraceView
+              initialEntity={traceEntity}
+              onEntityChange={setTraceEntity}
+              onNavigateToAsk={navigateToAsk}
+            />
+          )}
+          {activeView === 'suggestions' && (
+            <SuggestionsView
+              onSelectQuery={navigateToAsk}
+              onSelectTrace={navigateToTrace}
+            />
           )}
           {activeView === 'entities' && (
-            <EntityExplorer onTraceEntity={navigateToTrace} />
+            <EntityExplorer
+              onTraceEntity={navigateToTrace}
+              onAskEntity={navigateToAsk}
+            />
           )}
           {activeView === 'why-hydra' && <WhyHydraDB />}
           {activeView === 'health' && <GraphHealth hydraStatus={hydraStatus} />}
@@ -152,4 +180,3 @@ export default function App() {
     </div>
   )
 }
-

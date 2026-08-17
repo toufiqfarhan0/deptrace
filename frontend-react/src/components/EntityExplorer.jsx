@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 
-export default function EntityExplorer({ onTraceEntity }) {
+export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
   const [entities, setEntities] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -29,7 +29,7 @@ export default function EntityExplorer({ onTraceEntity }) {
     <section aria-label="Entity explorer">
       <div className="view-title">Entities</div>
       <div className="view-subtitle">
-        All unique entities identified across the HydraDB knowledge graph. Click an entity to trace its dependencies.
+        All unique entities identified across the HydraDB knowledge graph. Trace dependencies or investigate incidents.
       </div>
 
       <div className="entity-filter-row">
@@ -38,7 +38,7 @@ export default function EntityExplorer({ onTraceEntity }) {
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter entities (e.g. REL-311, kernel, tokenizer)..."
+          placeholder="Filter entities (e.g. REL-311, kernel, tokenizer, api-search)..."
           aria-label="Filter entities"
         />
       </div>
@@ -79,7 +79,23 @@ export default function EntityExplorer({ onTraceEntity }) {
                   aria-label={`Trace dependencies for ${entity}`}
                 >
                   <span className="entity-name">{entity}</span>
-                  <span className="entity-trace-hint" aria-hidden="true">trace →</span>
+                  <div className="entity-row-actions">
+                    {onAskEntity && (
+                      <button
+                        className="inline-ask-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onAskEntity(`What is connected to ${entity}?`)
+                        }}
+                        title={`Ask question about ${entity}`}
+                        aria-label={`Ask about ${entity}`}
+                        type="button"
+                      >
+                        <span>&gt;_ ASK</span>
+                      </button>
+                    )}
+                    <span className="entity-trace-hint" aria-hidden="true">trace →</span>
+                  </div>
                 </div>
               ))}
             </div>
