@@ -310,4 +310,5 @@ def test_frontend_serving(client: TestClient) -> None:
     res = client.get("/")
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
-    assert "DeTrace" in res.text
+    assert "Veridex" in res.text or "DeTrace" in res.text
+

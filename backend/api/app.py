@@ -1,5 +1,5 @@
 """
-FastAPI application factory for DeTrace (Step 9).
+FastAPI application factory for DeTrace / Veridex (Step 9 / Step 11 UI).
 """
 
 from __future__ import annotations
@@ -24,16 +24,15 @@ except ImportError:
 
 from backend.api.routes import router as api_router
 
-
-FRONTEND_DIR = PROJECT_ROOT / "frontend"
+REACT_DIST_DIR = PROJECT_ROOT / "frontend-react" / "dist"
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="DeTrace — Enterprise Graph RAG API",
-        description="Deterministic graph retrieval and grounded answer generation over HydraDB",
-        version="0.9.0",
+        description="Deterministic graph retrieval, dependency tracing, and grounded answer generation over HydraDB",
+        version="0.11.0",
     )
 
     # CORS configuration for local development
@@ -45,18 +44,28 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include API routes
+    # Include API routes FIRST so they take precedence over catch-all SPA routes
     app.include_router(api_router)
 
-    # Mount static frontend directory if it exists
-    if FRONTEND_DIR.exists():
-        app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+    # Mount static assets & frontend
+    if REACT_DIST_DIR.exists() and (REACT_DIST_DIR / "index.html").exists():
+        assets_dir = REACT_DIST_DIR / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
         @app.get("/", include_in_schema=False)
-        def serve_index() -> FileResponse:
-            return FileResponse(FRONTEND_DIR / "index.html")
+        def serve_react_root() -> FileResponse:
+            return FileResponse(REACT_DIST_DIR / "index.html")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def serve_react_spa(full_path: str) -> FileResponse:
+            target = REACT_DIST_DIR / full_path
+            if target.exists() and target.is_file():
+                return FileResponse(target)
+            return FileResponse(REACT_DIST_DIR / "index.html")
 
     return app
 
 
 app = create_app()
+
