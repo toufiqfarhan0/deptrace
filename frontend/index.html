@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DeTrace — Enterprise Graph RAG Assistant</title>
+  <title>DeTrace — Enterprise Graph RAG & Dependency Tracer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
         </div>
         <div>
           <h1 class="app-title">DeTrace</h1>
-          <p class="app-subtitle">Enterprise Graph RAG Assistant over HydraDB</p>
+          <p class="app-subtitle">Enterprise Graph RAG & Dependency Tracer over HydraDB</p>
         </div>
       </div>
       <div class="header-right">
@@ -36,103 +36,273 @@
       </div>
     </header>
 
+    <!-- Navigation Mode Tabs -->
+    <nav class="mode-tabs">
+      <button id="tabAsk" class="tab-btn active">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        Ask Graph RAG
+      </button>
+      <button id="tabTrace" class="tab-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="6" cy="6" r="3"/>
+          <circle cx="18" cy="6" r="3"/>
+          <circle cx="18" cy="18" r="3"/>
+          <path d="M8.5 7.5L15.5 16.5"/>
+          <path d="M9 6h6"/>
+        </svg>
+        Dependency Tracer
+      </button>
+    </nav>
+
     <!-- Main Content Area -->
     <main class="main-content">
-      <!-- Question Form Card -->
-      <section class="card query-card">
-        <label for="questionInput" class="query-label">Ask an enterprise technical question:</label>
-        <div class="input-wrapper">
-          <textarea
-            id="questionInput"
-            placeholder="e.g. What happened with REL-311? or Why did the team change model routing?"
-            rows="3"
-            autofocus
-          ></textarea>
-        </div>
-
-        <div class="query-controls">
-          <div class="prompt-chips">
-            <span class="chip-label">Quick Prompts:</span>
-            <button class="chip" data-query="What happened with REL-311?">REL-311 Incident</button>
-            <button class="chip" data-query="Why did the team change the model routing?">Model Routing Change</button>
-            <button class="chip" data-query="What was the issue with kernel-selector?">Kernel-Selector</button>
-            <button class="chip" data-query="What is strict_model:true?">strict_model:true</button>
+      <!-- ============================================================= -->
+      <!-- VIEW 1: ASK GRAPH RAG                                         -->
+      <!-- ============================================================= -->
+      <div id="viewAsk" class="view-panel">
+        <!-- Question Form Card -->
+        <section class="card query-card">
+          <label for="questionInput" class="query-label">Ask an enterprise technical question:</label>
+          <div class="input-wrapper">
+            <textarea
+              id="questionInput"
+              placeholder="e.g. What happened with REL-311? or Why did the team change model routing?"
+              rows="3"
+              autofocus
+            ></textarea>
           </div>
 
-          <button id="askBtn" class="primary-btn">
-            <span class="btn-text">Ask DeTrace</span>
-            <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          <div class="query-controls">
+            <div class="prompt-chips">
+              <span class="chip-label">Quick Prompts:</span>
+              <button class="chip" data-query="What happened with REL-311?">REL-311 Incident</button>
+              <button class="chip" data-query="Why did the team change the model routing?">Model Routing Change</button>
+              <button class="chip" data-query="What was the issue with kernel-selector?">Kernel-Selector</button>
+              <button class="chip" data-query="What is strict_model:true?">strict_model:true</button>
+            </div>
+
+            <button id="askBtn" class="primary-btn">
+              <span class="btn-text">Ask DeTrace</span>
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- Loading State for Ask -->
+        <div id="loadingSection" class="card loading-card hidden">
+          <div class="spinner"></div>
+          <div class="loading-info">
+            <h3 id="loadingTitle">Querying HydraDB Graph...</h3>
+            <p id="loadingDesc">Retrieving deterministic evidence and synthesizing grounded response</p>
+          </div>
+        </div>
+
+        <!-- Error State for Ask -->
+        <div id="errorSection" class="card error-card hidden">
+          <div class="error-icon">!</div>
+          <div class="error-content">
+            <h3>Unable to complete request</h3>
+            <p id="errorMessage">An unexpected error occurred.</p>
+          </div>
+        </div>
+
+        <!-- Result Container for Ask -->
+        <div id="resultSection" class="result-container hidden">
+          <!-- Answer Card -->
+          <section class="card answer-card">
+            <div class="answer-header">
+              <div class="answer-title-group">
+                <span class="section-tag">GROUNDED SYNTHESIS</span>
+                <h2 id="displayQuestion" class="answer-heading">Question</h2>
+              </div>
+              <div id="groundingBadge" class="grounding-badge">
+                Grounded
+              </div>
+            </div>
+
+            <div id="answerBody" class="answer-body">
+              <!-- Answer text injected via JS -->
+            </div>
+          </section>
+
+          <!-- Evidence Section -->
+          <section class="evidence-section">
+            <div class="evidence-header">
+              <div class="section-title-wrap">
+                <h3 class="evidence-heading">Retrieved Graph Evidence</h3>
+                <span id="evidenceCount" class="count-pill">0 items</span>
+              </div>
+              <p class="evidence-subtext">Deterministic evidence items retrieved from HydraDB with verified message provenance.</p>
+            </div>
+
+            <div id="evidenceGrid" class="evidence-grid">
+              <!-- Evidence cards injected via JS -->
+            </div>
+          </section>
+        </div>
+
+        <!-- Empty State for Ask -->
+        <div id="emptySection" class="empty-state">
+          <div class="empty-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
             </svg>
-          </button>
-        </div>
-      </section>
-
-      <!-- Loading State -->
-      <div id="loadingSection" class="card loading-card hidden">
-        <div class="spinner"></div>
-        <div class="loading-info">
-          <h3 id="loadingTitle">Querying HydraDB Graph...</h3>
-          <p id="loadingDesc">Retrieving deterministic evidence and synthesizing grounded response</p>
+          </div>
+          <h3>Ready to Explore Enterprise Knowledge Graph</h3>
+          <p>Ask a question or click any quick prompt above to query HydraDB entities, statements, and verifiable source provenance.</p>
         </div>
       </div>
 
-      <!-- Error State -->
-      <div id="errorSection" class="card error-card hidden">
-        <div class="error-icon">!</div>
-        <div class="error-content">
-          <h3>Unable to complete request</h3>
-          <p id="errorMessage">An unexpected error occurred.</p>
-        </div>
-      </div>
-
-      <!-- Result Container -->
-      <div id="resultSection" class="result-container hidden">
-        <!-- Answer Card -->
-        <section class="card answer-card">
-          <div class="answer-header">
-            <div class="answer-title-group">
-              <span class="section-tag">GROUNDED SYNTHESIS</span>
-              <h2 id="displayQuestion" class="answer-heading">Question</h2>
+      <!-- ============================================================= -->
+      <!-- VIEW 2: DEPENDENCY TRACER                                     -->
+      <!-- ============================================================= -->
+      <div id="viewTrace" class="view-panel hidden">
+        <!-- Trace Control Card -->
+        <section class="card query-card">
+          <label for="traceEntityInput" class="query-label">Trace Component / Incident Dependencies:</label>
+          <div class="trace-input-row">
+            <div class="input-wrapper" style="flex: 1;">
+              <input
+                id="traceEntityInput"
+                type="text"
+                class="text-input"
+                placeholder="e.g. REL-311, kernel-selector, api-search, kernel-fallback policy"
+              />
             </div>
-            <div id="groundingBadge" class="grounding-badge">
-              Grounded
+            <div class="depth-selector">
+              <label for="traceDepthSelect">Max Hops:</label>
+              <select id="traceDepthSelect" class="select-input">
+                <option value="1">1 Hop</option>
+                <option value="2" selected>2 Hops</option>
+                <option value="3">3 Hops</option>
+              </select>
             </div>
+            <button id="traceBtn" class="primary-btn">
+              <span class="btn-text">Trace Dependencies</span>
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
           </div>
 
-          <div id="answerBody" class="answer-body">
-            <!-- Answer text injected via JS -->
+          <div class="query-controls">
+            <div class="prompt-chips">
+              <span class="chip-label">Graph Entities:</span>
+              <button class="chip trace-chip" data-entity="REL-311">REL-311</button>
+              <button class="chip trace-chip" data-entity="kernel-selector">kernel-selector</button>
+              <button class="chip trace-chip" data-entity="api-search">api-search</button>
+              <button class="chip trace-chip" data-entity="kernel-fallback policy">kernel-fallback policy</button>
+              <button class="chip trace-chip" data-entity="request-time guard">request-time guard</button>
+              <button class="chip trace-chip" data-entity="v3.1.1-legacy-tokenizer">v3.1.1-legacy-tokenizer</button>
+            </div>
           </div>
         </section>
 
-        <!-- Evidence Section -->
-        <section class="evidence-section">
-          <div class="evidence-header">
-            <div class="section-title-wrap">
-              <h3 class="evidence-heading">Retrieved Graph Evidence</h3>
-              <span id="evidenceCount" class="count-pill">0 items</span>
-            </div>
-            <p class="evidence-subtext">Deterministic evidence items retrieved from HydraDB with verified message provenance.</p>
+        <!-- Loading State for Trace -->
+        <div id="traceLoadingSection" class="card loading-card hidden">
+          <div class="spinner"></div>
+          <div class="loading-info">
+            <h3>Traversing HydraDB Graph...</h3>
+            <p>Executing multi-hop dependency path analysis and statement timeline ordering</p>
           </div>
-
-          <div id="evidenceGrid" class="evidence-grid">
-            <!-- Evidence cards injected via JS -->
-          </div>
-        </section>
-      </div>
-
-      <!-- Empty State -->
-      <div id="emptySection" class="empty-state">
-        <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-            <line x1="12" y1="22.08" x2="12" y2="12"/>
-          </svg>
         </div>
-        <h3>Ready to Explore Enterprise Knowledge Graph</h3>
-        <p>Ask a question or click any quick prompt above to query HydraDB entities, statements, and verifiable source provenance.</p>
+
+        <!-- Error State for Trace -->
+        <div id="traceErrorSection" class="card error-card hidden">
+          <div class="error-icon">!</div>
+          <div class="error-content">
+            <h3>Dependency Trace Error</h3>
+            <p id="traceErrorMessage">Entity not found or query error.</p>
+          </div>
+        </div>
+
+        <!-- Trace Results -->
+        <div id="traceResultSection" class="result-container hidden">
+          <!-- Impact Summary Card -->
+          <section class="card impact-card">
+            <div class="impact-header">
+              <span class="section-tag">IMPACT & DEPENDENCY ANALYSIS</span>
+              <h2 id="traceRootHeading" class="impact-title">Root Entity</h2>
+            </div>
+
+            <div class="metrics-grid">
+              <div class="metric-box">
+                <span class="metric-val" id="metricLinkedCount">0</span>
+                <span class="metric-lbl">Linked Components</span>
+              </div>
+              <div class="metric-box">
+                <span class="metric-val" id="metricStmtCount">0</span>
+                <span class="metric-lbl">Statements</span>
+              </div>
+              <div class="metric-box">
+                <span class="metric-val" id="metricDepth">0</span>
+                <span class="metric-lbl">Hops Traversed</span>
+              </div>
+              <div class="metric-box">
+                <span class="metric-val" id="metricMsgCount">0</span>
+                <span class="metric-lbl">Source Messages</span>
+              </div>
+            </div>
+
+            <div class="impact-details">
+              <div class="detail-row">
+                <strong>Linked Components:</strong>
+                <div id="linkedComponentsChips" class="tag-group"></div>
+              </div>
+              <div class="detail-row">
+                <strong>Statement Breakdown:</strong>
+                <div id="stmtBreakdownChips" class="tag-group"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Dependency Hops Section -->
+          <section class="evidence-section">
+            <div class="evidence-header">
+              <div class="section-title-wrap">
+                <h3 class="evidence-heading">Dependency Graph Hops</h3>
+                <span id="hopsCount" class="count-pill">0 hops</span>
+              </div>
+              <p class="evidence-subtext">Multi-hop co-occurrence and directional links traversed across Slack message contexts.</p>
+            </div>
+            <div id="hopsGrid" class="hops-grid"></div>
+          </section>
+
+          <!-- Statement Timeline Section -->
+          <section class="evidence-section">
+            <div class="evidence-header">
+              <div class="section-title-wrap">
+                <h3 class="evidence-heading">Chronological Statement Timeline</h3>
+                <span id="timelineCount" class="count-pill">0 events</span>
+              </div>
+              <p class="evidence-subtext">Ordered facts, decisions, and action items discovered along the dependency path.</p>
+            </div>
+            <div id="timelineList" class="timeline-list"></div>
+          </section>
+        </div>
+
+        <!-- Empty State for Trace -->
+        <div id="traceEmptySection" class="empty-state">
+          <div class="empty-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="6" cy="6" r="3"/>
+              <circle cx="18" cy="6" r="3"/>
+              <circle cx="18" cy="18" r="3"/>
+              <path d="M8.5 7.5L15.5 16.5"/>
+              <path d="M9 6h6"/>
+            </svg>
+          </div>
+          <h3>Ready for Dependency Tracing</h3>
+          <p>Select or enter an entity above to trace upstream causes, downstream affected services, and chronological action items.</p>
+        </div>
       </div>
     </main>
 
