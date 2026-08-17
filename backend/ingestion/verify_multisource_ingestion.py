@@ -25,12 +25,12 @@ from backend.semantic.verify_semantic_graph import extract_scalar_count, query
 DATA_DIR = PROJECT_ROOT / "data" / "enterprise-rag" / "extracted"
 
 
-def select_30_canonical_records() -> list[CanonicalRecord]:
-    """Deterministically select and parse 10 Slack, 10 Linear, and 10 GitHub documents."""
+def select_canonical_records(limit_per_source: int = 20) -> list[CanonicalRecord]:
+    """Deterministically select and parse records across Slack, Linear, and GitHub."""
     adapters = [
-        (SlackAdapter(), DATA_DIR / "slack", 10),
-        (LinearAdapter(), DATA_DIR / "linear", 10),
-        (GitHubAdapter(), DATA_DIR / "github", 10),
+        (SlackAdapter(), DATA_DIR / "slack", limit_per_source),
+        (LinearAdapter(), DATA_DIR / "linear", limit_per_source),
+        (GitHubAdapter(), DATA_DIR / "github", limit_per_source),
     ]
 
     all_records: list[CanonicalRecord] = []
@@ -39,6 +39,16 @@ def select_30_canonical_records() -> list[CanonicalRecord]:
         all_records.extend(records)
 
     return all_records
+
+
+def select_30_canonical_records() -> list[CanonicalRecord]:
+    """Deterministically select first 10 documents per source (30 total)."""
+    return select_canonical_records(limit_per_source=10)
+
+
+def select_60_canonical_records() -> list[CanonicalRecord]:
+    """Deterministically select first 20 documents per source (60 total frozen dataset)."""
+    return select_canonical_records(limit_per_source=20)
 
 
 def query_multi_source_metrics() -> dict[str, int]:
@@ -70,9 +80,10 @@ def query_multi_source_metrics() -> dict[str, int]:
     return results
 
 
-def run_controlled_ingestion() -> dict[str, Any]:
+def run_controlled_ingestion(limit_per_source: int = 20) -> dict[str, Any]:
+    expected_total = limit_per_source * 3
     print("=" * 80)
-    print("VERIDEX STEP 13C: CONTROLLED 30-DOCUMENT HYDRADB INGESTION")
+    print(f"VERIDEX CONTROLLED MULTI-SOURCE HYDRADB INGESTION ({expected_total} DOCUMENTS)")
     print("=" * 80)
 
     # 1. Baseline Pre-Ingestion Check
@@ -82,10 +93,10 @@ def run_controlled_ingestion() -> dict[str, Any]:
     print(f"   Existing Statements:           {baseline_metrics['existing_statements']}")
     print(f"   Existing ABOUT Relationships:  {baseline_metrics['existing_about']}")
 
-    # 2. Parse 30 Canonical Records
-    print("\n2. Parsing 30 Canonical Records (10 Slack, 10 Linear, 10 GitHub)...")
-    records = select_30_canonical_records()
-    assert len(records) == 30, f"Expected 30 records, got {len(records)}"
+    # 2. Parse Canonical Records
+    print(f"\n2. Parsing {expected_total} Canonical Records ({limit_per_source} Slack, {limit_per_source} Linear, {limit_per_source} GitHub)...")
+    records = select_canonical_records(limit_per_source=limit_per_source)
+    assert len(records) == expected_total, f"Expected {expected_total} records, got {len(records)}"
 
     slack_count = sum(1 for r in records if r.source == "slack")
     linear_count = sum(1 for r in records if r.source == "linear")
@@ -116,7 +127,6 @@ def run_controlled_ingestion() -> dict[str, Any]:
     res_m = query("MATCH (m:Message)-[:IN_CHANNEL]->(c:Channel) RETURN m.id AS id, m.document_id AS doc_id, m.source AS source")
     for row in res_m.get("rows", []):
         r_vals = [c.get("value") if isinstance(c, dict) else c for c in row]
-        # Ignore synthetic manual test node if id==101
         if r_vals[0] == 101:
             continue
         if not r_vals[0] or not r_vals[1] or r_vals[2] != "slack":
@@ -167,13 +177,11 @@ def run_controlled_ingestion() -> dict[str, Any]:
     print("   EXISTING GRAPH PRESERVATION PASSED: 100% of previous semantic pilot data intact.")
 
     print("\n" + "=" * 80)
-    print("ALL STEP 13C MULTI-SOURCE INGESTION CHECKS PASSED!")
-    print("================================================================================")
-    print("NOTE: 15,000-document ingestion NOT PERFORMED. (Controlled 30-document sample only)")
+    print(f"VERIDEX HACKATHON DATASET FROZEN AT {expected_total} DOCUMENTS (Slack: {slack_count}, Linear: {linear_count}, GitHub: {github_count})")
     print("=" * 80)
 
     return {
-        "records_ingested": 30,
+        "records_ingested": expected_total,
         "slack_count": slack_count,
         "linear_count": linear_count,
         "github_count": github_count,
@@ -185,4 +193,5 @@ def run_controlled_ingestion() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    run_controlled_ingestion()
+    run_controlled_ingestion(limit_per_source=20)
+
