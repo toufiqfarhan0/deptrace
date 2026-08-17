@@ -17,6 +17,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from backend.rag.rag_pipeline import answer_question
 from backend.retrieval.dependency_tracer import DependencyTracer
+from backend.retrieval.factory import (
+    check_active_health,
+    get_active_retriever,
+    get_active_tracer,
+    get_hydra_mode,
+)
 from backend.retrieval.models import (
     DependencyTraceRequest,
     DependencyTraceResponse,
@@ -84,9 +90,18 @@ class EntityListResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse)
 def health_check(query_fn=None) -> HealthResponse:
     """
-    Lightweight health check checking HydraDB graph connectivity.
+    Lightweight health check checking HydraDB graph or Cloud connectivity.
     Does NOT invoke Gemini API.
     """
+    mode = get_hydra_mode()
+    if mode == "cloud":
+        res = check_active_health()
+        return HealthResponse(
+            status=res.get("status", "degraded"),
+            hydradb=res.get("hydradb", "unknown"),
+        )
+
+    # Local mode health check respecting default_query_fn override
     q_fn = query_fn or default_query_fn
     try:
         res = q_fn("MATCH (m:Message) RETURN count(*) AS message_count LIMIT 1")
@@ -106,11 +121,12 @@ def ask_question_endpoint(
     """
     Answer an enterprise question using deterministic HydraDB retrieval + grounded Gemini synthesis.
     """
+    active_retriever = retriever or get_active_retriever()
     try:
         rag_res = answer_question(
             question=payload.question,
             retrieval_limit=payload.retrieval_limit,
-            retriever=retriever,
+            retriever=active_retriever,
             generator=generator,
         )
     except Exception as exc:
@@ -151,7 +167,7 @@ def get_trace_entities_endpoint(tracer=None) -> EntityListResponse:
     """
     Get all unique entities in HydraDB available for dependency tracing.
     """
-    dt = tracer or DependencyTracer()
+    dt = tracer or (DependencyTracer() if get_hydra_mode() == "local" else get_active_tracer())
     entities = dt.get_available_entities()
     return EntityListResponse(entities=entities, total_count=len(entities))
 
@@ -164,7 +180,7 @@ def trace_dependencies_endpoint(
     """
     Execute deterministic multi-hop dependency tracing starting from a target entity.
     """
-    dt = tracer or DependencyTracer()
+    dt = tracer or (DependencyTracer() if get_hydra_mode() == "local" else get_active_tracer())
     try:
         res = dt.trace(
             entity=payload.entity,
