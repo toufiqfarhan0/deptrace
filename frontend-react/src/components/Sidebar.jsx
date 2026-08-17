@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function Sidebar({ activeView, onNavigate, hydraStatus }) {
+export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome }) {
   const navItems = [
     {
       group: 'INVESTIGATE',
@@ -31,10 +31,15 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus }) {
   return (
     <aside className="sidebar" role="navigation" aria-label="Main navigation">
       <div className="sidebar-wordmark">
-        <div className="wordmark-name">
+        <button
+          className="wordmark-name wordmark-home-btn"
+          onClick={onGoHome}
+          aria-label="Return to Veridex home"
+          title="Back to home"
+        >
           VERIDEX
           <span className="wordmark-tag">TRACK 1</span>
-        </div>
+        </button>
         <div className="wordmark-sub">Evidence-first dependency intelligence</div>
       </div>
 
