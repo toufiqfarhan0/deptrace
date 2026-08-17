@@ -318,7 +318,7 @@ FastAPI serves both the unified REST API (`/api/*`) and the pre-built React 19 s
 | `HYDRA_DB_BASE_URL` | `https://api.hydradb.com` | HydraDB Cloud v2 API endpoint |
 | `HYDRA_DB_API_KEY` | *Secret Token* | Server-side Bearer authentication for HydraDB Cloud |
 | `GEMINI_API_KEY` | *Secret Key* | Gemini Interactions API key for grounded synthesis |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Language synthesis model |
+| `GEMINI_MODEL` | `gemini-3.6-flash` | Language synthesis model |
 | `PYTHON_VERSION` | `3.11.9` | Runtime version |
 | `NODE_VERSION` | `20.12.0` | Frontend build version |
 

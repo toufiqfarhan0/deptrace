@@ -19,7 +19,7 @@ Validates:
 10. Deterministic evidence ID formatting
 11. Gemini API error handling and sanitized error reporting
 12. Retrieval failure propagation
-13. Default model configuration (gemini-3.5-flash-lite)
+13. Default model configuration (gemini-3.6-flash)
 14. 100% offline execution with zero Gemini API calls
 """
 

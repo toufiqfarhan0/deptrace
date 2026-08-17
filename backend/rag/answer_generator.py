@@ -79,7 +79,7 @@ class GeminiAnswerGenerator:
             self.client = genai.Client(api_key=gemini_key)
         else:
             self.client = genai.Client()
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
     def generate_answer(
         self,
