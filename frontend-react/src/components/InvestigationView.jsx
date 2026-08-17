@@ -144,6 +144,7 @@ export default function InvestigationView() {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [highlightedId, setHighlightedId] = useState(null)
+  const [latencyMs, setLatencyMs] = useState(null)
   const textareaRef = useRef(null)
 
   const handleCitationClick = useCallback((id) => {
@@ -154,13 +155,14 @@ export default function InvestigationView() {
     }
   }, [])
 
-  const handleExecute = useCallback(async () => {
-    const q = query.trim()
+  const handleExecute = useCallback(async (queryOverride) => {
+    const q = (queryOverride || query).trim()
     if (!q) return
     setLoading(true)
     setError(null)
     setResult(null)
     setHighlightedId(null)
+    const t0 = performance.now()
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
@@ -168,6 +170,8 @@ export default function InvestigationView() {
         body: JSON.stringify({ question: q, retrieval_limit: 10 }),
       })
       const data = await res.json()
+      const t1 = performance.now()
+      setLatencyMs(Math.round(t1 - t0))
       if (!res.ok) {
         throw new Error(data.detail || data.error || `HTTP ${res.status}`)
       }
@@ -184,6 +188,11 @@ export default function InvestigationView() {
       e.preventDefault()
       handleExecute()
     }
+  }
+
+  const handleSelectSuggestion = (sQuery) => {
+    setQuery(sQuery)
+    handleExecute(sQuery)
   }
 
   const groundingState = result ? getGroundingState(result.grounded, result.answer) : null
@@ -212,7 +221,7 @@ export default function InvestigationView() {
           />
           <button
             className="query-execute-btn"
-            onClick={handleExecute}
+            onClick={() => handleExecute()}
             disabled={loading || !query.trim()}
             aria-label="Execute query"
           >
@@ -220,16 +229,13 @@ export default function InvestigationView() {
           </button>
         </div>
         <div className="query-suggestions" aria-label="Query suggestions">
-          <span className="suggestion-prefix">Suggested:</span>
+          <span className="suggestion-prefix">Demo Inquiries:</span>
           {SUGGESTIONS.map((s, i) => (
             <span key={s.label} style={{ display: 'flex', alignItems: 'center' }}>
               <button
                 className="suggestion-btn"
-                onClick={() => {
-                  setQuery(s.query)
-                  textareaRef.current?.focus()
-                }}
-                aria-label={`Use suggestion: ${s.label}`}
+                onClick={() => handleSelectSuggestion(s.query)}
+                aria-label={`Run investigation: ${s.label}`}
               >
                 {s.label}
               </button>
@@ -262,9 +268,16 @@ export default function InvestigationView() {
       {/* Result */}
       {result && !loading && (
         <div className="result-area">
-          <div className="query-display">
-            <div className="query-label-small">QUERY</div>
-            <div className="query-text-display">&ldquo;{result.question}&rdquo;</div>
+          <div className="query-display" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <div>
+              <div className="query-label-small">QUERY</div>
+              <div className="query-text-display">&ldquo;{result.question}&rdquo;</div>
+            </div>
+            {latencyMs !== null && (
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-text-3)' }}>
+                LATENCY: <span style={{ color: 'var(--c-accent)' }}>{latencyMs} ms</span>
+              </div>
+            )}
           </div>
 
           <div className="synthesis-block">
@@ -302,7 +315,7 @@ export default function InvestigationView() {
         <div className="empty-block">
           <div className="empty-label">Console Ready</div>
           <div className="empty-desc">
-            Submit a query above or choose a suggested investigation prompt to retrieve deterministic
+            Submit a query above or choose a demo inquiry prompt to retrieve deterministic
             graph facts, actions, and verified provenance.
           </div>
         </div>

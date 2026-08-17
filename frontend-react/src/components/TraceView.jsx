@@ -68,6 +68,7 @@ export default function TraceView({ initialEntity, onEntityChange }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+  const [latencyMs, setLatencyMs] = useState(null)
 
   useEffect(() => {
     if (initialEntity && initialEntity !== entity) {
@@ -81,6 +82,7 @@ export default function TraceView({ initialEntity, onEntityChange }) {
     setLoading(true)
     setError(null)
     setResult(null)
+    const t0 = performance.now()
     try {
       const res = await fetch('/api/trace', {
         method: 'POST',
@@ -88,6 +90,8 @@ export default function TraceView({ initialEntity, onEntityChange }) {
         body: JSON.stringify({ entity: target, max_depth: parseInt(depth, 10), limit: 25 }),
       })
       const data = await res.json()
+      const t1 = performance.now()
+      setLatencyMs(Math.round(t1 - t0))
       if (!res.ok) throw new Error(data.detail || data.error || `HTTP ${res.status}`)
       if (!data.found) throw new Error(data.error || `Entity '${target}' not found in knowledge graph.`)
       setResult(data)
@@ -200,8 +204,13 @@ export default function TraceView({ initialEntity, onEntityChange }) {
       {result && !loading && (
         <div>
           {/* IMPACT SECTION */}
-          <div className="section-rule">
+          <div className="section-rule" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="section-label">TRACE: {result.root_entity}</span>
+            {latencyMs !== null && (
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', paddingRight: 8 }}>
+                TRAVERSAL LATENCY: <span style={{ color: 'var(--c-accent)' }}>{latencyMs} ms</span>
+              </span>
+            )}
           </div>
 
           <div className="impact-section">
