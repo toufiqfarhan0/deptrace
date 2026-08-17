@@ -2,9 +2,9 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { getInquiryQueries } from '../data/suggestions.js'
 
 const STARTER_QUERIES = [
-  'What happened with REL-311?',
-  'What is connected to api-search?',
-  'What changed around kernel-selector?',
+  'What happened during incident INC-2026?',
+  'What is PR-99501 about?',
+  'What is ENG-68910 about?',
 ]
 
 function CitationPill({ id, onClick, highlighted }) {
@@ -297,7 +297,7 @@ export default function InvestigationView({
               if (onQueryChange) onQueryChange(e.target.value)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="What happened with REL-311? or Why did the team change model routing?"
+            placeholder="What happened during incident INC-2026? or What is PR-99501 about?"
             rows={2}
             aria-label="Investigation query input"
             disabled={loading}
