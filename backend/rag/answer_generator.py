@@ -71,10 +71,15 @@ class GeminiAnswerGenerator:
 
     def __init__(
         self,
-        model: str = "gemini-3.5-flash-lite",
+        model: str | None = None,
+        api_key: str | None = None,
     ) -> None:
-        self.client = genai.Client()
-        self.model = model
+        gemini_key = api_key or os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            self.client = genai.Client(api_key=gemini_key)
+        else:
+            self.client = genai.Client()
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     def generate_answer(
         self,
