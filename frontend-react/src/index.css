@@ -60,7 +60,7 @@
 
   /* Layout */
   --sidebar-w: 230px;
-  --header-h: 48px;
+  --header-h: 64px;
   --radius: 3px;
 }
 
@@ -186,8 +186,14 @@ input, textarea, select {
 }
 
 .sidebar-wordmark {
-  padding: 20px 18px 16px;
+  height: var(--header-h);
+  min-height: var(--header-h);
+  padding: 0 18px;
   border-bottom: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .wordmark-name {
@@ -355,10 +361,12 @@ input, textarea, select {
   justify-content: space-between;
   padding: 0 32px;
   height: var(--header-h);
+  min-height: var(--header-h);
   border-bottom: 1px solid var(--c-border);
   background: var(--c-bg);
   flex-shrink: 0;
   backdrop-filter: blur(8px);
+  box-sizing: border-box;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -2675,9 +2683,11 @@ input, textarea, select {
 
   .sidebar-wordmark {
     flex: 0 0 auto;
+    height: auto;
+    min-height: auto;
     border-bottom: none;
     border-right: 1px solid var(--c-border);
-    padding: 12px 14px;
+    padding: 10px 14px;
   }
 
   .sidebar-nav {
