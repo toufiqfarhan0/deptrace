@@ -83,32 +83,97 @@ class HydraCloudRetriever:
         except Exception as exc:
             return {"status": "degraded", "hydradb": f"unreachable: {type(exc).__name__}"}
 
+    def clean_chunk_text(self, raw: str) -> str:
+        """
+        Unpack clean human-readable text from HydraDB Cloud chunk payloads.
+        Handles complete JSON structures, truncated JSON fragments, and raw text.
+        """
+        if not raw:
+            return ""
+
+        # 1. Complete valid JSON object
+        if raw.startswith("{") and raw.endswith("}"):
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    if "content" in data and isinstance(data["content"], dict):
+                        txt = data["content"].get("text", "")
+                        if txt:
+                            return str(txt).strip()
+                    if "content" in data and isinstance(data["content"], str):
+                        return data["content"].strip()
+                    if "text" in data and isinstance(data["text"], str):
+                        return data["text"].strip()
+            except Exception:
+                pass
+
+        # 2. JSON fragment containing "content":{"text":"..."}
+        match_content_text = re.search(r'"content"\s*:\s*\{\s*"text"\s*:\s*"(.*?)(?:",\s*"|"\s*\}|$)', raw, re.DOTALL)
+        if match_content_text:
+            raw_inner = match_content_text.group(1)
+            try:
+                return json.loads(f'"{raw_inner}"').strip()
+            except Exception:
+                return (
+                    raw_inner.replace(r"\n", "\n")
+                    .replace(r"\"", '"')
+                    .replace(r"\u003e", ">")
+                    .replace(r"\u003c", "<")
+                    .strip()
+                )
+
+        # 3. JSON fragment containing "text":"..."
+        match_text = re.search(r'"text"\s*:\s*"(.*?)(?:",\s*"|"\s*\}|$)', raw, re.DOTALL)
+        if match_text:
+            raw_inner = match_text.group(1)
+            try:
+                return json.loads(f'"{raw_inner}"').strip()
+            except Exception:
+                return (
+                    raw_inner.replace(r"\n", "\n")
+                    .replace(r"\"", '"')
+                    .replace(r"\u003e", ">")
+                    .replace(r"\u003c", "<")
+                    .strip()
+                )
+
+        # 4. Plain text containing trailing JSON metadata artifacts
+        cleaned = re.sub(r'",\s*"(?:html_base64|csv_base64|markdown|files|layout|tenant_metadata|document).*$', '', raw, flags=re.DOTALL)
+        return cleaned.strip()
+
     def extract_identifiers(self, query: str) -> list[str]:
-        """Extract explicit technical identifiers (e.g. REL-311, PR-99501, ENG-30521, kernel-selector)."""
+        """Extract explicit technical identifiers, ticket keys, and incident names."""
         tokens: list[str] = []
-        # Pattern 1: Ticket / PR keys like REL-311, ENG-30521, PR-99501, DES-11321
+        # Pattern 1: Ticket / PR / Incident keys like PR-99501, ENG-30521, INC-2026, DES-23981, PM-352917
         key_matches = re.findall(r"\b([A-Z]{2,6}-\d{2,7})\b", query)
         tokens.extend(key_matches)
-        # Pattern 2: Component identifiers like kernel-selector, api-search, request-time guard
-        comp_patterns = [
-            "kernel-selector",
-            "api-search",
-            "request-time guard",
-            "v3.1.1-legacy-tokenizer",
-            "strict_model:true",
-            "compact-model-v1",
-            "kernel-fallback policy",
+        # Pattern 2: Numeric Slack timestamps/IDs (10-digit)
+        slack_matches = re.findall(r"\b(\d{10})\b", query)
+        tokens.extend(slack_matches)
+        # Pattern 3: Channel names e.g. #incidents, #eng-runtime, #eng-security
+        channel_matches = re.findall(r"(#[a-z0-9\-_]+)", query, re.IGNORECASE)
+        tokens.extend(channel_matches)
+        # Pattern 4: Key known entities and incident subjects
+        keywords = [
+            "Bluecrest",
+            "KMS",
+            "guardrails",
+            "overload",
+            "tokenizer",
+            "cgroup",
+            "interop",
+            "deferred-indexing",
         ]
         q_lower = query.lower()
-        for comp in comp_patterns:
-            if comp.lower() in q_lower:
-                tokens.append(comp)
+        for kw in keywords:
+            if kw.lower() in q_lower:
+                tokens.append(kw)
         return list(dict.fromkeys(tokens))
 
     def retrieve(self, query: str, limit: int = 10) -> RetrievalResponse:
         """
         Execute knowledge query against HydraDB Cloud v2.
-        Maps raw Cloud chunks into normalized Veridex EvidenceItem list.
+        Maps raw Cloud chunks into normalized Veridex EvidenceItem list with full text preservation.
         """
         q_clean = query.strip()
         if not q_clean:
@@ -158,19 +223,12 @@ class HydraCloudRetriever:
                 msg_id = stable_id("cloud", veridex_doc_id)
 
             raw_content = chunk.get("chunk_content", "")
-            # If content was wrapped in JSON string, unpack clean text
-            if raw_content.startswith('{"id":') or raw_content.startswith('{"text":'):
-                try:
-                    parsed_c = json.loads(raw_content)
-                    if isinstance(parsed_c, dict):
-                        raw_content = parsed_c.get("text") or parsed_c.get("content", {}).get("text") or raw_content
-                except Exception:
-                    pass
+            cleaned_content = self.clean_chunk_text(raw_content)
 
-            # Statement and entity extraction
+            # Statement and entity extraction with full text preservation
             title = chunk.get("source_title", "")
             author = meta.get("author") or "unknown"
-            statement_snippet = f"({veridex_src_id}) {title}: {raw_content[:280]}".strip()
+            statement_snippet = f"({veridex_src_id}) {title}: {cleaned_content[:1500]}".strip()
 
             relevancy = float(chunk.get("relevancy_score", 1.0))
             # Normalize confidence to [0.0, 1.0]
@@ -183,7 +241,7 @@ class HydraCloudRetriever:
                 if (
                     ident.lower() in veridex_src_id.lower()
                     or ident.lower() in title.lower()
-                    or ident.lower() in raw_content.lower()
+                    or ident.lower() in cleaned_content.lower()
                 ):
                     matched_id = ident
                     is_exact = True
@@ -198,7 +256,7 @@ class HydraCloudRetriever:
                 entity_name=entity_name,
                 entity_type=source_type,
                 statement=statement_snippet,
-                statement_type="fact" if "PR" in veridex_src_id or "ENG" in veridex_src_id else "action",
+                statement_type="fact" if "PR" in str(veridex_src_id) or "ENG" in str(veridex_src_id) else "action",
                 confidence=conf,
                 relationship="KNOWLEDGE_SOURCE",
                 source="hydradb_cloud",

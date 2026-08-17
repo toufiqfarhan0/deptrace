@@ -137,3 +137,36 @@ def test_frontend_source_and_bundle_secret_isolation() -> None:
                 scanned_files += 1
 
     assert scanned_files > 0, "No frontend files were scanned"
+
+
+def test_cloud_retriever_clean_chunk_text() -> None:
+    """Verify clean_chunk_text extracts text from diverse Cloud chunk formats."""
+    retriever = HydraCloudRetriever(api_key="mock_key")
+
+    # Case 1: Complete JSON with content.text
+    json_full = '{"id":"dsid_123","title":"Ticket","content":{"text":"Complete body of the ticket."}}'
+    assert retriever.clean_chunk_text(json_full) == "Complete body of the ticket."
+
+    # Case 2: JSON fragment containing "content":{"text":"..."}
+    json_frag = '{"id":"dsid_123","content":{"text":"Fragment of discussion text with \\"quotes\\" and \\u003e arrow.'
+    cleaned = retriever.clean_chunk_text(json_frag)
+    assert "Fragment of discussion text" in cleaned
+    assert ">" in cleaned
+
+    # Case 3: JSON fragment with trailing metadata
+    json_trailing = 'Plain text body of the PR description.", "html_base64":"","tenant_metadata":{"source":"github"}'
+    assert retriever.clean_chunk_text(json_trailing) == 'Plain text body of the PR description.'
+
+    # Case 4: Plain text
+    plain = "Direct plain text statement from Slack conversation."
+    assert retriever.clean_chunk_text(plain) == plain
+
+
+def test_cloud_retriever_extract_identifiers() -> None:
+    """Verify extract_identifiers identifies PRs, tickets, incidents, and channels."""
+    retriever = HydraCloudRetriever(api_key="mock_key")
+    tokens = retriever.extract_identifiers("What happened during incident INC-2026 and PR-99501 for Bluecrest in #incidents?")
+    assert "INC-2026" in tokens
+    assert "PR-99501" in tokens
+    assert "Bluecrest" in tokens
+    assert "#incidents" in tokens
