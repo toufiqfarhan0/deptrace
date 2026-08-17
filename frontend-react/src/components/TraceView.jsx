@@ -1,36 +1,56 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { getQuickTraceEntities } from '../data/suggestions.js'
 
-const QUICK_ENTITIES = [
-  'REL-311',
-  'kernel-selector',
-  'api-search',
-  'kernel-fallback policy',
-  'request-time guard',
-  'v3.1.1-legacy-tokenizer',
-]
-
-function DepPath({ data, onSelectEntity }) {
+function DepPath({ data, onSelectEntity, onNavigateToAsk }) {
   const { root_entity, impact_summary } = data
   const linked = impact_summary?.affected_components || []
 
   return (
     <div className="dep-path-block">
       <div className="dep-path-entities">
-        <span className="dep-entity-root">{root_entity}</span>
+        <div className="dep-root-wrapper">
+          <span className="dep-entity-root">{root_entity}</span>
+          {onNavigateToAsk && (
+            <button
+              className="inline-ask-btn"
+              onClick={() => onNavigateToAsk(`What happened with ${root_entity}?`)}
+              title={`Ask questions about ${root_entity}`}
+              aria-label={`Ask questions about ${root_entity}`}
+              type="button"
+            >
+              <span>&gt;_ ASK</span>
+            </button>
+          )}
+        </div>
+
         {linked.map((e) => (
-          <span key={e} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="dep-arrow">⟷</span>
+          <div key={e} className="dep-linked-wrapper">
+            <span className="dep-arrow" aria-hidden="true">⟷</span>
             <button
               className="dep-entity-linked"
               onClick={() => onSelectEntity(e)}
               aria-label={`Trace ${e}`}
+              title={`Trace dependencies for ${e}`}
+              type="button"
             >
               {e}
             </button>
-          </span>
+            {onNavigateToAsk && (
+              <button
+                className="inline-ask-btn"
+                onClick={() => onNavigateToAsk(`What is connected to ${e}?`)}
+                title={`Ask questions about ${e}`}
+                aria-label={`Ask questions about ${e}`}
+                type="button"
+              >
+                <span>&gt;_</span>
+              </button>
+            )}
+          </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', fontFamily: 'var(--font-mono)' }}>
           AFFECTED COMPONENTS:
         </span>
@@ -62,22 +82,22 @@ function UnavailableField({ label }) {
   )
 }
 
-export default function TraceView({ initialEntity, onEntityChange }) {
-  const [entity, setEntity] = useState(initialEntity || '')
+export default function TraceView({
+  initialEntity = '',
+  onEntityChange,
+  onNavigateToAsk,
+}) {
+  const [entity, setEntity] = useState(initialEntity)
   const [depth, setDepth] = useState('2')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
 
-  useEffect(() => {
-    if (initialEntity && initialEntity !== entity) {
-      setEntity(initialEntity)
-    }
-  }, [initialEntity])
+  const quickEntities = getQuickTraceEntities()
 
   const handleTrace = useCallback(async (targetOverride) => {
-    const target = (targetOverride || entity).trim()
+    const target = (targetOverride !== undefined ? targetOverride : entity).trim()
     if (!target) return
     setLoading(true)
     setError(null)
@@ -101,6 +121,14 @@ export default function TraceView({ initialEntity, onEntityChange }) {
       setLoading(false)
     }
   }, [entity, depth])
+
+  // Handle external navigation from Suggestions / Ask views
+  useEffect(() => {
+    if (initialEntity && initialEntity.trim() !== '') {
+      setEntity(initialEntity)
+      handleTrace(initialEntity)
+    }
+  }, [initialEntity, handleTrace])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -159,22 +187,24 @@ export default function TraceView({ initialEntity, onEntityChange }) {
             onClick={() => handleTrace()}
             disabled={loading || !entity.trim()}
             aria-label="Execute dependency trace"
+            type="button"
           >
             {loading ? '...' : 'TRACE →'}
           </button>
         </div>
         <div className="trace-quick-select">
           <span className="suggestion-prefix">Quick select:</span>
-          {QUICK_ENTITIES.map((e, i) => (
+          {quickEntities.map((e, i) => (
             <span key={e} style={{ display: 'flex', alignItems: 'center' }}>
               <button
                 className="suggestion-btn"
                 onClick={() => handleSelectQuickEntity(e)}
                 aria-label={`Trace ${e}`}
+                type="button"
               >
                 {e}
               </button>
-              {i < QUICK_ENTITIES.length - 1 && <span className="suggestion-sep">·</span>}
+              {i < quickEntities.length - 1 && <span className="suggestion-sep">·</span>}
             </span>
           ))}
         </div>
@@ -234,7 +264,11 @@ export default function TraceView({ initialEntity, onEntityChange }) {
             </div>
 
             {/* Dependency Path Representation */}
-            <DepPath data={result} onSelectEntity={handleSelectQuickEntity} />
+            <DepPath
+              data={result}
+              onSelectEntity={handleSelectQuickEntity}
+              onNavigateToAsk={onNavigateToAsk}
+            />
 
             {/* Structural Fields Availability */}
             <div style={{ marginTop: 12 }}>

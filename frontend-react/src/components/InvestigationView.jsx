@@ -1,11 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react'
-
-const SUGGESTIONS = [
-  { label: 'REL-311 incident', query: 'What happened with REL-311?' },
-  { label: 'model routing change', query: 'Why did the team change the model routing?' },
-  { label: 'kernel-selector issue', query: 'What was the issue with kernel-selector?' },
-  { label: 'strict_model:true', query: 'What is strict_model:true?' },
-]
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { getInquiryQueries } from '../data/suggestions.js'
 
 const STARTER_QUERIES = [
   'What happened with REL-311?',
@@ -96,7 +90,7 @@ function GroundingIndicator({ state }) {
   )
 }
 
-function EvidenceRows({ items, highlightedId, onHighlight }) {
+function EvidenceRows({ items, highlightedId, onHighlight, onNavigateToTrace }) {
   if (!items || items.length === 0) {
     return (
       <div className="empty-block" style={{ padding: '24px 20px' }}>
@@ -143,6 +137,21 @@ function EvidenceRows({ items, highlightedId, onHighlight }) {
               {item.match_type && (
                 <span className="match-tag">{item.match_type}</span>
               )}
+              {item.entity_name && onNavigateToTrace && (
+                <button
+                  className="inline-trace-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onNavigateToTrace(item.entity_name)
+                  }}
+                  title={`Trace dependencies for ${item.entity_name}`}
+                  aria-label={`Trace dependencies for ${item.entity_name}`}
+                  type="button"
+                >
+                  <span>TRACE</span>
+                  <span aria-hidden="true">⟷</span>
+                </button>
+              )}
             </div>
 
             {item.statement ? (
@@ -182,14 +191,20 @@ function EvidenceRows({ items, highlightedId, onHighlight }) {
   )
 }
 
-export default function InvestigationView() {
-  const [query, setQuery] = useState('')
+export default function InvestigationView({
+  initialQuery = '',
+  onQueryChange,
+  onNavigateToTrace,
+}) {
+  const [query, setQuery] = useState(initialQuery)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [highlightedId, setHighlightedId] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
   const textareaRef = useRef(null)
+
+  const suggestions = getInquiryQueries()
 
   const handleCitationClick = useCallback((id) => {
     setHighlightedId((prev) => (prev === id ? null : id))
@@ -200,7 +215,7 @@ export default function InvestigationView() {
   }, [])
 
   const handleExecute = useCallback(async (queryOverride) => {
-    const q = (queryOverride || query).trim()
+    const q = (queryOverride !== undefined ? queryOverride : query).trim()
     if (!q) return
     setLoading(true)
     setError(null)
@@ -227,6 +242,14 @@ export default function InvestigationView() {
     }
   }, [query])
 
+  // Handle external query navigation from Suggestions view
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim() !== '') {
+      setQuery(initialQuery)
+      handleExecute(initialQuery)
+    }
+  }, [initialQuery, handleExecute])
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -236,10 +259,21 @@ export default function InvestigationView() {
 
   const handleSelectSuggestion = (sQuery) => {
     setQuery(sQuery)
+    if (onQueryChange) onQueryChange(sQuery)
     handleExecute(sQuery)
   }
 
   const groundingState = result ? getGroundingState(result.grounded, result.answer) : null
+
+  // Extract unique entities found in the evidence bundle
+  const uniqueEntities = useMemo(() => {
+    if (!result?.evidence) return []
+    const names = new Set()
+    for (const item of result.evidence) {
+      if (item.entity_name) names.add(item.entity_name)
+    }
+    return Array.from(names)
+  }, [result])
 
   return (
     <section aria-label="Investigation workspace" className="investigation-section">
@@ -258,7 +292,10 @@ export default function InvestigationView() {
             ref={textareaRef}
             className="query-input"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              if (onQueryChange) onQueryChange(e.target.value)
+            }}
             onKeyDown={handleKeyDown}
             placeholder="What happened with REL-311? or Why did the team change model routing?"
             rows={2}
@@ -288,9 +325,9 @@ export default function InvestigationView() {
 
         {/* Command Suggestions */}
         <div className="query-suggestions" aria-label="Suggested investigations">
-          <span className="suggestion-prefix">Suggested:</span>
+          <span className="suggestion-prefix">Suggested Inquiries:</span>
           <div className="suggestion-pills">
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <button
                 key={s.label}
                 className="suggestion-btn"
@@ -373,6 +410,27 @@ export default function InvestigationView() {
                 highlightedId
               )}
             </div>
+
+            {/* Quick Entity Trace Shortcuts Row */}
+            {uniqueEntities.length > 0 && onNavigateToTrace && (
+              <div className="synthesis-entity-shortcuts">
+                <span className="shortcuts-lbl">TRACE DISCOVERED ENTITIES:</span>
+                <div className="shortcuts-list">
+                  {uniqueEntities.map((ent) => (
+                    <button
+                      key={ent}
+                      className="entity-shortcut-btn"
+                      onClick={() => onNavigateToTrace(ent)}
+                      title={`Trace dependencies for ${ent}`}
+                      type="button"
+                    >
+                      <span className="shortcut-dot" aria-hidden="true">⟷</span>
+                      <span>{ent}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Evidence Block */}
@@ -398,6 +456,7 @@ export default function InvestigationView() {
               items={result.evidence}
               highlightedId={highlightedId}
               onHighlight={setHighlightedId}
+              onNavigateToTrace={onNavigateToTrace}
             />
           </div>
         </div>
