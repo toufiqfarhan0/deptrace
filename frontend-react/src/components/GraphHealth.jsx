@@ -1,13 +1,10 @@
 import React from 'react'
+import { isHydraOnline, getHydraStatusMode, getHydraStatusLabel } from '../utils/hydraStatus.js'
 
 export default function GraphHealth({ hydraStatus }) {
-  const isOnline = hydraStatus?.hydradb === 'ok'
-  const statusText =
-    hydraStatus?.status === 'loading'
-      ? 'CHECKING'
-      : isOnline
-      ? 'ONLINE'
-      : 'OFFLINE'
+  const isOnline = isHydraOnline(hydraStatus)
+  const mode = getHydraStatusMode(hydraStatus)
+  const statusText = getHydraStatusLabel(hydraStatus, { format: 'health' })
 
   const endpoints = [
     { method: 'GET', path: '/api/health', desc: 'HydraDB connectivity & health check' },
@@ -32,7 +29,9 @@ export default function GraphHealth({ hydraStatus }) {
         </div>
         <div className="health-cell">
           <div className="health-field">Knowledge Graph Target</div>
-          <div className="health-value">default / cell-0</div>
+          <div className="health-value">
+            {mode === 'cloud' ? 'veridex-hackhydra (Cloud)' : 'default / cell-0 (Local)'}
+          </div>
         </div>
         <div className="health-cell">
           <div className="health-field">API Runtime</div>
@@ -40,7 +39,7 @@ export default function GraphHealth({ hydraStatus }) {
         </div>
         <div className="health-cell">
           <div className="health-field">Ingestion Dataset</div>
-          <div className="health-value">EnterpriseRAG-Bench</div>
+          <div className="health-value">EnterpriseRAG-Bench (60 Documents)</div>
         </div>
       </div>
 

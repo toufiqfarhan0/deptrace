@@ -30,6 +30,11 @@ from backend.retrieval.models import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolate_local_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HYDRA_MODE", "local")
+
+
 @pytest.fixture
 def client() -> TestClient:
     app = create_app()

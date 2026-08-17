@@ -8,6 +8,7 @@ import EntityExplorer from './components/EntityExplorer.jsx'
 import GraphHealth from './components/GraphHealth.jsx'
 import WhyHydraDB from './components/WhyHydraDB.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
+import { getHydraStatusLabel, getHydraDotClass, getHydraAriaLabel } from './utils/hydraStatus.js'
 
 export default function App() {
   // Theme System: default dark, persisted in localStorage, respects system preference on first visit
@@ -130,17 +131,17 @@ export default function App() {
           </nav>
           <div className="header-actions">
             <ThemeToggle theme={theme} onToggleTheme={toggleTheme} />
-            <div className="header-status">
+            <div
+              className="header-status"
+              role="status"
+              aria-label={getHydraAriaLabel(hydraStatus)}
+            >
               <span
-                className={`status-dot ${
-                  hydraStatus.status === 'loading' ? 'loading'
-                    : hydraStatus.hydradb === 'ok' ? 'ok' : 'err'
-                }`}
+                className={`status-dot ${getHydraDotClass(hydraStatus)}`}
                 aria-hidden="true"
               />
               <span>
-                {hydraStatus.status === 'loading' ? 'CHECKING...'
-                  : hydraStatus.hydradb === 'ok' ? 'HYDRADB ONLINE' : 'HYDRADB OFFLINE'}
+                {getHydraStatusLabel(hydraStatus, { format: 'header' })}
               </span>
             </div>
           </div>
