@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react"
+import ThemeToggle from "./ThemeToggle.jsx"
 
 function SignalFlowDiagram() {
   const [lit, setLit] = useState(false)
@@ -278,7 +279,7 @@ function WhyHydraSection({ onNavigateToWhyHydra }) {
   )
 }
 
-export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydraStatus }) {
+export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydraStatus, theme, onToggleTheme }) {
   const [scrolled, setScrolled] = useState(false)
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -301,6 +302,9 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
             <button className="lp-nav-link" onClick={() => onEnterConsole("why-hydra")} id="lp-nav-why">WHY HYDRADB</button>
           </nav>
           <div className="lp-nav-right">
+            {theme && onToggleTheme && (
+              <ThemeToggle theme={theme} onToggleTheme={onToggleTheme} />
+            )}
             <div className="lp-nav-status">
               <span className={`lp-nav-status-dot${isOnline ? " lp-nav-status-dot--ok" : ""}`} />
               <span>{isOnline ? "HYDRADB ONLINE" : "CONNECTING..."}</span>
