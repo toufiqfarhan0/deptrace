@@ -6,9 +6,10 @@ __pycache__/
 .Python
 .pytest_cache/
 env/
-build/
+/build/
 develop-eggs/
-dist/
+/dist/
+
 downloads/
 eggs/
 .eggs/
@@ -61,3 +62,9 @@ data/enterprise-rag/questions.jsonl
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Frontend / Node
+node_modules/
+frontend-react/node_modules/
+!frontend-react/dist/
+
