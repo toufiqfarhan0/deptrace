@@ -25,7 +25,6 @@ except ImportError:
 from backend.api.routes import router as api_router
 
 REACT_DIST_DIR = PROJECT_ROOT / "frontend-react" / "dist"
-FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 
 def create_app() -> FastAPI:
@@ -35,7 +34,6 @@ def create_app() -> FastAPI:
         description="Deterministic graph retrieval, dependency tracing, and grounded answer generation over HydraDB",
         version="0.11.0",
     )
-
 
     # CORS configuration for local development
     app.add_middleware(
@@ -66,14 +64,8 @@ def create_app() -> FastAPI:
                 return FileResponse(target)
             return FileResponse(REACT_DIST_DIR / "index.html")
 
-    elif FRONTEND_DIR.exists():
-        app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-
-        @app.get("/", include_in_schema=False)
-        def serve_legacy_index() -> FileResponse:
-            return FileResponse(FRONTEND_DIR / "index.html")
-
     return app
 
 
 app = create_app()
+
