@@ -16,7 +16,10 @@ import pytest
 
 from backend.ingestion.adapters import GitHubAdapter, LinearAdapter, SlackAdapter
 from backend.ingestion.canonical import CanonicalRecord
-from backend.ingestion.verify_multisource_ingestion import select_30_canonical_records
+from backend.ingestion.verify_multisource_ingestion import (
+    select_30_canonical_records,
+    select_60_canonical_records,
+)
 from backend.ingestion.writer import HydraEnterpriseWriter
 
 
@@ -35,6 +38,19 @@ def test_select_30_canonical_records() -> None:
         assert len(r.source_id) > 0
         assert len(r.title) > 0
         assert r.canonical_id > 0
+
+
+def test_select_60_canonical_records_freeze() -> None:
+    records = select_60_canonical_records()
+    assert len(records) == 60
+
+    sources = [r.source for r in records]
+    assert sources.count("slack") == 20
+    assert sources.count("linear") == 20
+    assert sources.count("github") == 20
+
+    doc_ids = [r.document_id for r in records]
+    assert len(set(doc_ids)) == 60, "All 60 documents must have unique IDs"
 
 
 def test_writer_statement_generation_and_idempotency() -> None:
