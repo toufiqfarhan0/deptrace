@@ -288,25 +288,45 @@ deptrace/
 
 ---
 
-## Hackathon Positioning
+---
 
-**Track**: HydraDB Hack — Track 1: Enterprise Context + Ontology
+## Deploy to Render (Production Cloud Mode)
 
-**Core Thesis**: HydraDB's deterministic graph layer enables a fundamentally different RAG architecture — one where retrieval is provenance-preserving, graph-traversal-based, and hallucination-resistant by construction.
+Veridex is architected for seamless zero-downtime deployment on **Render** (Free Web Service) with **HydraDB Cloud v2** as the managed production database.
 
-**Differentiators vs. plain vector RAG**:
-| Capability | Vector RAG | Veridex + HydraDB |
-|:-----------|:----------:|:-----------------:|
-| Retrieval method | Approximate similarity | Deterministic graph traversal |
-| Provenance tracking | Partial | Full (message + document ID) |
-| Cross-source connections | Implicit | Explicit graph edges |
-| Dependency tracing | Absent | Multi-hop BFS |
-| Hallucination prevention | Prompt-level | Structural (bounded evidence) |
-| Idempotency | N/A | Guaranteed (MERGE + stable IDs) |
+### 1. Architecture on Render
+FastAPI serves both the unified REST API (`/api/*`) and the pre-built React 19 single-page application from `frontend-react/dist`. No Node/Vite server is needed in production.
 
-**Current verified state**:
-- 146 pytest tests passing (fully offline)
-- 60-document controlled dataset (Slack: 20, Linear: 20, GitHub: 20)
-- 0 Gemini calls during retrieval, tracing, evaluation, or testing
-- 0 provenance errors across all 60 ingested documents
-- Deterministic idempotency verified (Pass 1 == Pass 2 for all graph counts)
+### 2. Required Render Web Service Settings
+- **Environment**: `Python 3.11`
+- **Build Command**:
+  ```bash
+  npm install --prefix frontend-react && npm run build --prefix frontend-react && pip install -r requirements.txt
+  ```
+- **Start Command**:
+  ```bash
+  uvicorn backend.api.app:app --host 0.0.0.0 --port $PORT
+  ```
+- **Health Check Path**: `/api/health`
+
+### 3. Required Environment Variables
+
+| Variable | Recommended Value | Purpose |
+|:---|:---|:---|
+| `HYDRA_MODE` | `cloud` | Activates the HydraDB Cloud v2 driver |
+| `HYDRA_DB_DATABASE` | `veridex-hackhydra` | Target Cloud database containing the frozen 60-document dataset |
+| `HYDRA_DB_BASE_URL` | `https://api.hydradb.com` | HydraDB Cloud v2 API endpoint |
+| `HYDRA_DB_API_KEY` | *Secret Token* | Server-side Bearer authentication for HydraDB Cloud |
+| `GEMINI_API_KEY` | *Secret Key* | Gemini Interactions API key for grounded synthesis |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Language synthesis model |
+| `PYTHON_VERSION` | `3.11.9` | Runtime version |
+| `NODE_VERSION` | `20.12.0` | Frontend build version |
+
+> [!WARNING]
+> **Security & Zero-Ingestion Rules:**
+> - `HYDRA_DB_API_KEY` and `GEMINI_API_KEY` are server-side secrets. They must NEVER be exposed in frontend code or repository commits.
+> - The production HydraDB Cloud database `veridex-hackhydra` already contains the complete frozen 60-document dataset. **DO NOT perform any ingestion during deployment or server startup.**
+
+### 4. Local vs. Production Driver Mode
+- **Local (`HYDRA_MODE=local`)**: Queries the local Dockerized OpenCypher instance (`:8443`). Used by default for development and offline CI tests.
+- **Production (`HYDRA_MODE=cloud`)**: Queries HydraDB Cloud v2 with hybrid retrieval, thinking mode, and forceful relation bindings.

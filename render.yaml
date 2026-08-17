@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: veridex
+    env: python
+    plan: free
+    buildCommand: "npm install --prefix frontend-react && npm run build --prefix frontend-react && pip install -r requirements.txt"
+    startCommand: "uvicorn backend.api.app:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NODE_VERSION
+        value: 20.12.0
+      - key: HYDRA_MODE
+        value: cloud
+      - key: HYDRA_DB_DATABASE
+        value: veridex-hackhydra
+      - key: HYDRA_DB_BASE_URL
+        value: https://api.hydradb.com
+      - key: HYDRA_DB_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
