@@ -38,10 +38,10 @@ deptrace/
 ├── tests/
 │   ├── test_build_graph_candidates.py # Unit tests for candidate generation
 │   ├── test_ingest_candidates.py      # Unit tests for HydraDB candidate ingestion
-│   └── test_semantic_extraction.py    # Unit tests for semantic schemas and provenance
-├── frontend/                         # DepTrace UI client
+├── frontend-react/                   # Veridex React investigation UI client
 ├── .gitignore
 └── README.md
+
 ```
 
 ## Features
