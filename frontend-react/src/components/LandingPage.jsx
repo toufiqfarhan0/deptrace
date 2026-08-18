@@ -248,7 +248,7 @@ function WhyHydraSection({ onNavigateToWhyHydra }) {
     { label: "Raw Enterprise Signals", desc: "Slack, Linear, GitHub" },
     { label: "Semantic Extraction", desc: "Gemini extracts typed facts, actions, decisions" },
     { label: "HydraDB Graph", desc: "Deterministic structural + semantic graph layer" },
-    { label: "Deterministic Retrieval", desc: "OpenCypher graph traversal — no vector approximation" },
+    { label: "Deterministic Retrieval", desc: "Graph-aware traversal — no vector approximation" },
     { label: "Evidence Bundle", desc: "Bounded, provenance-preserving evidence set" },
     { label: "Gemini Synthesis", desc: "Language synthesis only from the evidence bundle" },
   ]
@@ -257,7 +257,7 @@ function WhyHydraSection({ onNavigateToWhyHydra }) {
       <div className="lp-container">
         <div className="lp-section-eyebrow" id="why-hydra-heading">WHY HYDRADB</div>
         <h2 className="lp-section-title">HydraDB handles the graph.<br />Gemini handles the language.</h2>
-        <p className="lp-section-body">Traditional RAG architectures approximate retrieval with vector similarity. Veridex uses HydraDB deterministic OpenCypher graph traversal to retrieve only provenance-grounded facts before synthesis begins. Graph reasoning and language generation are strictly separated.</p>
+        <p className="lp-section-body">Traditional RAG architectures approximate retrieval with vector similarity. Veridex uses HydraDB's graph-aware retrieval layer to resolve relationships and provenance before synthesis begins. Graph reasoning and language generation are strictly separated.</p>
         <div className="lp-arch-pipeline">
           {steps.map((s, i) => (
             <React.Fragment key={s.label}>

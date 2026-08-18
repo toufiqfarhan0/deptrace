@@ -90,7 +90,7 @@ export default function WhyHydraDB() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', fontFamily: 'var(--font-mono)' }}>
-          Real-time deterministic benchmark executed over local HydraDB knowledge graph.
+          Real-time deterministic benchmark executed over the HydraDB Cloud knowledge graph.
         </div>
         <button
           className="query-execute-btn"
