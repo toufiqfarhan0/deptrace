@@ -114,75 +114,86 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
         )}
       </div>
 
-      {/* Suggestions Cards Grid */}
+      {/* Suggestions List Table */}
       {filtered.length > 0 ? (
-        <div className="suggestions-grid">
-          {filtered.map((item) => (
-            <article key={item.id} className="suggestion-card" aria-label={item.title}>
-              <div className="card-top-row">
-                <div className="card-badges">
-                  <span className={`cat-badge ${item.category.toLowerCase()}`}>
-                    {item.badge}
-                  </span>
-                  <span className={`source-badge ${item.source.toLowerCase()}`}>
-                    {item.source}
-                  </span>
-                </div>
-                {item.entity && (
-                  <span className="card-entity-tag" title="Target Entity">
-                    {item.entity}
-                  </span>
-                )}
-              </div>
-
-              <h2 className="card-query-title">
-                <span>{item.title}</span>
-              </h2>
-
-              <p className="card-desc">{item.description}</p>
-
-              {item.tags && item.tags.length > 0 && (
-                <div className="card-tags-row">
-                  {item.tags.map((t) => (
-                    <button
-                      key={t}
-                      className="card-tag-pill"
-                      onClick={() => handleTagClick(t)}
-                      type="button"
-                      title={`Filter by "${t}"`}
-                    >
-                      {t}
-                    </button>
-
-                  ))}
-                </div>
-              )}
-
-              <div className="card-actions-row">
-                <button
-                  className="card-btn card-btn-primary"
-                  onClick={() => onSelectQuery(item.query)}
-                  aria-label={`Ask Veridex: ${item.query}`}
-                  type="button"
-                >
-                  <span>ASK VERIDEX</span>
-                  <span aria-hidden="true">→</span>
-                </button>
-
-                {item.entity && (
-                  <button
-                    className="card-btn card-btn-ghost"
-                    onClick={() => onSelectTrace(item.entity)}
-                    aria-label={`Trace dependencies for ${item.entity}`}
-                    type="button"
-                  >
-                    <span>TRACE</span>
-                    <span aria-hidden="true">⟷</span>
-                  </button>
-                )}
-              </div>
-            </article>
-          ))}
+        <div className="suggestions-list-table-container">
+          <table className="suggestions-list-table" aria-label="Investigation Suggestions List">
+            <thead>
+              <tr>
+                <th scope="col" style={{ width: '58%' }}>INVESTIGATION QUERY & TOPIC</th>
+                <th scope="col" style={{ width: '22%' }}>SOURCE & TARGET</th>
+                <th scope="col" style={{ width: '20%', textAlign: 'right' }}>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item) => (
+                <tr key={item.id} className="suggestion-list-row">
+                  <td className="sug-col-query">
+                    <div className="sug-list-title-row">
+                      <span className="sug-list-title">{item.title}</span>
+                    </div>
+                    <div className="sug-list-desc">{item.description}</div>
+                    {item.tags && item.tags.length > 0 && (
+                      <div className="sug-list-tags">
+                        {item.tags.map((t) => (
+                          <button
+                            key={t}
+                            className="card-tag-pill"
+                            onClick={() => handleTagClick(t)}
+                            type="button"
+                            title={`Filter by "${t}"`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="sug-col-meta">
+                    <div className="sug-meta-badges">
+                      <span className={`cat-badge ${item.category.toLowerCase()}`}>
+                        {item.badge}
+                      </span>
+                      <span className={`source-badge ${item.source.toLowerCase()}`}>
+                        {item.source}
+                      </span>
+                    </div>
+                    {item.entity && (
+                      <div style={{ marginTop: '6px' }}>
+                        <span className="card-entity-tag" title={`Target Entity: ${item.entity}`}>
+                          {item.entity}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="sug-col-actions">
+                    <div className="entity-actions-inline">
+                      <button
+                        className="entity-action-btn ask-btn"
+                        onClick={() => onSelectQuery(item.query)}
+                        aria-label={`Ask Veridex: ${item.query}`}
+                        type="button"
+                      >
+                        <span>ASK</span>
+                        <span aria-hidden="true">→</span>
+                      </button>
+                      {item.entity && (
+                        <button
+                          className="entity-action-btn trace-btn"
+                          onClick={() => onSelectTrace(item.entity)}
+                          aria-label={`Trace dependencies for ${item.entity}`}
+                          type="button"
+                        >
+                          <span>TRACE</span>
+                          <span aria-hidden="true">⟷</span>
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="empty-block suggestions-empty-block" role="status">

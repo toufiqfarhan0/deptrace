@@ -541,17 +541,23 @@ export default function InvestigationView({
         </div>
       </div>
 
-      {/* Loading State */}
+      {/* Loading Skeleton Wireframe State */}
       {loading && (
-        <div className="state-block loading-state" role="status" aria-live="polite">
-          <div className="loading-card">
-            <div className="loading-spinner-ring" aria-hidden="true" />
-            <div className="loading-content">
-              <div className="loading-title">INVESTIGATING KNOWLEDGE GRAPH</div>
-              <div className="loading-desc">
-                Traversing HydraDB graph relationships and assembling bounded evidence bundle...
-              </div>
+        <div className="skeleton-result-area" role="status" aria-live="polite" aria-label="Traversing knowledge graph">
+          <div className="skeleton-meta-bar shimmer" />
+          <div className="skeleton-synthesis-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="skeleton-badge shimmer" />
+              <div className="skeleton-badge shimmer" style={{ width: '180px' }} />
             </div>
+            <div className="skeleton-line shimmer" style={{ width: '96%', height: '14px' }} />
+            <div className="skeleton-line shimmer" style={{ width: '91%', height: '14px' }} />
+            <div className="skeleton-line shimmer" style={{ width: '74%', height: '14px' }} />
+          </div>
+          <div className="skeleton-evidence-list">
+            <div className="skeleton-row shimmer" />
+            <div className="skeleton-row shimmer" />
+            <div className="skeleton-row shimmer" />
           </div>
         </div>
       )}

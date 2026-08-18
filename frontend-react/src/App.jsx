@@ -11,14 +11,11 @@ import ThemeToggle from './components/ThemeToggle.jsx'
 import { getHydraStatusLabel, getHydraDotClass, getHydraAriaLabel } from './utils/hydraStatus.js'
 
 export default function App() {
-  // Theme System: default dark, persisted in localStorage, respects system preference on first visit
+  // Theme System: default dark for all users, toggleable and persisted in localStorage
   const [theme, setTheme] = useState(() => {
     try {
       const saved = localStorage.getItem('veridex-theme')
       if (saved === 'light' || saved === 'dark') return saved
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-        return 'light'
-      }
     } catch {
       // Ignore localStorage access failures
     }
@@ -74,8 +71,15 @@ export default function App() {
     setView('console')
   }, [])
 
-  // Entry point from landing page CTAs — switches to console view
-  const enterConsole = useCallback((consoleView = 'ask') => {
+  // Entry point from landing page CTAs — switches to console view with optional query
+  const enterConsole = useCallback((consoleView = 'ask', initialQuery = '') => {
+    if (initialQuery) {
+      if (consoleView === 'trace') {
+        setTraceEntity(initialQuery)
+      } else {
+        setAskQuery(initialQuery)
+      }
+    }
     setActiveView(consoleView)
     setView('console')
   }, [])

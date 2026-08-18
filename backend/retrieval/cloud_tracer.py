@@ -70,12 +70,25 @@ class HydraCloudTracer:
         List known technical entities available in the Cloud dataset.
         Returns verified entity keys and IDs from the 60-document dataset.
         """
-        return [
+        return sorted([
             "REL-311",
             "PR-99501",
+            "PR-993211",
+            "PR-482199",
+            "PR-209876",
+            "PR-947999",
+            "PR-35802",
+            "PR-91234",
+            "INC-2026",
             "ENG-30521",
             "ENG-68910",
             "ENG-233901",
+            "ENG-762314",
+            "ENG-5432",
+            "DES-23981",
+            "PM-352917",
+            "PM-16842",
+            "Bluecrest",
             "kernel-selector",
             "api-search",
             "request-time guard",
@@ -83,7 +96,7 @@ class HydraCloudTracer:
             "strict_model:true",
             "compact-model-v1",
             "kernel-fallback policy",
-        ]
+        ])
 
     def get_available_entities(self) -> list[str]:
         """Alias for list_entities to match DependencyTracer interface."""

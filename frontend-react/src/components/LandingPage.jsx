@@ -64,35 +64,95 @@ function SignalFlowDiagram() {
   )
 }
 
-function WorkflowStepsSection({ onEnterConsole }) {
+function HeroLiveTerminalDesk({ onEnterConsole }) {
+  const [typedQuery, setTypedQuery] = useState('')
+  const quickQueries = [
+    { label: 'INC-2026', q: 'What happened during incident INC-2026?' },
+    { label: 'PR-99501', q: 'What changes were made in PR-99501?' },
+    { label: 'REL-311', q: 'What happened with REL-311?' },
+    { label: 'kernel-selector', q: 'What is kernel-selector about?' },
+  ]
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      onEnterConsole('ask', typedQuery.trim() || 'What happened during incident INC-2026?')
+    }
+  }
+
+  return (
+    <div className="lp-hero-live-desk">
+      <div className="lp-terminal-bar">
+        <span className="lp-terminal-dot" />
+        <span className="lp-terminal-path">veridex://hydradb/enterprise-rag/live</span>
+        <span className="lp-terminal-status">HYDRADB READY</span>
+      </div>
+      <div className="lp-hero-inline-query">
+        <span className="lp-prompt-symbol">&gt;</span>
+        <input
+          type="text"
+          className="lp-terminal-input"
+          placeholder="Ask a question or enter PR/incident ID (e.g. 'What caused INC-2026?')..."
+          value={typedQuery}
+          onChange={(e) => setTypedQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          aria-label="Direct query input from hero"
+        />
+        <button
+          className="lp-btn-primary"
+          onClick={() => onEnterConsole('ask', typedQuery.trim() || 'What happened during incident INC-2026?')}
+          type="button"
+          id="lp-hero-execute-direct"
+        >
+          INVESTIGATE [↵]
+        </button>
+      </div>
+      <div className="lp-terminal-quick-queries">
+        <span className="lp-tq-label">Quick query:</span>
+        {quickQueries.map((item) => (
+          <button
+            key={item.label}
+            className="lp-tq-btn"
+            onClick={() => onEnterConsole('ask', item.q)}
+            type="button"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function WorkflowStepsSection() {
   const steps = [
     {
       step: "01",
-      title: "ASK",
-      headline: "Ask a question about your engineering knowledge.",
-      desc: "Query incidents, pull requests, Linear issues, and Slack conversations in natural language without complex query syntax.",
+      title: "EXTRACT & INDEX",
+      headline: "Multi-source canonical ingestion.",
+      desc: "Ingests unstructured Slack incident threads, Linear tickets, and GitHub pull requests into typed statements with stable alias resolution.",
     },
     {
       step: "02",
-      title: "CONNECT",
-      headline: "Veridex resolves relationships across HydraDB.",
-      desc: "HydraDB traverses cross-system entity relationships and extracts bounded facts with strict message and document IDs.",
+      title: "DETERMINISTIC TRAVERSAL",
+      headline: "Multi-hop graph resolution in HydraDB.",
+      desc: "Traverses real entity relationships and extracts bounded evidence bundles with strict message and document IDs—zero vector drift.",
     },
     {
       step: "03",
-      title: "VERIFY",
-      headline: "Review the evidence, provenance, and dependency paths.",
-      desc: "Gemini synthesizes a clear answer citing exact evidence items [E1, E2]. Trace dependencies to verify root causes.",
+      title: "GROUNDED SYNTHESIS",
+      headline: "Strict citation-backed answers.",
+      desc: "Gemini synthesizes verifiable conclusions restricted exclusively to the retrieved graph bundle [E1, E2], with zero hallucinated links.",
     },
   ]
 
   return (
     <section className="lp-section" aria-labelledby="workflow-heading">
       <div className="lp-container">
-        <div className="lp-section-eyebrow" id="workflow-heading">HOW IT WORKS</div>
-        <h2 className="lp-section-title">From fragmented signals to grounded investigation.</h2>
+        <div className="lp-section-eyebrow" id="workflow-heading">GRAPH REASONING ARCHITECTURE</div>
+        <h2 className="lp-section-title">Deterministic graph traversal. Zero-hallucination synthesis.</h2>
         <p className="lp-section-body">
-          A predictable 3-step investigation pipeline designed for engineering teams and postmortem investigations.
+          Traditional vector RAG fails on relational causality. Veridex separates structural graph resolution in HydraDB from language generation.
         </p>
         <div className="lp-workflow-grid">
           {steps.map((s) => (
@@ -392,8 +452,13 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
       <header className={`lp-nav${scrolled ? " lp-nav--scrolled" : ""}`} role="banner">
         <div className="lp-nav-inner">
           <div className="lp-nav-wordmark">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+              <circle cx="5" cy="5" r="2.5" fill="var(--c-accent)"/>
+              <circle cx="19" cy="5" r="2.5" fill="var(--c-accent)"/>
+              <circle cx="19" cy="19" r="2.5" fill="var(--c-accent)"/>
+              <path d="M7.5 5h9M19 7.5v9"/>
+            </svg>
             <span className="lp-nav-logo">VERIDEX</span>
-            <span className="lp-nav-tag">BETA</span>
           </div>
           <nav className="lp-nav-links" aria-label="Product navigation">
             <button className="lp-nav-link" onClick={() => onEnterConsole("ask")} id="lp-nav-investigate">ASK</button>
@@ -427,13 +492,12 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
               Search your company{"\u2019"}s technical truth with <span className="lp-hero-accent">guaranteed provenance.</span>
             </h1>
             <p className="lp-hero-body">
-              Ask questions about incidents, tickets, pull requests, and engineering decisions. Veridex connects the evidence through HydraDB and shows you where every answer came from.
+              Ask questions about incidents, tickets, pull requests, and engineering decisions. Veridex traverses HydraDB knowledge graph paths to ground every claim with immutable source provenance.
             </p>
-            <div className="lp-hero-ctas">
-              <button className="lp-btn-primary lp-btn-lg" onClick={() => onEnterConsole("ask")} id="lp-hero-open-console">START AN INVESTIGATION</button>
-              <button className="lp-btn-ghost lp-btn-lg" onClick={onNavigateToWhyHydra} id="lp-hero-why-hydra">EXPLORE HOW IT WORKS</button>
+            <HeroLiveTerminalDesk onEnterConsole={onEnterConsole} />
+            <div className="lp-hero-dataset-note" style={{ marginTop: '16px' }}>
+              Deterministic graph traversal &#183; 60-document demo slice &#183; Slack &#183; Linear &#183; GitHub
             </div>
-            <div className="lp-hero-dataset-note">Running on a controlled 60-document demo slice &#183; Slack &#183; Linear &#183; GitHub</div>
           </div>
           <div className="lp-hero-right" aria-hidden="true">
             <SignalFlowDiagram />
@@ -441,7 +505,7 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
         </div>
       </section>
 
-      <WorkflowStepsSection onEnterConsole={onEnterConsole} />
+      <WorkflowStepsSection />
       <AskVsTraceSection onEnterConsole={onEnterConsole} />
       <SignalsToStateSection />
       <InvestigationExample onEnterConsole={() => onEnterConsole("ask")} />

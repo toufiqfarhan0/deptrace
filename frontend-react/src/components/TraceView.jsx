@@ -233,17 +233,23 @@ export default function TraceView({
         </div>
       </div>
 
-      {/* Loading */}
+      {/* Loading Skeleton Wireframe State */}
       {loading && (
-        <div className="state-block loading-state" role="status" aria-live="polite">
-          <div className="loading-card">
-            <div className="loading-spinner-ring" aria-hidden="true" />
-            <div className="loading-content">
-              <div className="loading-title">TRACING GRAPH DEPENDENCIES</div>
-              <div className="loading-desc">
-                Traversing multi-hop relationships and building chronological timeline in HydraDB...
-              </div>
-            </div>
+        <div className="skeleton-result-area" role="status" aria-live="polite" aria-label="Traversing graph dependencies">
+          <div className="skeleton-meta-bar shimmer" />
+          <div className="skeleton-timeline-grid">
+            <div className="skeleton-metric-cell shimmer" />
+            <div className="skeleton-metric-cell shimmer" />
+            <div className="skeleton-metric-cell shimmer" />
+            <div className="skeleton-metric-cell shimmer" />
+          </div>
+          <div className="skeleton-synthesis-card">
+            <div className="skeleton-line shimmer" style={{ width: '40%', height: '14px' }} />
+            <div className="skeleton-line shimmer" style={{ width: '80%', height: '12px' }} />
+          </div>
+          <div className="skeleton-evidence-list">
+            <div className="skeleton-row shimmer" />
+            <div className="skeleton-row shimmer" />
           </div>
         </div>
       )}

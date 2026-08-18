@@ -44,10 +44,10 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
           aria-label="Return to Veridex home"
           title="Back to home"
         >
-          VERIDEX
-          <span className="wordmark-tag">TRACK 1</span>
+          <VeridexLogoIcon />
+          <span>VERIDEX</span>
         </button>
-        <div className="wordmark-sub">Evidence-first dependency intelligence</div>
+        <div className="wordmark-sub">INTELLIGENCE</div>
       </div>
 
       <nav className="sidebar-nav">
@@ -141,4 +141,16 @@ function ArchitectureIcon() {
     </svg>
   )
 }
+
+function VeridexLogoIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="5" cy="5" r="2.5" fill="var(--c-accent)"/>
+      <circle cx="19" cy="5" r="2.5" fill="var(--c-accent)"/>
+      <circle cx="19" cy="19" r="2.5" fill="var(--c-accent)"/>
+      <path d="M7.5 5h9M19 7.5v9"/>
+    </svg>
+  )
+}
+
 
