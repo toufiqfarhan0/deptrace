@@ -90,26 +90,14 @@ class EntityListResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse)
 def health_check(query_fn=None) -> HealthResponse:
     """
-    Lightweight health check checking HydraDB graph or Cloud connectivity.
+    Lightweight health check checking Local HydraDB connectivity.
     Does NOT invoke Gemini API.
     """
-    mode = get_hydra_mode()
-    if mode == "cloud":
-        res = check_active_health()
-        return HealthResponse(
-            status=res.get("status", "degraded"),
-            hydradb=res.get("hydradb", "unknown"),
-        )
-
-    # Local mode health check respecting default_query_fn override
-    q_fn = query_fn or default_query_fn
-    try:
-        res = q_fn("MATCH (m:Message) RETURN count(*) AS message_count LIMIT 1")
-        if isinstance(res, dict) and "rows" in res:
-            return HealthResponse(status="ok", hydradb="ok")
-        return HealthResponse(status="degraded", hydradb="unexpected_response")
-    except Exception as exc:
-        return HealthResponse(status="degraded", hydradb=f"unreachable: {type(exc).__name__}")
+    res = check_active_health(query_fn=query_fn)
+    return HealthResponse(
+        status=res.get("status", "degraded"),
+        hydradb=res.get("hydradb", "unknown"),
+    )
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -167,7 +155,7 @@ def get_trace_entities_endpoint(tracer=None) -> EntityListResponse:
     """
     Get all unique entities in HydraDB available for dependency tracing.
     """
-    dt = tracer or (DependencyTracer() if get_hydra_mode() == "local" else get_active_tracer())
+    dt = tracer or get_active_tracer()
     entities = dt.get_available_entities()
     return EntityListResponse(entities=entities, total_count=len(entities))
 
@@ -180,7 +168,7 @@ def trace_dependencies_endpoint(
     """
     Execute deterministic multi-hop dependency tracing starting from a target entity.
     """
-    dt = tracer or (DependencyTracer() if get_hydra_mode() == "local" else get_active_tracer())
+    dt = tracer or get_active_tracer()
     try:
         res = dt.trace(
             entity=payload.entity,

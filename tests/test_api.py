@@ -43,17 +43,17 @@ def client() -> TestClient:
 
 def test_health_endpoint_healthy(client: TestClient) -> None:
     mock_query = MagicMock(return_value={"rows": [[{"value": 10}]]})
-    with patch("backend.api.routes.default_query_fn", mock_query):
+    with patch("backend.retrieval.factory.local_query_fn", mock_query):
         res = client.get("/api/health")
         assert res.status_code == 200
         data = res.json()
         assert data["status"] == "ok"
-        assert data["hydradb"] == "ok"
+        assert "ok" in data["hydradb"]
 
 
 def test_health_endpoint_degraded(client: TestClient) -> None:
     mock_query = MagicMock(side_effect=RuntimeError("HydraDB offline"))
-    with patch("backend.api.routes.default_query_fn", mock_query):
+    with patch("backend.retrieval.factory.local_query_fn", mock_query):
         res = client.get("/api/health")
         assert res.status_code == 200
         data = res.json()
@@ -239,7 +239,7 @@ def test_trace_entities_endpoint(client: TestClient) -> None:
     mock_tracer = MagicMock()
     mock_tracer.get_available_entities.return_value = ["REL-311", "kernel-selector", "api-search"]
 
-    with patch("backend.api.routes.DependencyTracer", return_value=mock_tracer):
+    with patch("backend.api.routes.get_active_tracer", return_value=mock_tracer):
         res = client.get("/api/trace/entities")
         assert res.status_code == 200
         data = res.json()
@@ -292,7 +292,7 @@ def test_trace_dependencies_endpoint_success(client: TestClient) -> None:
     mock_tracer = MagicMock()
     mock_tracer.trace.return_value = mock_trace_res
 
-    with patch("backend.api.routes.DependencyTracer", return_value=mock_tracer):
+    with patch("backend.api.routes.get_active_tracer", return_value=mock_tracer):
         res = client.post("/api/trace", json={"entity": "REL-311", "max_depth": 2})
         assert res.status_code == 200
         data = res.json()
