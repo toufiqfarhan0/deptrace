@@ -62,21 +62,19 @@ export default function App() {
   }, [checkHealth])
 
   const navigateToAsk = useCallback((query = '') => {
-    setAskQuery(query)
+    if (query) setAskQuery(query)
     setActiveView('ask')
     setView('console')
   }, [])
 
   const navigateToTrace = useCallback((entity = '') => {
-    setTraceEntity(entity)
+    if (entity) setTraceEntity(entity)
     setActiveView('trace')
     setView('console')
   }, [])
 
-  // Entry point from landing page CTAs — always starts with a fresh investigation state
+  // Entry point from landing page CTAs — switches to console view
   const enterConsole = useCallback((consoleView = 'ask') => {
-    setAskQuery('')
-    setTraceEntity('')
     setActiveView(consoleView)
     setView('console')
   }, [])
@@ -150,20 +148,21 @@ export default function App() {
         </header>
 
         <main className="workspace-body" id="main-content" role="main">
-          {activeView === 'ask' && (
+          {/* Keep Ask and Trace views mounted in DOM so execution state, traces, and answers persist during tab navigation */}
+          <div style={{ display: activeView === 'ask' ? 'block' : 'none' }}>
             <InvestigationView
               initialQuery={askQuery}
               onQueryChange={setAskQuery}
               onNavigateToTrace={navigateToTrace}
             />
-          )}
-          {activeView === 'trace' && (
+          </div>
+          <div style={{ display: activeView === 'trace' ? 'block' : 'none' }}>
             <TraceView
               initialEntity={traceEntity}
               onEntityChange={setTraceEntity}
               onNavigateToAsk={navigateToAsk}
             />
-          )}
+          </div>
           {activeView === 'suggestions' && (
             <SuggestionsView
               onSelectQuery={navigateToAsk}
@@ -183,3 +182,4 @@ export default function App() {
     </div>
   )
 }
+

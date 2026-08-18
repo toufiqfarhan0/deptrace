@@ -245,7 +245,7 @@ export default function InvestigationView({
 
   // Sync draft query from external navigation WITHOUT auto-executing
   useEffect(() => {
-    if (initialQuery !== undefined) {
+    if (initialQuery) {
       setQuery(initialQuery)
     }
   }, [initialQuery])

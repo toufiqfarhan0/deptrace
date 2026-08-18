@@ -112,7 +112,7 @@ export default function TraceView({
 
   // Sync draft entity from external navigation WITHOUT auto-executing
   useEffect(() => {
-    if (initialEntity !== undefined) {
+    if (initialEntity) {
       setEntity(initialEntity)
     }
   }, [initialEntity])
