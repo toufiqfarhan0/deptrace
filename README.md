@@ -25,12 +25,11 @@ $$\mathbf{\text{HydraDB handles deterministic graph reasoning. Gemini handles la
 6. [Project Structure](#project-structure)
 7. [API Reference & Schemas](#api-reference--schemas)
 8. [Step-by-Step Installation & Local Run Guide](#step-by-step-installation--local-run-guide)
-9. [Production Deployment (Render Blueprint)](#production-deployment-render-blueprint)
-10. [Verification & Testing Suite](#verification--testing-suite)
-11. [Evaluation Benchmark & Ablation Study](#evaluation-benchmark--ablation-study)
-12. [Security & Secret Isolation](#security--secret-isolation)
-13. [Hackathon Demo Video & Submission Guide](#hackathon-demo-video--submission-guide)
-14. [License & Acknowledgements](#license--acknowledgements)
+9. [Verification & Testing Suite](#verification--testing-suite)
+10. [Evaluation Benchmark & Ablation Study](#evaluation-benchmark--ablation-study)
+11. [Security & Secret Isolation](#security--secret-isolation)
+12. [Hackathon Demo Video & Submission Guide](#hackathon-demo-video--submission-guide)
+13. [License & Acknowledgements](#license--acknowledgements)
 
 ---
 
@@ -554,47 +553,6 @@ npm run dev
 ```
 
 Open your browser at **`http://localhost:5173`**.
-
----
-
-## Production Deployment (Render Blueprint)
-
-Veridex is production-ready and includes a validated [`render.yaml`](render.yaml) blueprint for deploying as a single unified web service.
-
-```yaml
-services:
-  - type: web
-    name: veridex
-    env: python
-    plan: free
-    buildCommand: "npm install --prefix frontend-react && npm run build --prefix frontend-react && pip install -r requirements.txt"
-    startCommand: "uvicorn backend.api.app:app --host 0.0.0.0 --port $PORT"
-    healthCheckPath: /api/health
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
-      - key: NODE_VERSION
-        value: 20.12.0
-      - key: HYDRA_MODE
-        value: cloud
-      - key: HYDRA_DB_DATABASE
-        value: veridex-hackhydra
-      - key: HYDRA_DB_BASE_URL
-        value: https://api.hydradb.com
-      - key: HYDRA_DB_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GEMINI_MODEL
-        value: gemini-3.6-flash
-```
-
-### Steps to Deploy on Render:
-1. Push your repository to GitHub.
-2. Log into [Render Dashboard](https://dashboard.render.com).
-3. Click **New +** $\rightarrow$ **Blueprint** $\rightarrow$ Connect your `deptrace` repository.
-4. Set the secret environment variables (`HYDRA_DB_API_KEY`, `GEMINI_API_KEY`).
-5. Click **Apply**. Render will automatically build the React frontend into `frontend-react/dist`, install Python dependencies, and launch FastAPI on port `$PORT`.
 
 ---
 
