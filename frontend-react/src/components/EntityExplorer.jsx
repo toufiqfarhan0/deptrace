@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react'
 
+function getEntityType(name) {
+  if (!name) return 'Entity'
+  const u = name.toUpperCase()
+  if (u.startsWith('PR-') || u.startsWith('PR#')) return 'GitHub Pull Request'
+  if (u.startsWith('INC-')) return 'Incident'
+  if (u.startsWith('REL-')) return 'Support Ticket / Release'
+  if (u.startsWith('ENG-') || u.startsWith('PAY-') || u.startsWith('DES-')) return 'Issue / Ticket'
+  if (name.includes(':') || name.includes('model') || name.includes('setting')) return 'Configuration Setting'
+  if (name.includes('guard') || name.includes('policy')) return 'Guardrail / Policy'
+  return 'Component'
+}
+
 export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
   const [entities, setEntities] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,11 +38,11 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
   )
 
   return (
-    <section aria-label="Entity explorer" className="entities-section">
+    <section aria-label="Explore engineering knowledge" className="entities-section">
       <div className="view-header">
-        <h1 className="view-title">Explore Engineering Entities</h1>
+        <h1 className="view-title">Explore engineering knowledge</h1>
         <div className="view-subtitle">
-          Browse entities discovered in the HydraDB knowledge graph. Investigate their context or trace their dependency network.
+          Browse incidents, tickets, pull requests, components, and other entities discovered in the HydraDB knowledge graph.
         </div>
       </div>
 
@@ -40,8 +52,8 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter entities by name (e.g. PR-99501, INC-2026, tokenizer, api-search)..."
-          aria-label="Filter entities"
+          placeholder="Search discovered entities (e.g. PR-99501, INC-2026, tokenizer, api-search)..."
+          aria-label="Search entities"
         />
         {filter && (
           <button
@@ -60,8 +72,8 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           <div className="loading-card">
             <div className="loading-spinner-ring" aria-hidden="true" />
             <div className="loading-content">
-              <div className="loading-title">LOADING ENTITIES</div>
-              <div className="loading-desc">Fetching graph entities from HydraDB...</div>
+              <div className="loading-title">LOADING DISCOVERED ENTITIES</div>
+              <div className="loading-desc">Fetching graph objects from HydraDB...</div>
             </div>
           </div>
         </div>
@@ -73,43 +85,70 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
       ) : (
         <>
           <div className="entity-count-line">
-            Showing <strong>{filtered.length}</strong> of {entities.length} entities in graph
+            <span>
+              <strong>{filtered.length}</strong> entities discovered in HydraDB graph
+            </span>
           </div>
+
           {filtered.length > 0 ? (
-            <div className="entity-list">
-              {filtered.map((entity) => (
-                <div
-                  key={entity}
-                  className="entity-row"
-                  aria-label={`Entity ${entity}`}
-                >
-                  <span className="entity-name">{entity}</span>
-                  <div className="entity-row-actions">
-                    {onAskEntity && (
-                      <button
-                        className="entity-action-btn entity-ask-btn"
-                        onClick={() => onAskEntity(`What is connected to ${entity}?`)}
-                        title={`Ask question about ${entity}`}
-                        aria-label={`Ask about ${entity}`}
-                        type="button"
-                      >
-                        <span>ASK ABOUT THIS</span>
-                        <span aria-hidden="true">→</span>
-                      </button>
-                    )}
-                    <button
-                      className="entity-action-btn entity-trace-btn"
-                      onClick={() => onTraceEntity(entity)}
-                      title={`Trace dependencies for ${entity}`}
-                      aria-label={`Trace dependencies for ${entity}`}
-                      type="button"
-                    >
-                      <span>TRACE THIS</span>
-                      <span aria-hidden="true">⟷</span>
-                    </button>
+            <div className="entity-cards-grid">
+              {filtered.map((entity) => {
+                const typeLabel = getEntityType(entity)
+                return (
+                  <div
+                    key={entity}
+                    className="entity-card"
+                    aria-label={`Entity ${entity}`}
+                  >
+                    <div className="entity-card-top">
+                      <div className="entity-card-header">
+                        <span className="entity-card-name">{entity}</span>
+                        <span className="entity-type-badge">{typeLabel}</span>
+                      </div>
+                      <div className="entity-availability-badge">
+                        <span className="availability-dot" aria-hidden="true">◈</span>
+                        <span>Graph relationships available</span>
+                      </div>
+                    </div>
+
+                    <div className="entity-card-actions">
+                      {onAskEntity && (
+                        <div className="entity-action-wrapper">
+                          <button
+                            className="entity-action-btn entity-ask-btn"
+                            onClick={() => onAskEntity(`What is ${entity} about?`)}
+                            title={`Ask question about ${entity}`}
+                            aria-label={`Ask about ${entity}`}
+                            type="button"
+                          >
+                            <span>ASK ABOUT THIS</span>
+                            <span aria-hidden="true">→</span>
+                          </button>
+                          <span className="entity-action-subtext">
+                            Get an evidence-backed answer when supporting source text is available.
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="entity-action-wrapper">
+                        <button
+                          className="entity-action-btn entity-trace-btn"
+                          onClick={() => onTraceEntity(entity)}
+                          title={`Trace connections for ${entity}`}
+                          aria-label={`Trace connections for ${entity}`}
+                          type="button"
+                        >
+                          <span>TRACE CONNECTIONS</span>
+                          <span aria-hidden="true">⟷</span>
+                        </button>
+                        <span className="entity-action-subtext">
+                          Explore how this entity connects to other incidents, tickets, pull requests, and components.
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="empty-block">

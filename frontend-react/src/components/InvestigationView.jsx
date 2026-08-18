@@ -394,12 +394,36 @@ export default function InvestigationView({
             <div className="insufficient-alert" role="status">
               <div className="insufficient-alert-header">
                 <span className="insufficient-icon" aria-hidden="true">◐</span>
-                <strong>INSUFFICIENT EVIDENCE</strong>
+                <strong>Not enough evidence to answer this question</strong>
               </div>
               <p className="insufficient-alert-body">
-                HydraDB resolved partial graph entities, but the evidence bundle does not contain
-                enough verified facts to answer the question conclusively without risking ungrounded extrapolation.
+                HydraDB found this entity and its relationships, but the available source material does not contain enough supporting text for a grounded answer.
               </p>
+              <div className="insufficient-alert-actions" style={{ display: 'flex', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
+                {onNavigateToTrace && (
+                  <button
+                    className="lp-btn-primary lp-btn-sm"
+                    onClick={() => {
+                      const entityMatch = result.question.match(/\b([A-Z0-9]+-[A-Z0-9_-]+|[a-z0-9_-]+-selector|v\d+\.\d+\.\d+-[a-z0-9_-]+)\b/i)
+                      const targetEntity = entityMatch ? entityMatch[1] : (result.question.replace(/^What (is|happened during|happened with|caused) /i, '').replace(/\?$/, '').trim())
+                      onNavigateToTrace(targetEntity)
+                    }}
+                    type="button"
+                  >
+                    <span>TRACE CONNECTIONS →</span>
+                  </button>
+                )}
+                <button
+                  className="lp-btn-ghost lp-btn-sm"
+                  onClick={() => {
+                    setQuery('')
+                    if (textareaRef.current) textareaRef.current.focus()
+                  }}
+                  type="button"
+                >
+                  TRY ANOTHER QUESTION
+                </button>
+              </div>
             </div>
           )}
 
