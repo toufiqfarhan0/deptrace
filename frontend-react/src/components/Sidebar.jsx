@@ -8,19 +8,24 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
       items: [
         { id: 'ask', label: 'Ask', icon: <AskIcon /> },
         { id: 'trace', label: 'Trace', icon: <TraceIcon /> },
-        { id: 'suggestions', label: 'Suggestions', icon: <SuggestionsIcon /> },
       ],
     },
     {
       group: 'EXPLORE',
       items: [
+        { id: 'suggestions', label: 'Suggestions', icon: <SuggestionsIcon /> },
         { id: 'entities', label: 'Entities', icon: <EntityIcon /> },
+      ],
+    },
+    {
+      group: 'LEARN',
+      items: [
+        { id: 'why-hydra', label: 'How Veridex Works', icon: <ArchitectureIcon /> },
       ],
     },
     {
       group: 'SYSTEM',
       items: [
-        { id: 'why-hydra', label: 'Why HydraDB?', icon: <ArchitectureIcon /> },
         { id: 'health', label: 'Graph Health', icon: <HealthIcon /> },
       ],
     },

@@ -5,13 +5,17 @@ const STARTER_QUERIES = [
   'What happened during incident INC-2026?',
   'What is PR-99501 about?',
   'What is ENG-68910 about?',
+  'What caused the Bluecrest gateway timeouts?',
 ]
 
 function CitationPill({ id, onClick, highlighted }) {
   return (
     <button
       className={`citation-pill ${highlighted ? 'highlighted' : ''}`}
-      onClick={() => onClick(id)}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (onClick) onClick(id)
+      }}
       aria-label={`Jump to evidence [${id}]`}
       type="button"
     >
@@ -20,36 +24,211 @@ function CitationPill({ id, onClick, highlighted }) {
   )
 }
 
-function formatAnswerWithCitations(answer, onCitationClick, highlightedId) {
-  if (!answer) return null
-  // Parse grouped citations like [E1, E2] or [E1]
-  const parts = answer.split(/(\[[^\]]*E\d+[^\]]*\])/gi)
-  return parts.map((part, i) => {
-    const citMatch = part.match(/^\[(.*?)\]$/)
-    if (citMatch) {
-      const eMatches = citMatch[1].match(/E\d+/gi)
-      if (eMatches && eMatches.length > 0) {
+/**
+ * Tokenizes inline text to parse citations [E1], bold **text**, inline code `code`,
+ * and italic *text* into rich React components.
+ */
+function renderInlineWithCitations(text, onCitationClick, highlightedId) {
+  if (!text) return null
+
+  const tokens = []
+  let remaining = text
+  // Match citations e.g. [E1] or [E1, E2], bold **text**, inline code `code`, italic *text*
+  const tokenRegex = /(\[[^\]]*E\d+[^\]]*\])|(\*\*[^*]+\*\*)|(`[^`]+`)|(\*[^*]+\*)/i
+  let keyIdx = 0
+
+  while (remaining) {
+    const match = remaining.match(tokenRegex)
+    if (!match) {
+      tokens.push(
+        React.createElement('span', { key: `txt-${keyIdx++}` }, remaining)
+      )
+      break
+    }
+
+    const matchIndex = match.index
+    if (matchIndex > 0) {
+      tokens.push(
+        React.createElement(
+          'span',
+          { key: `txt-${keyIdx++}` },
+          remaining.slice(0, matchIndex)
+        )
+      )
+    }
+
+    const matchedStr = match[0]
+
+    // 1. Citation tag [E1] or grouped [E1, E2, E3]
+    if (match[1]) {
+      const eMatches = matchedStr.match(/E\d+/gi) || []
+      const pills = eMatches.map((tag, j) => {
+        const norm = tag.toUpperCase()
+        const isHigh = highlightedId === norm
         return (
-          <span key={i} className="citation-group">
-            {eMatches.map((tag, j) => {
-              const norm = tag.toUpperCase()
-              return (
-                <span key={norm}>
-                  <CitationPill
-                    id={norm}
-                    onClick={onCitationClick}
-                    highlighted={highlightedId === norm}
-                  />
-                  {j < eMatches.length - 1 ? ' ' : ''}
-                </span>
-              )
-            })}
+          <span key={`cit-${norm}-${keyIdx++}`}>
+            <CitationPill
+              id={norm}
+              onClick={onCitationClick}
+              highlighted={isHigh}
+            />
+            {j < eMatches.length - 1 ? ' ' : ''}
           </span>
         )
-      }
+      })
+      tokens.push(
+        <span key={`cg-${keyIdx++}`} className="citation-group">
+          {pills}
+        </span>
+      )
     }
-    return <span key={i}>{part}</span>
-  })
+    // 2. Bold **text**
+    else if (match[2]) {
+      const boldContent = matchedStr.slice(2, -2)
+      tokens.push(
+        <strong key={`b-${keyIdx++}`} className="md-strong">
+          {renderInlineWithCitations(boldContent, onCitationClick, highlightedId)}
+        </strong>
+      )
+    }
+    // 3. Inline code `code`
+    else if (match[3]) {
+      const codeContent = matchedStr.slice(1, -1)
+      tokens.push(
+        <code key={`c-${keyIdx++}`} className="md-inline-code">
+          {codeContent}
+        </code>
+      )
+    }
+    // 4. Italic *text*
+    else if (match[4]) {
+      const italicContent = matchedStr.slice(1, -1)
+      tokens.push(
+        <em key={`em-${keyIdx++}`} className="md-em">
+          {renderInlineWithCitations(italicContent, onCitationClick, highlightedId)}
+        </em>
+      )
+    }
+
+    remaining = remaining.slice(matchIndex + matchedStr.length)
+  }
+
+  return tokens
+}
+
+/**
+ * MarkdownAnswerRenderer renders formatted Gemini/RAG answers without exposing
+ * raw markdown syntax (**, ###, bullets, code blocks), while keeping citation
+ * pills interactive.
+ */
+function MarkdownAnswerRenderer({ answer, onCitationClick, highlightedId }) {
+  if (!answer) return null
+
+  const rawLines = answer.split(/\r?\n/)
+  const blocks = []
+  let currentList = null // { type: 'ul' | 'ol', items: [] }
+  let currentCodeBlock = null // { lang: '', lines: [] }
+  let blockIdx = 0
+
+  function flushList() {
+    if (currentList) {
+      const isUl = currentList.type === 'ul'
+      blocks.push(
+        React.createElement(
+          isUl ? 'ul' : 'ol',
+          { key: `list-${blockIdx++}`, className: isUl ? 'md-ul' : 'md-ol' },
+          currentList.items.map((it, i) => (
+            <li key={`li-${i}`} className="md-li">
+              {renderInlineWithCitations(it, onCitationClick, highlightedId)}
+            </li>
+          ))
+        )
+      )
+      currentList = null
+    }
+  }
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i]
+    const trimmed = line.trim()
+
+    // Fenced code block toggle
+    if (trimmed.startsWith('```')) {
+      if (currentCodeBlock) {
+        blocks.push(
+          <pre key={`codeblock-${blockIdx++}`} className="md-pre">
+            <code className="md-code-block">{currentCodeBlock.lines.join('\n')}</code>
+          </pre>
+        )
+        currentCodeBlock = null
+      } else {
+        flushList()
+        currentCodeBlock = { lang: trimmed.slice(3).trim(), lines: [] }
+      }
+      continue
+    }
+
+    if (currentCodeBlock) {
+      currentCodeBlock.lines.push(line)
+      continue
+    }
+
+    if (!trimmed) {
+      flushList()
+      continue
+    }
+
+    // Headings: ###, ##, #
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    if (headingMatch) {
+      flushList()
+      const level = headingMatch[1].length
+      const headingText = headingMatch[2]
+      const Tag = level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4'
+      blocks.push(
+        React.createElement(
+          Tag,
+          { key: `h-${blockIdx++}`, className: `md-heading md-h${level}` },
+          renderInlineWithCitations(headingText, onCitationClick, highlightedId)
+        )
+      )
+      continue
+    }
+
+    // Unordered list item: - item, * item, • item
+    const ulMatch = trimmed.match(/^[-*•]\s+(.+)$/)
+    if (ulMatch) {
+      if (!currentList || currentList.type !== 'ul') {
+        flushList()
+        currentList = { type: 'ul', items: [] }
+      }
+      currentList.items.push(ulMatch[1])
+      continue
+    }
+
+    // Ordered list item: 1. item
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/)
+    if (olMatch) {
+      if (!currentList || currentList.type !== 'ol') {
+        flushList()
+        currentList = { type: 'ol', items: [] }
+      }
+      currentList.items.push(olMatch[1])
+      continue
+    }
+
+    // Regular paragraph
+    flushList()
+    blocks.push(
+      <p key={`p-${blockIdx++}`} className="md-paragraph">
+        {renderInlineWithCitations(trimmed, onCitationClick, highlightedId)}
+      </p>
+    )
+  }
+
+  flushList()
+
+  return <div className="md-rendered-answer">{blocks}</div>
 }
 
 function getGroundingState(grounded, answer) {
@@ -60,32 +239,24 @@ function getGroundingState(grounded, answer) {
   return 'ungrounded'
 }
 
-function GroundingIndicator({ state }) {
+function GroundingStatusChip({ state, evidenceCount }) {
   if (!state) return null
-  const config = {
-    grounded: {
-      dot: '●',
-      badge: 'GROUNDED',
-      text: 'Evidence-backed synthesis',
-    },
-    ungrounded: {
-      dot: '○',
-      badge: 'UNVERIFIED',
-      text: 'Model response not verified against evidence',
-    },
-    insufficient: {
-      dot: '◐',
-      badge: 'INSUFFICIENT EVIDENCE',
-      text: 'Graph did not contain enough data',
-    },
-  }
-  const { dot, badge, text } = config[state] || config.ungrounded
+  const isGrounded = state === 'grounded'
+  const isInsufficient = state === 'insufficient'
+
   return (
-    <div className={`grounding-indicator ${state}`} role="status" aria-live="polite">
-      <span className="grounding-dot" aria-hidden="true">{dot}</span>
-      <span className="grounding-badge-tag">{badge}</span>
-      <span className="grounding-sep" aria-hidden="true">·</span>
-      <span className="grounding-text">{text}</span>
+    <div className={`synthesis-status-chip ${state}`} role="status" aria-live="polite">
+      <span
+        className={`status-dot ${isGrounded ? 'ok' : isInsufficient ? 'warning' : 'neutral'}`}
+        aria-hidden="true"
+      />
+      <span className="status-chip-label">
+        {isGrounded
+          ? `Grounded in HydraDB evidence · ${evidenceCount ?? 0} sources`
+          : isInsufficient
+          ? 'Insufficient evidence in graph'
+          : 'Unverified response'}
+      </span>
     </div>
   )
 }
@@ -165,20 +336,20 @@ function EvidenceRows({ items, highlightedId, onHighlight, onNavigateToTrace }) 
             <div className="evidence-meta">
               {item.source && (
                 <span className="source-tag">
-                  <strong>src:</strong> {item.source}
+                  <strong>Source:</strong> {item.source}
                 </span>
               )}
               {item.message_id ? (
                 <span>
-                  <strong>msg:</strong> {item.message_id}
+                  <strong>Message ID:</strong> {item.message_id}
                 </span>
               ) : null}
               {item.document_id ? (
                 <span>
-                  <strong>doc:</strong>{' '}
+                  <strong>Document:</strong>{' '}
                   <span title={item.document_id}>
-                    {item.document_id.length > 22
-                      ? `${item.document_id.slice(0, 22)}...`
+                    {item.document_id.length > 24
+                      ? `${item.document_id.slice(0, 24)}...`
                       : item.document_id}
                   </span>
                 </span>
@@ -242,13 +413,12 @@ export default function InvestigationView({
     }
   }, [query])
 
-  // Handle external query navigation from Suggestions view
+  // Sync draft query from external navigation WITHOUT auto-executing
   useEffect(() => {
-    if (initialQuery && initialQuery.trim() !== '') {
+    if (initialQuery) {
       setQuery(initialQuery)
-      handleExecute(initialQuery)
     }
-  }, [initialQuery, handleExecute])
+  }, [initialQuery])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -260,7 +430,9 @@ export default function InvestigationView({
   const handleSelectSuggestion = (sQuery) => {
     setQuery(sQuery)
     if (onQueryChange) onQueryChange(sQuery)
-    handleExecute(sQuery)
+    if (textareaRef.current) {
+      textareaRef.current.focus()
+    }
   }
 
   const groundingState = result ? getGroundingState(result.grounded, result.answer) : null
@@ -275,20 +447,34 @@ export default function InvestigationView({
     return Array.from(names)
   }, [result])
 
+  const extractedEntityCandidate = useMemo(() => {
+    if (uniqueEntities && uniqueEntities.length > 0) return uniqueEntities[0]
+    if (result?.question) {
+      const match = result.question.match(/(PR-\d+|INC-\d+|REL-\d+|ENG-\d+|DES-\d+|kernel-selector|api-search|v3.1.1-legacy-tokenizer)/i)
+      if (match) return match[0]
+    }
+    return ''
+  }, [uniqueEntities, result])
+
   return (
     <section aria-label="Investigation workspace" className="investigation-section">
       <div className="view-header">
         <h1 className="view-title">Investigate</h1>
         <div className="view-subtitle">
-          Trace incident causes, architectural decisions, and verify evidence across HydraDB.
+          Ask questions about incidents, tickets, pull requests, and engineering decisions grounded in HydraDB.
         </div>
       </div>
 
-      {/* Query Console */}
+      {/* Query Input Card */}
       <div className="query-console" role="search">
+        <div className="query-card-header">
+          <label htmlFor="investigation-input" className="query-card-label">
+            What would you like to investigate?
+          </label>
+        </div>
         <div className="query-input-row">
-          <div className="query-prefix" aria-hidden="true">&gt;_</div>
           <textarea
+            id="investigation-input"
             ref={textareaRef}
             className="query-input"
             value={query}
@@ -297,7 +483,7 @@ export default function InvestigationView({
               if (onQueryChange) onQueryChange(e.target.value)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="What happened during incident INC-2026? or What is PR-99501 about?"
+            placeholder="Ask about incidents, tickets, pull requests, dependencies, or engineering decisions..."
             rows={2}
             aria-label="Investigation query input"
             disabled={loading}
@@ -306,36 +492,35 @@ export default function InvestigationView({
             className={`query-execute-btn ${loading ? 'loading' : ''}`}
             onClick={() => handleExecute()}
             disabled={loading || !query.trim()}
-            aria-label="Execute query"
+            aria-label="Ask Veridex"
             type="button"
           >
             {loading ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                <span>ANALYZING</span>
+                <span>SEARCHING...</span>
               </>
             ) : (
               <>
-                <span className="btn-state-tag">READY</span>
-                <span>EXECUTE →</span>
+                <span>ASK VERIDEX</span>
+                <span aria-hidden="true">→</span>
               </>
             )}
           </button>
         </div>
 
-        {/* Command Suggestions */}
+        {/* Suggestion Chips */}
         <div className="query-suggestions" aria-label="Suggested investigations">
-          <span className="suggestion-prefix">Suggested Inquiries:</span>
+          <span className="suggestion-prefix">Try asking:</span>
           <div className="suggestion-pills">
             {suggestions.map((s) => (
               <button
                 key={s.label}
                 className="suggestion-btn"
                 onClick={() => handleSelectSuggestion(s.query)}
-                aria-label={`Run investigation: ${s.label}`}
+                aria-label={`Fill question: ${s.label}`}
                 type="button"
               >
-                <span className="suggestion-icon" aria-hidden="true">&gt;_</span>
                 <span>{s.label}</span>
               </button>
             ))}
@@ -349,9 +534,9 @@ export default function InvestigationView({
           <div className="loading-card">
             <div className="loading-spinner-ring" aria-hidden="true" />
             <div className="loading-content">
-              <div className="loading-title">ANALYZING QUERY...</div>
+              <div className="loading-title">INVESTIGATING KNOWLEDGE GRAPH</div>
               <div className="loading-desc">
-                Traversing HydraDB graph relationships and assembling bounded evidence bundle
+                Traversing HydraDB graph relationships and assembling bounded evidence bundle...
               </div>
             </div>
           </div>
@@ -372,7 +557,7 @@ export default function InvestigationView({
           {/* Query Bar */}
           <div className="query-meta-bar">
             <div className="query-meta-left">
-              <span className="query-label-small">QUERY</span>
+              <span className="query-label-small">QUESTION</span>
               <span className="query-text-display">&ldquo;{result.question}&rdquo;</span>
             </div>
             {latencyMs !== null && (
@@ -383,50 +568,96 @@ export default function InvestigationView({
             )}
           </div>
 
-          {/* Insufficient Evidence Warning Banner if applicable */}
+          {/* Insufficient Evidence Explanation & Fallback Actions */}
           {groundingState === 'insufficient' && (
             <div className="insufficient-alert" role="status">
               <div className="insufficient-alert-header">
                 <span className="insufficient-icon" aria-hidden="true">◐</span>
-                <strong>INSUFFICIENT EVIDENCE</strong>
+                <strong>Not enough evidence to answer this question</strong>
               </div>
               <p className="insufficient-alert-body">
-                HydraDB resolved partial graph entities, but the evidence bundle does not contain
-                enough verified facts to answer the question conclusively without risking ungrounded extrapolation.
+                HydraDB found this entity and its relationships, but the available source material does not contain enough supporting text for a grounded answer.
               </p>
+              <div className="insufficient-actions">
+                {extractedEntityCandidate && onNavigateToTrace && (
+                  <button
+                    className="insufficient-fallback-btn trace-fallback"
+                    onClick={() => onNavigateToTrace(extractedEntityCandidate)}
+                    title={`Trace relationships for ${extractedEntityCandidate}`}
+                    type="button"
+                  >
+                    <span>TRACE THIS ENTITY ({extractedEntityCandidate})</span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                )}
+                <button
+                  className="insufficient-fallback-btn ask-fallback"
+                  onClick={() => {
+                    setQuery('')
+                    if (onQueryChange) onQueryChange('')
+                    if (textareaRef.current) textareaRef.current.focus()
+                  }}
+                  type="button"
+                >
+                  <span>TRY ANOTHER QUESTION</span>
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Synthesis Block */}
+          {/* Answer Block */}
           <div className="synthesis-block">
             <div className="synthesis-header">
-              <span className="synthesis-label">SYNTHESIS</span>
-              <GroundingIndicator state={groundingState} />
+              <div className="synthesis-header-main">
+                <span className="synthesis-title">INVESTIGATION RESULT</span>
+              </div>
+              <GroundingStatusChip state={groundingState} evidenceCount={result.evidence?.length ?? 0} />
             </div>
             <div className="synthesis-body">
-              {formatAnswerWithCitations(
-                result.answer,
-                handleCitationClick,
-                highlightedId
-              )}
+              <MarkdownAnswerRenderer
+                answer={result.answer}
+                onCitationClick={handleCitationClick}
+                highlightedId={highlightedId}
+              />
             </div>
 
             {/* Quick Entity Trace Shortcuts Row */}
             {uniqueEntities.length > 0 && onNavigateToTrace && (
               <div className="synthesis-entity-shortcuts">
-                <span className="shortcuts-lbl">TRACE DISCOVERED ENTITIES:</span>
+                <div className="shortcuts-header">
+                  <span className="shortcuts-icon" aria-hidden="true">⟷</span>
+                  <span className="shortcuts-lbl">RELATED GRAPH ENTITIES · INVESTIGATE NEXT</span>
+                </div>
                 <div className="shortcuts-list">
                   {uniqueEntities.map((ent) => (
-                    <button
-                      key={ent}
-                      className="entity-shortcut-btn"
-                      onClick={() => onNavigateToTrace(ent)}
-                      title={`Trace dependencies for ${ent}`}
-                      type="button"
-                    >
-                      <span className="shortcut-dot" aria-hidden="true">⟷</span>
-                      <span>{ent}</span>
-                    </button>
+                    <div key={ent} className="entity-chip-card">
+                      <span className="entity-chip-name">{ent}</span>
+                      <div className="entity-chip-actions">
+                        <button
+                          className="entity-chip-action-btn"
+                          onClick={() => onNavigateToTrace(ent)}
+                          title={`Trace dependency connections for ${ent}`}
+                          type="button"
+                        >
+                          <span>Trace Connections</span>
+                          <span aria-hidden="true">⟷</span>
+                        </button>
+                        <button
+                          className="entity-chip-action-btn secondary"
+                          onClick={() => {
+                            const q = `What is ${ent} about?`
+                            setQuery(q)
+                            if (onQueryChange) onQueryChange(q)
+                            if (textareaRef.current) textareaRef.current.focus()
+                          }}
+                          title={`Ask a question about ${ent}`}
+                          type="button"
+                        >
+                          <span>Ask about this</span>
+                          <span aria-hidden="true">→</span>
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -437,9 +668,9 @@ export default function InvestigationView({
           <div className="evidence-block">
             <div className="evidence-header">
               <div className="evidence-header-left">
-                <span className="evidence-header-label">EVIDENCE</span>
+                <span className="evidence-header-label">EVIDENCE FROM HYDRADB</span>
                 <span className="evidence-count">
-                  {result.evidence?.length ?? 0} item{result.evidence?.length === 1 ? '' : 's'} retrieved from HydraDB
+                  {result.evidence?.length ?? 0} verified source{result.evidence?.length === 1 ? '' : 's'} retrieved from knowledge graph
                 </span>
               </div>
               {highlightedId && (
@@ -462,16 +693,18 @@ export default function InvestigationView({
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty Starter State */}
       {!result && !loading && !error && (
         <div className="empty-block starter-empty-block">
-          <div className="starter-icon" aria-hidden="true">&gt;_</div>
-          <div className="empty-label">INVESTIGATION CONSOLE</div>
-          <div className="empty-desc">
-            Ask Veridex about incidents, components, tickets, dependencies, or engineering decisions across the HydraDB graph.
+          <div className="starter-header">
+            <div className="empty-label">START AN INVESTIGATION</div>
+            <div className="empty-desc">
+              Ask questions about incidents, pull requests, Linear tickets, or Slack discussions.
+              Veridex deterministically queries the HydraDB knowledge graph to retrieve verified facts and synthesizes grounded answers with citations.
+            </div>
           </div>
           <div className="starter-queries-row">
-            <span className="starter-queries-label">Try an investigation query:</span>
+            <span className="starter-queries-label">Click an example question to populate:</span>
             <div className="starter-buttons">
               {STARTER_QUERIES.map((sq) => (
                 <button
