@@ -1,304 +1,201 @@
-# Veridex — Enterprise Knowledge Investigation
+# Veridex — Evidence-First Dependency Intelligence
 
-**Evidence-first dependency intelligence powered by HydraDB.**
+**Veridex** is an enterprise knowledge investigation system that reconstructs technical context across fragmented engineering sources using HydraDB's graph relationships, deterministic traversal, strict provenance preservation, and grounded synthesis.
 
-Veridex reconstructs what your engineering organization knows by combining signals from Slack, Linear, and GitHub through a deterministic HydraDB knowledge graph. Every answer is grounded in provenance-tracked evidence. Every dependency is traced, not approximated.
-
-> **HydraDB handles the graph reasoning. Gemini handles the language synthesis.**
-
-This distinction is the core architectural principle of Veridex.
+> **HydraDB handles the deterministic graph reasoning. Gemini handles the language synthesis.**
 
 ---
 
-## What Veridex Is
+## Problem
 
-Veridex is an enterprise knowledge investigation system built for the **HydraDB Hackathon Track 1: Enterprise Context + Ontology**.
+In modern engineering organizations, critical technical knowledge is fragmented across multiple siloed systems:
+- **Slack**: Ephemeral incident discussions, triage decisions, on-call mitigations, and debug threads.
+- **Linear**: Engineering task tracking, bug assignments, sprint priorities, and resolution status.
+- **GitHub**: Pull requests, code review discussions, architectural guardrails, and release notes.
 
-It solves a real problem: enterprise knowledge is fragmented across Slack conversations, Linear issues, and GitHub pull requests. No single system has the full picture. Veridex reconstructs that picture by ingesting signals from all three sources into a unified HydraDB knowledge graph, then provides:
-
-- **Grounded investigation** — ask questions, get evidence-backed answers with citations
-- **Dependency tracing** — trace multi-hop relationships between technical entities
-- **Provenance verification** — every evidence item retains its source identity
-- **Cross-source discovery** — find connections spanning Slack threads, Linear issues, and GitHub PRs
+Traditional RAG architectures rely strictly on vector similarity to retrieve text chunks. While vector search can identify topically related passages, it cannot reliably establish the underlying relationships connecting incidents, pull requests, engineering tasks, technical components, and human decisions. This fundamental limitation leads to disconnected context and hallucinated entity linkages.
 
 ---
 
-## Why HydraDB Is Central
+## What Veridex Does
 
-Traditional RAG systems use vector similarity to approximate retrieval. This creates a fundamental problem: approximate retrieval produces approximate facts, which leads to hallucinated linkages in answers.
+Veridex unifies engineering signals into an evidence-first investigation pipeline:
 
-Veridex uses HydraDB's **deterministic OpenCypher graph traversal** instead:
+```
+[ Slack / Linear / GitHub ]
+           │
+           ▼
+[ Canonical Records & Entity/Statement Nodes ]
+           │
+           ▼
+[ HydraDB Cloud Graph Database ]
+           │
+           ▼
+[ Deterministic Graph Retrieval & Multi-Hop Traversal ]
+           │
+           ▼
+[ Bounded Evidence Bundle (Provenance Tracked: message_id + document_id) ]
+           │
+           ▼
+[ Gemini Grounded Synthesis (Synthesis restricted to retrieved evidence) ]
+           │
+           ▼
+[ Investigation Console (Rich Markdown Answer + Interactive Citations + Dependency Timeline) ]
+```
 
-1. Raw enterprise signals are ingested as a structural + semantic graph
-2. When a query arrives, HydraDB traverses graph relationships deterministically
-3. Only provenance-grounded evidence is returned — no approximation
-4. Gemini synthesizes language only from that bounded evidence bundle
+1. **Source Signals**: Multi-source documents from Slack, Linear, and GitHub are structured into canonical entities, statements, and relationships.
+2. **HydraDB Cloud Knowledge Graph**: Relationships are stored and indexed in HydraDB Cloud (`veridex-hackhydra`).
+3. **Deterministic Retrieval & Traversal**: Given a question or technical entity, HydraDB queries the graph deterministically—retrieving explicit `MENTIONS`, `EXPRESSES`, and `ABOUT` connections.
+4. **Bounded Evidence Bundle**: A strict evidence bundle carrying source document and message IDs (`dsid_<hex>`) is constructed.
+5. **Grounded Synthesis**: Google Gemini synthesizes an answer **only** from the bounded evidence bundle. Gemini does not discover graph relationships or invent ungrounded facts.
+6. **Provenance & Citation Inspection**: The user receives a structured, Markdown-rendered answer with interactive citation pills (`[E1, E2]`) linked directly to verifiable evidence cards.
 
-This means Veridex cannot hallucinate a relationship that does not exist in the graph. The architecture structurally prevents it.
+---
+
+## Why HydraDB
+
+HydraDB is the foundational data and reasoning layer of Veridex:
+
+- **Explicit Graph Topology**: Technical entities, incidents, and engineering statements are represented as first-class vertices and edges rather than flattened text embeddings.
+- **Multi-Hop Traversal**: Enables discovering indirect dependencies and cascading failures across services and tools (e.g., Hop 1: `REL-311` → `api-search`; Hop 2: `api-search` → `v3.1.1-legacy-tokenizer`).
+- **Deterministic Resolution**: Graph queries execute with exact relational guarantees, eliminating the probabilistic randomness and drift of pure vector search.
+- **Unbroken Provenance**: Every retrieved edge and statement maintains its origin document ID and message vertex ID.
+- **Relationship-Aware Investigation**: Distinguishes between `fact`, `action`, `decision`, `outcome`, and `claim` statement types.
+
+### Concrete Example:
+When diagnosing a production issue:
+$$\text{Pull Request } (\text{PR-99501}) \longrightarrow \text{Linear Task } (\text{ENG-233901}) \longrightarrow \text{Service Component } (\text{KMS Guardrails}) \longrightarrow \text{Incident } (\text{INC-2026})$$
+
+A pure vector search retrieves fragments mentioning "KMS" or "timeout" independently. HydraDB traverses the exact path between the code change, the tracking ticket, the mitigation statement, and the incident timeline.
+
+---
+
+## Track
+
+**Hack Hydra 2026 — Track 1: Enterprise Context + Ontology**
+
+### Demonstration Dataset:
+The current demonstration uses a verified, controlled multi-source dataset slice of **60 documents** indexed in HydraDB Cloud (`veridex-hackhydra`):
+- **20 Slack conversations** (#incidents, #eng-runtime, #eng-security)
+- **20 Linear issues** (ENG-*, DES-*, INF-*)
+- **20 GitHub pull requests** (PR-*)
 
 ---
 
 ## Architecture
 
-```
-   Slack ──┐
-  Linear ──┼──► Canonical Records ──► HydraDB Graph
-  GitHub ──┘            │                    │
-                        │           ┌─────────────────────┐
-              Semantic Extraction   │  Structural Layer   │
-              (Gemini, offline OK)  │  - Message          │
-                        │           │  - Issue            │
-                        ▼           │  - PullRequest      │
-              SemanticExtraction   │  - Channel          │
-              Entity / Statement   │  - Project          │
-              ABOUT relationships  │  - Repository       │
-                                   │  - Person / Entity  │
-                                   └──────────┬──────────┘
-                                              │
-                              ┌───────────────┼───────────────┐
-                              ▼               ▼               ▼
-                    Deterministic      Dependency        Provenance
-                    Graph Retrieval    Tracing (BFS)     Validation
-                              │               │
-                              └───────┬───────┘
-                                      ▼
-                              Evidence Bundle
-                             [E1, E2, E3 ...]
-                             (message_id + document_id)
-                                      │
-                                      ▼
-                            Gemini Graph RAG Synthesis
-                            (bounded to evidence bundle)
-                                      │
-                                      ▼
-                            Grounded Answer + Citations
-```
+```mermaid
+graph TD
+    subgraph Data Sources
+        S[Slack Conversations]
+        L[Linear Issues]
+        G[GitHub Pull Requests]
+    end
 
-### Graph Ontology
+    subgraph HydraDB Cloud
+        HDB[(HydraDB Cloud<br/>veridex-hackhydra)]
+    end
 
-**Structural nodes**: `Message`, `Issue`, `PullRequest`, `Channel`, `Project`, `Repository`, `Person`, `Entity`
+    subgraph Veridex Backend
+        API[FastAPI Router<br/>backend.api.routes]
+        FACT[Driver Factory<br/>backend.retrieval.factory]
+        HCR[HydraCloudRetriever<br/>Deterministic Hybrid Retrieval]
+        HCT[HydraCloudTracer<br/>Multi-Hop BFS Traversal]
+        GEN[GeminiAnswerGenerator<br/>Grounded Synthesis]
+    end
 
-**Structural edges**: `[:IN_CHANNEL]`, `[:PART_OF]`, `[:TARGETS]`, `[:AUTHORED]`, `[:MENTIONS]`
+    subgraph Frontend Client
+        UI[Veridex React Console<br/>Vite + Tailwind / Modern CSS]
+    end
 
-**Semantic nodes**: `SemanticExtraction`, `Statement`
-
-**Semantic edges**: `[:HAS_SEMANTIC_EXTRACTION]`, `[:EXPRESSES]`, `[:ABOUT]`
-
-All IDs are deterministic 63-bit integers derived from `stable_id(source, document_id)`. Ingestion is idempotent.
-
----
-
-## Supported Sources
-
-| Source | Document Type | Graph Vertex | Key Edge |
-|:-------|:-------------|:-------------|:---------|
-| **Slack** | Conversations | `Message` | `[:IN_CHANNEL]` |
-| **Linear** | Issues & tasks | `Issue` | `[:PART_OF]` |
-| **GitHub** | Pull requests | `PullRequest` | `[:TARGETS]` |
-
-No other sources are claimed or integrated.
-
----
-
-## Grounded Graph RAG Flow
-
-1. **Query arrives** at `/api/ask`
-2. **Deterministic retrieval**: HydraDB traverses `MENTIONS`, `EXPRESSES`, and `ABOUT` relationships to collect evidence matching the query entities
-3. **Evidence bundle assembled**: each item carries `message_id`, `document_id`, `entity`, `statement_type`, and `relationship_type`
-4. **Gemini synthesis**: Gemini receives only the evidence bundle — it cannot access or invent facts outside it
-5. **Citation grounding**: the response includes `[E1]`, `[E2]` citations linked to specific evidence items
-6. **Provenance preserved**: the full message and document identity is carried through to the final response
-
----
-
-## Dependency Tracing
-
-The `/api/trace` endpoint performs multi-hop BFS traversal across the HydraDB semantic graph:
-
-```
-REL-311
-  └─► api-search          (hop 1, msg 8537794879600693670)
-  └─► v3.1.1-legacy-tokenizer   (hop 1, msg 8537794879600693670)
-      └─► v3.1.1-legacy-tokenizer pinned to 1%  (hop 2)
+    S & L & G --> HDB
+    UI -->|/api/ask & /api/trace| API
+    API --> FACT
+    FACT --> HCR & HCT
+    HCR -->|Fetch Evidence| HDB
+    HCT -->|Traverse Dependencies| HDB
+    HCR -->|Evidence Bundle| GEN
+    GEN -->|Grounded Answer + Citations| API
+    HCT -->|Hops + Timeline| API
+    API -->|JSON Response| UI
 ```
 
-Each hop returns:
-- The related entity
-- The source message
-- The statement type (fact / action / decision / outcome / claim)
-- The provenance (message ID, document ID)
+---
+
+## Core Features
+
+- **Investigation / Ask Console**: Ask natural language engineering questions and receive evidence-backed, Markdown-formatted answers.
+- **Deterministic Graph Retrieval**: Queries HydraDB Cloud with keyword, entity, and relation constraints.
+- **Multi-Hop Dependency Tracing**: Interactively traverse 1-hop, 2-hop, or full dependency networks starting from any entity or ticket.
+- **Entity Explorer**: Browse all indexed technical components, tickets, and tools with one-click **Ask About This** and **Trace Connections** actions.
+- **Interactive Citation Pills**: Click citations (`[E1, E2]`) to smoothly scroll and highlight the exact underlying evidence card.
+- **Bounded Evidence Bundle**: Inspect the full raw text, message ID, document ID, and statement classification for every claim.
+- **Insufficient-Evidence Handling**: Explicitly flags when the knowledge graph contains partial or no information, preventing hallucination.
+- **Zero-Auto-Execution Navigation**: Prevents accidental queries when navigating between views.
+- **HydraDB Cloud Telemetry**: Real-time status reporting (`HYDRADB CLOUD  CONNECTED`).
 
 ---
 
-## Evidence & Provenance
-
-Every evidence item in Veridex retains:
-
-| Field | Description |
-|:------|:------------|
-| `message_id` | Original HydraDB vertex ID |
-| `document_id` | Source document identifier (`dsid_<hex>`) |
-| `source` | `slack`, `linear`, or `github` |
-| `source_id` | Thread ID, issue key, or PR number |
-| `entity` | The matched entity name |
-| `statement` | The grounded statement text |
-| `statement_type` | `fact`, `action`, `decision`, `outcome`, or `claim` |
-| `relationship` | `MENTIONS`, `EXPRESSES`, or `ABOUT` |
-
-Provenance is never discarded. It flows from ingestion through retrieval through synthesis.
-
----
-
-## Evaluation System
-
-Veridex includes a deterministic evaluation benchmark (`/api/evaluate`) based on 6 reference queries:
-
-- Each query is evaluated against live HydraDB retrieval
-- Evidence validity is checked for message IDs and document IDs
-- Pass/fail is computed from actual retrieval results — no hardcoded assertions
-
-Current benchmark results (live HydraDB):
-- **6/6 queries passed**
-- **120/120 evidence items valid**
-- **0 missing message IDs**
-- **0 provenance errors**
-
----
-
-## Current Dataset Status
-
-Veridex uses a **controlled 60-document multi-source slice** from the EnterpriseRAG-Bench dataset:
-
-| Source | Documents |
-|:-------|:---------:|
-| Slack | 20 |
-| Linear | 20 |
-| GitHub | 20 |
-| **Total** | **60** |
-
-**The full EnterpriseRAG-Bench dataset (15,000 documents) is not ingested.**
-
-The repository intentionally uses a controlled slice for the hackathon demo. Dataset files are Git-ignored and must not be committed.
-
----
-
-## Local Development
+## Getting Started
 
 ### Prerequisites
+- **Python**: `3.11+`
+- **Node.js**: `20.12+`
+- **npm**: `10+`
 
-- Python 3.11+
-- Node.js 20+
-- Docker (for HydraDB)
-- HydraDB running locally at `http://127.0.0.1:8443`
+### 1. Environment Setup
 
-### Setup
+Clone the repository and create your local `.env` configuration:
 
 ```bash
-# Install Python dependencies
+cp .env.example .env
+```
+
+Configure your server-side environment variables in `.env`:
+
+```env
+HYDRA_MODE=cloud
+HYDRA_DB_DATABASE=veridex-hackhydra
+HYDRA_DB_BASE_URL=https://api.hydradb.com
+HYDRA_DB_API_KEY=<your-hydradb-cloud-api-key>
+
+GEMINI_API_KEY=<your-gemini-api-key>
+GEMINI_MODEL=gemini-3.6-flash
+PORT=8000
+```
+
+> [!NOTE]
+> `HYDRA_DB_API_KEY` and `GEMINI_API_KEY` are server-side secrets. They are never exposed to the frontend or bundled into client builds.
+
+### 2. Backend Setup
+
+Install Python dependencies and start the FastAPI server:
+
+```bash
 pip install -r requirements.txt
-
-# Start the FastAPI backend (serves the React frontend at /)
-uvicorn backend.api.main:app --reload
-
-# Frontend development server (optional)
-npm install --prefix frontend-react
-npm run dev --prefix frontend-react
-
-# Run all tests (146 tests, fully offline)
-python -m pytest -q
+python -m uvicorn backend.api.app:app --reload --port 8000
 ```
 
-### Verification Scripts
+The backend server will start at `http://localhost:8000`.
+
+### 3. Frontend Setup
+
+In a separate terminal, install dependencies and start the Vite development server:
 
 ```bash
-# Verify semantic graph integrity
-python -m backend.semantic.verify_semantic_graph
-
-# Verify deterministic retrieval
-python -m backend.retrieval.verify_retrieval
-
-# Verify dependency tracing
-python -m backend.retrieval.verify_trace
-
-# Verify API endpoints
-python -m backend.api.verify_api
-
-# Verify 60-document ingestion and provenance
-python -m backend.ingestion.verify_multisource_ingestion
+cd frontend-react
+npm install
+npm run dev
 ```
 
----
-
-## Demo Walkthrough
-
-### 1. Landing Page
-Open the root URL `/`. You will see the Veridex product entry experience explaining the architecture and product story.
-
-### 2. Investigation Console
-Click **OPEN INVESTIGATION CONSOLE**. Try:
-- `"What happened with REL-311?"`
-- `"Why did the team change the model routing?"`
-- `"What is the kernel-fallback policy?"`
-
-Each answer will show evidence items `[E1]`, `[E2]` etc. Click a citation to highlight the source evidence.
-
-### 3. Dependency Trace
-Navigate to **Trace** and enter `REL-311`. The trace view shows the multi-hop dependency graph and reconstructed timeline.
-
-### 4. Entity Explorer
-Navigate to **Entities** to browse all entities in the graph. Click any entity to immediately trace its dependencies.
-
-### 5. Why HydraDB
-Navigate to **Why HydraDB?** for the full architecture explanation and evaluation benchmark results.
+Open your browser at **`http://localhost:5173`**.
 
 ---
 
-## Project Structure
+## Production Deployment (Render)
 
-```
-deptrace/
-├── backend/
-│   ├── api/               # FastAPI routes and web API
-│   ├── evaluation/        # Deterministic evaluation benchmark
-│   ├── extraction/        # Semantic extraction pipeline
-│   ├── graph/             # HydraDB graph utilities
-│   ├── ingestion/
-│   │   ├── adapters/      # Slack, Linear, GitHub adapters
-│   │   ├── canonical.py   # CanonicalRecord Pydantic model
-│   │   ├── references.py  # Deterministic reference extractor
-│   │   └── writer.py      # HydraDB MERGE query writer
-│   ├── rag/               # Grounded Graph RAG pipeline
-│   ├── retrieval/         # Deterministic retrieval + trace
-│   └── semantic/          # Semantic graph verifiers
-├── frontend-react/        # React 19 + Vite 6 frontend
-│   └── src/
-│       ├── components/
-│       │   ├── LandingPage.jsx     # Product entry experience
-│       │   ├── InvestigationView.jsx
-│       │   ├── TraceView.jsx
-│       │   ├── EntityExplorer.jsx
-│       │   ├── WhyHydraDB.jsx
-│       │   └── GraphHealth.jsx
-│       └── App.jsx
-├── tests/                 # 146 pytest unit tests
-├── data/
-│   └── enterprise-rag/    # Git-ignored — not committed
-└── README.md
-```
+Veridex includes a tested [`render.yaml`](render.yaml) blueprint for deploying as a single unified web service:
 
----
-
----
-
-## Deploy to Render (Production Cloud Mode)
-
-Veridex is architected for seamless zero-downtime deployment on **Render** (Free Web Service) with **HydraDB Cloud v2** as the managed production database.
-
-### 1. Architecture on Render
-FastAPI serves both the unified REST API (`/api/*`) and the pre-built React 19 single-page application from `frontend-react/dist`. No Node/Vite server is needed in production.
-
-### 2. Required Render Web Service Settings
-- **Environment**: `Python 3.11`
 - **Build Command**:
   ```bash
   npm install --prefix frontend-react && npm run build --prefix frontend-react && pip install -r requirements.txt
@@ -309,24 +206,140 @@ FastAPI serves both the unified REST API (`/api/*`) and the pre-built React 19 s
   ```
 - **Health Check Path**: `/api/health`
 
-### 3. Required Environment Variables
+---
 
-| Variable | Recommended Value | Purpose |
-|:---|:---|:---|
-| `HYDRA_MODE` | `cloud` | Activates the HydraDB Cloud v2 driver |
-| `HYDRA_DB_DATABASE` | `veridex-hackhydra` | Target Cloud database containing the frozen 60-document dataset |
-| `HYDRA_DB_BASE_URL` | `https://api.hydradb.com` | HydraDB Cloud v2 API endpoint |
-| `HYDRA_DB_API_KEY` | *Secret Token* | Server-side Bearer authentication for HydraDB Cloud |
-| `GEMINI_API_KEY` | *Secret Key* | Gemini Interactions API key for grounded synthesis |
-| `GEMINI_MODEL` | `gemini-3.6-flash` | Language synthesis model |
-| `PYTHON_VERSION` | `3.11.9` | Runtime version |
-| `NODE_VERSION` | `20.12.0` | Frontend build version |
+## Verification & Testing
 
-> [!WARNING]
-> **Security & Zero-Ingestion Rules:**
-> - `HYDRA_DB_API_KEY` and `GEMINI_API_KEY` are server-side secrets. They must NEVER be exposed in frontend code or repository commits.
-> - The production HydraDB Cloud database `veridex-hackhydra` already contains the complete frozen 60-document dataset. **DO NOT perform any ingestion during deployment or server startup.**
+Veridex includes a comprehensive, 100% offline-capable test suite:
 
-### 4. Local vs. Production Driver Mode
-- **Local (`HYDRA_MODE=local`)**: Queries the local Dockerized OpenCypher instance (`:8443`). Used by default for development and offline CI tests.
-- **Production (`HYDRA_MODE=cloud`)**: Queries HydraDB Cloud v2 with hybrid retrieval, thinking mode, and forceful relation bindings.
+### 1. Run Python Unit & Integration Tests
+```bash
+python -m pytest -q
+```
+*Result: **153 passed**.*
+
+### 2. Run Frontend SSR & Workflow Tests
+```bash
+npm test --prefix frontend-react
+```
+*Result: **All SSR, component, and zero-auto-execution navigation tests passed**.*
+
+### 3. Run Frontend Production Build
+```bash
+npm run build --prefix frontend-react
+```
+*Result: **Clean production build in `frontend-react/dist`**.*
+
+### 4. Run Production Smoke Test Suite
+```bash
+python backend/verify_production_smoke.py --in-process
+```
+*Result: **All health, retrieval, trace, and secret isolation checks passed**.*
+
+---
+
+## Project Structure
+
+```
+deptrace/
+├── backend/
+│   ├── api/
+│   │   ├── app.py                      # FastAPI application setup & static asset serving
+│   │   └── routes.py                   # /api/health, /api/ask, /api/trace, /api/trace/entities
+│   ├── config.py                       # AppConfig, HYDRA_MODE, and secret validation
+│   ├── rag/
+│   │   ├── generator.py                # GeminiAnswerGenerator with bounded prompt engineering
+│   │   └── models.py                   # Pydantic schemas for questions, answers, and evidence
+│   ├── retrieval/
+│   │   ├── cloud_retriever.py          # HydraCloudRetriever (HydraDB Cloud v2 API driver)
+│   │   ├── cloud_tracer.py             # HydraCloudTracer (Multi-hop dependency graph BFS)
+│   │   ├── factory.py                  # Active driver factory (HydraCloudRetriever / Tracer)
+│   │   └── models.py                   # EvidenceItem, TraceHop, ImpactSummary data models
+│   └── verify_production_smoke.py      # Automated production deployment smoke test runner
+├── frontend-react/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── InvestigationView.jsx   # Ask console with Markdown rendering & citation pills
+│   │   │   ├── TraceView.jsx           # Dependency trace visualization with timeline
+│   │   │   ├── EntityExplorer.jsx      # Technical entity catalog with contextual actions
+│   │   │   ├── SuggestionsView.jsx     # Grounded suggestion cards categorized by source
+│   │   │   ├── WhyHydraDB.jsx          # Interactive architecture breakdown
+│   │   │   ├── GraphHealth.jsx         # Live HydraDB Cloud connection telemetry
+│   │   │   ├── LandingPage.jsx         # Product overview & workflow guide
+│   │   │   └── Sidebar.jsx             # Navigation sidebar with status indicator
+│   │   ├── data/
+│   │   │   └── suggestions.js          # Verified 17-question Cloud suggestion catalog
+│   │   ├── utils/
+│   │   │   └── hydraStatus.js          # Telemetry formatting helpers
+│   │   ├── App.jsx                     # Root application shell & navigation router
+│   │   ├── main.jsx                    # React 19 entrypoint
+│   │   └── index.css                   # Responsive design system & typography
+│   ├── test_render.js                  # SSR & interaction test runner
+│   └── vite.config.js                  # Vite bundler & API proxy configuration
+├── tests/
+│   ├── test_api.py                     # Offline API route integration tests
+│   └── test_production_readiness.py    # Configuration, secret isolation, & driver unit tests
+├── .env.example                        # Template for environment configuration
+├── render.yaml                         # Render deployment specification
+├── requirements.txt                    # Python backend dependencies
+├── LICENSE                             # MIT Open-Source License
+└── README.md                           # Project documentation
+```
+
+---
+
+## HydraDB Usage & Technical Deep Dive
+
+### Where HydraDB Is Used in the Codebase:
+1. **[`backend/retrieval/cloud_retriever.py`](backend/retrieval/cloud_retriever.py)**:
+   - `HydraCloudRetriever.retrieve()`: Performs hybrid search over HydraDB Cloud v2 (`/v2/databases/{db}/query`), executing relation bindings and thinking mode over graph entities (`[:MENTIONS]`, `[:EXPRESSES]`, `[:ABOUT]`).
+2. **[`backend/retrieval/cloud_tracer.py`](backend/retrieval/cloud_tracer.py)**:
+   - `HydraCloudTracer.trace()`: Performs multi-hop BFS graph traversal across technical entity vertices, returning dependency hops, linked components, and chronological statement timelines.
+   - `HydraCloudTracer.get_available_entities()`: Discovers available graph entities indexed in the database.
+3. **[`backend/retrieval/factory.py`](backend/retrieval/factory.py)**:
+   - Manages active driver lifecycle and connection health checks against HydraDB Cloud.
+
+### What Veridex Would Lose Without HydraDB:
+Without HydraDB, Veridex would be forced to rely on standard vector similarity chunk retrieval. This would cause:
+1. **Loss of Relational Grounding**: Inability to determine whether PR-99501 caused an incident or mitigated it.
+2. **Loss of Multi-Hop Dependency Discovery**: Inability to trace indirect linkages between components and upstream services.
+3. **Hallucinated Syntheses**: Without bounded graph evidence bundles, language models hallucinate plausible-sounding but false linkages.
+4. **Loss of Structural Provenance**: Vector chunks discard vertex-level message and document lineage.
+
+---
+
+## Dataset & Provenance
+
+- **Size**: 60 multi-source documents.
+- **Coverage**: Slack triage channels, Linear engineering issues, GitHub pull requests.
+- **Integrity**: Frozen dataset indexed directly in HydraDB Cloud (`veridex-hackhydra`).
+- **Idempotent Identifiers**: All vertex IDs are derived deterministically from stable source document identifiers (`dsid_<hex>`).
+
+---
+
+## Security
+
+- **Strict Secret Isolation**: `HYDRA_DB_API_KEY` and `GEMINI_API_KEY` are read strictly server-side in Python.
+- **Frontend Protection**: Zero secrets are passed to Vite or exposed in frontend client bundles.
+- **Git Protection**: `.env` is explicitly git-ignored.
+
+---
+
+## License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgements & Attribution
+
+- **[HydraDB](https://github.com/hydra-db/hydradb)**: Next-generation graph-relational database powering deterministic knowledge retrieval.
+- **[FastAPI](https://fastapi.tiangolo.com/)**: High-performance Python web framework.
+- **[Google Gemini](https://ai.google.dev/)**: Language model API for grounded synthesis.
+- **[React](https://react.dev/) & [Vite](https://vite.dev/)**: Modern frontend client tooling.
+
+---
+
+## Hack Hydra
+
+Built for **Hack Hydra 2026 — Track 1: Enterprise Context + Ontology**.
