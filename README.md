@@ -283,7 +283,7 @@ deptrace/
 │   │   ├── ingest_semantic.py          # Semantic graph batch ingestion
 │   │   ├── pilot.py                    # Extraction pilot test suite
 │   │   └── verify_semantic_graph.py    # Semantic graph query & verification utility
-│   └── verify_production_smoke.py      # Production deployment smoke test suite
+│   └── verify_production_smoke.py      # End-to-end server smoke test runner
 ├── frontend-react/
 │   ├── src/
 │   │   ├── components/
@@ -558,7 +558,7 @@ Open your browser at **`http://localhost:5173`**.
 
 ## Verification & Testing Suite
 
-Veridex includes a 100% offline-capable test suite spanning unit tests, integration tests, UI rendering tests, and production smoke tests.
+Veridex includes a 100% offline-capable test suite spanning unit tests, integration tests, and UI rendering tests:
 
 ### 1. Python Unit & Integration Tests (153 Tests)
 Runs full coverage of adapters, extraction schemas, candidate builders, RAG pipeline, dependency tracer, API routes, and secret isolation:
@@ -589,24 +589,11 @@ node frontend-react/test_render.js
 
 ---
 
-### 3. Production Build Validation
+### 3. Frontend Build Validation
 Verifies clean JavaScript bundling and static asset compilation:
 
 ```bash
 npm run build --prefix frontend-react
-```
-
----
-
-### 4. Production Deployment Smoke Test Runner
-Tests an active server (in-process, local uvicorn, or live deployed URL) verifying health checks, RAG asking, multi-hop tracing, static asset serving, and secret isolation:
-
-```bash
-# In-process validation
-python backend/verify_production_smoke.py --in-process
-
-# Or against a live deployed server
-python backend/verify_production_smoke.py --url https://veridex.onrender.com
 ```
 
 ---
