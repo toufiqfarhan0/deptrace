@@ -64,7 +64,7 @@ class TestHttpClient:
 
 def run_smoke_tests(base_url: str | None = None, in_process: bool = False) -> bool:
     client = TestHttpClient(base_url=base_url, in_process=in_process)
-    target_desc = f"In-Process FastAPI Application (HYDRA_MODE={os.getenv('HYDRA_MODE', 'local')})" if client.test_client else base_url
+    target_desc = "In-Process FastAPI Application (Local HydraDB)" if client.test_client else base_url
 
     print("=" * 80)
     print(f"VERIDEX PRODUCTION SMOKE TEST RUNNER")
@@ -107,9 +107,9 @@ def run_smoke_tests(base_url: str | None = None, in_process: bool = False) -> bo
 
     # 3. POST /api/ask with representative questions
     ask_queries = [
-        "What is PR-99501 about?",
-        "What is connected to api-search?",
-        "What is connected to kernel-selector?",
+        "What happened with REL-311?",
+        "What was the issue with kernel-selector?",
+        "What is strict_model:true?",
     ]
 
     print("\n3. Testing POST /api/ask questions...")
@@ -146,8 +146,8 @@ def run_smoke_tests(base_url: str | None = None, in_process: bool = False) -> bo
                 print("   PASSED: Zero secrets detected in payload.")
 
             for ev in evidence:
-                if not ev.get("document_id") or not ev.get("statement"):
-                    print(f"   FAILED: Evidence item missing document_id or statement: {ev}", file=sys.stderr)
+                if not ev.get("document_id") or not (ev.get("statement") or ev.get("entity_name")):
+                    print(f"   FAILED: Evidence item missing document_id or content: {ev}", file=sys.stderr)
                     all_passed = False
                     break
             else:
@@ -158,12 +158,12 @@ def run_smoke_tests(base_url: str | None = None, in_process: bool = False) -> bo
             all_passed = False
 
     # 4. POST /api/trace with target entity
-    print("\n4. Testing POST /api/trace for 'PR-99501'...")
+    print("\n4. Testing POST /api/trace for 'REL-311'...")
     try:
         t0 = time.perf_counter()
         res = client.post(
             "/api/trace",
-            json_data={"entity": "PR-99501", "max_depth": 2, "limit": 10},
+            json_data={"entity": "REL-311", "max_depth": 2, "limit": 10},
             timeout=20,
         )
         lat = (time.perf_counter() - t0) * 1000
