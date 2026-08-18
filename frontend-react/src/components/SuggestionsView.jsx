@@ -151,8 +151,9 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
                       type="button"
                       title={`Filter by "${t}"`}
                     >
-                      #{t}
+                      {t}
                     </button>
+
                   ))}
                 </div>
               )}

@@ -366,6 +366,7 @@ export default function InvestigationView({
   initialQuery = '',
   onQueryChange,
   onNavigateToTrace,
+  isActive = true,
 }) {
   const [query, setQuery] = useState(initialQuery)
   const [loading, setLoading] = useState(false)
@@ -392,6 +393,9 @@ export default function InvestigationView({
     setError(null)
     setResult(null)
     setHighlightedId(null)
+    // Clear the input text upon asking so the search bar is clean for next question
+    setQuery('')
+    if (onQueryChange) onQueryChange('')
     const t0 = performance.now()
     try {
       const res = await fetch('/api/ask', {
@@ -411,7 +415,7 @@ export default function InvestigationView({
     } finally {
       setLoading(false)
     }
-  }, [query])
+  }, [query, onQueryChange])
 
   // Sync draft query from external navigation WITHOUT auto-executing
   useEffect(() => {
@@ -420,12 +424,21 @@ export default function InvestigationView({
     }
   }, [initialQuery])
 
+  // Clear unsubmitted draft text when user navigates away to trace or entity
+  useEffect(() => {
+    if (!isActive && query && !loading) {
+      setQuery('')
+      if (onQueryChange) onQueryChange('')
+    }
+  }, [isActive, query, loading, onQueryChange])
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleExecute()
     }
   }
+
 
   const handleSelectSuggestion = (sQuery) => {
     setQuery(sQuery)

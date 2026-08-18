@@ -44,6 +44,7 @@ export default function App() {
   const [hydraStatus, setHydraStatus] = useState({ status: 'loading', hydradb: '' })
   const [askQuery, setAskQuery] = useState('')
   const [traceEntity, setTraceEntity] = useState('')
+  const [sessionKey, setSessionKey] = useState(0)
 
   const checkHealth = useCallback(async () => {
     try {
@@ -84,6 +85,14 @@ export default function App() {
     setView('console')
   }, [])
 
+  // Landing page navigation: resets console outputs and search bars for a fresh session
+  const handleGoLanding = useCallback(() => {
+    setAskQuery('')
+    setTraceEntity('')
+    setSessionKey((prev) => prev + 1)
+    setView('landing')
+  }, [])
+
   const getBreadcrumb = () => {
     switch (activeView) {
       case 'ask': return 'Investigate / Ask'
@@ -114,14 +123,14 @@ export default function App() {
         activeView={activeView}
         onNavigate={(v) => { setActiveView(v); setView('console') }}
         hydraStatus={hydraStatus}
-        onGoHome={() => setView('landing')}
+        onGoHome={handleGoLanding}
       />
       <div className="workspace">
         <header className="workspace-header">
           <nav className="breadcrumb" aria-label="Current location">
             <button
               className="breadcrumb-home"
-              onClick={() => setView('landing')}
+              onClick={handleGoLanding}
               aria-label="Return to Veridex home"
             >
               VERIDEX
@@ -151,16 +160,20 @@ export default function App() {
           {/* Keep Ask and Trace views mounted in DOM so execution state, traces, and answers persist during tab navigation */}
           <div style={{ display: activeView === 'ask' ? 'block' : 'none' }}>
             <InvestigationView
+              key={`ask-${sessionKey}`}
               initialQuery={askQuery}
               onQueryChange={setAskQuery}
               onNavigateToTrace={navigateToTrace}
+              isActive={activeView === 'ask'}
             />
           </div>
           <div style={{ display: activeView === 'trace' ? 'block' : 'none' }}>
             <TraceView
+              key={`trace-${sessionKey}`}
               initialEntity={traceEntity}
               onEntityChange={setTraceEntity}
               onNavigateToAsk={navigateToAsk}
+              isActive={activeView === 'trace'}
             />
           </div>
           {activeView === 'suggestions' && (
@@ -171,6 +184,7 @@ export default function App() {
           )}
           {activeView === 'entities' && (
             <EntityExplorer
+              key={`entities-${sessionKey}`}
               onTraceEntity={navigateToTrace}
               onAskEntity={navigateToAsk}
             />
@@ -182,4 +196,5 @@ export default function App() {
     </div>
   )
 }
+
 

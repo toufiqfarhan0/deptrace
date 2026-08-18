@@ -73,6 +73,7 @@ export default function TraceView({
   initialEntity = '',
   onEntityChange,
   onNavigateToAsk,
+  isActive = true,
 }) {
   const [entity, setEntity] = useState(initialEntity)
   const [depth, setDepth] = useState('2')
@@ -90,6 +91,9 @@ export default function TraceView({
     setLoading(true)
     setError(null)
     setResult(null)
+    // Clear input after initiating trace
+    setEntity('')
+    onEntityChange?.('')
     const t0 = performance.now()
     try {
       const res = await fetch('/api/trace', {
@@ -108,7 +112,7 @@ export default function TraceView({
     } finally {
       setLoading(false)
     }
-  }, [entity, depth])
+  }, [entity, depth, onEntityChange])
 
   // Sync draft entity from external navigation WITHOUT auto-executing
   useEffect(() => {
@@ -117,12 +121,21 @@ export default function TraceView({
     }
   }, [initialEntity])
 
+  // Clear unsubmitted draft text when user navigates away to ask or entity
+  useEffect(() => {
+    if (!isActive && entity && !loading) {
+      setEntity('')
+      onEntityChange?.('')
+    }
+  }, [isActive, entity, loading, onEntityChange])
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       handleTrace()
     }
   }
+
 
   const handleSelectQuickEntity = (ent) => {
     setEntity(ent)
