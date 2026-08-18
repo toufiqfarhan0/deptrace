@@ -85,45 +85,9 @@ Vector search measures **topical semantic similarity**, not **relational causali
 
 ## System Architecture
 
-Veridex uses a three-tier architecture separating deterministic graph traversal from generative synthesis:
-
-```mermaid
-graph TD
-    subgraph S1 ["1. Ingestion & Multi-Source Extraction"]
-        S["Slack Conversations"] --> ADP["Multi-Source Adapters"]
-        L["Linear Issues"] --> ADP
-        G["GitHub Pull Requests"] --> ADP
-        ADP --> EXT["Canonical Record & Entity Extractor"]
-        EXT --> CAN["Canonical Statements & Relationships"]
-    end
-
-    subgraph S2 ["2. Graph Reasoning Layer - HydraDB Cloud"]
-        CAN -->|"Batch Ingest"| HDB[("HydraDB Cloud v2<br/>veridex-hackhydra")]
-    end
-
-    subgraph S3 ["3. Veridex Backend - FastAPI Engine"]
-        API["FastAPI Router<br/>/api/rag/ask & /api/trace"]
-        FACT["Driver Factory"]
-        HCR["HydraCloudRetriever<br/>Deterministic Hybrid Retrieval"]
-        HCT["HydraCloudTracer<br/>Multi-Hop BFS Traversal"]
-        GEN["GeminiAnswerGenerator<br/>Grounded Synthesis"]
-        
-        API --> FACT
-        FACT --> HCR
-        FACT --> HCT
-        HCR -->|"Query Relations"| HDB
-        HCT -->|"BFS Multi-Hop Traversal"| HDB
-        HCR -->|"Bounded Evidence Bundle (E1..En)"| GEN
-        GEN -->|"Synthesized Markdown + Citations"| API
-        HCT -->|"Dependency Hops + Timeline"| API
-    end
-
-    subgraph S4 ["4. Frontend Console - React 19 + Vite"]
-        UI["Veridex Investigation Console"]
-        UI -->|"Natural Language Query"| API
-        API -->|"Grounded Answer + Citations + Trace Subgraph"| UI
-    end
-```
+<div align="center">
+  <img src="architecture.jpg" alt="Veridex System Architecture" width="100%" />
+</div>
 
 ### End-to-End Execution Flow:
 
