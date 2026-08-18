@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { getQuickTraceEntities } from '../data/suggestions.js'
 
 function DepPath({ data, onSelectEntity, onNavigateToAsk }) {
@@ -18,7 +18,8 @@ function DepPath({ data, onSelectEntity, onNavigateToAsk }) {
               aria-label={`Ask questions about ${root_entity}`}
               type="button"
             >
-              <span>&gt;_ ASK</span>
+              <span>ASK</span>
+              <span aria-hidden="true">→</span>
             </button>
           )}
         </div>
@@ -43,41 +44,27 @@ function DepPath({ data, onSelectEntity, onNavigateToAsk }) {
                 aria-label={`Ask questions about ${e}`}
                 type="button"
               >
-                <span>&gt;_</span>
+                <span>ASK</span>
               </button>
             )}
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', fontFamily: 'var(--font-mono)' }}>
-          AFFECTED COMPONENTS:
-        </span>
+      <div className="dep-affected-row">
+        <span className="dep-affected-lbl">AFFECTED COMPONENTS:</span>
         {linked.length > 0 ? (
-          linked.map((e, idx) => (
-            <span key={e} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--c-text-2)', fontFamily: 'var(--font-mono)' }}>
+          <div className="dep-affected-list">
+            {linked.map((e) => (
+              <span key={e} className="dep-affected-tag">
                 {e}
               </span>
-              {idx < linked.length - 1 && <span style={{ color: 'var(--c-text-3)' }}>·</span>}
-            </span>
-          ))
+            ))}
+          </div>
         ) : (
           <span className="unavailable-field">No secondary components reached within depth limit</span>
         )}
       </div>
-    </div>
-  )
-}
-
-function UnavailableField({ label }) {
-  return (
-    <div style={{ display: 'flex', gap: 8, marginBottom: 4, alignItems: 'center' }}>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', fontFamily: 'var(--font-mono)', minWidth: 80 }}>
-        {label}:
-      </span>
-      <span className="unavailable-field">Not available in current graph</span>
     </div>
   )
 }
@@ -93,6 +80,7 @@ export default function TraceView({
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
+  const inputRef = useRef(null)
 
   const quickEntities = getQuickTraceEntities()
 
@@ -122,13 +110,12 @@ export default function TraceView({
     }
   }, [entity, depth])
 
-  // Handle external navigation from Suggestions / Ask views
+  // Sync draft entity from external navigation WITHOUT auto-executing
   useEffect(() => {
-    if (initialEntity && initialEntity.trim() !== '') {
+    if (initialEntity !== undefined) {
       setEntity(initialEntity)
-      handleTrace(initialEntity)
     }
-  }, [initialEntity, handleTrace])
+  }, [initialEntity])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -140,22 +127,33 @@ export default function TraceView({
   const handleSelectQuickEntity = (ent) => {
     setEntity(ent)
     onEntityChange?.(ent)
-    handleTrace(ent)
+    if (inputRef.current) {
+      inputRef.current.focus()
+    }
   }
 
   const summary = result?.impact_summary
 
   return (
-    <section aria-label="Dependency trace workspace">
-      <div className="view-title">Trace</div>
-      <div className="view-subtitle">
-        Trace multi-hop technical dependencies, co-occurring incident artifacts, and chronological statements.
+    <section aria-label="Dependency trace workspace" className="trace-section">
+      <div className="view-header">
+        <h1 className="view-title">Trace Dependencies</h1>
+        <div className="view-subtitle">
+          Follow the relationships behind an incident, ticket, pull request, or engineering decision across HydraDB.
+        </div>
       </div>
 
-      {/* Trace Input */}
-      <div style={{ marginBottom: 28 }}>
+      {/* Trace Input Card */}
+      <div className="query-console" role="search">
+        <div className="query-card-header">
+          <label htmlFor="trace-target-input" className="query-card-label">
+            Target Entity to Trace
+          </label>
+        </div>
         <div className="trace-input-row">
           <input
+            id="trace-target-input"
+            ref={inputRef}
             className="trace-input"
             type="text"
             value={entity}
@@ -164,12 +162,12 @@ export default function TraceView({
               onEntityChange?.(e.target.value)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Entity to trace: REL-311, kernel-selector, api-search..."
+            placeholder="Enter an entity such as PR-99501, INC-2026, or ENG-68910..."
             aria-label="Entity to trace"
             disabled={loading}
           />
           <div className="depth-control">
-            <label htmlFor="depth-select">Depth:</label>
+            <label htmlFor="depth-select">Traversal Depth:</label>
             <select
               id="depth-select"
               className="depth-select"
@@ -177,46 +175,61 @@ export default function TraceView({
               onChange={(e) => setDepth(e.target.value)}
               aria-label="Traversal depth"
             >
-              <option value="1">1 hop</option>
-              <option value="2">2 hops</option>
-              <option value="3">3 hops</option>
+              <option value="1">1 hop — Direct connections</option>
+              <option value="2">2 hops — Secondary dependencies</option>
+              <option value="3">3 hops — Full dependency network</option>
             </select>
           </div>
           <button
-            className="trace-btn"
+            className={`query-execute-btn ${loading ? 'loading' : ''}`}
             onClick={() => handleTrace()}
             disabled={loading || !entity.trim()}
-            aria-label="Execute dependency trace"
+            aria-label="Trace dependencies"
             type="button"
           >
-            {loading ? '...' : 'TRACE →'}
+            {loading ? (
+              <>
+                <span className="btn-spinner" aria-hidden="true" />
+                <span>TRACING...</span>
+              </>
+            ) : (
+              <>
+                <span>TRACE DEPENDENCIES</span>
+                <span aria-hidden="true">→</span>
+              </>
+            )}
           </button>
         </div>
-        <div className="trace-quick-select">
-          <span className="suggestion-prefix">Quick select:</span>
-          {quickEntities.map((e, i) => (
-            <span key={e} style={{ display: 'flex', alignItems: 'center' }}>
+
+        {/* Quick select popular entities */}
+        <div className="trace-quick-select" aria-label="Popular entities to trace">
+          <span className="suggestion-prefix">Popular entities:</span>
+          <div className="suggestion-pills">
+            {quickEntities.map((e) => (
               <button
+                key={e}
                 className="suggestion-btn"
                 onClick={() => handleSelectQuickEntity(e)}
-                aria-label={`Trace ${e}`}
+                aria-label={`Select entity ${e}`}
                 type="button"
               >
-                {e}
+                <span>{e}</span>
               </button>
-              {i < quickEntities.length - 1 && <span className="suggestion-sep">·</span>}
-            </span>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Loading */}
       {loading && (
-        <div className="state-block" role="status" aria-live="polite">
-          <div className="loading-text">
-            Traversing HydraDB graph
-            <div className="loading-dots" aria-hidden="true">
-              <span/><span/><span/>
+        <div className="state-block loading-state" role="status" aria-live="polite">
+          <div className="loading-card">
+            <div className="loading-spinner-ring" aria-hidden="true" />
+            <div className="loading-content">
+              <div className="loading-title">TRACING GRAPH DEPENDENCIES</div>
+              <div className="loading-desc">
+                Traversing multi-hop relationships and building chronological timeline in HydraDB...
+              </div>
             </div>
           </div>
         </div>
@@ -232,14 +245,18 @@ export default function TraceView({
 
       {/* Result */}
       {result && !loading && (
-        <div>
-          {/* IMPACT SECTION */}
-          <div className="section-rule" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="section-label">TRACE: {result.root_entity}</span>
+        <div className="result-area">
+          {/* Summary Section */}
+          <div className="query-meta-bar">
+            <div className="query-meta-left">
+              <span className="query-label-small">ROOT ENTITY</span>
+              <span className="query-text-display">{result.root_entity}</span>
+            </div>
             {latencyMs !== null && (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', paddingRight: 8 }}>
-                TRAVERSAL LATENCY: <span style={{ color: 'var(--c-accent)' }}>{latencyMs} ms</span>
-              </span>
+              <div className="query-latency-tag">
+                <span className="latency-lbl">LATENCY</span>
+                <span className="latency-val">{latencyMs} ms</span>
+              </div>
             )}
           </div>
 
@@ -266,21 +283,17 @@ export default function TraceView({
             {/* Dependency Path Representation */}
             <DepPath
               data={result}
-              onSelectEntity={handleSelectQuickEntity}
+              onSelectEntity={(ent) => {
+                setEntity(ent)
+                handleTrace(ent)
+              }}
               onNavigateToAsk={onNavigateToAsk}
             />
-
-            {/* Structural Fields Availability */}
-            <div style={{ marginTop: 12 }}>
-              <UnavailableField label="AUTHORS" />
-              <UnavailableField label="TEAMS" />
-              <UnavailableField label="CHANNELS" />
-            </div>
           </div>
 
           {/* Statement Breakdown */}
           {summary?.statements_by_type && Object.keys(summary.statements_by_type).length > 0 && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
               {Object.entries(summary.statements_by_type).map(([type, count]) => (
                 <span key={type} className={`type-badge ${type}`}>
                   {count} {type}{count !== 1 ? 's' : ''}
@@ -290,54 +303,66 @@ export default function TraceView({
           )}
 
           {/* Chronological Statement Timeline */}
-          <div className="section-rule">
-            <span className="section-label">CHRONOLOGICAL STATEMENT TIMELINE</span>
-          </div>
+          <div className="evidence-block">
+            <div className="evidence-header">
+              <div className="evidence-header-left">
+                <span className="evidence-header-label">RECONSTRUCTED TIMELINE</span>
+                <span className="evidence-count">
+                  {result.timeline?.length ?? 0} chronological event{result.timeline?.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            </div>
 
-          {result.timeline && result.timeline.length > 0 ? (
-            <div className="timeline-rows">
-              {result.timeline.map((item) => (
-                <div key={`${item.order_index}-${item.statement}`} className="timeline-row">
-                  <div className="timeline-index">
-                    {String(item.order_index).padStart(2, '0')}
-                  </div>
-                  <div className="timeline-content">
-                    <div className="timeline-meta-row">
-                      <span className={`type-badge ${item.statement_type}`}>
-                        {item.statement_type?.toUpperCase()}
-                      </span>
-                      <span className="type-badge rel">{item.relationship}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-text-2)' }}>
-                        {item.associated_entity}
-                      </span>
+            {result.timeline && result.timeline.length > 0 ? (
+              <div className="timeline-rows">
+                {result.timeline.map((item) => (
+                  <div key={`${item.order_index}-${item.statement}`} className="timeline-row">
+                    <div className="timeline-index">
+                      {String(item.order_index).padStart(2, '0')}
                     </div>
-                    <div className="timeline-statement">{item.statement}</div>
-                    <div className="timeline-provenance">
-                      <span><strong>msg:</strong> {item.message_id}</span>
-                      <span>
-                        <strong>doc:</strong> {item.document_id?.length > 25 ? `${item.document_id.slice(0, 25)}...` : item.document_id}
-                      </span>
+                    <div className="timeline-content">
+                      <div className="timeline-meta-row">
+                        <span className={`type-badge ${item.statement_type}`}>
+                          {item.statement_type?.toUpperCase()}
+                        </span>
+                        <span className="type-badge rel">{item.relationship}</span>
+                        <span className="timeline-entity-tag">
+                          {item.associated_entity}
+                        </span>
+                      </div>
+                      <div className="timeline-statement">{item.statement}</div>
+                      <div className="timeline-provenance">
+                        <span><strong>Message ID:</strong> {item.message_id}</span>
+                        <span>
+                          <strong>Document:</strong>{' '}
+                          <span title={item.document_id}>
+                            {item.document_id?.length > 25 ? `${item.document_id.slice(0, 25)}...` : item.document_id}
+                          </span>
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-block">
-              <div className="empty-label">No Timeline Statements</div>
-              <div className="empty-desc">No statements recorded along this dependency path.</div>
-            </div>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="empty-block">
+                <div className="empty-label">No Timeline Statements</div>
+                <div className="empty-desc">No statements recorded along this dependency path.</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Empty State */}
       {!result && !loading && !error && (
-        <div className="empty-block">
-          <div className="empty-label">Trace Ready</div>
-          <div className="empty-desc">
-            Select or enter an entity above to trace upstream causes, downstream affected services,
-            and chronologically ordered actions from the HydraDB graph.
+        <div className="empty-block starter-empty-block">
+          <div className="starter-header">
+            <div className="empty-label">TRACE GRAPH DEPENDENCIES</div>
+            <div className="empty-desc">
+              Select a popular entity or enter a ticket/PR above to trace upstream causes, downstream affected services,
+              and chronologically ordered actions across the HydraDB knowledge graph.
+            </div>
           </div>
         </div>
       )}

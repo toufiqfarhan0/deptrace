@@ -6,13 +6,13 @@ import {
 } from '../data/suggestions.js'
 
 const CATEGORIES = [
-  { id: 'ALL', label: 'ALL' },
-  { id: 'INCIDENTS', label: 'INCIDENTS' },
-  { id: 'ENTITIES', label: 'ENTITIES' },
-  { id: 'LINEAR', label: 'LINEAR' },
-  { id: 'GITHUB', label: 'GITHUB' },
-  { id: 'SLACK', label: 'SLACK' },
-  { id: 'CROSS-SOURCE', label: 'CROSS-SOURCE' },
+  { id: 'ALL', label: 'All' },
+  { id: 'INCIDENTS', label: 'Incidents' },
+  { id: 'ENTITIES', label: 'Entities' },
+  { id: 'LINEAR', label: 'Linear' },
+  { id: 'GITHUB', label: 'GitHub' },
+  { id: 'SLACK', label: 'Slack' },
+  { id: 'CROSS-SOURCE', label: 'Cross-Source' },
 ]
 
 export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
@@ -35,9 +35,9 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
   return (
     <section aria-label="Investigation suggestions catalog" className="suggestions-section">
       <div className="view-header">
-        <h1 className="view-title">Suggestions</h1>
+        <h1 className="view-title">Start with a Real Investigation</h1>
         <div className="view-subtitle">
-          Explore deterministic investigations and multi-hop dependency traces indexed in HydraDB.
+          Explore verified questions from the HydraDB demo knowledge graph spanning Slack, Linear, and GitHub.
         </div>
       </div>
 
@@ -45,7 +45,7 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
       <div className="dataset-context-banner" role="region" aria-label="Dataset status">
         <div className="dataset-context-left">
           <span className="dataset-status-dot" aria-hidden="true" />
-          <span className="dataset-context-tag">FROZEN HACKATHON DATASET</span>
+          <span className="dataset-context-tag">FROZEN DEMO DATASET</span>
           <span className="dataset-context-sep" aria-hidden="true">·</span>
           <span className="dataset-context-stats">
             <strong>{DATASET_STATS.total}</strong> Documents (
@@ -62,13 +62,12 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
       {/* Search & Category Filter Toolbar */}
       <div className="suggestions-toolbar" role="search">
         <div className="suggestions-search-row">
-          <span className="search-prefix" aria-hidden="true">&gt;_</span>
           <input
             className="suggestions-search-input"
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter by entity, issue key (e.g. ENG-30521), PR # (e.g. PR-99501), keyword..."
+            placeholder="Search by keyword, entity (e.g. PR-99501), issue key (e.g. ENG-30521)..."
             aria-label="Filter suggestions"
           />
           {search && (
@@ -137,7 +136,6 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
               </div>
 
               <h2 className="card-query-title">
-                <span className="card-prompt-prefix" aria-hidden="true">&gt;_</span>
                 <span>{item.title}</span>
               </h2>
 

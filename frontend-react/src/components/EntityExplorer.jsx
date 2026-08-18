@@ -26,29 +26,42 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
   )
 
   return (
-    <section aria-label="Entity explorer">
-      <div className="view-title">Entities</div>
-      <div className="view-subtitle">
-        All unique entities identified across the HydraDB knowledge graph. Trace dependencies or investigate incidents.
+    <section aria-label="Entity explorer" className="entities-section">
+      <div className="view-header">
+        <h1 className="view-title">Explore Engineering Entities</h1>
+        <div className="view-subtitle">
+          Browse entities discovered in the HydraDB knowledge graph. Investigate their context or trace their dependency network.
+        </div>
       </div>
 
-      <div className="entity-filter-row">
+      <div className="entity-filter-row" role="search">
         <input
           className="entity-filter-input"
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter entities (e.g. REL-311, kernel, tokenizer, api-search)..."
+          placeholder="Filter entities by name (e.g. PR-99501, INC-2026, tokenizer, api-search)..."
           aria-label="Filter entities"
         />
+        {filter && (
+          <button
+            className="search-clear-btn"
+            onClick={() => setFilter('')}
+            aria-label="Clear filter"
+            type="button"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {loading ? (
-        <div className="state-block" role="status">
-          <div className="loading-text">
-            Loading entities from graph
-            <div className="loading-dots" aria-hidden="true">
-              <span/><span/><span/>
+        <div className="state-block loading-state" role="status">
+          <div className="loading-card">
+            <div className="loading-spinner-ring" aria-hidden="true" />
+            <div className="loading-content">
+              <div className="loading-title">LOADING ENTITIES</div>
+              <div className="loading-desc">Fetching graph entities from HydraDB...</div>
             </div>
           </div>
         </div>
@@ -60,7 +73,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
       ) : (
         <>
           <div className="entity-count-line">
-            Showing {filtered.length} of {entities.length} entities in graph
+            Showing <strong>{filtered.length}</strong> of {entities.length} entities in graph
           </div>
           {filtered.length > 0 ? (
             <div className="entity-list">
@@ -68,33 +81,32 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
                 <div
                   key={entity}
                   className="entity-row"
-                  onClick={() => onTraceEntity(entity)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      onTraceEntity(entity)
-                    }
-                  }}
-                  aria-label={`Trace dependencies for ${entity}`}
+                  aria-label={`Entity ${entity}`}
                 >
                   <span className="entity-name">{entity}</span>
                   <div className="entity-row-actions">
                     {onAskEntity && (
                       <button
-                        className="inline-ask-btn"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onAskEntity(`What is connected to ${entity}?`)
-                        }}
+                        className="entity-action-btn entity-ask-btn"
+                        onClick={() => onAskEntity(`What is connected to ${entity}?`)}
                         title={`Ask question about ${entity}`}
                         aria-label={`Ask about ${entity}`}
                         type="button"
                       >
-                        <span>&gt;_ ASK</span>
+                        <span>ASK ABOUT THIS</span>
+                        <span aria-hidden="true">→</span>
                       </button>
                     )}
-                    <span className="entity-trace-hint" aria-hidden="true">trace →</span>
+                    <button
+                      className="entity-action-btn entity-trace-btn"
+                      onClick={() => onTraceEntity(entity)}
+                      title={`Trace dependencies for ${entity}`}
+                      aria-label={`Trace dependencies for ${entity}`}
+                      type="button"
+                    >
+                      <span>TRACE THIS</span>
+                      <span aria-hidden="true">⟷</span>
+                    </button>
                   </div>
                 </div>
               ))}

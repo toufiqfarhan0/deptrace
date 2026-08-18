@@ -73,8 +73,10 @@ export default function App() {
     setView('console')
   }, [])
 
-  // Entry point from landing page CTAs
+  // Entry point from landing page CTAs — always starts with a fresh investigation state
   const enterConsole = useCallback((consoleView = 'ask') => {
+    setAskQuery('')
+    setTraceEntity('')
     setActiveView(consoleView)
     setView('console')
   }, [])
@@ -86,13 +88,13 @@ export default function App() {
 
   const getBreadcrumb = () => {
     switch (activeView) {
-      case 'ask': return 'INVESTIGATE / Ask'
-      case 'trace': return 'INVESTIGATE / Trace'
-      case 'suggestions': return 'INVESTIGATE / Suggestions'
-      case 'entities': return 'EXPLORE / Entities'
-      case 'why-hydra': return 'SYSTEM / Why HydraDB?'
-      case 'health': return 'SYSTEM / Graph Health'
-      default: return 'INVESTIGATE'
+      case 'ask': return 'Investigate / Ask'
+      case 'trace': return 'Investigate / Trace'
+      case 'suggestions': return 'Explore / Suggestions'
+      case 'entities': return 'Explore / Entities'
+      case 'why-hydra': return 'Learn / How Veridex Works'
+      case 'health': return 'System / Graph Health'
+      default: return 'Investigate'
     }
   }
 

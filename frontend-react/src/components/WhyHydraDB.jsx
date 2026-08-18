@@ -25,10 +25,50 @@ export default function WhyHydraDB() {
   }, [])
 
   return (
-    <section aria-label="Why HydraDB architecture and benchmark">
-      <div className="view-title">Why HydraDB?</div>
-      <div className="view-subtitle">
-        Why HydraDB is essential to Veridex rather than a generic database sitting underneath an LLM.
+    <section aria-label="Why HydraDB architecture and benchmark" className="why-hydra-section">
+      <div className="view-header">
+        <h1 className="view-title">How Veridex Works</h1>
+        <div className="view-subtitle">
+          Why deterministic graph reasoning with HydraDB is essential for enterprise truth rather than traditional vector RAG.
+        </div>
+      </div>
+
+      {/* Visual Investigation Pipeline */}
+      <div className="pipeline-card" style={{ marginBottom: '24px' }}>
+        <div className="pipeline-header">
+          <span className="section-label">THE 5-STEP INVESTIGATION PIPELINE</span>
+        </div>
+        <div className="pipeline-flow-steps">
+          <div className="pipeline-step-item">
+            <span className="pipeline-step-badge">01</span>
+            <div className="pipeline-step-name">User Question</div>
+            <div className="pipeline-step-desc">Natural language incident or ticket inquiry</div>
+          </div>
+          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
+          <div className="pipeline-step-item">
+            <span className="pipeline-step-badge">02</span>
+            <div className="pipeline-step-name">HydraDB Resolution</div>
+            <div className="pipeline-step-desc">Graph traversal & relationship resolution</div>
+          </div>
+          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
+          <div className="pipeline-step-item">
+            <span className="pipeline-step-badge">03</span>
+            <div className="pipeline-step-name">Evidence Bundle</div>
+            <div className="pipeline-step-desc">Bounded facts [E1, E2] with doc provenance</div>
+          </div>
+          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
+          <div className="pipeline-step-item">
+            <span className="pipeline-step-badge">04</span>
+            <div className="pipeline-step-name">Gemini Synthesis</div>
+            <div className="pipeline-step-desc">Language generation strictly from evidence</div>
+          </div>
+          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
+          <div className="pipeline-step-item">
+            <span className="pipeline-step-badge">05</span>
+            <div className="pipeline-step-name">Grounded Answer</div>
+            <div className="pipeline-step-desc">Verifiable citations with zero hallucination</div>
+          </div>
+        </div>
       </div>
 
       {/* Core Architectural Flow */}
