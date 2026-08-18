@@ -85,11 +85,7 @@ Vector search measures **topical semantic similarity**, not **relational causali
 
 ## System Architecture
 
-<div align="center">
-  <img src="docs/architecture.jpg" alt="Veridex System Architecture" width="100%" />
-</div>
-
-Veridex uses a modular architecture separating deterministic graph traversal from generative synthesis:
+Veridex uses a three-tier architecture separating deterministic graph traversal from generative synthesis:
 
 ```mermaid
 graph TD
