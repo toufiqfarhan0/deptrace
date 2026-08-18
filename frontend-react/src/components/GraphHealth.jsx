@@ -14,10 +14,12 @@ export default function GraphHealth({ hydraStatus }) {
   ]
 
   return (
-    <section aria-label="Graph health">
-      <div className="view-title">Graph Health</div>
-      <div className="view-subtitle">
-        Live telemetry from HydraDB and backend services. Real metrics only.
+    <section aria-label="Graph health" className="health-section">
+      <div className="view-header">
+        <h1 className="view-title">System & Graph Health</h1>
+        <div className="view-subtitle">
+          Live connectivity and telemetry from HydraDB Cloud and backend API services.
+        </div>
       </div>
 
       <div className="health-grid">

@@ -5,6 +5,7 @@ const STARTER_QUERIES = [
   'What happened during incident INC-2026?',
   'What is PR-99501 about?',
   'What is ENG-68910 about?',
+  'What caused the Bluecrest gateway timeouts?',
 ]
 
 function CitationPill({ id, onClick, highlighted }) {
@@ -65,13 +66,13 @@ function GroundingIndicator({ state }) {
   const config = {
     grounded: {
       dot: '●',
-      badge: 'GROUNDED',
-      text: 'Evidence-backed synthesis',
+      badge: 'GROUNDED IN EVIDENCE',
+      text: 'Verified against retrieved HydraDB facts',
     },
     ungrounded: {
       dot: '○',
       badge: 'UNVERIFIED',
-      text: 'Model response not verified against evidence',
+      text: 'Response not verified against evidence',
     },
     insufficient: {
       dot: '◐',
@@ -165,20 +166,20 @@ function EvidenceRows({ items, highlightedId, onHighlight, onNavigateToTrace }) 
             <div className="evidence-meta">
               {item.source && (
                 <span className="source-tag">
-                  <strong>src:</strong> {item.source}
+                  <strong>Source:</strong> {item.source}
                 </span>
               )}
               {item.message_id ? (
                 <span>
-                  <strong>msg:</strong> {item.message_id}
+                  <strong>Message ID:</strong> {item.message_id}
                 </span>
               ) : null}
               {item.document_id ? (
                 <span>
-                  <strong>doc:</strong>{' '}
+                  <strong>Document:</strong>{' '}
                   <span title={item.document_id}>
-                    {item.document_id.length > 22
-                      ? `${item.document_id.slice(0, 22)}...`
+                    {item.document_id.length > 24
+                      ? `${item.document_id.slice(0, 24)}...`
                       : item.document_id}
                   </span>
                 </span>
@@ -242,13 +243,12 @@ export default function InvestigationView({
     }
   }, [query])
 
-  // Handle external query navigation from Suggestions view
+  // Sync draft query from external navigation WITHOUT auto-executing
   useEffect(() => {
-    if (initialQuery && initialQuery.trim() !== '') {
+    if (initialQuery !== undefined) {
       setQuery(initialQuery)
-      handleExecute(initialQuery)
     }
-  }, [initialQuery, handleExecute])
+  }, [initialQuery])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -260,7 +260,9 @@ export default function InvestigationView({
   const handleSelectSuggestion = (sQuery) => {
     setQuery(sQuery)
     if (onQueryChange) onQueryChange(sQuery)
-    handleExecute(sQuery)
+    if (textareaRef.current) {
+      textareaRef.current.focus()
+    }
   }
 
   const groundingState = result ? getGroundingState(result.grounded, result.answer) : null
@@ -280,15 +282,20 @@ export default function InvestigationView({
       <div className="view-header">
         <h1 className="view-title">Investigate</h1>
         <div className="view-subtitle">
-          Trace incident causes, architectural decisions, and verify evidence across HydraDB.
+          Ask questions about incidents, tickets, pull requests, and engineering decisions grounded in HydraDB.
         </div>
       </div>
 
-      {/* Query Console */}
+      {/* Query Input Card */}
       <div className="query-console" role="search">
+        <div className="query-card-header">
+          <label htmlFor="investigation-input" className="query-card-label">
+            What would you like to investigate?
+          </label>
+        </div>
         <div className="query-input-row">
-          <div className="query-prefix" aria-hidden="true">&gt;_</div>
           <textarea
+            id="investigation-input"
             ref={textareaRef}
             className="query-input"
             value={query}
@@ -297,7 +304,7 @@ export default function InvestigationView({
               if (onQueryChange) onQueryChange(e.target.value)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="What happened during incident INC-2026? or What is PR-99501 about?"
+            placeholder="Ask about incidents, tickets, pull requests, dependencies, or engineering decisions..."
             rows={2}
             aria-label="Investigation query input"
             disabled={loading}
@@ -306,36 +313,35 @@ export default function InvestigationView({
             className={`query-execute-btn ${loading ? 'loading' : ''}`}
             onClick={() => handleExecute()}
             disabled={loading || !query.trim()}
-            aria-label="Execute query"
+            aria-label="Ask Veridex"
             type="button"
           >
             {loading ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                <span>ANALYZING</span>
+                <span>SEARCHING...</span>
               </>
             ) : (
               <>
-                <span className="btn-state-tag">READY</span>
-                <span>EXECUTE →</span>
+                <span>ASK VERIDEX</span>
+                <span aria-hidden="true">→</span>
               </>
             )}
           </button>
         </div>
 
-        {/* Command Suggestions */}
+        {/* Suggestion Chips */}
         <div className="query-suggestions" aria-label="Suggested investigations">
-          <span className="suggestion-prefix">Suggested Inquiries:</span>
+          <span className="suggestion-prefix">Try asking:</span>
           <div className="suggestion-pills">
             {suggestions.map((s) => (
               <button
                 key={s.label}
                 className="suggestion-btn"
                 onClick={() => handleSelectSuggestion(s.query)}
-                aria-label={`Run investigation: ${s.label}`}
+                aria-label={`Fill question: ${s.label}`}
                 type="button"
               >
-                <span className="suggestion-icon" aria-hidden="true">&gt;_</span>
                 <span>{s.label}</span>
               </button>
             ))}
@@ -349,9 +355,9 @@ export default function InvestigationView({
           <div className="loading-card">
             <div className="loading-spinner-ring" aria-hidden="true" />
             <div className="loading-content">
-              <div className="loading-title">ANALYZING QUERY...</div>
+              <div className="loading-title">INVESTIGATING KNOWLEDGE GRAPH</div>
               <div className="loading-desc">
-                Traversing HydraDB graph relationships and assembling bounded evidence bundle
+                Traversing HydraDB graph relationships and assembling bounded evidence bundle...
               </div>
             </div>
           </div>
@@ -372,7 +378,7 @@ export default function InvestigationView({
           {/* Query Bar */}
           <div className="query-meta-bar">
             <div className="query-meta-left">
-              <span className="query-label-small">QUERY</span>
+              <span className="query-label-small">QUESTION</span>
               <span className="query-text-display">&ldquo;{result.question}&rdquo;</span>
             </div>
             {latencyMs !== null && (
@@ -397,10 +403,10 @@ export default function InvestigationView({
             </div>
           )}
 
-          {/* Synthesis Block */}
+          {/* Answer Block */}
           <div className="synthesis-block">
             <div className="synthesis-header">
-              <span className="synthesis-label">SYNTHESIS</span>
+              <span className="synthesis-label">ANSWER</span>
               <GroundingIndicator state={groundingState} />
             </div>
             <div className="synthesis-body">
@@ -414,7 +420,7 @@ export default function InvestigationView({
             {/* Quick Entity Trace Shortcuts Row */}
             {uniqueEntities.length > 0 && onNavigateToTrace && (
               <div className="synthesis-entity-shortcuts">
-                <span className="shortcuts-lbl">TRACE DISCOVERED ENTITIES:</span>
+                <span className="shortcuts-lbl">RELATED ENTITIES IN GRAPH:</span>
                 <div className="shortcuts-list">
                   {uniqueEntities.map((ent) => (
                     <button
@@ -424,8 +430,8 @@ export default function InvestigationView({
                       title={`Trace dependencies for ${ent}`}
                       type="button"
                     >
-                      <span className="shortcut-dot" aria-hidden="true">⟷</span>
                       <span>{ent}</span>
+                      <span className="shortcut-dot" aria-hidden="true">⟷</span>
                     </button>
                   ))}
                 </div>
@@ -437,9 +443,9 @@ export default function InvestigationView({
           <div className="evidence-block">
             <div className="evidence-header">
               <div className="evidence-header-left">
-                <span className="evidence-header-label">EVIDENCE</span>
+                <span className="evidence-header-label">EVIDENCE FROM HYDRADB</span>
                 <span className="evidence-count">
-                  {result.evidence?.length ?? 0} item{result.evidence?.length === 1 ? '' : 's'} retrieved from HydraDB
+                  {result.evidence?.length ?? 0} item{result.evidence?.length === 1 ? '' : 's'} retrieved
                 </span>
               </div>
               {highlightedId && (
@@ -462,16 +468,18 @@ export default function InvestigationView({
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty Starter State */}
       {!result && !loading && !error && (
         <div className="empty-block starter-empty-block">
-          <div className="starter-icon" aria-hidden="true">&gt;_</div>
-          <div className="empty-label">INVESTIGATION CONSOLE</div>
-          <div className="empty-desc">
-            Ask Veridex about incidents, components, tickets, dependencies, or engineering decisions across the HydraDB graph.
+          <div className="starter-header">
+            <div className="empty-label">START AN INVESTIGATION</div>
+            <div className="empty-desc">
+              Ask questions about incidents, pull requests, Linear tickets, or Slack discussions.
+              Veridex deterministically queries the HydraDB knowledge graph to retrieve verified facts and synthesizes grounded answers with citations.
+            </div>
           </div>
           <div className="starter-queries-row">
-            <span className="starter-queries-label">Try an investigation query:</span>
+            <span className="starter-queries-label">Click an example question to populate:</span>
             <div className="starter-buttons">
               {STARTER_QUERIES.map((sq) => (
                 <button

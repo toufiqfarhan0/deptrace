@@ -64,24 +64,123 @@ function SignalFlowDiagram() {
   )
 }
 
-function PrinciplesSection() {
-  const principles = [
-    { label: "DETERMINISTIC RETRIEVAL", body: "HydraDB resolves graph relationships before any synthesis occurs. No fuzzy vector lookup for factual resolution." },
-    { label: "GROUNDED SYNTHESIS", body: "Gemini answers only from the bounded evidence bundle retrieved from the graph. Hallucinated linkages are structurally impossible." },
-    { label: "PROVENANCE", body: "Every evidence item retains its original message ID and document identity throughout the full retrieval chain." },
-    { label: "DEPENDENCY TRACING", body: "Multi-hop BFS traversal across technical entities reveals the full dependency surface of any incident or decision." },
+function WorkflowStepsSection({ onEnterConsole }) {
+  const steps = [
+    {
+      step: "01",
+      title: "ASK",
+      headline: "Ask a question about your engineering knowledge.",
+      desc: "Query incidents, pull requests, Linear issues, and Slack conversations in natural language without complex query syntax.",
+    },
+    {
+      step: "02",
+      title: "CONNECT",
+      headline: "Veridex resolves relationships across HydraDB.",
+      desc: "HydraDB traverses cross-system entity relationships and extracts bounded facts with strict message and document IDs.",
+    },
+    {
+      step: "03",
+      title: "VERIFY",
+      headline: "Review the evidence, provenance, and dependency paths.",
+      desc: "Gemini synthesizes a clear answer citing exact evidence items [E1, E2]. Trace dependencies to verify root causes.",
+    },
   ]
+
   return (
-    <section className="lp-section" aria-labelledby="principles-heading">
+    <section className="lp-section" aria-labelledby="workflow-heading">
       <div className="lp-container">
-        <div className="lp-section-eyebrow" id="principles-heading">CORE PRINCIPLES</div>
-        <div className="lp-principles-grid">
-          {principles.map((p) => (
-            <div key={p.label} className="lp-principle-card">
-              <div className="lp-principle-label">{p.label}</div>
-              <p className="lp-principle-body">{p.body}</p>
+        <div className="lp-section-eyebrow" id="workflow-heading">HOW IT WORKS</div>
+        <h2 className="lp-section-title">From fragmented signals to grounded investigation.</h2>
+        <p className="lp-section-body">
+          A predictable 3-step investigation pipeline designed for engineering teams and postmortem investigations.
+        </p>
+        <div className="lp-workflow-grid">
+          {steps.map((s) => (
+            <div key={s.step} className="lp-workflow-card">
+              <div className="lp-workflow-num">{s.step}</div>
+              <div className="lp-workflow-tag">{s.title}</div>
+              <h3 className="lp-workflow-headline">{s.headline}</h3>
+              <p className="lp-workflow-desc">{s.desc}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function AskVsTraceSection({ onEnterConsole }) {
+  return (
+    <section className="lp-section lp-section--ruled" aria-labelledby="comparison-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="comparison-heading">TWO COMPLEMENTARY MODES</div>
+        <h2 className="lp-section-title">Choose your investigation lens: Ask or Trace.</h2>
+        <p className="lp-section-body">
+          Whether you need a direct evidence-backed answer to an incident question or want to map multi-hop component dependencies, Veridex provides dedicated workflows.
+        </p>
+
+        <div className="lp-comparison-grid">
+          {/* ASK CARD */}
+          <div className="lp-comparison-card">
+            <div className="lp-comparison-header">
+              <div className="lp-comparison-badge ask">ASK MODE</div>
+              <h3 className="lp-comparison-title">Get an evidence-backed answer.</h3>
+            </div>
+            <p className="lp-comparison-desc">
+              Ask natural language questions about incidents, tickets, PRs, and team decisions. Veridex returns a grounded answer strictly citing retrieved graph evidence.
+            </p>
+            <div className="lp-comparison-example">
+              <div className="lp-comparison-ex-lbl">EXAMPLE QUESTION</div>
+              <div className="lp-comparison-ex-val">&ldquo;What happened during incident INC-2026?&rdquo;</div>
+            </div>
+            <ul className="lp-comparison-features">
+              <li><span>✓</span> Grounded answer language synthesis</li>
+              <li><span>✓</span> Bounded evidence bundle [E1, E2, ...]</li>
+              <li><span>✓</span> Direct source document and message provenance</li>
+              <li><span>✓</span> Discovered entity shortcuts for follow-up tracing</li>
+            </ul>
+            <div className="lp-comparison-action">
+              <button
+                className="lp-btn-primary"
+                onClick={() => onEnterConsole("ask")}
+                id="lp-ask-mode-cta"
+                type="button"
+              >
+                ASK A QUESTION →
+              </button>
+            </div>
+          </div>
+
+          {/* TRACE CARD */}
+          <div className="lp-comparison-card">
+            <div className="lp-comparison-header">
+              <div className="lp-comparison-badge trace">TRACE MODE</div>
+              <h3 className="lp-comparison-title">Understand what is connected.</h3>
+            </div>
+            <p className="lp-comparison-desc">
+              Enter any technical entity, ticket, or pull request to traverse multi-hop relationships, reveal affected components, and view a reconstructed timeline.
+            </p>
+            <div className="lp-comparison-example">
+              <div className="lp-comparison-ex-lbl">EXAMPLE ENTITY</div>
+              <div className="lp-comparison-ex-val">&ldquo;PR-99501&rdquo; or &ldquo;INC-2026&rdquo;</div>
+            </div>
+            <ul className="lp-comparison-features">
+              <li><span>✓</span> Multi-hop BFS dependency graph traversal (1–3 hops)</li>
+              <li><span>✓</span> Upstream causes and downstream affected components</li>
+              <li><span>✓</span> Chronological statement timeline with timestamps</li>
+              <li><span>✓</span> Zero-hallucination graph connectivity</li>
+            </ul>
+            <div className="lp-comparison-action">
+              <button
+                className="lp-btn-ghost"
+                onClick={() => onEnterConsole("trace")}
+                id="lp-trace-mode-cta"
+                type="button"
+              >
+                TRACE DEPENDENCIES →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -273,7 +372,7 @@ function WhyHydraSection({ onNavigateToWhyHydra }) {
           ))}
         </div>
         <div className="lp-arch-cta">
-          <button className="lp-btn-ghost" onClick={onNavigateToWhyHydra} id="lp-explore-arch-btn">EXPLORE THE ARCHITECTURE &#8594;</button>
+          <button className="lp-btn-ghost" onClick={onNavigateToWhyHydra} id="lp-explore-arch-btn">HOW VERIDEX WORKS &#8594;</button>
         </div>
       </div>
     </section>
@@ -297,10 +396,11 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
             <span className="lp-nav-tag">BETA</span>
           </div>
           <nav className="lp-nav-links" aria-label="Product navigation">
-            <button className="lp-nav-link" onClick={() => onEnterConsole("ask")} id="lp-nav-investigate">INVESTIGATE</button>
+            <button className="lp-nav-link" onClick={() => onEnterConsole("ask")} id="lp-nav-investigate">ASK</button>
             <button className="lp-nav-link" onClick={() => onEnterConsole("trace")} id="lp-nav-trace">TRACE</button>
-            <button className="lp-nav-link" onClick={() => onEnterConsole("entities")} id="lp-nav-explore">EXPLORE</button>
-            <button className="lp-nav-link" onClick={() => onEnterConsole("why-hydra")} id="lp-nav-why">WHY HYDRADB</button>
+            <button className="lp-nav-link" onClick={() => onEnterConsole("suggestions")} id="lp-nav-suggestions">SUGGESTIONS</button>
+            <button className="lp-nav-link" onClick={() => onEnterConsole("entities")} id="lp-nav-explore">ENTITIES</button>
+            <button className="lp-nav-link" onClick={onNavigateToWhyHydra} id="lp-nav-why">HOW IT WORKS</button>
           </nav>
           <div className="lp-nav-right">
             {theme && onToggleTheme && (
@@ -322,14 +422,16 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
       <section className="lp-hero" aria-labelledby="hero-heading">
         <div className="lp-hero-inner">
           <div className="lp-hero-left">
-            <div className="lp-hero-eyebrow">ENTERPRISE KNOWLEDGE INVESTIGATION</div>
+            <div className="lp-hero-eyebrow">EVIDENCE-FIRST KNOWLEDGE INVESTIGATION</div>
             <h1 className="lp-hero-headline" id="hero-heading">
-              Your company{"\u2019"}s technical truth is <span className="lp-hero-accent">fragmented.</span>
+              Search your company{"\u2019"}s technical truth with <span className="lp-hero-accent">guaranteed provenance.</span>
             </h1>
-            <p className="lp-hero-body">Veridex reconstructs incidents, dependencies, decisions, and evidence from the systems your engineering organization already uses.</p>
+            <p className="lp-hero-body">
+              Ask questions about incidents, tickets, pull requests, and engineering decisions. Veridex connects the evidence through HydraDB and shows you where every answer came from.
+            </p>
             <div className="lp-hero-ctas">
-              <button className="lp-btn-primary lp-btn-lg" onClick={() => onEnterConsole("ask")} id="lp-hero-open-console">OPEN INVESTIGATION CONSOLE</button>
-              <button className="lp-btn-ghost lp-btn-lg" onClick={() => onEnterConsole("why-hydra")} id="lp-hero-why-hydra">SEE HOW HYDRADB WORKS</button>
+              <button className="lp-btn-primary lp-btn-lg" onClick={() => onEnterConsole("ask")} id="lp-hero-open-console">START AN INVESTIGATION</button>
+              <button className="lp-btn-ghost lp-btn-lg" onClick={onNavigateToWhyHydra} id="lp-hero-why-hydra">EXPLORE HOW IT WORKS</button>
             </div>
             <div className="lp-hero-dataset-note">Running on a controlled 60-document demo slice &#183; Slack &#183; Linear &#183; GitHub</div>
           </div>
@@ -339,7 +441,8 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
         </div>
       </section>
 
-      <PrinciplesSection />
+      <WorkflowStepsSection onEnterConsole={onEnterConsole} />
+      <AskVsTraceSection onEnterConsole={onEnterConsole} />
       <SignalsToStateSection />
       <InvestigationExample onEnterConsole={() => onEnterConsole("ask")} />
       <DependencyTracePreview />
