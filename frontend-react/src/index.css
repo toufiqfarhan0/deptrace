@@ -3362,6 +3362,99 @@ input, textarea, select {
   gap: 8px;
 }
 
+/* Entity Exploration Cards */
+.entity-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  margin-bottom: 40px;
+}
+
+.entity-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+.entity-card:hover {
+  border-color: var(--c-accent-border);
+  background: var(--c-surface-2);
+}
+
+.entity-card-top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entity-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.entity-card-name {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.entity-type-badge {
+  font-family: var(--font-mono);
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: var(--c-surface-3);
+  color: var(--c-accent);
+  border: 1px solid var(--c-accent-border);
+  text-transform: uppercase;
+}
+
+.entity-availability-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--c-ok);
+}
+
+.availability-dot {
+  color: var(--c-ok);
+  font-size: 0.75rem;
+}
+
+.entity-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--c-border);
+  padding-top: 12px;
+}
+
+.entity-action-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entity-action-subtext {
+  font-size: 0.72rem;
+  color: var(--c-text-3);
+  line-height: 1.35;
+}
+
 .synthesis-entity-shortcuts {
   display: flex;
   align-items: center;
