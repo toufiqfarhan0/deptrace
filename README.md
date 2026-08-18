@@ -28,8 +28,7 @@ $$\mathbf{\text{HydraDB handles deterministic graph reasoning. Gemini handles la
 9. [Verification & Testing Suite](#verification--testing-suite)
 10. [Evaluation Benchmark & Ablation Study](#evaluation-benchmark--ablation-study)
 11. [Security & Secret Isolation](#security--secret-isolation)
-12. [Hackathon Demo Video & Submission Guide](#hackathon-demo-video--submission-guide)
-13. [License & Acknowledgements](#license--acknowledgements)
+12. [License & Acknowledgements](#license--acknowledgements)
 
 ---
 
@@ -627,37 +626,6 @@ Enterprise engineering data contains sensitive intellectual property. Veridex en
 2. **Automatic Secret Redaction**: The backend sanitizes all error logs using regex filters targeting API key patterns (`AIza...`, `Bearer ey...`, `key=ey...`).
 3. **CORS & Rate Limiting**: Production API routes restrict origins and validate payload lengths to prevent denial-of-service and injection attacks.
 4. **Git Protection**: `.env` and local caches are ignored via [`.gitignore`](.gitignore).
-
----
-
-## Hackathon Demo Video & Submission Guide
-
-According to the **Hack Hydra Participant Guide (Page 8 & 11)**, submissions require:
-1. **Google Form** ([forms.gle/GrMYKxLj9zPQcqqc8](https://forms.gle/GrMYKxLj9zPQcqqc8))
-2. **3-Minute Demo Video** (YouTube or Loom)
-3. **Public GitHub Repository** (with open-source license, clean README, and setup instructions)
-
-### 3-Minute Demo Video Script Structure:
-
-```
-[0:00 - 0:45] 1. THE PROBLEM
-- Modern tech teams fragment knowledge across Slack, Linear, and GitHub.
-- Pure vector search fails because embeddings lose relational structure and hallucinate linkages.
-
-[0:45 - 1:30] 2. THE PROJECT (VERIDEX)
-- Introduce Veridex: Evidence-first dependency intelligence for Track 1.
-- Show the 4-tier ontology (Document -> Message -> Statement -> Entity).
-
-[1:30 - 2:30] 3. LIVE DEMONSTRATION
-- Run an investigation query (e.g., "What happened during incident INC-2026?").
-- Show the Markdown answer and click citation pills [E1, E2] to reveal underlying evidence cards.
-- Switch to the Dependency Tracer: Execute a multi-hop trace on PR-99501, showing the impact blast radius and timeline.
-- Demonstrate honest abstention on an untracked entity query.
-
-[2:30 - 3:00] 4. WHY HYDRADB
-- Emphasize: HydraDB handles deterministic graph reasoning; Gemini handles language synthesis.
-- Highlight the 153-test suite and unbroken provenance preservation.
-```
 
 ---
 
