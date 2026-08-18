@@ -12,7 +12,10 @@ function CitationPill({ id, onClick, highlighted }) {
   return (
     <button
       className={`citation-pill ${highlighted ? 'highlighted' : ''}`}
-      onClick={() => onClick(id)}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (onClick) onClick(id)
+      }}
       aria-label={`Jump to evidence [${id}]`}
       type="button"
     >
@@ -21,36 +24,211 @@ function CitationPill({ id, onClick, highlighted }) {
   )
 }
 
-function formatAnswerWithCitations(answer, onCitationClick, highlightedId) {
-  if (!answer) return null
-  // Parse grouped citations like [E1, E2] or [E1]
-  const parts = answer.split(/(\[[^\]]*E\d+[^\]]*\])/gi)
-  return parts.map((part, i) => {
-    const citMatch = part.match(/^\[(.*?)\]$/)
-    if (citMatch) {
-      const eMatches = citMatch[1].match(/E\d+/gi)
-      if (eMatches && eMatches.length > 0) {
+/**
+ * Tokenizes inline text to parse citations [E1], bold **text**, inline code `code`,
+ * and italic *text* into rich React components.
+ */
+function renderInlineWithCitations(text, onCitationClick, highlightedId) {
+  if (!text) return null
+
+  const tokens = []
+  let remaining = text
+  // Match citations e.g. [E1] or [E1, E2], bold **text**, inline code `code`, italic *text*
+  const tokenRegex = /(\[[^\]]*E\d+[^\]]*\])|(\*\*[^*]+\*\*)|(`[^`]+`)|(\*[^*]+\*)/i
+  let keyIdx = 0
+
+  while (remaining) {
+    const match = remaining.match(tokenRegex)
+    if (!match) {
+      tokens.push(
+        React.createElement('span', { key: `txt-${keyIdx++}` }, remaining)
+      )
+      break
+    }
+
+    const matchIndex = match.index
+    if (matchIndex > 0) {
+      tokens.push(
+        React.createElement(
+          'span',
+          { key: `txt-${keyIdx++}` },
+          remaining.slice(0, matchIndex)
+        )
+      )
+    }
+
+    const matchedStr = match[0]
+
+    // 1. Citation tag [E1] or grouped [E1, E2, E3]
+    if (match[1]) {
+      const eMatches = matchedStr.match(/E\d+/gi) || []
+      const pills = eMatches.map((tag, j) => {
+        const norm = tag.toUpperCase()
+        const isHigh = highlightedId === norm
         return (
-          <span key={i} className="citation-group">
-            {eMatches.map((tag, j) => {
-              const norm = tag.toUpperCase()
-              return (
-                <span key={norm}>
-                  <CitationPill
-                    id={norm}
-                    onClick={onCitationClick}
-                    highlighted={highlightedId === norm}
-                  />
-                  {j < eMatches.length - 1 ? ' ' : ''}
-                </span>
-              )
-            })}
+          <span key={`cit-${norm}-${keyIdx++}`}>
+            <CitationPill
+              id={norm}
+              onClick={onCitationClick}
+              highlighted={isHigh}
+            />
+            {j < eMatches.length - 1 ? ' ' : ''}
           </span>
         )
-      }
+      })
+      tokens.push(
+        <span key={`cg-${keyIdx++}`} className="citation-group">
+          {pills}
+        </span>
+      )
     }
-    return <span key={i}>{part}</span>
-  })
+    // 2. Bold **text**
+    else if (match[2]) {
+      const boldContent = matchedStr.slice(2, -2)
+      tokens.push(
+        <strong key={`b-${keyIdx++}`} className="md-strong">
+          {renderInlineWithCitations(boldContent, onCitationClick, highlightedId)}
+        </strong>
+      )
+    }
+    // 3. Inline code `code`
+    else if (match[3]) {
+      const codeContent = matchedStr.slice(1, -1)
+      tokens.push(
+        <code key={`c-${keyIdx++}`} className="md-inline-code">
+          {codeContent}
+        </code>
+      )
+    }
+    // 4. Italic *text*
+    else if (match[4]) {
+      const italicContent = matchedStr.slice(1, -1)
+      tokens.push(
+        <em key={`em-${keyIdx++}`} className="md-em">
+          {renderInlineWithCitations(italicContent, onCitationClick, highlightedId)}
+        </em>
+      )
+    }
+
+    remaining = remaining.slice(matchIndex + matchedStr.length)
+  }
+
+  return tokens
+}
+
+/**
+ * MarkdownAnswerRenderer renders formatted Gemini/RAG answers without exposing
+ * raw markdown syntax (**, ###, bullets, code blocks), while keeping citation
+ * pills interactive.
+ */
+function MarkdownAnswerRenderer({ answer, onCitationClick, highlightedId }) {
+  if (!answer) return null
+
+  const rawLines = answer.split(/\r?\n/)
+  const blocks = []
+  let currentList = null // { type: 'ul' | 'ol', items: [] }
+  let currentCodeBlock = null // { lang: '', lines: [] }
+  let blockIdx = 0
+
+  function flushList() {
+    if (currentList) {
+      const isUl = currentList.type === 'ul'
+      blocks.push(
+        React.createElement(
+          isUl ? 'ul' : 'ol',
+          { key: `list-${blockIdx++}`, className: isUl ? 'md-ul' : 'md-ol' },
+          currentList.items.map((it, i) => (
+            <li key={`li-${i}`} className="md-li">
+              {renderInlineWithCitations(it, onCitationClick, highlightedId)}
+            </li>
+          ))
+        )
+      )
+      currentList = null
+    }
+  }
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i]
+    const trimmed = line.trim()
+
+    // Fenced code block toggle
+    if (trimmed.startsWith('```')) {
+      if (currentCodeBlock) {
+        blocks.push(
+          <pre key={`codeblock-${blockIdx++}`} className="md-pre">
+            <code className="md-code-block">{currentCodeBlock.lines.join('\n')}</code>
+          </pre>
+        )
+        currentCodeBlock = null
+      } else {
+        flushList()
+        currentCodeBlock = { lang: trimmed.slice(3).trim(), lines: [] }
+      }
+      continue
+    }
+
+    if (currentCodeBlock) {
+      currentCodeBlock.lines.push(line)
+      continue
+    }
+
+    if (!trimmed) {
+      flushList()
+      continue
+    }
+
+    // Headings: ###, ##, #
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/)
+    if (headingMatch) {
+      flushList()
+      const level = headingMatch[1].length
+      const headingText = headingMatch[2]
+      const Tag = level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4'
+      blocks.push(
+        React.createElement(
+          Tag,
+          { key: `h-${blockIdx++}`, className: `md-heading md-h${level}` },
+          renderInlineWithCitations(headingText, onCitationClick, highlightedId)
+        )
+      )
+      continue
+    }
+
+    // Unordered list item: - item, * item, • item
+    const ulMatch = trimmed.match(/^[-*•]\s+(.+)$/)
+    if (ulMatch) {
+      if (!currentList || currentList.type !== 'ul') {
+        flushList()
+        currentList = { type: 'ul', items: [] }
+      }
+      currentList.items.push(ulMatch[1])
+      continue
+    }
+
+    // Ordered list item: 1. item
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/)
+    if (olMatch) {
+      if (!currentList || currentList.type !== 'ol') {
+        flushList()
+        currentList = { type: 'ol', items: [] }
+      }
+      currentList.items.push(olMatch[1])
+      continue
+    }
+
+    // Regular paragraph
+    flushList()
+    blocks.push(
+      <p key={`p-${blockIdx++}`} className="md-paragraph">
+        {renderInlineWithCitations(trimmed, onCitationClick, highlightedId)}
+      </p>
+    )
+  }
+
+  flushList()
+
+  return <div className="md-rendered-answer">{blocks}</div>
 }
 
 function getGroundingState(grounded, answer) {
@@ -61,32 +239,24 @@ function getGroundingState(grounded, answer) {
   return 'ungrounded'
 }
 
-function GroundingIndicator({ state }) {
+function GroundingStatusChip({ state, evidenceCount }) {
   if (!state) return null
-  const config = {
-    grounded: {
-      dot: '●',
-      badge: 'GROUNDED IN EVIDENCE',
-      text: 'Verified against retrieved HydraDB facts',
-    },
-    ungrounded: {
-      dot: '○',
-      badge: 'UNVERIFIED',
-      text: 'Response not verified against evidence',
-    },
-    insufficient: {
-      dot: '◐',
-      badge: 'INSUFFICIENT EVIDENCE',
-      text: 'Graph did not contain enough data',
-    },
-  }
-  const { dot, badge, text } = config[state] || config.ungrounded
+  const isGrounded = state === 'grounded'
+  const isInsufficient = state === 'insufficient'
+
   return (
-    <div className={`grounding-indicator ${state}`} role="status" aria-live="polite">
-      <span className="grounding-dot" aria-hidden="true">{dot}</span>
-      <span className="grounding-badge-tag">{badge}</span>
-      <span className="grounding-sep" aria-hidden="true">·</span>
-      <span className="grounding-text">{text}</span>
+    <div className={`synthesis-status-chip ${state}`} role="status" aria-live="polite">
+      <span
+        className={`status-dot ${isGrounded ? 'ok' : isInsufficient ? 'warning' : 'neutral'}`}
+        aria-hidden="true"
+      />
+      <span className="status-chip-label">
+        {isGrounded
+          ? `Grounded in HydraDB evidence · ${evidenceCount ?? 0} sources`
+          : isInsufficient
+          ? 'Insufficient evidence in graph'
+          : 'Unverified response'}
+      </span>
     </div>
   )
 }
@@ -438,33 +608,56 @@ export default function InvestigationView({
           {/* Answer Block */}
           <div className="synthesis-block">
             <div className="synthesis-header">
-              <span className="synthesis-label">ANSWER</span>
-              <GroundingIndicator state={groundingState} />
+              <div className="synthesis-header-main">
+                <span className="synthesis-title">INVESTIGATION RESULT</span>
+              </div>
+              <GroundingStatusChip state={groundingState} evidenceCount={result.evidence?.length ?? 0} />
             </div>
             <div className="synthesis-body">
-              {formatAnswerWithCitations(
-                result.answer,
-                handleCitationClick,
-                highlightedId
-              )}
+              <MarkdownAnswerRenderer
+                answer={result.answer}
+                onCitationClick={handleCitationClick}
+                highlightedId={highlightedId}
+              />
             </div>
 
             {/* Quick Entity Trace Shortcuts Row */}
             {uniqueEntities.length > 0 && onNavigateToTrace && (
               <div className="synthesis-entity-shortcuts">
-                <span className="shortcuts-lbl">RELATED ENTITIES IN GRAPH:</span>
+                <div className="shortcuts-header">
+                  <span className="shortcuts-icon" aria-hidden="true">⟷</span>
+                  <span className="shortcuts-lbl">RELATED GRAPH ENTITIES · INVESTIGATE NEXT</span>
+                </div>
                 <div className="shortcuts-list">
                   {uniqueEntities.map((ent) => (
-                    <button
-                      key={ent}
-                      className="entity-shortcut-btn"
-                      onClick={() => onNavigateToTrace(ent)}
-                      title={`Trace dependencies for ${ent}`}
-                      type="button"
-                    >
-                      <span>{ent}</span>
-                      <span className="shortcut-dot" aria-hidden="true">⟷</span>
-                    </button>
+                    <div key={ent} className="entity-chip-card">
+                      <span className="entity-chip-name">{ent}</span>
+                      <div className="entity-chip-actions">
+                        <button
+                          className="entity-chip-action-btn"
+                          onClick={() => onNavigateToTrace(ent)}
+                          title={`Trace dependency connections for ${ent}`}
+                          type="button"
+                        >
+                          <span>Trace Connections</span>
+                          <span aria-hidden="true">⟷</span>
+                        </button>
+                        <button
+                          className="entity-chip-action-btn secondary"
+                          onClick={() => {
+                            const q = `What is ${ent} about?`
+                            setQuery(q)
+                            if (onQueryChange) onQueryChange(q)
+                            if (textareaRef.current) textareaRef.current.focus()
+                          }}
+                          title={`Ask a question about ${ent}`}
+                          type="button"
+                        >
+                          <span>Ask about this</span>
+                          <span aria-hidden="true">→</span>
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -477,7 +670,7 @@ export default function InvestigationView({
               <div className="evidence-header-left">
                 <span className="evidence-header-label">EVIDENCE FROM HYDRADB</span>
                 <span className="evidence-count">
-                  {result.evidence?.length ?? 0} item{result.evidence?.length === 1 ? '' : 's'} retrieved
+                  {result.evidence?.length ?? 0} verified source{result.evidence?.length === 1 ? '' : 's'} retrieved from knowledge graph
                 </span>
               </div>
               {highlightedId && (
