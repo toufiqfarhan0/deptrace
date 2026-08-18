@@ -277,6 +277,15 @@ export default function InvestigationView({
     return Array.from(names)
   }, [result])
 
+  const extractedEntityCandidate = useMemo(() => {
+    if (uniqueEntities && uniqueEntities.length > 0) return uniqueEntities[0]
+    if (result?.question) {
+      const match = result.question.match(/(PR-\d+|INC-\d+|REL-\d+|ENG-\d+|DES-\d+|kernel-selector|api-search|v3.1.1-legacy-tokenizer)/i)
+      if (match) return match[0]
+    }
+    return ''
+  }, [uniqueEntities, result])
+
   return (
     <section aria-label="Investigation workspace" className="investigation-section">
       <div className="view-header">
@@ -389,7 +398,7 @@ export default function InvestigationView({
             )}
           </div>
 
-          {/* Insufficient Evidence Warning Banner if applicable */}
+          {/* Insufficient Evidence Explanation & Fallback Actions */}
           {groundingState === 'insufficient' && (
             <div className="insufficient-alert" role="status">
               <div className="insufficient-alert-header">
@@ -399,29 +408,28 @@ export default function InvestigationView({
               <p className="insufficient-alert-body">
                 HydraDB found this entity and its relationships, but the available source material does not contain enough supporting text for a grounded answer.
               </p>
-              <div className="insufficient-alert-actions" style={{ display: 'flex', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
-                {onNavigateToTrace && (
+              <div className="insufficient-actions">
+                {extractedEntityCandidate && onNavigateToTrace && (
                   <button
-                    className="lp-btn-primary lp-btn-sm"
-                    onClick={() => {
-                      const entityMatch = result.question.match(/\b([A-Z0-9]+-[A-Z0-9_-]+|[a-z0-9_-]+-selector|v\d+\.\d+\.\d+-[a-z0-9_-]+)\b/i)
-                      const targetEntity = entityMatch ? entityMatch[1] : (result.question.replace(/^What (is|happened during|happened with|caused) /i, '').replace(/\?$/, '').trim())
-                      onNavigateToTrace(targetEntity)
-                    }}
+                    className="insufficient-fallback-btn trace-fallback"
+                    onClick={() => onNavigateToTrace(extractedEntityCandidate)}
+                    title={`Trace relationships for ${extractedEntityCandidate}`}
                     type="button"
                   >
-                    <span>TRACE CONNECTIONS →</span>
+                    <span>TRACE THIS ENTITY ({extractedEntityCandidate})</span>
+                    <span aria-hidden="true">→</span>
                   </button>
                 )}
                 <button
-                  className="lp-btn-ghost lp-btn-sm"
+                  className="insufficient-fallback-btn ask-fallback"
                   onClick={() => {
                     setQuery('')
+                    if (onQueryChange) onQueryChange('')
                     if (textareaRef.current) textareaRef.current.focus()
                   }}
                   type="button"
                 >
-                  TRY ANOTHER QUESTION
+                  <span>TRY ANOTHER QUESTION</span>
                 </button>
               </div>
             </div>

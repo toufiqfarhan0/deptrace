@@ -1,15 +1,54 @@
 import React, { useState, useEffect } from 'react'
 
-function getEntityType(name) {
-  if (!name) return 'Entity'
-  const u = name.toUpperCase()
-  if (u.startsWith('PR-') || u.startsWith('PR#')) return 'GitHub Pull Request'
-  if (u.startsWith('INC-')) return 'Incident'
-  if (u.startsWith('REL-')) return 'Support Ticket / Release'
-  if (u.startsWith('ENG-') || u.startsWith('PAY-') || u.startsWith('DES-')) return 'Issue / Ticket'
-  if (name.includes(':') || name.includes('model') || name.includes('setting')) return 'Configuration Setting'
-  if (name.includes('guard') || name.includes('policy')) return 'Guardrail / Policy'
-  return 'Component'
+function getEntityMeta(entity) {
+  const norm = entity.trim()
+
+  // Entity Type Determination
+  let type = 'Knowledge Graph Object'
+  if (norm.startsWith('PR-')) type = 'GitHub Pull Request'
+  else if (norm.startsWith('INC-')) type = 'Incident'
+  else if (norm.startsWith('REL-')) type = 'Support Ticket / Incident'
+  else if (norm.startsWith('ENG-')) type = 'Issue / Ticket'
+  else if (norm.startsWith('DES-')) type = 'Design Spec'
+  else if (['kernel-selector', 'api-search', 'v3.1.1-legacy-tokenizer', 'request-time guard', 'Bluecrest'].includes(norm)) type = 'Component'
+  else if (norm.includes(':') || norm.includes('model')) type = 'Configuration Tag'
+
+  // Evidence availability determination safely without guessing
+  // Known evidence entities in HydraDB frozen dataset vs pure structural graph nodes
+  const textEvidenceEntities = [
+    'PR-99501',
+    'REL-311',
+    'INC-2026',
+    'ENG-68910',
+    'ENG-233901',
+    'ENG-30521',
+    'kernel-selector',
+    'api-search',
+    'v3.1.1-legacy-tokenizer',
+    'request-time guard',
+    'DES-23981',
+    'PR-482199',
+    'PR-209876',
+    'Bluecrest',
+  ]
+
+  const isStructuralOnly = ['strict_model:true', 'compact-model-v1'].includes(norm)
+  const hasTextEvidence = textEvidenceEntities.includes(norm)
+
+  let evidenceBadge = null
+  if (hasTextEvidence) {
+    evidenceBadge = { label: 'Evidence available', type: 'evidence-available' }
+  } else if (isStructuralOnly) {
+    evidenceBadge = { label: 'Graph relationships available', type: 'graph-available' }
+  }
+
+  // Generate clear default ask query
+  let askQuery = `What is ${norm} about?`
+  if (type === 'Incident') askQuery = `What happened during incident ${norm}?`
+  else if (type === 'Support Ticket / Incident') askQuery = `What happened with ${norm}?`
+  else if (type === 'GitHub Pull Request') askQuery = `What changes were made in ${norm}?`
+
+  return { type, evidenceBadge, askQuery }
 }
 
 export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
@@ -38,7 +77,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
   )
 
   return (
-    <section aria-label="Explore engineering knowledge" className="entities-section">
+    <section aria-label="Entity explorer" className="entities-section">
       <div className="view-header">
         <h1 className="view-title">Explore engineering knowledge</h1>
         <div className="view-subtitle">
@@ -52,8 +91,8 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search discovered entities (e.g. PR-99501, INC-2026, tokenizer, api-search)..."
-          aria-label="Search entities"
+          placeholder="Search entities by name (e.g. PR-99501, INC-2026, kernel-selector, api-search)..."
+          aria-label="Filter entities"
         />
         {filter && (
           <button
@@ -72,8 +111,8 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           <div className="loading-card">
             <div className="loading-spinner-ring" aria-hidden="true" />
             <div className="loading-content">
-              <div className="loading-title">LOADING DISCOVERED ENTITIES</div>
-              <div className="loading-desc">Fetching graph objects from HydraDB...</div>
+              <div className="loading-title">LOADING ENTITIES</div>
+              <div className="loading-desc">Fetching graph entities from HydraDB...</div>
             </div>
           </div>
         </div>
@@ -85,66 +124,65 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
       ) : (
         <>
           <div className="entity-count-line">
-            <span>
-              <strong>{filtered.length}</strong> entities discovered in HydraDB graph
-            </span>
+            Showing <strong>{filtered.length}</strong> of {entities.length} entities in HydraDB knowledge graph
           </div>
-
           {filtered.length > 0 ? (
             <div className="entity-cards-grid">
               {filtered.map((entity) => {
-                const typeLabel = getEntityType(entity)
+                const meta = getEntityMeta(entity)
                 return (
                   <div
                     key={entity}
                     className="entity-card"
                     aria-label={`Entity ${entity}`}
                   >
-                    <div className="entity-card-top">
-                      <div className="entity-card-header">
+                    <div className="entity-card-header">
+                      <div className="entity-header-top">
                         <span className="entity-card-name">{entity}</span>
-                        <span className="entity-type-badge">{typeLabel}</span>
+                        {meta.evidenceBadge && (
+                          <span className={`entity-evidence-badge ${meta.evidenceBadge.type}`}>
+                            {meta.evidenceBadge.label}
+                          </span>
+                        )}
                       </div>
-                      <div className="entity-availability-badge">
-                        <span className="availability-dot" aria-hidden="true">◈</span>
-                        <span>Graph relationships available</span>
-                      </div>
+                      <div className="entity-kind-tag">{meta.type}</div>
                     </div>
 
                     <div className="entity-card-actions">
                       {onAskEntity && (
-                        <div className="entity-action-wrapper">
-                          <button
-                            className="entity-action-btn entity-ask-btn"
-                            onClick={() => onAskEntity(`What is ${entity} about?`)}
-                            title={`Ask question about ${entity}`}
-                            aria-label={`Ask about ${entity}`}
-                            type="button"
-                          >
+                        <button
+                          className="entity-card-btn entity-ask-btn"
+                          onClick={() => onAskEntity(meta.askQuery)}
+                          title="Get an evidence-backed answer when supporting source text is available."
+                          aria-label={`Ask about ${entity}`}
+                          type="button"
+                        >
+                          <div className="btn-main-label">
                             <span>ASK ABOUT THIS</span>
                             <span aria-hidden="true">→</span>
-                          </button>
-                          <span className="entity-action-subtext">
+                          </div>
+                          <div className="btn-sub-label">
                             Get an evidence-backed answer when supporting source text is available.
-                          </span>
-                        </div>
+                          </div>
+                        </button>
                       )}
-
-                      <div className="entity-action-wrapper">
+                      {onTraceEntity && (
                         <button
-                          className="entity-action-btn entity-trace-btn"
+                          className="entity-card-btn entity-trace-btn"
                           onClick={() => onTraceEntity(entity)}
-                          title={`Trace connections for ${entity}`}
+                          title="Explore how this entity connects to other incidents, tickets, pull requests, and components."
                           aria-label={`Trace connections for ${entity}`}
                           type="button"
                         >
-                          <span>TRACE CONNECTIONS</span>
-                          <span aria-hidden="true">⟷</span>
+                          <div className="btn-main-label">
+                            <span>TRACE CONNECTIONS</span>
+                            <span aria-hidden="true">⟷</span>
+                          </div>
+                          <div className="btn-sub-label">
+                            Explore how this entity connects to other incidents, tickets, pull requests, and components.
+                          </div>
                         </button>
-                        <span className="entity-action-subtext">
-                          Explore how this entity connects to other incidents, tickets, pull requests, and components.
-                        </span>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )
