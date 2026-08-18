@@ -2,228 +2,63 @@ import React, { useState, useEffect } from "react"
 import ThemeToggle from "./ThemeToggle.jsx"
 import { isHydraOnline, getHydraStatusLabel, getHydraAriaLabel } from "../utils/hydraStatus.js"
 
-function SignalFlowDiagram({ onEnterConsole }) {
-  const [selectedCard, setSelectedCard] = useState(null)
-  const [pulse, setPulse] = useState(true)
-
+function SignalFlowDiagram() {
+  const [lit, setLit] = useState(false)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPulse((prev) => !prev)
-    }, 2500)
-    return () => clearInterval(interval)
+    const t = setTimeout(() => setLit(true), 600)
+    return () => clearTimeout(t)
   }, [])
-
   const sources = [
-    {
-      id: "slack",
-      brand: "Slack",
-      badge: "#proj-payments",
-      badgeClass: "slack-badge",
-      time: "2m ago",
-      icon: "💬",
-      excerpt: 'Sarah: "We agreed on Postgres optimistic locking for transaction retries..."',
-    },
-    {
-      id: "github",
-      brand: "GitHub",
-      badge: "PR #1402",
-      badgeClass: "github-badge",
-      time: "18m ago",
-      icon: "🐙",
-      excerpt: "Commit 8f3a92: Updated DB config & timeout threshold to 300ms...",
-    },
-    {
-      id: "jira",
-      brand: "Jira",
-      badge: "PAY-892",
-      badgeClass: "jira-badge",
-      time: "1h ago",
-      icon: "🔷",
-      excerpt: 'Ticket PAY-892 marked In Progress: "Deprecate v1 auth tokens..."',
-    },
-    {
-      id: "linear",
-      brand: "Linear",
-      badge: "ENG-341",
-      badgeClass: "linear-badge",
-      time: "3h ago",
-      icon: "📐",
-      excerpt: 'Issue ENG-341 updated: "Migration plan for distributed lock timeouts..."',
-    },
-    {
-      id: "confluence",
-      brand: "Confluence",
-      badge: "Tech Spec v2.4",
-      badgeClass: "confluence-badge",
-      time: "Yesterday",
-      icon: "📄",
-      excerpt: 'Page updated: "Architecture RFC 104: Event-sourced ledger auth..."',
-    },
+    { id: "slack", label: "SLACK", excerpt: "\"Rollback discussion triggered by latency spike in eu-west.\"", ref: "#incidents" },
+    { id: "linear", label: "LINEAR", excerpt: "REL-311 — Support ticket linking release notes and rollback alert.", ref: "ENG-8201" },
+    { id: "github", label: "GITHUB", excerpt: "PR-99501 — Normalize function-invoke headers and retry logic.", ref: "PR-99501" },
   ]
-
-  const featurePills = [
-    { id: "identity", icon: "⚡", label: "Identity Resolution" },
-    { id: "temporal", icon: "⏱️", label: "Temporal Reasoning" },
-    { id: "conflict", icon: "💧", label: "Conflict Detection" },
-    { id: "provenance", icon: "🔗", label: "Evidence & Provenance" },
-  ]
-
+  const outputs = ["REL-311", "api-search", "v3.1.1-legacy-tokenizer"]
   return (
-    <div className="deptrace-hero-diagram-container">
-      {/* 3-Column Diagram Layout */}
-      <div className="deptrace-diagram-grid">
-        
-        {/* LEFT COLUMN: Input Source Stack */}
-        <div className="deptrace-source-col">
-          {sources.map((s) => {
-            const isSelected = selectedCard === s.id
-            return (
-              <div
-                key={s.id}
-                className={`deptrace-source-card ${isSelected ? "selected" : ""}`}
-                onClick={() => setSelectedCard(isSelected ? null : s.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    setSelectedCard(isSelected ? null : s.id)
-                  }
-                }}
-              >
-                <div className="deptrace-source-top">
-                  <div className="deptrace-source-brand">
-                    <span className="deptrace-brand-icon">{s.icon}</span>
-                    <span className="deptrace-brand-name">{s.brand}</span>
-                    <span className={`deptrace-tag ${s.badgeClass}`}>{s.badge}</span>
-                  </div>
-                  <span className="deptrace-source-time">{s.time}</span>
-                </div>
-                <div className="deptrace-source-excerpt">{s.excerpt}</div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* CONNECTOR 1: Left SVG Dotted Flow */}
-        <div className="deptrace-flow-connector left-flow" aria-hidden="true">
-          <svg viewBox="0 0 100 400" preserveAspectRatio="none" className="flow-svg">
-            <path d="M0 40 Q50 40 100 200" className={`flow-path ${pulse ? "pulse-1" : ""}`} />
-            <path d="M0 120 Q50 120 100 200" className={`flow-path ${pulse ? "pulse-2" : ""}`} />
-            <path d="M0 200 Q50 200 100 200" className={`flow-path ${pulse ? "pulse-3" : ""}`} />
-            <path d="M0 280 Q50 280 100 200" className={`flow-path ${pulse ? "pulse-4" : ""}`} />
-            <path d="M0 360 Q50 360 100 200" className={`flow-path ${pulse ? "pulse-5" : ""}`} />
-          </svg>
-        </div>
-
-        {/* CENTER COLUMN: DepTrace Core Node & Feature Pills */}
-        <div className="deptrace-center-col">
-          {/* Main Logo Card */}
-          <div className="deptrace-logo-card">
-            <div className="deptrace-logo-glow" />
-            <div className="deptrace-logo-icon">
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <circle cx="20" cy="10" r="4" fill="#a855f7" />
-                <circle cx="10" cy="28" r="4" fill="#8b5cf6" />
-                <circle cx="30" cy="28" r="4" fill="#06b6d4" />
-                <path d="M20 10 L10 28 M20 10 L30 28 M10 28 L30 28" stroke="rgba(168,85,247,0.7)" strokeWidth="2" strokeDasharray="3 3" />
-              </svg>
-            </div>
-            <div className="deptrace-logo-title">DepTrace</div>
+    <div className={`lp-signal-flow${lit ? " lp-signal-flow--lit" : ""}`} aria-hidden="true">
+      <div className="lp-sources">
+        {sources.map((s, i) => (
+          <div key={s.id} className="lp-source-card" style={{ animationDelay: `${i * 120}ms` }}>
+            <div className="lp-source-label">{s.label}</div>
+            <div className="lp-source-ref">{s.ref}</div>
+            <div className="lp-source-excerpt">{s.excerpt}</div>
           </div>
-
-          {/* Feature Pills Stack */}
-          <div className="deptrace-feature-pills">
-            {featurePills.map((p) => (
-              <div key={p.id} className="deptrace-feature-pill">
-                <span className="pill-icon">{p.icon}</span>
-                <span className="pill-label">{p.label}</span>
-                <span className="pill-dot" />
-              </div>
-            ))}
-          </div>
-
-          {/* Synthesizing Action CTA */}
-          <div className="deptrace-synth-wrapper">
-            <button
-              className="deptrace-synth-btn"
-              onClick={() => onEnterConsole("ask")}
-              type="button"
-              id="deptrace-synth-action"
-            >
-              <span>SYNTHESIZING</span>
-              <span className="synth-arrow">→</span>
-            </button>
-          </div>
-        </div>
-
-        {/* CONNECTOR 2: Right SVG Flow */}
-        <div className="deptrace-flow-connector right-flow" aria-hidden="true">
-          <svg viewBox="0 0 100 400" preserveAspectRatio="none" className="flow-svg">
-            <path d="M0 200 Q50 200 100 200" className="flow-path right-path" />
-          </svg>
-        </div>
-
-        {/* RIGHT COLUMN: Reconstructed Output Card */}
-        <div className="deptrace-output-col">
-          <div className="deptrace-resolution-card">
-            {/* Header */}
-            <div className="resolution-card-header">
-              <div className="resolution-header-left">
-                <div className="dt-badge">DT</div>
-                <div className="resolution-title">Dependency Resolution</div>
-              </div>
-              <div className="resolution-header-right">
-                <span className="status-badge-resolved">RESOLVED</span>
-              </div>
-            </div>
-            <div className="graph-node-ref">Graph Node #892-C</div>
-
-            {/* Block 1: Root Cause */}
-            <div className="resolution-block root-cause-block">
-              <div className="block-label">ROOT CAUSE</div>
-              <div className="block-text">
-                Uncoordinated DB connection timeout overrides between Slack thread decision & PR #1402 default configuration.
-              </div>
-            </div>
-
-            {/* Block 2: Linked Decision */}
-            <div className="resolution-block linked-decision-block">
-              <div className="block-label">LINKED DECISION</div>
-              <div className="linked-decision-row">
-                <span className="decision-title">RFC-104: Optimistic Locking & Audit Trail</span>
-                <span className="confirmed-pill">CONFIRMED</span>
-              </div>
-            </div>
-
-            {/* Block 3: Why */}
-            <div className="resolution-block why-block">
-              <div className="block-label">WHY</div>
-              <div className="why-text">
-                Slack agreement in <strong>#proj-payments</strong> overrode Jira <strong>PAY-892</strong> default lock timeouts without updating the active GitHub PR <strong>#1402</strong> env variables.
-              </div>
-            </div>
-
-            {/* Block 4: Connected Provenance */}
-            <div className="resolution-block provenance-block">
-              <div className="block-label">CONNECTED EVIDENCE PROVENANCE</div>
-              <div className="provenance-icons-row">
-                <span className="prov-icon" title="Slack">💬</span>
-                <span className="prov-icon" title="GitHub">🐙</span>
-                <span className="prov-icon" title="Jira">🔷</span>
-                <span className="prov-icon" title="Linear">📐</span>
-                <span className="prov-icon" title="Confluence">📄</span>
-                <span className="prov-count">5 verified sources</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
+        ))}
       </div>
-
-      {/* Bottom Tagline Banner */}
-      <div className="deptrace-bottom-banner">
-        <span className="banner-sparkle">✦</span>
-        <span className="banner-text">From scattered threads to a traceable dependency graph.</span>
+      <div className="lp-flow-connector">
+        <svg viewBox="0 0 120 160" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0,27 Q60,27 60,80" stroke="rgba(232,162,71,0.22)" strokeWidth="1" fill="none" />
+          <path d="M0,80 Q60,80 60,80" stroke="rgba(232,162,71,0.22)" strokeWidth="1" fill="none" />
+          <path d="M0,133 Q60,133 60,80" stroke="rgba(232,162,71,0.22)" strokeWidth="1" fill="none" />
+          <circle cx="60" cy="80" r="3" fill="var(--c-accent)" opacity="0.7" />
+        </svg>
+      </div>
+      <div className="lp-central-node">
+        <div className="lp-central-pulse" />
+        <div className="lp-central-wordmark">VERIDEX</div>
+        <div className="lp-central-sub">HydraDB Knowledge Graph</div>
+      </div>
+      <div className="lp-flow-connector lp-flow-connector--right">
+        <svg viewBox="0 0 120 160" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M60,80 Q60,27 120,27" stroke="rgba(232,162,71,0.22)" strokeWidth="1" fill="none" />
+          <path d="M60,80 Q60,80 120,80" stroke="rgba(232,162,71,0.22)" strokeWidth="1" fill="none" />
+          <path d="M60,80 Q60,133 120,133" stroke="rgba(232,162,71,0.22)" strokeWidth="1" fill="none" />
+          <circle cx="60" cy="80" r="3" fill="var(--c-accent)" opacity="0.7" />
+        </svg>
+      </div>
+      <div className="lp-outputs">
+        <div className="lp-output-label">RECONSTRUCTED STATE</div>
+        {outputs.map((o, i) => (
+          <div key={o} className="lp-output-entity" style={{ animationDelay: `${800 + i * 100}ms` }}>
+            <span className="lp-output-dot" />
+            {o}
+          </div>
+        ))}
+        <div className="lp-output-meta-row">
+          <span>Evidence</span>
+          <span>Timeline</span>
+          <span>Provenance</span>
+        </div>
       </div>
     </div>
   )
@@ -240,7 +75,7 @@ function WorkflowStepsSection({ onEnterConsole }) {
     {
       step: "02",
       title: "CONNECT",
-      headline: "DepTrace resolves relationships across HydraDB.",
+      headline: "Veridex resolves relationships across HydraDB.",
       desc: "HydraDB traverses cross-system entity relationships and extracts bounded facts with strict message and document IDs.",
     },
     {
@@ -281,7 +116,7 @@ function AskVsTraceSection({ onEnterConsole }) {
         <div className="lp-section-eyebrow" id="comparison-heading">TWO COMPLEMENTARY MODES</div>
         <h2 className="lp-section-title">Choose your investigation lens: Ask or Trace.</h2>
         <p className="lp-section-body">
-          Whether you need a direct evidence-backed answer to an incident question or want to map multi-hop component dependencies, DepTrace provides dedicated workflows.
+          Whether you need a direct evidence-backed answer to an incident question or want to map multi-hop component dependencies, Veridex provides dedicated workflows.
         </p>
 
         <div className="lp-comparison-grid">
@@ -292,7 +127,7 @@ function AskVsTraceSection({ onEnterConsole }) {
               <h3 className="lp-comparison-title">Get an evidence-backed answer.</h3>
             </div>
             <p className="lp-comparison-desc">
-              Ask natural language questions about incidents, tickets, PRs, and team decisions. DepTrace returns a grounded answer strictly citing retrieved graph evidence.
+              Ask natural language questions about incidents, tickets, PRs, and team decisions. Veridex returns a grounded answer strictly citing retrieved graph evidence.
             </p>
             <div className="lp-comparison-example">
               <div className="lp-comparison-ex-lbl">EXAMPLE QUESTION</div>
@@ -352,9 +187,164 @@ function AskVsTraceSection({ onEnterConsole }) {
   )
 }
 
+function SignalsToStateSection() {
+  const sources = [
+    { key: "slack", label: "SLACK", desc: "Conversations and incident discussions", items: ["#incidents", "#eng-runtime", "#devex"] },
+    { key: "linear", label: "LINEAR", desc: "Issues and engineering work", items: ["ENG-8201", "REL-311", "DES-23981"] },
+    { key: "github", label: "GITHUB", desc: "Pull requests and implementation changes", items: ["PR-99501", "PR-35802", "PR-209876"] },
+  ]
+  return (
+    <section className="lp-section lp-section--ruled" aria-labelledby="signals-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="signals-heading">FROM SIGNALS TO STATE</div>
+        <h2 className="lp-section-title">Three sources. One coherent graph.</h2>
+        <p className="lp-section-body">Slack threads, Linear issues, and GitHub pull requests each capture a fragment of the truth. Veridex merges them through HydraDB into a queryable, traceable knowledge structure.</p>
+        <div className="lp-signals-layout">
+          <div className="lp-signal-sources">
+            {sources.map((s) => (
+              <div key={s.key} className="lp-signal-source">
+                <div className="lp-signal-source-header">
+                  <span className="lp-signal-source-name">{s.label}</span>
+                  <span className="lp-signal-source-desc">{s.desc}</span>
+                </div>
+                <div className="lp-signal-items">
+                  {s.items.map((item) => (<span key={item} className="lp-signal-item">{item}</span>))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="lp-signals-arrow" aria-hidden="true">
+            <div className="lp-signals-arrow-line" />
+            <div className="lp-signals-arrow-label">HydraDB MERGE</div>
+            <div className="lp-signals-arrow-line" />
+          </div>
+          <div className="lp-reconstructed">
+            <div className="lp-reconstructed-header">VERIDEX GRAPH</div>
+            <div className="lp-reconstructed-entities">
+              {["REL-311", "api-search", "v3.1.1-legacy-tokenizer"].map((e) => (
+                <div key={e} className="lp-recon-entity">{e}</div>
+              ))}
+            </div>
+            <div className="lp-reconstructed-dims">
+              <span>Evidence</span><span>Timeline</span><span>Dependencies</span><span>Provenance</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function InvestigationExample({ onEnterConsole }) {
+  const evidence = [
+    { id: "E1", entity: "REL-311", type: "fact", statement: "Support ticket REL-311 has been created, linking release notes, and is set to alert support if a rollback occurs.", msg: "8537794879600693670" },
+    { id: "E2", entity: "REL-311", type: "fact", statement: "A monitor snapshot of eu-west showed error_rate=1.1%, p95_latency=4800ms, linked to REL-311 release window.", msg: "8537794879600693670" },
+  ]
+  const [activeEvidence, setActiveEvidence] = useState(null)
+  const toggle = (id) => setActiveEvidence(activeEvidence === id ? null : id)
+  return (
+    <section className="lp-section" aria-labelledby="example-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="example-heading">INVESTIGATION EXAMPLE</div>
+        <h2 className="lp-section-title">See a real query in action.</h2>
+        <p className="lp-section-body">This example uses real entities extracted from the Veridex knowledge graph. Not simulated data.</p>
+        <div className="lp-example-block">
+          <div className="lp-example-query">
+            <div className="lp-example-query-label">QUESTION</div>
+            <div className="lp-example-query-text">"What happened with REL-311?"</div>
+          </div>
+          <div className="lp-example-answer">
+            <div className="lp-example-answer-header">
+              <span className="lp-example-answer-label">GROUNDED SYNTHESIS</span>
+              <span className="lp-grounded-badge"><span className="lp-grounded-dot" />GROUNDED</span>
+            </div>
+            <div className="lp-example-answer-body">
+              Support ticket REL-311 has been created, linking release notes, and is set to alert support if a rollback occurs.{" "}
+              {evidence.map((e) => (
+                <button key={e.id} className={`lp-citation-pill${activeEvidence === e.id ? " active" : ""}`} onClick={() => toggle(e.id)} aria-pressed={activeEvidence === e.id}>{e.id}</button>
+              ))}
+            </div>
+          </div>
+          <div className="lp-example-evidence">
+            <div className="lp-example-evidence-label">EVIDENCE BUNDLE</div>
+            {evidence.map((e) => (
+              <div key={e.id} className={`lp-example-evidence-row${activeEvidence === e.id ? " lp-example-evidence-row--highlighted" : ""}`} role="button" tabIndex={0} onClick={() => toggle(e.id)} onKeyDown={(ev) => ev.key === "Enter" && toggle(e.id)}>
+                <div className="lp-example-eid">{e.id}</div>
+                <div className="lp-example-econtent">
+                  <div className="lp-example-emeta">
+                    <span className="lp-example-entity">{e.entity}</span>
+                    <span className={`type-badge ${e.type}`}>{e.type.toUpperCase()}</span>
+                  </div>
+                  <div className="lp-example-etext">{e.statement}</div>
+                  <div className="lp-example-eprov">msg:{e.msg}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="lp-example-cta">
+            <button className="lp-btn-primary" onClick={onEnterConsole} id="lp-example-open-console">RUN A REAL INVESTIGATION</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function DependencyTracePreview() {
+  const entities = [
+    { name: "REL-311", root: true },
+    { name: "api-search", root: false },
+    { name: "v3.1.1-legacy-tokenizer", root: false },
+    { name: "v3.1.1-legacy-tokenizer pinned to 1%", root: false },
+  ]
+  const timeline = [
+    { n: "01", type: "FACT", label: "Monitor snapshot", text: "eu-west error_rate=1.1%, p95_latency=4800ms" },
+    { n: "02", type: "ACTION", label: "Variant test", text: "Omar running targeted variant test with v3.1.1-legacy-tokenizer" },
+    { n: "03", type: "FACT", label: "Support ticket", text: "REL-311 created, linking release notes and rollback alert" },
+    { n: "04", type: "ACTION", label: "Route decision", text: "Team reconvenes in 12 min; legacy-tokenizer test determines rollback" },
+  ]
+  return (
+    <section className="lp-section lp-section--ruled" aria-labelledby="trace-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="trace-heading">DEPENDENCY TRACE</div>
+        <h2 className="lp-section-title">Not just an answer. A dependency map.</h2>
+        <p className="lp-section-body">Veridex traverses the graph to reveal how entities relate across conversations, issues, and commits. Every hop is grounded in provenance.</p>
+        <div className="lp-trace-layout">
+          <div className="lp-trace-graph">
+            <div className="lp-trace-graph-label">DEPENDENCY GRAPH</div>
+            <div className="lp-trace-entities">
+              {entities.map((e, i) => (
+                <React.Fragment key={e.name}>
+                  {i > 0 && <div className="lp-trace-arrow">&#8595;</div>}
+                  <div className={`lp-trace-entity${e.root ? " lp-trace-entity--root" : ""}`}>{e.name}</div>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div className="lp-trace-timeline">
+            <div className="lp-trace-graph-label">RECONSTRUCTED TIMELINE</div>
+            {timeline.map((t) => (
+              <div key={t.n} className="lp-trace-timeline-row">
+                <div className="lp-trace-timeline-n">{t.n}</div>
+                <div className="lp-trace-timeline-content">
+                  <div className="lp-trace-timeline-meta">
+                    <span className={`type-badge ${t.type.toLowerCase()}`}>{t.type}</span>
+                    <span className="lp-trace-timeline-lbl">{t.label}</span>
+                  </div>
+                  <div className="lp-trace-timeline-text">{t.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function WhyHydraSection({ onNavigateToWhyHydra }) {
   const steps = [
-    { label: "Raw Enterprise Signals", desc: "Slack, Linear, GitHub, Confluence, Jira" },
+    { label: "Raw Enterprise Signals", desc: "Slack, Linear, GitHub" },
     { label: "Semantic Extraction", desc: "Gemini extracts typed facts, actions, decisions" },
     { label: "HydraDB Graph", desc: "Deterministic structural + semantic graph layer" },
     { label: "Deterministic Retrieval", desc: "Graph-aware traversal — no vector approximation" },
@@ -366,7 +356,7 @@ function WhyHydraSection({ onNavigateToWhyHydra }) {
       <div className="lp-container">
         <div className="lp-section-eyebrow" id="why-hydra-heading">WHY HYDRADB</div>
         <h2 className="lp-section-title">HydraDB handles the graph.<br />Gemini handles the language.</h2>
-        <p className="lp-section-body">Traditional RAG architectures approximate retrieval with vector similarity. DepTrace uses HydraDB's graph-aware retrieval layer to resolve relationships and provenance before synthesis begins.</p>
+        <p className="lp-section-body">Traditional RAG architectures approximate retrieval with vector similarity. Veridex uses HydraDB's graph-aware retrieval layer to resolve relationships and provenance before synthesis begins. Graph reasoning and language generation are strictly separated.</p>
         <div className="lp-arch-pipeline">
           {steps.map((s, i) => (
             <React.Fragment key={s.label}>
@@ -382,7 +372,7 @@ function WhyHydraSection({ onNavigateToWhyHydra }) {
           ))}
         </div>
         <div className="lp-arch-cta">
-          <button className="lp-btn-ghost" onClick={onNavigateToWhyHydra} id="lp-explore-arch-btn">HOW DEPTRACE WORKS &#8594;</button>
+          <button className="lp-btn-ghost" onClick={onNavigateToWhyHydra} id="lp-explore-arch-btn">HOW VERIDEX WORKS &#8594;</button>
         </div>
       </div>
     </section>
@@ -397,13 +387,12 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
   const isOnline = isHydraOnline(hydraStatus)
-
   return (
     <div className="lp-root">
       <header className={`lp-nav${scrolled ? " lp-nav--scrolled" : ""}`} role="banner">
         <div className="lp-nav-inner">
           <div className="lp-nav-wordmark">
-            <span className="lp-nav-logo">DEPTRACE</span>
+            <span className="lp-nav-logo">VERIDEX</span>
             <span className="lp-nav-tag">BETA</span>
           </div>
           <nav className="lp-nav-links" aria-label="Product navigation">
@@ -430,36 +419,33 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
         </div>
       </header>
 
-      {/* HERO SECTION MATCHING REFERENCE MOCKUP GRAPHIC */}
       <section className="lp-hero" aria-labelledby="hero-heading">
         <div className="lp-hero-inner">
-          {/* Two-Column Top Headline Row */}
-          <div className="deptrace-hero-header-row">
-            <div className="deptrace-hero-col-left">
-              <h1 className="deptrace-main-headline" id="hero-heading">
-                Your engineering truth is <span className="purple-gradient-text">scattered.</span>
-              </h1>
-              <p className="deptrace-main-sub">
-                Disjointed discussions, tickets, specs, and PRs mask crucial architecture context.
-              </p>
+          <div className="lp-hero-left">
+            <div className="lp-hero-eyebrow">EVIDENCE-FIRST KNOWLEDGE INVESTIGATION</div>
+            <h1 className="lp-hero-headline" id="hero-heading">
+              Search your company{"\u2019"}s technical truth with <span className="lp-hero-accent">guaranteed provenance.</span>
+            </h1>
+            <p className="lp-hero-body">
+              Ask questions about incidents, tickets, pull requests, and engineering decisions. Veridex connects the evidence through HydraDB and shows you where every answer came from.
+            </p>
+            <div className="lp-hero-ctas">
+              <button className="lp-btn-primary lp-btn-lg" onClick={() => onEnterConsole("ask")} id="lp-hero-open-console">START AN INVESTIGATION</button>
+              <button className="lp-btn-ghost lp-btn-lg" onClick={onNavigateToWhyHydra} id="lp-hero-why-hydra">EXPLORE HOW IT WORKS</button>
             </div>
-            <div className="deptrace-hero-col-right">
-              <h2 className="deptrace-main-headline">
-                DepTrace reconstructs what your team <span className="purple-gradient-text">actually decided.</span>
-              </h2>
-              <p className="deptrace-main-sub">
-                Automated dependency mapping with cryptographic evidence & provenance graph.
-              </p>
-            </div>
+            <div className="lp-hero-dataset-note">Running on a controlled 60-document demo slice &#183; Slack &#183; Linear &#183; GitHub</div>
           </div>
-
-          {/* Hero Visual Flow Diagram */}
-          <SignalFlowDiagram onEnterConsole={onEnterConsole} />
+          <div className="lp-hero-right" aria-hidden="true">
+            <SignalFlowDiagram />
+          </div>
         </div>
       </section>
 
       <WorkflowStepsSection onEnterConsole={onEnterConsole} />
       <AskVsTraceSection onEnterConsole={onEnterConsole} />
+      <SignalsToStateSection />
+      <InvestigationExample onEnterConsole={() => onEnterConsole("ask")} />
+      <DependencyTracePreview />
       <WhyHydraSection onNavigateToWhyHydra={onNavigateToWhyHydra} />
 
       <section className="lp-final-cta" aria-labelledby="final-cta-heading">
@@ -467,16 +453,16 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
           <div className="lp-final-cta-rule" aria-hidden="true" />
           <h2 className="lp-final-headline" id="final-cta-heading">From fragmented signals to trusted state.</h2>
           <p className="lp-final-sub">Investigate what happened. Trace what changed. Verify why.</p>
-          <button className="lp-btn-primary lp-btn-lg" onClick={() => onEnterConsole("ask")} id="lp-final-open-veridex">OPEN DEPTRACE</button>
+          <button className="lp-btn-primary lp-btn-lg" onClick={() => onEnterConsole("ask")} id="lp-final-open-veridex">OPEN VERIDEX</button>
         </div>
       </section>
 
       <footer className="lp-footer" role="contentinfo">
         <div className="lp-container">
           <div className="lp-footer-inner">
-            <span className="lp-footer-wordmark">DEPTRACE</span>
+            <span className="lp-footer-wordmark">VERIDEX</span>
             <span className="lp-footer-sep">&#183;</span>
-            <span className="lp-footer-text">Built on HydraDB &#183; Enterprise Knowledge Graph</span>
+            <span className="lp-footer-text">Built on HydraDB &#183; EnterpriseRAG-Bench &#183; Hackathon Track 1</span>
           </div>
         </div>
       </footer>
