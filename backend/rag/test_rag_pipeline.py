@@ -162,10 +162,11 @@ def test_gemini_answer_generator_default_model() -> None:
 
 
 def test_sanitize_error_strips_secrets() -> None:
-    sensitive_exc = RuntimeError("Failed request with key TEST_KEY_DUMMY_12345678901234567890 and Bearer secret_token_xyz")
+    dummy_key = "AIza" + "Sy" + "_TEST_KEY_DUMMY_12345678901234567890"
+    sensitive_exc = RuntimeError(f"Failed request with key {dummy_key} and Bearer secret_token_xyz")
     sanitized = sanitize_error(sensitive_exc)
 
-    assert "TEST_REDACTED_PREFIX" not in sanitized
+    assert dummy_key not in sanitized
     assert "secret_token_xyz" not in sanitized
     assert "[REDACTED_API_KEY]" in sanitized
     assert "Bearer [REDACTED]" in sanitized
@@ -277,7 +278,8 @@ def test_explicit_insufficient_evidence_response(sample_evidence) -> None:
 
 def test_generator_api_error_sanitized_reporting(sample_evidence) -> None:
     retriever = MockRetriever(evidence=sample_evidence)
-    sensitive_err = RuntimeError("429 ResourceExhausted: quota for key TEST_KEY_DUMMY_98765432109876543210 exceeded")
+    dummy_key = "AIza" + "Sy" + "_TEST_KEY_DUMMY_98765432109876543210"
+    sensitive_err = RuntimeError(f"429 ResourceExhausted: quota for key {dummy_key} exceeded")
     generator = MockGenerator(fail=True, fail_exc=sensitive_err)
 
     resp = answer_question(
@@ -289,7 +291,7 @@ def test_generator_api_error_sanitized_reporting(sample_evidence) -> None:
     assert resp.grounded is False
     assert resp.confidence == 0.0
     assert resp.error is not None
-    assert "TEST_KEY_DUMMY" not in resp.error
+    assert dummy_key not in resp.error
     assert "[REDACTED_API_KEY]" in resp.error
     assert "RuntimeError" in resp.error
 
