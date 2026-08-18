@@ -309,29 +309,24 @@ FastAPI serves both the unified REST API (`/api/*`) and the pre-built React 19 s
   ```
 - **Health Check Path**: `/api/health`
 
-### 3. Environment Variables
+### 3. Required Environment Variables
 
-| Variable | Default Value | Purpose |
+| Variable | Recommended Value | Purpose |
 |:---|:---|:---|
-| `HYDRA_URL` | `http://127.0.0.1:8443` | Local HydraDB OpenCypher HTTP endpoint |
-| `HYDRA_GRAPH` | `default` | Target graph scope |
-| `HYDRA_NAMESPACE` | `default` | Target namespace scope |
-| `HYDRA_CELL_ID` | `cell-0` | Target graph cell |
-| `HYDRA_TOKEN` | `local-development-token-32-bytes` | Auth token for local HydraDB |
-| `GEMINI_API_KEY` | *Optional* | Gemini API key for grounded synthesis (deterministic offline fallback active if omitted) |
+| `HYDRA_MODE` | `cloud` | Activates the HydraDB Cloud v2 driver |
+| `HYDRA_DB_DATABASE` | `veridex-hackhydra` | Target Cloud database containing the frozen 60-document dataset |
+| `HYDRA_DB_BASE_URL` | `https://api.hydradb.com` | HydraDB Cloud v2 API endpoint |
+| `HYDRA_DB_API_KEY` | *Secret Token* | Server-side Bearer authentication for HydraDB Cloud |
+| `GEMINI_API_KEY` | *Secret Key* | Gemini Interactions API key for grounded synthesis |
 | `GEMINI_MODEL` | `gemini-3.6-flash` | Language synthesis model |
-| `PORT` | `8000` | Backend API server port |
+| `PYTHON_VERSION` | `3.11.9` | Runtime version |
+| `NODE_VERSION` | `20.12.0` | Frontend build version |
 
-### 4. Running Veridex Locally
-1. Ensure local HydraDB container is running:
-   ```bash
-   docker run -d --name hydradb -p 7687:7687 -p 8443:8443 -p 9090:9090 -e CLOUD_PROVIDER=memory -e GRAPH_ALLOW_PLAINTEXT=true ghcr.io/hydra-db/hydradb:latest
-   ```
-2. Start backend server:
-   ```bash
-   python -m uvicorn backend.api.app:app --port 8000
-   ```
-3. Start frontend:
-   ```bash
-   npm run dev --prefix frontend-react
-   ```
+> [!WARNING]
+> **Security & Zero-Ingestion Rules:**
+> - `HYDRA_DB_API_KEY` and `GEMINI_API_KEY` are server-side secrets. They must NEVER be exposed in frontend code or repository commits.
+> - The production HydraDB Cloud database `veridex-hackhydra` already contains the complete frozen 60-document dataset. **DO NOT perform any ingestion during deployment or server startup.**
+
+### 4. Local vs. Production Driver Mode
+- **Local (`HYDRA_MODE=local`)**: Queries the local Dockerized OpenCypher instance (`:8443`). Used by default for development and offline CI tests.
+- **Production (`HYDRA_MODE=cloud`)**: Queries HydraDB Cloud v2 with hybrid retrieval, thinking mode, and forceful relation bindings.

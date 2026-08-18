@@ -18,7 +18,7 @@ export default function GraphHealth({ hydraStatus }) {
       <div className="view-header">
         <h1 className="view-title">System & Graph Health</h1>
         <div className="view-subtitle">
-          Live connectivity and telemetry from HydraDB Local Docker and backend API services.
+          Live connectivity and telemetry from HydraDB Cloud and backend API services.
         </div>
       </div>
 
@@ -32,7 +32,7 @@ export default function GraphHealth({ hydraStatus }) {
         <div className="health-cell">
           <div className="health-field">Knowledge Graph Target</div>
           <div className="health-value">
-            default / cell-0 (Local Docker :8443)
+            {mode === 'cloud' ? 'veridex-hackhydra (Cloud)' : 'default / cell-0 (Local)'}
           </div>
         </div>
         <div className="health-cell">

@@ -38,10 +38,13 @@ async function run() {
 
     console.log('--- TEST 1B: Test hydraStatus.js helper ---')
     const statusMod = await server.ssrLoadModule('/src/utils/hydraStatus.js')
-    const localStatus = { status: 'ok', hydradb: 'ok (local: default)' }
+    const cloudStatus = { status: 'ok', hydradb: 'ok (cloud: veridex-hackhydra)' }
+    const localStatus = { status: 'ok', hydradb: 'ok' }
     const loadingStatus = { status: 'loading', hydradb: '' }
     const errorStatus = { status: 'degraded', hydradb: 'unreachable' }
 
+    if (statusMod.getHydraStatusMode(cloudStatus) !== 'cloud') throw new Error('Cloud mode detection failed')
+    if (statusMod.getHydraStatusLabel(cloudStatus) !== 'HYDRADB CLOUD  CONNECTED') throw new Error('Cloud label failed')
     if (statusMod.getHydraStatusMode(localStatus) !== 'local') throw new Error('Local mode detection failed')
     if (statusMod.getHydraStatusLabel(localStatus) !== 'HYDRADB LOCAL  CONNECTED') throw new Error('Local label failed')
     if (statusMod.getHydraStatusMode(loadingStatus) !== 'loading') throw new Error('Loading mode detection failed')

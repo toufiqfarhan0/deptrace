@@ -25,36 +25,40 @@ except ImportError:
 
 
 class AppConfig:
-    """Application configuration and validation helper for Local HydraDB."""
+    """Application configuration and validation helper."""
 
     @classmethod
-    def get_hydra_url(cls) -> str:
+    def get_hydra_mode(cls) -> str:
+        """Active HydraDB mode: 'local' (default) | 'cloud'."""
+        return os.getenv("HYDRA_MODE", "local").strip().lower()
+
+    @classmethod
+    def get_local_hydra_url(cls) -> str:
         return os.getenv("HYDRA_URL", "http://127.0.0.1:8443").rstrip("/")
 
     @classmethod
-    def get_hydra_graph(cls) -> str:
+    def get_local_hydra_graph(cls) -> str:
         return os.getenv("HYDRA_GRAPH", "default")
 
     @classmethod
-    def get_hydra_namespace(cls) -> str:
-        return os.getenv("HYDRA_NAMESPACE", "default")
+    def get_cloud_api_key(cls) -> str | None:
+        return os.getenv("HYDRA_DB_API_KEY")
 
     @classmethod
-    def get_hydra_cell_id(cls) -> str:
-        return os.getenv("HYDRA_CELL_ID", "cell-0")
+    def get_cloud_database(cls) -> str:
+        return (
+            os.getenv("HYDRA_DB_DATABASE")
+            or os.getenv("HYDRA_DATABASE")
+            or "veridex-hackhydra"
+        )
 
     @classmethod
-    def get_hydra_token(cls) -> str:
-        return os.getenv("HYDRA_TOKEN", "local-development-token-32-bytes")
-
-    # Compatibility aliases for legacy helpers
-    @classmethod
-    def get_local_hydra_url(cls) -> str:
-        return cls.get_hydra_url()
-
-    @classmethod
-    def get_local_hydra_graph(cls) -> str:
-        return cls.get_hydra_graph()
+    def get_cloud_base_url(cls) -> str:
+        return (
+            os.getenv("HYDRA_DB_BASE_URL")
+            or os.getenv("HYDRA_BASE_URL")
+            or "https://api.hydradb.com"
+        ).rstrip("/")
 
     @classmethod
     def get_gemini_api_key(cls) -> str | None:
@@ -71,24 +75,38 @@ class AppConfig:
     @classmethod
     def validate_config(cls) -> None:
         """
-        Validate configuration for Local HydraDB.
+        Validate configuration for the active mode.
         Raises ValueError with clear, safe error messages if required settings are missing.
         """
-        url = cls.get_hydra_url()
-        if not url or not url.strip():
-            raise ValueError("HYDRA_URL environment variable cannot be empty.")
+        mode = cls.get_hydra_mode()
+        if mode not in ("local", "cloud"):
+            raise ValueError(f"Invalid HYDRA_MODE='{mode}'. Expected 'local' or 'cloud'.")
+
+        if mode == "cloud":
+            api_key = cls.get_cloud_api_key()
+            if not api_key or not api_key.strip():
+                raise ValueError(
+                    "HYDRA_DB_API_KEY environment variable is required when HYDRA_MODE='cloud'. "
+                    "Set HYDRA_DB_API_KEY in server environment."
+                )
+            database = cls.get_cloud_database()
+            if not database or not database.strip():
+                raise ValueError("HYDRA_DB_DATABASE is required when HYDRA_MODE='cloud'.")
 
     @classmethod
     def get_safe_summary(cls) -> dict[str, Any]:
         """Return safe configuration metadata with all secrets masked."""
+        mode = cls.get_hydra_mode()
+        cloud_key = cls.get_cloud_api_key()
         gemini_key = cls.get_gemini_api_key()
 
         return {
-            "hydra_url": cls.get_hydra_url(),
-            "hydra_graph": cls.get_hydra_graph(),
-            "hydra_namespace": cls.get_hydra_namespace(),
-            "hydra_cell_id": cls.get_hydra_cell_id(),
+            "hydra_mode": mode,
+            "local_url": cls.get_local_hydra_url() if mode == "local" else None,
+            "local_graph": cls.get_local_hydra_graph() if mode == "local" else None,
+            "cloud_database": cls.get_cloud_database() if mode == "cloud" else None,
+            "cloud_base_url": cls.get_cloud_base_url() if mode == "cloud" else None,
+            "cloud_key_configured": bool(cloud_key and cloud_key.strip()),
             "gemini_configured": bool(gemini_key and gemini_key.strip()),
             "gemini_model": cls.get_gemini_model(),
-            "port": cls.get_port(),
         }
