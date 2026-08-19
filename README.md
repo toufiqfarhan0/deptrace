@@ -404,26 +404,115 @@ Veridex is architected around **HydraDB Cloud v2** (`https://api.hydradb.com`), 
 
 ## Data Ingestion & Seeding
 
-The Veridex evaluation dataset is built on **60 canonical enterprise documents** (20 Slack threads, 20 Linear issues, 20 GitHub PRs) derived from EnterpriseRAG-Bench:
+### Dataset Origin & Attribution
+
+Veridex is evaluated on enterprise engineering context derived from **[EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench)** by Onyx (Danswer). 
+
+EnterpriseRAG-Bench provides realistic multi-source engineering communication, issues, and code artifacts spanning three core enterprise platforms:
+* **Slack**: Incident channels, on-call mitigations, triage threads, and architectural decisions.
+* **Linear**: Bug reports, task tracking, team assignments, and issue statuses.
+* **GitHub**: Pull requests, code review comments, commit diffs, and release notes.
+
+> [!NOTE]
+> **Dataset Scope**: Veridex uses a frozen canonical dataset of **60 enterprise documents** (exactly **20 Slack threads**, **20 Linear issues**, and **20 GitHub PRs**).
 
 ```
 data/enterprise-rag/
 ├── raw/                      # Raw source exports (Slack, Linear, GitHub)
-├── parsed/                   # Normalized JSONL documents (slack.jsonl, etc.)
+├── parsed/                   # Normalized JSONL documents (slack.jsonl, linear.jsonl, github.jsonl)
 ├── extracted/                # Extracted semantic entities & typed statements
 ├── graph-candidates/         # Generated deterministic graph node/edge candidates
-└── questions.jsonl           # Benchmark evaluation questions
+└── questions.jsonl           # Benchmark evaluation questions & ground truth
 ```
 
-### Ingestion Scripts:
+---
 
-#### Ingest 60 Documents into HydraDB Cloud v2:
+### What Judges Need to Install & Download
+
+Judges **do not need to download external data dumps or scrape third-party APIs**. The complete 60-document dataset, parsed JSONLs, and extracted semantic graphs are **fully pre-bundled** in the repository under [`data/enterprise-rag/`](data/enterprise-rag/).
+
+| Component | Status / Requirement | Source / Command |
+| :--- | :--- | :--- |
+| **Dataset Files** | **Pre-Bundled** in repo | [`data/enterprise-rag/`](data/enterprise-rag/) (derived from [EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench)) |
+| **Python Environment** | Python `3.11+` | `python --version` |
+| **Backend Dependencies** | Required | `pip install -r requirements.txt` |
+| **Frontend Runtime** | Node.js `20+` & npm `10+` | `cd frontend-react && npm install` |
+| **HydraDB Cloud Credentials** | Required | `HYDRA_DB_API_KEY` in `.env` (provided with submission or own HydraDB Cloud key) |
+| **Google Gemini API Key** | Optional (for grounded synthesis) | `GEMINI_API_KEY` in `.env` (system safely degrades to deterministic evidence if omitted) |
+
+---
+
+### Complete Ingestion Process into HydraDB Cloud v2
+
+To seed or re-index the 60 canonical enterprise documents into your HydraDB Cloud instance, run the automated ingestion script:
+
 ```bash
 python backend/ingestion/cloud_ingest_60.py
 ```
-* Ingests documents with batching and forceful relation linking.
-* Polls indexing status until 100% of documents transition to `graph_creation` / `completed`.
-* Validates post-ingestion graph queries.
+
+#### What Happens Under the Hood:
+
+1. **Dataset Invariant Validation**:
+   - Loads canonical documents via [`SlackAdapter`](backend/ingestion/adapters/slack_adapter.py), [`LinearAdapter`](backend/ingestion/adapters/linear_adapter.py), and [`GitHubAdapter`](backend/ingestion/adapters/github_adapter.py).
+   - Asserts exact dataset counts: **20 Slack**, **20 Linear**, **20 GitHub** (60 total).
+   - Validates that all 60 document IDs (`dsid_<hex>`) are strictly unique and non-colliding.
+
+2. **Cloud Schema Transformation (`record_to_cloud_item`)**:
+   - Packages each canonical record into HydraDB Cloud v2 `app_knowledge` JSON format:
+     ```json
+     {
+       "id": "dsid_slack_inc_2026",
+       "database": "veridex-hackhydra",
+       "title": "Slack Incident INC-2026",
+       "type": "slack",
+       "content": { "text": "..." },
+       "tenant_metadata": { "source": "slack", "channel": "#incidents" },
+       "additional_metadata": { "veridex_source_id": "...", "veridex_document_id": "...", "author": "..." },
+       "relations": { "ids": ["INC-2026", "PR-99501"] }
+     }
+     ```
+   - Automatically attaches cross-source entity relations (`relations: { "ids": [...] }`) to enable deterministic graph topology in HydraDB Cloud.
+
+3. **Batched HTTP Ingestion**:
+   - Submits records in batches of 15 items to `POST https://api.hydradb.com/context/ingest` with `API-Version: 2` and `Authorization: Bearer <HYDRA_DB_API_KEY>`.
+
+4. **Asynchronous Indexing Polling**:
+   - Continuously polls `GET https://api.hydradb.com/context/status` in 20-document chunks every 3 seconds.
+   - Waits until **100% of all 60 documents** transition to `graph_creation` or `completed`.
+
+---
+
+### How to Verify the Ingestion
+
+You can verify the cloud ingestion using any of the following 4 methods:
+
+#### Method 1: Cloud Retrieval Sanity Check
+Runs 5 representative cross-source graph queries against HydraDB Cloud v2 (`PR-99501`, `REL-311`, `kernel-selector`, etc.):
+```bash
+python backend/retrieval/verify_cloud_retrieval.py
+```
+*Expected Output*: Verified graph chunks, low latency (<25ms), and 100% preserved provenance (`dsid` + `msg_id`).
+
+#### Method 2: Comprehensive Pytest Verification Suite (153 Tests)
+Runs full unit and integration test coverage across all adapters, candidate builders, RAG pipeline, tracer, and schemas:
+```bash
+python -m pytest -q
+```
+*Expected Output*: `153 passed in ~25s`.
+
+#### Method 3: In-Process Production Smoke Test
+Validates server routes, health check, grounded ask pipeline, and multi-hop tracer:
+```bash
+python backend/verify_production_smoke.py --in-process
+```
+*Expected Output*: `ALL PRODUCTION SMOKE TESTS PASSED SUCCESSFULLY!`.
+
+#### Method 4: Visual Verification in React Console
+1. Start backend: `python -m uvicorn backend.api.app:app --reload --port 8000`
+2. Start frontend: `npm run dev --prefix frontend-react`
+3. Open `http://localhost:5173` in your browser.
+4. Check the top-right indicator: **`[● HYDRADB CONNECTED]`**.
+5. Navigate to **Suggestions** or **Investigate** and run any query.
 
 ---
 
@@ -833,6 +922,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ### Acknowledgements:
 * **[HydraDB](https://github.com/hydra-db/hydradb)**: Next-generation graph-relational database powering deterministic knowledge retrieval.
+* **[EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench)**: Realistic multi-source enterprise benchmark dataset by Onyx (Danswer).
 * **[FastAPI](https://fastapi.tiangolo.com/)**: High-performance Python web framework.
 * **[Google Gemini](https://ai.google.dev/)**: Language model API for grounded synthesis.
 * **[React](https://react.dev/) & [Vite](https://vite.dev/)**: Modern frontend client tooling.
