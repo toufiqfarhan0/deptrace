@@ -4,6 +4,10 @@ import {
   SUGGESTIONS_CATALOG,
   getFilteredSuggestions,
 } from '../data/suggestions.js'
+import {
+  QUOTA_STUDENT_MESSAGE,
+  useQuota,
+} from '../utils/quotaManager.js'
 
 const CATEGORIES = [
   { id: 'ALL', label: 'All' },
@@ -18,6 +22,8 @@ const CATEGORIES = [
 export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
   const [category, setCategory] = useState('ALL')
   const [search, setSearch] = useState('')
+  const [error, setError] = useState(null)
+  const quota = useQuota()
 
   const filtered = useMemo(() => {
     return getFilteredSuggestions(category, search)
@@ -32,6 +38,22 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
     setSearch('')
   }
 
+  const handleQueryClick = (q) => {
+    if (quota.isExceeded) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+    onSelectQuery(q)
+  }
+
+  const handleTraceClick = (e) => {
+    if (quota.isExceeded) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+    onSelectTrace(e)
+  }
+
   return (
     <section aria-label="Investigation suggestions catalog" className="suggestions-section">
       <div className="view-header">
@@ -40,6 +62,14 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
           Explore verified questions from the HydraDB demo knowledge graph spanning Slack, Linear, and GitHub.
         </div>
       </div>
+
+      {/* Student Quota Exceeded Banner */}
+      {(quota.isExceeded || error) && (
+        <div className="quota-student-banner" role="alert">
+          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
+          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+        </div>
+      )}
 
       {/* Dataset Freeze Context Banner */}
       <div className="dataset-context-banner" role="region" aria-label="Dataset status">
@@ -99,19 +129,25 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
       </div>
 
       {/* Suggestions Count Line */}
-      <div className="suggestions-meta-line">
+      <div className="suggestions-meta-line" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>
           Showing <strong>{filtered.length}</strong> of {SUGGESTIONS_CATALOG.length} investigations
         </span>
-        {(category !== 'ALL' || search) && (
-          <button
-            className="clear-all-filters-btn"
-            onClick={handleClearFilters}
-            type="button"
-          >
-            Reset Filters
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className={`quota-status-tag ${quota.isExceeded ? 'exceeded' : ''}`} title="Demo Quota">
+            <span>Quota:</span>
+            <strong>{quota.remaining} / {quota.maxQuota} remaining</strong>
+          </div>
+          {(category !== 'ALL' || search) && (
+            <button
+              className="clear-all-filters-btn"
+              onClick={handleClearFilters}
+              type="button"
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Suggestions List Table */}
@@ -170,7 +206,7 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
                     <div className="entity-actions-inline">
                       <button
                         className="entity-action-btn ask-btn"
-                        onClick={() => onSelectQuery(item.query)}
+                        onClick={() => handleQueryClick(item.query)}
                         aria-label={`Ask Veridex: ${item.query}`}
                         type="button"
                       >
@@ -180,7 +216,7 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
                       {item.entity && (
                         <button
                           className="entity-action-btn trace-btn"
-                          onClick={() => onSelectTrace(item.entity)}
+                          onClick={() => handleTraceClick(item.entity)}
                           aria-label={`Trace dependencies for ${item.entity}`}
                           type="button"
                         >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react"
 import ThemeToggle from "./ThemeToggle.jsx"
 import { isHydraOnline, getHydraStatusLabel, getHydraAriaLabel } from "../utils/hydraStatus.js"
+import { QUOTA_STUDENT_MESSAGE, useQuota } from "../utils/quotaManager.js"
 
 function SignalFlowDiagram() {
   const [lit, setLit] = useState(false)
@@ -66,6 +67,9 @@ function SignalFlowDiagram() {
 
 function HeroLiveTerminalDesk({ onEnterConsole }) {
   const [typedQuery, setTypedQuery] = useState('')
+  const [error, setError] = useState(null)
+  const quota = useQuota()
+
   const quickQueries = [
     { label: 'INC-2026', q: 'What happened during incident INC-2026?' },
     { label: 'PR-99501', q: 'What changes were made in PR-99501?' },
@@ -73,10 +77,18 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
     { label: 'kernel-selector', q: 'What is kernel-selector about?' },
   ]
 
+  const handleExecute = (targetQuery) => {
+    if (quota.isExceeded) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+    onEnterConsole('ask', targetQuery)
+  }
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      onEnterConsole('ask', typedQuery.trim() || 'What happened during incident INC-2026?')
+      handleExecute(typedQuery.trim() || 'What happened during incident INC-2026?')
     }
   }
 
@@ -85,8 +97,18 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
       <div className="lp-terminal-bar">
         <span className="lp-terminal-dot" />
         <span className="lp-terminal-path">veridex://hydradb/enterprise-rag/live</span>
-        <span className="lp-terminal-status">HYDRADB READY</span>
+        <span className="lp-terminal-status">
+          {quota.isExceeded ? 'QUOTA LIMIT REACHED' : `DEMO QUOTA: ${quota.remaining}/${quota.maxQuota} LEFT`}
+        </span>
       </div>
+
+      {(quota.isExceeded || error) && (
+        <div className="quota-student-banner" style={{ margin: '12px 14px 0 14px' }} role="alert">
+          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
+          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+        </div>
+      )}
+
       <div className="lp-hero-inline-query">
         <span className="lp-prompt-symbol">&gt;</span>
         <input
@@ -100,7 +122,7 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
         />
         <button
           className="lp-btn-primary"
-          onClick={() => onEnterConsole('ask', typedQuery.trim() || 'What happened during incident INC-2026?')}
+          onClick={() => handleExecute(typedQuery.trim() || 'What happened during incident INC-2026?')}
           type="button"
           id="lp-hero-execute-direct"
         >
@@ -113,7 +135,7 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
           <button
             key={item.label}
             className="lp-tq-btn"
-            onClick={() => onEnterConsole('ask', item.q)}
+            onClick={() => handleExecute(item.q)}
             type="button"
           >
             {item.label}

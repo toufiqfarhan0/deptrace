@@ -290,10 +290,30 @@ def test_generator_api_error_sanitized_reporting(sample_evidence) -> None:
 
     assert resp.grounded is False
     assert resp.confidence == 0.0
+    assert resp.answer == "This model reached limit"
     assert resp.error is not None
+    assert "This model reached limit" in resp.error
     assert dummy_key not in resp.error
     assert "[REDACTED_API_KEY]" in resp.error
     assert "RuntimeError" in resp.error
+
+
+def test_generator_generic_error_reporting(sample_evidence) -> None:
+    retriever = MockRetriever(evidence=sample_evidence)
+    generic_err = RuntimeError("Network timeout connecting to server")
+    generator = MockGenerator(fail=True, fail_exc=generic_err)
+
+    resp = answer_question(
+        question="What happened?",
+        retriever=retriever,
+        generator=generator,
+    )
+
+    assert resp.grounded is False
+    assert resp.confidence == 0.0
+    assert resp.answer == "Failed to generate answer from model."
+    assert resp.error is not None
+    assert "Network timeout" in resp.error
 
 
 def test_empty_and_whitespace_question() -> None:

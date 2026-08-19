@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { getQuickTraceEntities } from '../data/suggestions.js'
+import {
+  consumeQuota,
+  isRateLimitError,
+  formatModelError,
+  QUOTA_STUDENT_MESSAGE,
+  RATE_LIMIT_MESSAGE,
+  useQuota,
+} from '../utils/quotaManager.js'
 
 function DepPath({ data, onSelectEntity, onNavigateToAsk }) {
   const { root_entity, impact_summary } = data
@@ -82,12 +90,21 @@ export default function TraceView({
   const [result, setResult] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
   const inputRef = useRef(null)
+  const quota = useQuota()
 
   const quickEntities = getQuickTraceEntities()
 
   const handleTrace = useCallback(async (targetOverride) => {
     const target = (targetOverride !== undefined ? targetOverride : entity).trim()
     if (!target) return
+
+    // Enforce 3-interaction quota limit
+    const quotaCheck = consumeQuota()
+    if (!quotaCheck.allowed) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+
     setLoading(true)
     setError(null)
     setResult(null)
@@ -108,7 +125,11 @@ export default function TraceView({
       if (!data.found) throw new Error(data.error || `Entity '${target}' not found in knowledge graph.`)
       setResult(data)
     } catch (err) {
-      setError(err.message || 'Dependency trace failed.')
+      if (isRateLimitError(err.message)) {
+        setError(RATE_LIMIT_MESSAGE)
+      } else {
+        setError(err.message || 'Dependency trace failed.')
+      }
     } finally {
       setLoading(false)
     }
@@ -156,12 +177,24 @@ export default function TraceView({
         </div>
       </div>
 
+      {/* Student Quota Exceeded Banner */}
+      {quota.isExceeded && (
+        <div className="quota-student-banner" role="alert">
+          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
+          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+        </div>
+      )}
+
       {/* Trace Input Card */}
       <div className="query-console" role="search">
-        <div className="query-card-header">
+        <div className="query-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label htmlFor="trace-target-input" className="query-card-label">
             Target Entity to Trace
           </label>
+          <div className={`quota-status-tag ${quota.isExceeded ? 'exceeded' : ''}`} title="Demo Quota: max 3 interactions">
+            <span>Quota:</span>
+            <strong>{quota.remaining} / {quota.maxQuota} remaining</strong>
+          </div>
         </div>
         <div className="trace-input-row">
           <input
@@ -256,9 +289,15 @@ export default function TraceView({
 
       {/* Error */}
       {error && (
-        <div className="error-block" role="alert">
-          <div className="error-label">Trace Error</div>
-          <div className="error-desc">{error}</div>
+        <div className={`error-block ${error === QUOTA_STUDENT_MESSAGE ? 'quota-exceeded-block' : ''}`} role="alert">
+          <div className="error-label">
+            {error === QUOTA_STUDENT_MESSAGE
+              ? 'DEMO QUOTA LIMIT REACHED'
+              : isRateLimitError(error)
+              ? 'MODEL LIMIT REACHED'
+              : 'Trace Error'}
+          </div>
+          <div className="error-desc">{formatModelError(error, error)}</div>
         </div>
       )}
 

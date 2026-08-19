@@ -1,5 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { getInquiryQueries } from '../data/suggestions.js'
+import {
+  consumeQuota,
+  isRateLimitError,
+  formatModelError,
+  QUOTA_STUDENT_MESSAGE,
+  RATE_LIMIT_MESSAGE,
+  useQuota,
+} from '../utils/quotaManager.js'
 
 const STARTER_QUERIES = [
   'What happened during incident INC-2026?',
@@ -375,6 +383,7 @@ export default function InvestigationView({
   const [highlightedId, setHighlightedId] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
   const textareaRef = useRef(null)
+  const quota = useQuota()
 
   const suggestions = getInquiryQueries()
 
@@ -389,6 +398,14 @@ export default function InvestigationView({
   const handleExecute = useCallback(async (queryOverride) => {
     const q = (queryOverride !== undefined ? queryOverride : query).trim()
     if (!q) return
+
+    // Enforce 3-interaction quota limit
+    const quotaCheck = consumeQuota()
+    if (!quotaCheck.allowed) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+
     setLoading(true)
     setError(null)
     setResult(null)
@@ -409,9 +426,19 @@ export default function InvestigationView({
       if (!res.ok) {
         throw new Error(data.detail || data.error || `HTTP ${res.status}`)
       }
+      if (data.error && isRateLimitError(data.error)) {
+        data.answer = RATE_LIMIT_MESSAGE
+      }
+      if (data.answer && isRateLimitError(data.answer)) {
+        data.answer = RATE_LIMIT_MESSAGE
+      }
       setResult(data)
     } catch (err) {
-      setError(err.message || 'Failed to query knowledge graph.')
+      if (isRateLimitError(err.message)) {
+        setError(RATE_LIMIT_MESSAGE)
+      } else {
+        setError(err.message || 'Failed to query knowledge graph.')
+      }
     } finally {
       setLoading(false)
     }
@@ -478,12 +505,24 @@ export default function InvestigationView({
         </div>
       </div>
 
+      {/* Student Quota Exceeded Banner */}
+      {quota.isExceeded && (
+        <div className="quota-student-banner" role="alert">
+          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
+          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+        </div>
+      )}
+
       {/* Query Input Card */}
       <div className="query-console" role="search">
-        <div className="query-card-header">
+        <div className="query-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label htmlFor="investigation-input" className="query-card-label">
             What would you like to investigate?
           </label>
+          <div className={`quota-status-tag ${quota.isExceeded ? 'exceeded' : ''}`} title="Demo Quota: max 3 interactions">
+            <span>Quota:</span>
+            <strong>{quota.remaining} / {quota.maxQuota} remaining</strong>
+          </div>
         </div>
         <div className="query-input-row">
           <textarea
@@ -564,9 +603,15 @@ export default function InvestigationView({
 
       {/* Error State */}
       {error && (
-        <div className="error-block" role="alert">
-          <div className="error-label">Investigation Error</div>
-          <div className="error-desc">{error}</div>
+        <div className={`error-block ${error === QUOTA_STUDENT_MESSAGE ? 'quota-exceeded-block' : ''}`} role="alert">
+          <div className="error-label">
+            {error === QUOTA_STUDENT_MESSAGE
+              ? 'DEMO QUOTA LIMIT REACHED'
+              : isRateLimitError(error)
+              ? 'MODEL LIMIT REACHED'
+              : 'Investigation Error'}
+          </div>
+          <div className="error-desc">{formatModelError(error, error)}</div>
         </div>
       )}
 

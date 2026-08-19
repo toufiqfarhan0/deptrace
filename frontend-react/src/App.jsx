@@ -9,8 +9,10 @@ import GraphHealth from './components/GraphHealth.jsx'
 import WhyHydraDB from './components/WhyHydraDB.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import { getHydraStatusLabel, getHydraDotClass, getHydraAriaLabel } from './utils/hydraStatus.js'
+import { useQuota } from './utils/quotaManager.js'
 
 export default function App() {
+  const quota = useQuota()
   // Theme System: default dark for all users, toggleable and persisted in localStorage
   const [theme, setTheme] = useState(() => {
     try {
@@ -143,6 +145,10 @@ export default function App() {
             <span className="breadcrumb-active">{getBreadcrumb()}</span>
           </nav>
           <div className="header-actions">
+            <div className={`quota-header-badge ${quota.isExceeded ? 'exceeded' : ''}`} title="Demo Usage Quota: max 3 interactions">
+              <span>Quota:</span>
+              <strong>{quota.remaining} / {quota.maxQuota}</strong>
+            </div>
             <ThemeToggle theme={theme} onToggleTheme={toggleTheme} />
             <div
               className="header-status"

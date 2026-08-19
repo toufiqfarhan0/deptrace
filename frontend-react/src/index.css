@@ -1965,6 +1965,124 @@ input, textarea, select {
 }
 
 /* =============================================
+   STUDENT QUOTA & RATE LIMIT BANNER STYLES
+   ============================================= */
+
+.quota-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-3);
+  letter-spacing: 0.02em;
+}
+
+.quota-status-tag strong {
+  color: var(--c-accent);
+  font-weight: 600;
+}
+
+.quota-status-tag.exceeded {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.quota-status-tag.exceeded strong {
+  color: #ef4444;
+}
+
+.quota-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
+  white-space: nowrap;
+}
+
+.quota-header-badge.exceeded {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+}
+
+.quota-student-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(232, 162, 71, 0.12);
+  border: 1px solid rgba(232, 162, 71, 0.4);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.quota-student-banner.exceeded-alert {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.quota-student-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.quota-student-text {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--c-text);
+  letter-spacing: -0.01em;
+}
+
+.quota-exceeded-block {
+  border-color: rgba(232, 162, 71, 0.45);
+  background: rgba(232, 162, 71, 0.08);
+}
+
+.quota-exceeded-block .error-label {
+  color: var(--c-accent);
+}
+
+.rate-limit-alert {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.rate-limit-alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #f59e0b;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.rate-limit-alert-body {
+  font-size: var(--text-sm);
+  color: var(--c-text-2);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* =============================================
    LANDING PAGE — ROOT & SCROLL
    ============================================= */
 

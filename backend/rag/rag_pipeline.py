@@ -38,6 +38,21 @@ class GeneratorProtocol(Protocol):
     ) -> str: ...
 
 
+def is_rate_limit_error(exc: Exception | str) -> bool:
+    """Check if exception or message corresponds to Gemini model rate limit or quota exhaustion."""
+    msg = str(exc).lower()
+    return (
+        "429" in msg
+        or "resourceexhausted" in msg
+        or "resource_exhausted" in msg
+        or "rate limit" in msg
+        or "ratelimit" in msg
+        or "quota" in msg
+        or "too many requests" in msg
+        or "exhausted" in msg
+    )
+
+
 def sanitize_error(exc: Exception) -> str:
     """
     Sanitize error message to report safe diagnostic information without leaking secrets.
@@ -54,7 +69,6 @@ def sanitize_error(exc: Exception) -> str:
     sanitized = re.sub(r"Bearer\s+[A-Za-z0-9_\-\.]+", "Bearer [REDACTED]", sanitized)
     sanitized = re.sub(r"key=[A-Za-z0-9_\-]+", "key=[REDACTED]", sanitized)
     sanitized = re.sub(r"token=[A-Za-z0-9_\-]+", "token=[REDACTED]", sanitized)
-
 
     return f"{exc_type}{status_str}: {sanitized}"
 
@@ -176,6 +190,15 @@ class GraphRAGPipeline:
             )
         except Exception as exc:
             sanitized = sanitize_error(exc)
+            if is_rate_limit_error(exc):
+                return AnswerResponse(
+                    question=clean_question,
+                    answer="This model reached limit",
+                    evidence=raw_evidence,
+                    confidence=0.0,
+                    grounded=False,
+                    error=f"Model generation error: This model reached limit ({sanitized})",
+                )
             return AnswerResponse(
                 question=clean_question,
                 answer="Failed to generate answer from model.",

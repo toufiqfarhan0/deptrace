@@ -291,9 +291,54 @@ Incident **INC-2026** involved elevated latency in European regions [E1, E2].
     }))
     // Ensure no crash on mount with complex query
     if (!test7_html) throw new Error('TEST 7 FAILED: InvestigationView failed to render')
-    console.log('✓ TEST 7 PASSED: Markdown and citation parser rendered without error')
+    console.log('\n--- TEST QUOTA MANAGER & RATE LIMIT MESSAGING ---')
+    const quotaMod = await server.ssrLoadModule('/src/utils/quotaManager.js')
+    
+    // In-memory storage mock for quota testing
+    let storageMap = {}
+    global.localStorage = {
+      getItem: (k) => storageMap[k] ?? null,
+      setItem: (k, v) => { storageMap[k] = String(v) },
+      removeItem: (k) => { delete storageMap[k] },
+    }
 
-    console.log('\n>>> ALL STEP 23B TESTS PASSED WITH ZERO RUNTIME ERRORS! <<<')
+    quotaMod.resetQuota()
+    if (quotaMod.getQuotaUsed() !== 0) throw new Error('Initial quota should be 0')
+    if (quotaMod.getRemainingQuota() !== 3) throw new Error('Initial remaining quota should be 3')
+    if (quotaMod.isQuotaExceeded() !== false) throw new Error('Initial isQuotaExceeded should be false')
+
+    // 1st consumption
+    const c1 = quotaMod.consumeQuota()
+    if (!c1.allowed || c1.remaining !== 2) throw new Error(`1st consumption failed: ${JSON.stringify(c1)}`)
+
+    // 2nd consumption
+    const c2 = quotaMod.consumeQuota()
+    if (!c2.allowed || c2.remaining !== 1) throw new Error(`2nd consumption failed: ${JSON.stringify(c2)}`)
+
+    // 3rd consumption
+    const c3 = quotaMod.consumeQuota()
+    if (!c3.allowed || c3.remaining !== 0) throw new Error(`3rd consumption failed: ${JSON.stringify(c3)}`)
+    if (quotaMod.isQuotaExceeded() !== true) throw new Error('isQuotaExceeded should be true after 3 consumptions')
+
+    // 4th consumption (must be blocked with student message)
+    const c4 = quotaMod.consumeQuota()
+    if (c4.allowed !== false) throw new Error('4th consumption should be blocked')
+    if (!c4.message.includes('student')) throw new Error(`Expected student message in 4th consumption: ${JSON.stringify(c4)}`)
+    console.log('✓ Quota consumption test passed: max 3 interactions enforced with student message')
+
+    // Test rate limit error formatting
+    if (!quotaMod.isRateLimitError('429 ResourceExhausted')) throw new Error('Rate limit detection failed on 429')
+    if (!quotaMod.isRateLimitError('Failed to load model')) throw new Error('Rate limit detection failed on Failed to load model')
+    if (!quotaMod.isRateLimitError('quota exceeded')) throw new Error('Rate limit detection failed on quota exceeded')
+    if (quotaMod.formatModelError('429 ResourceExhausted') !== 'This model reached limit') {
+      throw new Error(`Expected 'This model reached limit', got: ${quotaMod.formatModelError('429 ResourceExhausted')}`)
+    }
+    if (quotaMod.formatModelError('failed to load model') !== 'This model reached limit') {
+      throw new Error(`Expected 'This model reached limit', got: ${quotaMod.formatModelError('failed to load model')}`)
+    }
+    console.log('✓ Rate limit message formatting passed: "This model reached limit" verified')
+
+    console.log('\n>>> ALL TESTS PASSED WITH ZERO RUNTIME ERRORS! <<<')
   } catch (err) {
     console.error('CRITICAL SSR ERROR:', err)
     process.exit(1)
@@ -304,4 +349,5 @@ Incident **INC-2026** involved elevated latency in European regions [E1, E2].
 }
 
 run()
+
 

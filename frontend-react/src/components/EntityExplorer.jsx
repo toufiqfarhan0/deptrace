@@ -1,4 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import {
+  isRateLimitError,
+  formatModelError,
+  QUOTA_STUDENT_MESSAGE,
+  RATE_LIMIT_MESSAGE,
+  useQuota,
+} from '../utils/quotaManager.js'
 
 function getEntityMeta(entity) {
   const norm = entity.trim()
@@ -67,6 +74,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState('')
+  const quota = useQuota()
 
   useEffect(() => {
     async function load() {
@@ -75,13 +83,33 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
         const data = await res.json()
         setEntities(data.entities || [])
       } catch (err) {
-        setError('Failed to load entities from HydraDB.')
+        if (isRateLimitError(err?.message)) {
+          setError(RATE_LIMIT_MESSAGE)
+        } else {
+          setError('Failed to load entities from HydraDB.')
+        }
       } finally {
         setLoading(false)
       }
     }
     load()
   }, [])
+
+  const handleAskClick = (askQuery) => {
+    if (quota.isExceeded) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+    if (onAskEntity) onAskEntity(askQuery)
+  }
+
+  const handleTraceClick = (entityName) => {
+    if (quota.isExceeded) {
+      setError(QUOTA_STUDENT_MESSAGE)
+      return
+    }
+    if (onTraceEntity) onTraceEntity(entityName)
+  }
 
   const filtered = entities.filter((e) =>
     e.toLowerCase().includes(filter.toLowerCase().trim())
@@ -95,6 +123,14 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           Browse incidents, tickets, pull requests, components, and other entities discovered in the HydraDB knowledge graph.
         </div>
       </div>
+
+      {/* Student Quota Exceeded Banner */}
+      {quota.isExceeded && (
+        <div className="quota-student-banner" role="alert">
+          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
+          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+        </div>
+      )}
 
       <div className="entity-filter-row" role="search">
         <input
@@ -128,14 +164,26 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           </div>
         </div>
       ) : error ? (
-        <div className="error-block" role="alert">
-          <div className="error-label">Error</div>
-          <div className="error-desc">{error}</div>
+        <div className={`error-block ${error === QUOTA_STUDENT_MESSAGE ? 'quota-exceeded-block' : ''}`} role="alert">
+          <div className="error-label">
+            {error === QUOTA_STUDENT_MESSAGE
+              ? 'DEMO QUOTA LIMIT REACHED'
+              : isRateLimitError(error)
+              ? 'MODEL LIMIT REACHED'
+              : 'Error'}
+          </div>
+          <div className="error-desc">{formatModelError(error, error)}</div>
         </div>
       ) : (
         <>
-          <div className="entity-count-line">
-            Showing <strong>{filtered.length}</strong> of {entities.length} entities in HydraDB knowledge graph
+          <div className="entity-count-line" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>
+              Showing <strong>{filtered.length}</strong> of {entities.length} entities in HydraDB knowledge graph
+            </span>
+            <div className={`quota-status-tag ${quota.isExceeded ? 'exceeded' : ''}`} title="Demo Quota">
+              <span>Quota:</span>
+              <strong>{quota.remaining} / {quota.maxQuota} remaining</strong>
+            </div>
           </div>
           {filtered.length > 0 ? (
             <div className="entity-list-table-container">
@@ -175,7 +223,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
                             {onAskEntity && (
                               <button
                                 className="entity-action-btn ask-btn"
-                                onClick={() => onAskEntity(meta.askQuery)}
+                                onClick={() => handleAskClick(meta.askQuery)}
                                 title={`Ask a question about ${entity}`}
                                 aria-label={`Ask about ${entity}`}
                                 type="button"
@@ -187,7 +235,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
                             {onTraceEntity && (
                               <button
                                 className="entity-action-btn trace-btn"
-                                onClick={() => onTraceEntity(entity)}
+                                onClick={() => handleTraceClick(entity)}
                                 title={`Trace dependency connections for ${entity}`}
                                 aria-label={`Trace connections for ${entity}`}
                                 type="button"
