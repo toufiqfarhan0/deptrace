@@ -40,7 +40,7 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
 
   const handleQueryClick = (q) => {
     if (quota.isExceeded) {
-      setError(QUOTA_STUDENT_MESSAGE)
+      setError(quota.studentMessage)
       return
     }
     onSelectQuery(q)
@@ -48,7 +48,7 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
 
   const handleTraceClick = (e) => {
     if (quota.isExceeded) {
-      setError(QUOTA_STUDENT_MESSAGE)
+      setError(quota.studentMessage)
       return
     }
     onSelectTrace(e)
@@ -63,11 +63,11 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
         </div>
       </div>
 
-      {/* Student Quota Exceeded Banner */}
+      {/* Progressive Quota Exceeded Banner */}
       {(quota.isExceeded || error) && (
         <div className="quota-student-banner" role="alert">
-          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
-          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+          <span className="quota-student-icon" aria-hidden="true">💡</span>
+          <span className="quota-student-text">{error || quota.studentMessage}</span>
         </div>
       )}
 

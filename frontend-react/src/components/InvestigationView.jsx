@@ -399,10 +399,10 @@ export default function InvestigationView({
     const q = (queryOverride !== undefined ? queryOverride : query).trim()
     if (!q) return
 
-    // Enforce 3-interaction quota limit
+    // Enforce progressive quota limit
     const quotaCheck = consumeQuota()
     if (!quotaCheck.allowed) {
-      setError(QUOTA_STUDENT_MESSAGE)
+      setError(quotaCheck.message || quota.studentMessage)
       return
     }
 
@@ -505,11 +505,11 @@ export default function InvestigationView({
         </div>
       </div>
 
-      {/* Student Quota Exceeded Banner */}
+      {/* Progressive Quota Exceeded Banner */}
       {quota.isExceeded && (
         <div className="quota-student-banner" role="alert">
-          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
-          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+          <span className="quota-student-icon" aria-hidden="true">💡</span>
+          <span className="quota-student-text">{quota.studentMessage}</span>
         </div>
       )}
 
@@ -603,9 +603,9 @@ export default function InvestigationView({
 
       {/* Error State */}
       {error && (
-        <div className={`error-block ${error === QUOTA_STUDENT_MESSAGE ? 'quota-exceeded-block' : ''}`} role="alert">
+        <div className={`error-block ${quota.isExceeded || error === quota.studentMessage ? 'quota-exceeded-block' : ''}`} role="alert">
           <div className="error-label">
-            {error === QUOTA_STUDENT_MESSAGE
+            {quota.isExceeded || error === quota.studentMessage
               ? 'DEMO QUOTA LIMIT REACHED'
               : isRateLimitError(error)
               ? 'MODEL LIMIT REACHED'

@@ -79,7 +79,7 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
 
   const handleExecute = (targetQuery) => {
     if (quota.isExceeded) {
-      setError(QUOTA_STUDENT_MESSAGE)
+      setError(quota.studentMessage)
       return
     }
     onEnterConsole('ask', targetQuery)
@@ -98,14 +98,16 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
         <span className="lp-terminal-dot" />
         <span className="lp-terminal-path">veridex://hydradb/enterprise-rag/live</span>
         <span className="lp-terminal-status">
-          {quota.isExceeded ? 'QUOTA LIMIT REACHED' : `DEMO QUOTA: ${quota.remaining}/${quota.maxQuota} LEFT`}
+          {quota.isExceeded
+            ? (quota.stage >= 2 ? 'DEMO LIMIT REACHED' : 'QUOTA LIMIT REACHED — REFRESH TO EXTEND')
+            : `DEMO QUOTA: ${quota.remaining}/${quota.maxQuota} LEFT`}
         </span>
       </div>
 
       {(quota.isExceeded || error) && (
         <div className="quota-student-banner" style={{ margin: '12px 14px 0 14px' }} role="alert">
-          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
-          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+          <span className="quota-student-icon" aria-hidden="true">💡</span>
+          <span className="quota-student-text">{error || quota.studentMessage}</span>
         </div>
       )}
 

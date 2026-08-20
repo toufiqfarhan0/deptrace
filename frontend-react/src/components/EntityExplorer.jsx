@@ -97,7 +97,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
 
   const handleAskClick = (askQuery) => {
     if (quota.isExceeded) {
-      setError(QUOTA_STUDENT_MESSAGE)
+      setError(quota.studentMessage)
       return
     }
     if (onAskEntity) onAskEntity(askQuery)
@@ -105,7 +105,7 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
 
   const handleTraceClick = (entityName) => {
     if (quota.isExceeded) {
-      setError(QUOTA_STUDENT_MESSAGE)
+      setError(quota.studentMessage)
       return
     }
     if (onTraceEntity) onTraceEntity(entityName)
@@ -124,11 +124,11 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
         </div>
       </div>
 
-      {/* Student Quota Exceeded Banner */}
+      {/* Progressive Quota Exceeded Banner */}
       {quota.isExceeded && (
         <div className="quota-student-banner" role="alert">
-          <span className="quota-student-icon" aria-hidden="true">⚠️</span>
-          <span className="quota-student-text">{QUOTA_STUDENT_MESSAGE}</span>
+          <span className="quota-student-icon" aria-hidden="true">💡</span>
+          <span className="quota-student-text">{quota.studentMessage}</span>
         </div>
       )}
 
@@ -164,9 +164,9 @@ export default function EntityExplorer({ onTraceEntity, onAskEntity }) {
           </div>
         </div>
       ) : error ? (
-        <div className={`error-block ${error === QUOTA_STUDENT_MESSAGE ? 'quota-exceeded-block' : ''}`} role="alert">
+        <div className={`error-block ${quota.isExceeded || error === quota.studentMessage ? 'quota-exceeded-block' : ''}`} role="alert">
           <div className="error-label">
-            {error === QUOTA_STUDENT_MESSAGE
+            {quota.isExceeded || error === quota.studentMessage
               ? 'DEMO QUOTA LIMIT REACHED'
               : isRateLimitError(error)
               ? 'MODEL LIMIT REACHED'

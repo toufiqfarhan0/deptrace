@@ -320,11 +320,42 @@ Incident **INC-2026** involved elevated latency in European regions [E1, E2].
     if (!c3.allowed || c3.remaining !== 0) throw new Error(`3rd consumption failed: ${JSON.stringify(c3)}`)
     if (quotaMod.isQuotaExceeded() !== true) throw new Error('isQuotaExceeded should be true after 3 consumptions')
 
-    // 4th consumption (must be blocked with student message)
+    // 4th consumption (must be blocked at stage 0)
     const c4 = quotaMod.consumeQuota()
-    if (c4.allowed !== false) throw new Error('4th consumption should be blocked')
-    if (!c4.message.includes('student')) throw new Error(`Expected student message in 4th consumption: ${JSON.stringify(c4)}`)
-    console.log('✓ Quota consumption test passed: max 3 interactions enforced with student message')
+    if (c4.allowed !== false) throw new Error('4th consumption should be blocked at stage 0')
+    if (!c4.message.includes('Refresh the page to unlock 2')) throw new Error(`Expected refresh message in 4th consumption: ${JSON.stringify(c4)}`)
+    console.log('✓ Stage 0 quota enforcement passed (3/3 queries, refresh unlock message)')
+
+    // 1st Refresh: Unlock 2 bonus queries (Stage 1)
+    quotaMod.initRefreshBonus()
+    if (quotaMod.getRefreshStage() !== 1) throw new Error('Stage should be 1 after 1st refresh')
+    if (quotaMod.getRemainingQuota() !== 2) throw new Error(`Remaining should be 2 after 1st refresh, got ${quotaMod.getRemainingQuota()}`)
+
+    const c5 = quotaMod.consumeQuota() // 4th total
+    if (!c5.allowed || c5.remaining !== 1) throw new Error(`4th consumption on Stage 1 failed: ${JSON.stringify(c5)}`)
+
+    const c6 = quotaMod.consumeQuota() // 5th total
+    if (!c6.allowed || c6.remaining !== 0) throw new Error(`5th consumption on Stage 1 failed: ${JSON.stringify(c6)}`)
+
+    const c7Blocked = quotaMod.consumeQuota() // Blocked at Stage 1
+    if (c7Blocked.allowed !== false) throw new Error('6th consumption should be blocked at stage 1')
+    if (!c7Blocked.message.includes('final test query')) throw new Error(`Expected 1 final test query message: ${JSON.stringify(c7Blocked)}`)
+    console.log('✓ Stage 1 refresh bonus passed (+2 queries granted and enforced)')
+
+    // 2nd Refresh: Unlock 1 final bonus query (Stage 2)
+    quotaMod.initRefreshBonus()
+    if (quotaMod.getRefreshStage() !== 2) throw new Error('Stage should be 2 after 2nd refresh')
+    if (quotaMod.getRemainingQuota() !== 1) throw new Error(`Remaining should be 1 after 2nd refresh, got ${quotaMod.getRemainingQuota()}`)
+
+    const c8 = quotaMod.consumeQuota() // 6th total
+    if (!c8.allowed || c8.remaining !== 0) throw new Error(`6th consumption on Stage 2 failed: ${JSON.stringify(c8)}`)
+
+    // 3rd Refresh: Max reached, locked with final completion message
+    quotaMod.initRefreshBonus()
+    const c9Final = quotaMod.consumeQuota()
+    if (c9Final.allowed !== false) throw new Error('7th consumption should be blocked at max stage')
+    if (!c9Final.message.includes('6/6 queries')) throw new Error(`Expected final evaluation completion message: ${JSON.stringify(c9Final)}`)
+    console.log('✓ Stage 2 & 3 final refresh tier passed (+1 final query and graceful max limit locked)')
 
     // Test rate limit error formatting
     if (!quotaMod.isRateLimitError('429 ResourceExhausted')) throw new Error('Rate limit detection failed on 429')
