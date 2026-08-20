@@ -26,7 +26,9 @@ from backend.retrieval.factory import (
 from backend.retrieval.models import (
     DependencyTraceRequest,
     DependencyTraceResponse,
+    TemporalTimelineResponse,
 )
+from backend.retrieval.temporal_tracer import TemporalTracer
 from backend.semantic.verify_semantic_graph import query as default_query_fn
 
 router = APIRouter(prefix="/api", tags=["rag"])
@@ -219,5 +221,35 @@ def get_demo_queries_endpoint() -> list[dict[str, str]]:
     """
     from backend.evaluation.evaluation_runner import BENCHMARK_QUERIES
     return BENCHMARK_QUERIES
+
+
+@router.get("/timeline/incidents")
+def get_timeline_incidents_endpoint() -> list[dict[str, Any]]:
+    """
+    Return pre-configured featured incident scenarios for chronological timeline replay.
+    """
+    tracer = TemporalTracer()
+    return tracer.get_featured_incidents()
+
+
+@router.get("/timeline", response_model=TemporalTimelineResponse)
+def get_temporal_timeline_endpoint(
+    entity: str = "INC-2026",
+    as_of: str | None = None,
+    max_events: int = 15,
+) -> TemporalTimelineResponse:
+    """
+    Generate chronological multi-source incident timeline with dynamic graph progression.
+    Supports time-travel filtering via `as_of` timestamp.
+    """
+    tracer = TemporalTracer()
+    try:
+        return tracer.build_timeline(entity=entity, as_of=as_of, max_events=max_events)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Temporal tracer error: {type(exc).__name__}",
+        ) from exc
+
 
 

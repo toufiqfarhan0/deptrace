@@ -3,6 +3,7 @@ import LandingPage from './components/LandingPage.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import InvestigationView from './components/InvestigationView.jsx'
 import TraceView from './components/TraceView.jsx'
+import TimelinePlayer from './components/TimelinePlayer.jsx'
 import SuggestionsView from './components/SuggestionsView.jsx'
 import EntityExplorer from './components/EntityExplorer.jsx'
 import GraphHealth from './components/GraphHealth.jsx'
@@ -43,6 +44,7 @@ export default function App() {
   const [hydraStatus, setHydraStatus] = useState({ status: 'loading', hydradb: '' })
   const [askQuery, setAskQuery] = useState('')
   const [traceEntity, setTraceEntity] = useState('')
+  const [timelineEntity, setTimelineEntity] = useState('INC-2026')
   const [sessionKey, setSessionKey] = useState(0)
 
   const checkHealth = useCallback(async () => {
@@ -73,11 +75,19 @@ export default function App() {
     setView('console')
   }, [])
 
+  const navigateToTimeline = useCallback((entity = '') => {
+    if (entity) setTimelineEntity(entity)
+    setActiveView('timeline')
+    setView('console')
+  }, [])
+
   // Entry point from landing page CTAs — switches to console view with optional query
   const enterConsole = useCallback((consoleView = 'ask', initialQuery = '') => {
     if (initialQuery) {
       if (consoleView === 'trace') {
         setTraceEntity(initialQuery)
+      } else if (consoleView === 'timeline') {
+        setTimelineEntity(initialQuery)
       } else {
         setAskQuery(initialQuery)
       }
@@ -95,6 +105,7 @@ export default function App() {
   const handleGoLanding = useCallback(() => {
     setAskQuery('')
     setTraceEntity('')
+    setTimelineEntity('INC-2026')
     setSessionKey((prev) => prev + 1)
     setView('landing')
   }, [])
@@ -103,6 +114,7 @@ export default function App() {
     switch (activeView) {
       case 'ask': return 'Investigate / Ask'
       case 'trace': return 'Investigate / Trace'
+      case 'timeline': return 'Investigate / Incident Timeline'
       case 'suggestions': return 'Explore / Suggestions'
       case 'entities': return 'Explore / Entities'
       case 'why-hydra': return 'Learn / How Veridex Works'
@@ -167,13 +179,14 @@ export default function App() {
         </header>
 
         <main className="workspace-body" id="main-content" role="main">
-          {/* Keep Ask and Trace views mounted in DOM so execution state, traces, and answers persist during tab navigation */}
+          {/* Keep Ask, Trace, and Timeline views mounted in DOM so execution state persists during tab navigation */}
           <div style={{ display: activeView === 'ask' ? 'block' : 'none' }}>
             <InvestigationView
               key={`ask-${sessionKey}`}
               initialQuery={askQuery}
               onQueryChange={setAskQuery}
               onNavigateToTrace={navigateToTrace}
+              onNavigateToTimeline={navigateToTimeline}
               isActive={activeView === 'ask'}
             />
           </div>
@@ -183,7 +196,17 @@ export default function App() {
               initialEntity={traceEntity}
               onEntityChange={setTraceEntity}
               onNavigateToAsk={navigateToAsk}
+              onNavigateToTimeline={navigateToTimeline}
               isActive={activeView === 'trace'}
+            />
+          </div>
+          <div style={{ display: activeView === 'timeline' ? 'block' : 'none' }}>
+            <TimelinePlayer
+              key={`timeline-${sessionKey}`}
+              initialEntity={timelineEntity}
+              onNavigateToAsk={navigateToAsk}
+              onNavigateToTrace={navigateToTrace}
+              isActive={activeView === 'timeline'}
             />
           </div>
           {activeView === 'suggestions' && (

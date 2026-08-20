@@ -8,6 +8,7 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
       items: [
         { id: 'ask', label: 'Ask', icon: <AskIcon /> },
         { id: 'trace', label: 'Trace', icon: <TraceIcon /> },
+        { id: 'timeline', label: 'Timeline', icon: <TimelineIcon /> },
       ],
     },
     {
@@ -142,6 +143,15 @@ function ArchitectureIcon() {
   )
 }
 
+function TimelineIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  )
+}
+
 function VeridexLogoIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--c-accent)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -152,5 +162,6 @@ function VeridexLogoIcon() {
     </svg>
   )
 }
+
 
 

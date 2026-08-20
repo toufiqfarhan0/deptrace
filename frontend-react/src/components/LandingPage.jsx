@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react"
 import ThemeToggle from "./ThemeToggle.jsx"
 import { isHydraOnline, getHydraStatusLabel, getHydraAriaLabel } from "../utils/hydraStatus.js"
 import { QUOTA_STUDENT_MESSAGE, useQuota } from "../utils/quotaManager.js"
+import { SourceIcon, SlackIcon, LinearIcon, GitHubIcon } from "./SourceIcons.jsx"
 
 function SignalFlowDiagram() {
   const [lit, setLit] = useState(false)
@@ -20,7 +21,10 @@ function SignalFlowDiagram() {
       <div className="lp-sources">
         {sources.map((s, i) => (
           <div key={s.id} className="lp-source-card" style={{ animationDelay: `${i * 120}ms` }}>
-            <div className="lp-source-label">{s.label}</div>
+            <div className="lp-source-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <SourceIcon source={s.id} size={14} />
+              <span>{s.label}</span>
+            </div>
             <div className="lp-source-ref">{s.ref}</div>
             <div className="lp-source-excerpt">{s.excerpt}</div>
           </div>
@@ -145,6 +149,181 @@ function HeroLiveTerminalDesk({ onEnterConsole }) {
         ))}
       </div>
     </div>
+  )
+}
+
+function JudgeQuickGuideSection({ onEnterConsole }) {
+  return (
+    <section className="lp-section lp-judge-section" aria-labelledby="judge-guide-heading">
+      <div className="lp-container">
+        <div className="lp-judge-guide-header">
+          <div className="lp-judge-badge-row">
+            <span className="lp-judge-badge">JUDGE &amp; EVALUATOR QUICK START</span>
+            <span className="lp-judge-track-badge">HACK HYDRA 2026 · TRACK 1: ENTERPRISE CONTEXT</span>
+          </div>
+          <h2 className="lp-section-title" id="judge-guide-heading">
+            3 ways to evaluate Veridex in 60 seconds.
+          </h2>
+          <p className="lp-section-body">
+            Veridex merges fragmented Slack incident chatter, Linear tickets, and GitHub pull requests into a deterministic bi-temporal knowledge graph hosted on <strong>HydraDB Cloud v2</strong>. Here is the recommended evaluation sequence:
+          </p>
+        </div>
+
+        <div className="lp-judge-steps-grid">
+          {/* STEP 1: ASK */}
+          <div className="lp-judge-step-card">
+            <div className="lp-judge-step-num">01</div>
+            <div className="lp-judge-step-header">
+              <span className="step-tag ask">GROUNDED RAG</span>
+              <h3 className="lp-judge-step-title">Ask natural language questions</h3>
+            </div>
+            <p className="lp-judge-step-desc">
+              HydraDB extracts the bounded evidence subgraph [E1, E2] with zero hallucinated links and zero vector drift.
+            </p>
+            <div className="lp-judge-test-box">
+              <span className="test-lbl">RECOMMENDED TEST:</span>
+              <button
+                type="button"
+                className="lp-judge-action-btn ask-btn"
+                onClick={() => onEnterConsole('ask', 'What happened during incident INC-2026?')}
+              >
+                Ask: &ldquo;What happened in INC-2026?&rdquo; →
+              </button>
+            </div>
+            <div className="lp-judge-alt-presets">
+              <span className="alt-lbl">Also try:</span>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What changes were made in PR-99501?')}>PR-99501</button>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What happened with REL-311?')}>REL-311</button>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What is connected to kernel-selector?')}>kernel-selector</button>
+            </div>
+          </div>
+
+          {/* STEP 2: TRACE */}
+          <div className="lp-judge-step-card">
+            <div className="lp-judge-step-num">02</div>
+            <div className="lp-judge-step-header">
+              <span className="step-tag trace">DEPENDENCY GRAPH</span>
+              <h3 className="lp-judge-step-title">Trace blast radius &amp; relationships</h3>
+            </div>
+            <p className="lp-judge-step-desc">
+              Traverse 1–3 hop BFS causal dependencies across microservices, pull requests, and on-call alerts.
+            </p>
+            <div className="lp-judge-test-box">
+              <span className="test-lbl">RECOMMENDED TEST:</span>
+              <button
+                type="button"
+                className="lp-judge-action-btn trace-btn"
+                onClick={() => onEnterConsole('trace', 'PR-99501')}
+              >
+                Trace: &ldquo;PR-99501&rdquo; Blast Radius →
+              </button>
+            </div>
+            <div className="lp-judge-alt-presets">
+              <span className="alt-lbl">Also try:</span>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'INC-2026')}>INC-2026</button>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'REL-311')}>REL-311</button>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'api-search')}>api-search</button>
+            </div>
+          </div>
+
+          {/* STEP 3: TIMELINE REPLAY */}
+          <div className="lp-judge-step-card featured">
+            <div className="lp-judge-step-num">03</div>
+            <div className="lp-judge-step-header">
+              <span className="step-tag timeline">TIME-TRAVEL REPLAY</span>
+              <h3 className="lp-judge-step-title">Scrub through incident evolution</h3>
+            </div>
+            <p className="lp-judge-step-desc">
+              VCR player scrubbing through Detection → Investigation → Mitigation → Resolution.
+            </p>
+            <div className="lp-judge-test-box">
+              <span className="test-lbl">RECOMMENDED TEST:</span>
+              <button
+                type="button"
+                className="lp-judge-action-btn timeline-btn"
+                onClick={() => onEnterConsole('timeline', 'INC-2026')}
+              >
+                Launch: &ldquo;INC-2026&rdquo; Replay Player →
+              </button>
+            </div>
+            <div className="lp-judge-alt-presets">
+              <span className="alt-lbl">Also try:</span>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('timeline', 'REL-311')}>REL-311 (Rollback)</button>
+              <button type="button" className="alt-chip" onClick={() => onEnterConsole('timeline', 'PR-99501')}>PR-99501 (Hotfix)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function TimelineShowcaseSection({ onEnterConsole }) {
+  const phases = [
+    { icon: '01', label: 'Detection', desc: 'PagerDuty alerts, anomaly telemetry, and Slack error spikes' },
+    { icon: '02', label: 'Investigation', desc: 'Linear tickets, triage coordination, and root-cause hypothesis' },
+    { icon: '03', label: 'Mitigation', desc: 'Hotfix PRs, fallback flag flips, and canary deployments' },
+    { icon: '04', label: 'Resolution', desc: 'Service recovery, metric stabilization, and post-mortem closure' },
+  ]
+
+  return (
+    <section className="lp-section lp-section--ruled" aria-labelledby="timeline-showcase-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="timeline-showcase-heading">BI-TEMPORAL REASONING ON HYDRADB</div>
+        <h2 className="lp-section-title">Incidents unfold over time. Replay every step.</h2>
+        <p className="lp-section-body">
+          Traditional vector stores only see a static snapshot of documents. Veridex leverages HydraDB&apos;s bi-temporal knowledge graph structure to reconstruct discrete time states ($T_0 \rightarrow T_n$), giving incident response teams complete causal clarity.
+        </p>
+
+        <div className="lp-timeline-showcase-card">
+          <div className="lp-timeline-phases-row">
+            {phases.map((p, idx) => (
+              <div key={p.label} className="lp-timeline-phase-box">
+                <div className="phase-icon-badge">{p.icon}</div>
+                <div className="phase-title">{p.label}</div>
+                <div className="phase-desc">{p.desc}</div>
+                {idx < phases.length - 1 && <span className="phase-arrow" aria-hidden="true">→</span>}
+              </div>
+            ))}
+          </div>
+
+          <div className="lp-timeline-preview-desk">
+            <div className="preview-top-bar">
+              <div className="preview-meta">
+                <span className="live-dot" />
+                <span>FEATURED REPLAY: <strong>INC-2026</strong> (GPU Pool Queue Exceeded)</span>
+                <span className="badge-pill">7 Events · 4 Sources</span>
+              </div>
+              <button
+                type="button"
+                className="lp-btn-primary lp-btn-sm"
+                onClick={() => onEnterConsole('timeline', 'INC-2026')}
+              >
+                OPEN TIMELINE PLAYER
+              </button>
+            </div>
+            <div className="preview-scrubber-sim">
+              <div className="sim-rail">
+                <span className="sim-node active">T+0m (Alert)</span>
+                <span className="sim-line" />
+                <span className="sim-node active">T+18m (Triage)</span>
+                <span className="sim-line" />
+                <span className="sim-node active">T+42m (Fix PR)</span>
+                <span className="sim-line" />
+                <span className="sim-node active">T+1h 15m (Canary)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="lp-evaluator-note-box">
+            <span className="note-pill">EVALUATOR NOTE</span>
+            <span>
+              The <strong>Bi-Temporal Incident Timeline Replay Player</strong> was completed after initial demo submission and is not in the earlier recording. It is <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN TIMELINE PLAYER</strong> above or use the <strong>Timeline</strong> tab in the sidebar to evaluate it.
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -288,7 +467,10 @@ function SignalsToStateSection() {
             {sources.map((s) => (
               <div key={s.key} className="lp-signal-source">
                 <div className="lp-signal-source-header">
-                  <span className="lp-signal-source-name">{s.label}</span>
+                  <span className="lp-signal-source-name" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <SourceIcon source={s.key} size={15} />
+                    <span>{s.label}</span>
+                  </span>
                   <span className="lp-signal-source-desc">{s.desc}</span>
                 </div>
                 <div className="lp-signal-items">
@@ -493,6 +675,7 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
           <nav className="lp-nav-links" aria-label="Product navigation">
             <button className="lp-nav-link" onClick={() => onEnterConsole("ask")} id="lp-nav-investigate">ASK</button>
             <button className="lp-nav-link" onClick={() => onEnterConsole("trace")} id="lp-nav-trace">TRACE</button>
+            <button className="lp-nav-link" onClick={() => onEnterConsole("timeline")} id="lp-nav-timeline">TIMELINE</button>
             <button className="lp-nav-link" onClick={() => onEnterConsole("suggestions")} id="lp-nav-suggestions">SUGGESTIONS</button>
             <button className="lp-nav-link" onClick={() => onEnterConsole("entities")} id="lp-nav-explore">ENTITIES</button>
             <button className="lp-nav-link" onClick={onNavigateToWhyHydra} id="lp-nav-why">HOW IT WORKS</button>
@@ -535,8 +718,10 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
         </div>
       </section>
 
+      <JudgeQuickGuideSection onEnterConsole={onEnterConsole} />
       <WorkflowStepsSection />
       <AskVsTraceSection onEnterConsole={onEnterConsole} />
+      <TimelineShowcaseSection onEnterConsole={onEnterConsole} />
       <SignalsToStateSection />
       <InvestigationExample onEnterConsole={() => onEnterConsole("ask")} />
       <DependencyTracePreview />
@@ -574,6 +759,7 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
               <ul className="lp-footer-list">
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("ask")}>Grounded Ask</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("trace")}>Trace Graph</button></li>
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("timeline")}>Incident Timeline</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("entities")}>Entity Explorer</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("suggestions")}>Query Catalog</button></li>
               </ul>

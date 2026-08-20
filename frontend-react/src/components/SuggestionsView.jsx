@@ -8,6 +8,7 @@ import {
   QUOTA_STUDENT_MESSAGE,
   useQuota,
 } from '../utils/quotaManager.js'
+import { SourceIcon, SlackIcon, LinearIcon, GitHubIcon } from './SourceIcons'
 
 const CATEGORIES = [
   { id: 'ALL', label: 'All' },
@@ -79,9 +80,9 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
           <span className="dataset-context-sep" aria-hidden="true">·</span>
           <span className="dataset-context-stats">
             <strong>{DATASET_STATS.total}</strong> Documents (
-            <span>{DATASET_STATS.slack} Slack</span> ·{' '}
-            <span>{DATASET_STATS.linear} Linear</span> ·{' '}
-            <span>{DATASET_STATS.github} GitHub</span>)
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><SlackIcon size={12} /> {DATASET_STATS.slack} Slack</span> ·{' '}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><LinearIcon size={12} /> {DATASET_STATS.linear} Linear</span> ·{' '}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GitHubIcon size={12} /> {DATASET_STATS.github} GitHub</span>)
           </span>
         </div>
         <div className="dataset-context-right">
@@ -121,8 +122,12 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
               role="tab"
               aria-selected={category === cat.id}
               type="button"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
-              {cat.label}
+              {cat.id === 'SLACK' && <SlackIcon size={13} />}
+              {cat.id === 'LINEAR' && <LinearIcon size={13} />}
+              {cat.id === 'GITHUB' && <GitHubIcon size={13} />}
+              <span>{cat.label}</span>
             </button>
           ))}
         </div>
@@ -191,6 +196,7 @@ export default function SuggestionsView({ onSelectQuery, onSelectTrace }) {
                         {item.badge}
                       </span>
                       <span className={`source-badge ${item.source.toLowerCase()}`}>
+                        <SourceIcon source={item.source} size={12} style={{ marginRight: 4 }} />
                         {item.source}
                       </span>
                     </div>

@@ -117,3 +117,66 @@ class DependencyTraceResponse(BaseModel):
     dependency_hops: list[TraceHop] = Field(default_factory=list)
     raw_evidence: list[EvidenceItem] = Field(default_factory=list)
     error: str | None = None
+
+
+# ===========================================================================
+# Step 18: Temporal "Time-Travel" Graph & Incident Timeline Models
+# ===========================================================================
+
+
+class TimelineEvent(BaseModel):
+    """A chronological event in an incident timeline with provenance and stage."""
+
+    id: str
+    order: int = Field(ge=1)
+    timestamp: str | None = None
+    relative_time: str = "+0m"
+    source: str = "slack"  # slack | linear | github | system
+    source_id: str = ""
+    document_id: str = ""
+    title: str = ""
+    author: str | None = None
+    channel_or_repo: str | None = None
+    content_snippet: str = ""
+    phase: str = "detection"  # detection | investigation | mitigation | resolution
+    phase_label: str = "Detection"
+    entities: list[str] = Field(default_factory=list)
+    active_node_ids: list[str] = Field(default_factory=list)
+    new_edges: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class TimelineGraphNode(BaseModel):
+    """Graph node in the temporal graph state."""
+
+    id: str
+    label: str
+    type: str = "component"  # component | incident | ticket | pr | channel | person
+    source: str = "system"
+    introduced_at_step: int = 1
+
+
+class TimelineGraphEdge(BaseModel):
+    """Directional edge formed in the temporal knowledge graph."""
+
+    id: str
+    source: str
+    target: str
+    label: str = "CONNECTED_TO"
+    introduced_at_step: int = 1
+
+
+class TemporalTimelineResponse(BaseModel):
+    """Full temporal incident timeline and step-by-step graph evolution."""
+
+    target_entity: str
+    found: bool = True
+    total_events: int = 0
+    earliest_timestamp: str | None = None
+    latest_timestamp: str | None = None
+    duration_formatted: str = ""
+    phase_counts: dict[str, int] = Field(default_factory=dict)
+    events: list[TimelineEvent] = Field(default_factory=list)
+    all_nodes: list[TimelineGraphNode] = Field(default_factory=list)
+    all_edges: list[TimelineGraphEdge] = Field(default_factory=list)
+    error: str | None = None
+

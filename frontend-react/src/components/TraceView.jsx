@@ -81,6 +81,7 @@ export default function TraceView({
   initialEntity = '',
   onEntityChange,
   onNavigateToAsk,
+  onNavigateToTimeline,
   isActive = true,
 }) {
   const [entity, setEntity] = useState(initialEntity)
@@ -310,12 +311,24 @@ export default function TraceView({
               <span className="query-label-small">ROOT ENTITY</span>
               <span className="query-text-display">{result.root_entity}</span>
             </div>
-            {latencyMs !== null && (
-              <div className="query-latency-tag">
-                <span className="latency-lbl">LATENCY</span>
-                <span className="latency-val">{latencyMs} ms</span>
-              </div>
-            )}
+            <div className="query-meta-actions">
+              {onNavigateToTimeline && (
+                <button
+                  type="button"
+                  className="timeline-jump-btn"
+                  onClick={() => onNavigateToTimeline(result.root_entity)}
+                  title={`Play chronological incident timeline for ${result.root_entity}`}
+                >
+                  <span>REPLAY TIMELINE</span>
+                </button>
+              )}
+              {latencyMs !== null && (
+                <div className="query-latency-tag">
+                  <span className="latency-lbl">LATENCY</span>
+                  <span className="latency-val">{latencyMs} ms</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="impact-section">

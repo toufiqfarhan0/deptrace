@@ -8,6 +8,7 @@ import {
   RATE_LIMIT_MESSAGE,
   useQuota,
 } from '../utils/quotaManager.js'
+import { SourceIcon } from './SourceIcons.jsx'
 
 const STARTER_QUERIES = [
   'What happened during incident INC-2026?',
@@ -343,8 +344,9 @@ function EvidenceRows({ items, highlightedId, onHighlight, onNavigateToTrace }) 
 
             <div className="evidence-meta">
               {item.source && (
-                <span className="source-tag">
-                  <strong>Source:</strong> {item.source}
+                <span className="source-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <SourceIcon source={item.source} size={13} />
+                  <span><strong>Source:</strong> {item.source}</span>
                 </span>
               )}
               {item.message_id ? (
@@ -374,6 +376,7 @@ export default function InvestigationView({
   initialQuery = '',
   onQueryChange,
   onNavigateToTrace,
+  onNavigateToTimeline,
   isActive = true,
 }) {
   const [query, setQuery] = useState(initialQuery)
@@ -706,6 +709,16 @@ export default function InvestigationView({
                           <span>Trace Connections</span>
                           <span aria-hidden="true">⟷</span>
                         </button>
+                        {onNavigateToTimeline && (
+                          <button
+                            className="entity-chip-action-btn timeline-cta-btn"
+                            onClick={() => onNavigateToTimeline(ent)}
+                            title={`Replay chronological incident timeline for ${ent}`}
+                            type="button"
+                          >
+                            <span>Replay Timeline</span>
+                          </button>
+                        )}
                         <button
                           className="entity-chip-action-btn secondary"
                           onClick={() => {
