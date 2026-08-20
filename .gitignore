@@ -73,4 +73,15 @@ frontend-react/node_modules/
 # Remotion Video Project & SFX Assets
 veridex-demo-video/
 
+# Local Demo Audio & Video Voiceover Assets
+audio_demo/
+*.mp3
+*.wav
+*.ogg
+generate_full_demo_voiceover.py
+generate_voice*.py
+generate-sfx*.js
+generate_ambient*.js
+test_voice.mp3
+
 
