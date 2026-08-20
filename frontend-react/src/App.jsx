@@ -13,7 +13,7 @@ import { useQuota } from './utils/quotaManager.js'
 
 export default function App() {
   const quota = useQuota()
-  // Theme System: default dark for all users, toggleable and persisted in localStorage
+  // Theme System: default to light mode, toggleable to dark mode
   const [theme, setTheme] = useState(() => {
     try {
       const saved = localStorage.getItem('veridex-theme')
@@ -21,7 +21,7 @@ export default function App() {
     } catch {
       // Ignore localStorage access failures
     }
-    return 'dark'
+    return 'light'
   })
 
   useEffect(() => {
@@ -145,7 +145,7 @@ export default function App() {
             <span className="breadcrumb-active">{getBreadcrumb()}</span>
           </nav>
           <div className="header-actions">
-            <div className={`quota-header-badge ${quota.isExceeded ? 'exceeded' : ''}`} title="Demo Usage Quota: max 3 interactions">
+            <div className={`quota-header-badge ${quota.isExceeded ? 'exceeded' : ''}`} title={`Demo Usage Quota: ${quota.remaining}/${quota.maxQuota}`}>
               <span>Quota:</span>
               <strong>{quota.remaining} / {quota.maxQuota}</strong>
             </div>
