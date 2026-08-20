@@ -9,6 +9,7 @@ import {
   useQuota,
 } from '../utils/quotaManager.js'
 import { SourceIcon } from './SourceIcons.jsx'
+import CypherModal from './CypherModal.jsx'
 
 const STARTER_QUERIES = [
   'What happened during incident INC-2026?',
@@ -385,6 +386,7 @@ export default function InvestigationView({
   const [result, setResult] = useState(null)
   const [highlightedId, setHighlightedId] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
+  const [showCypher, setShowCypher] = useState(false)
   const textareaRef = useRef(null)
   const quota = useQuota()
 
@@ -675,8 +677,17 @@ export default function InvestigationView({
           {/* Answer Block */}
           <div className="synthesis-block">
             <div className="synthesis-header">
-              <div className="synthesis-header-main">
+              <div className="synthesis-header-main" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <span className="synthesis-title">INVESTIGATION RESULT</span>
+                {result.cypher_inspection && (
+                  <button
+                    type="button"
+                    className="cypher-mini-btn"
+                    onClick={() => setShowCypher(true)}
+                  >
+                    Inspect HydraDB Cypher Query
+                  </button>
+                )}
               </div>
               <GroundingStatusChip state={groundingState} evidenceCount={result.evidence?.length ?? 0} />
             </div>
@@ -797,6 +808,14 @@ export default function InvestigationView({
           </div>
         </div>
       )}
+
+      {/* Cypher Query Modal */}
+      <CypherModal
+        isOpen={showCypher}
+        onClose={() => setShowCypher(false)}
+        cypherInfo={result?.cypher_inspection}
+        title="Grounded Ask — HydraDB OpenCypher Query"
+      />
     </section>
   )
 }

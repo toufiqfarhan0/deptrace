@@ -16,6 +16,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.rag.rag_pipeline import answer_question
+from backend.retrieval.conflict_resolver import resolve_conflicts
+from backend.retrieval.cypher_inspector import (
+    get_cypher_for_ask,
+    get_cypher_for_timeline,
+    get_cypher_for_trace,
+)
 from backend.retrieval.dependency_tracer import DependencyTracer
 from backend.retrieval.factory import (
     check_active_health,
@@ -24,6 +30,7 @@ from backend.retrieval.factory import (
     get_hydra_mode,
 )
 from backend.retrieval.models import (
+    ConflictResolutionResponse,
     DependencyTraceRequest,
     DependencyTraceResponse,
     TemporalTimelineResponse,
@@ -79,6 +86,7 @@ class AskResponse(BaseModel):
     confidence: float | None = 1.0
     evidence: list[EvidenceResponseItem] = Field(default_factory=list)
     cited_evidence_ids: list[str] = Field(default_factory=list)
+    cypher_inspection: Any | None = None
     error: str | None = None
 
 
@@ -153,6 +161,9 @@ def ask_question_endpoint(
         for idx, item in enumerate(rag_res.evidence, start=1)
     ]
 
+    target_entity = next((item.entity_name for item in rag_res.evidence if item.entity_name), None)
+    cypher_info = get_cypher_for_ask(payload.question, target_entity)
+
     return AskResponse(
         question=rag_res.question,
         answer=rag_res.answer,
@@ -160,6 +171,7 @@ def ask_question_endpoint(
         confidence=rag_res.confidence,
         evidence=formatted_evidence,
         cited_evidence_ids=rag_res.cited_evidence_ids,
+        cypher_inspection=cypher_info,
         error=rag_res.error,
     )
 
@@ -189,6 +201,7 @@ def trace_dependencies_endpoint(
             max_depth=payload.max_depth,
             limit=payload.limit,
         )
+        res.cypher_inspection = get_cypher_for_trace(payload.entity, payload.max_depth)
         return res
     except Exception as exc:
         raise HTTPException(
@@ -244,12 +257,45 @@ def get_temporal_timeline_endpoint(
     """
     tracer = TemporalTracer()
     try:
-        return tracer.build_timeline(entity=entity, as_of=as_of, max_events=max_events)
+        res = tracer.build_timeline(entity=entity, as_of=as_of, max_events=max_events)
+        res.cypher_inspection = get_cypher_for_timeline(entity)
+        return res
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Temporal tracer error: {type(exc).__name__}",
         ) from exc
+
+
+@router.get("/conflicts", response_model=ConflictResolutionResponse)
+def get_conflicts_endpoint(entity: str | None = None) -> ConflictResolutionResponse:
+    """
+    Retrieve cross-source enterprise contradictions and their deterministic graph resolutions.
+    """
+    try:
+        return resolve_conflicts(entity=entity)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Conflict resolver error: {type(exc).__name__}",
+        ) from exc
+
+
+@router.get("/graph/full")
+def get_full_graph_endpoint() -> dict[str, Any]:
+    """
+    Retrieve the complete multi-source knowledge graph topology for the Interactive Canvas Explorer.
+    """
+    try:
+        from backend.graph.full_graph_builder import build_full_graph_topology
+        return build_full_graph_topology().model_dump()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Graph builder error: {type(exc).__name__}",
+        ) from exc
+
+
 
 
 

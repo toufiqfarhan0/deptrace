@@ -4,6 +4,8 @@ import Sidebar from './components/Sidebar.jsx'
 import InvestigationView from './components/InvestigationView.jsx'
 import TraceView from './components/TraceView.jsx'
 import TimelinePlayer from './components/TimelinePlayer.jsx'
+import ConflictResolverView from './components/ConflictResolverView.jsx'
+import GraphExplorerView from './components/GraphExplorerView.jsx'
 import SuggestionsView from './components/SuggestionsView.jsx'
 import EntityExplorer from './components/EntityExplorer.jsx'
 import GraphHealth from './components/GraphHealth.jsx'
@@ -81,6 +83,11 @@ export default function App() {
     setView('console')
   }, [])
 
+  const navigateToConflicts = useCallback(() => {
+    setActiveView('conflicts')
+    setView('console')
+  }, [])
+
   // Entry point from landing page CTAs — switches to console view with optional query
   const enterConsole = useCallback((consoleView = 'ask', initialQuery = '') => {
     if (initialQuery) {
@@ -115,6 +122,8 @@ export default function App() {
       case 'ask': return 'Investigate / Ask'
       case 'trace': return 'Investigate / Trace'
       case 'timeline': return 'Investigate / Incident Timeline'
+      case 'conflicts': return 'Investigate / Conflict Arbiter'
+      case 'graph': return 'Explore / Graph Canvas'
       case 'suggestions': return 'Explore / Suggestions'
       case 'entities': return 'Explore / Entities'
       case 'why-hydra': return 'Learn / How Veridex Works'
@@ -209,6 +218,19 @@ export default function App() {
               isActive={activeView === 'timeline'}
             />
           </div>
+          {activeView === 'conflicts' && (
+            <ConflictResolverView
+              onNavigateToAsk={navigateToAsk}
+              onNavigateToTrace={navigateToTrace}
+            />
+          )}
+          {activeView === 'graph' && (
+            <GraphExplorerView
+              onNavigateToAsk={navigateToAsk}
+              onNavigateToTrace={navigateToTrace}
+              onNavigateToTimeline={navigateToTimeline}
+            />
+          )}
           {activeView === 'suggestions' && (
             <SuggestionsView
               onSelectQuery={navigateToAsk}

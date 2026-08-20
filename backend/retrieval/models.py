@@ -116,6 +116,7 @@ class DependencyTraceResponse(BaseModel):
     timeline: list[StatementTimelineItem] = Field(default_factory=list)
     dependency_hops: list[TraceHop] = Field(default_factory=list)
     raw_evidence: list[EvidenceItem] = Field(default_factory=list)
+    cypher_inspection: Any | None = None
     error: str | None = None
 
 
@@ -178,5 +179,75 @@ class TemporalTimelineResponse(BaseModel):
     events: list[TimelineEvent] = Field(default_factory=list)
     all_nodes: list[TimelineGraphNode] = Field(default_factory=list)
     all_edges: list[TimelineGraphEdge] = Field(default_factory=list)
+    cypher_inspection: Any | None = None
     error: str | None = None
+
+
+
+# ===========================================================================
+# Step 24: Live HydraDB OpenCypher Query Inspection & Conflict Resolution
+# ===========================================================================
+
+
+class CypherQueryInspection(BaseModel):
+    """Details of an OpenCypher query executed against HydraDB for inspectability."""
+
+    query: str
+    purpose: str
+    nodes_matched: list[str] = Field(default_factory=list)
+    relationships_traversed: list[str] = Field(default_factory=list)
+    filtering_predicates: list[str] = Field(default_factory=list)
+    vector_rag_limitation: str = ""
+
+
+class ContradictingClaim(BaseModel):
+    """A claim or belief expressed in an enterprise document that was superseded or refuted."""
+
+    claim_text: str
+    source: str  # slack | linear | github
+    source_ref: str
+    author: str | None = None
+    timestamp: str | None = None
+    document_id: str = ""
+    message_id: int | None = None
+    authority_score: float = 0.5
+    status: str = "superseded"  # superseded | outdated | unverified
+    superseded_reason: str = ""
+
+
+class CanonicalTruth(BaseModel):
+    """The verified ground truth established through ontology hierarchy and provenance."""
+
+    fact_text: str
+    source: str
+    source_ref: str
+    author: str | None = None
+    timestamp: str | None = None
+    document_id: str = ""
+    message_id: int | None = None
+    authority_score: float = 0.95
+    verification_method: str = "Merged Code PR + Automated Verification"
+
+
+class ConflictResolutionItem(BaseModel):
+    """A detected contradiction and its deterministic resolution in HydraDB."""
+
+    id: str
+    entity: str
+    topic: str
+    status: str = "resolved"  # resolved | consensus | ambiguous
+    canonical_truth: CanonicalTruth
+    contradicting_claims: list[ContradictingClaim] = Field(default_factory=list)
+    resolution_reasoning: str = ""
+    cypher_inspection: CypherQueryInspection | None = None
+
+
+class ConflictResolutionResponse(BaseModel):
+    """Response containing cross-source contradictions and their deterministic resolutions."""
+
+    total_conflicts: int = 0
+    resolved_count: int = 0
+    conflicts: list[ConflictResolutionItem] = Field(default_factory=list)
+    error: str | None = None
+
 

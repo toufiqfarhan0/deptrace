@@ -92,6 +92,56 @@ export function PagerDutyIcon({ size = 16, className = '', color = '#10B981', st
   )
 }
 
+export function JiraIcon({ size = 16, className = '', style = {} }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`source-app-icon icon-jira ${className}`}
+      style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle', ...style }}
+      aria-hidden="true"
+    >
+      <path
+        d="M11.53 2c0 5.258-4.28 9.52-9.53 9.52V2h9.53z"
+        fill="#0052CC"
+      />
+      <path
+        d="M11.53 12.48c0 5.258-4.28 9.52-9.53 9.52v-9.52h9.53z"
+        fill="#2684FF"
+      />
+      <path
+        d="M22 12.48c0 5.258-4.28 9.52-9.53 9.52v-9.52H22z"
+        fill="#0052CC"
+      />
+    </svg>
+  )
+}
+
+export function ConfluenceIcon({ size = 16, className = '', style = {} }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`source-app-icon icon-confluence ${className}`}
+      style={{ flexShrink: 0, display: 'inline-block', verticalAlign: 'middle', ...style }}
+      aria-hidden="true"
+    >
+      <path
+        d="M3.24 18.06c-.84-.84-.96-2.16-.27-3.12l4.89-6.84c.69-.96 2.01-1.2 2.97-.51l2.4 1.71c.96.69 1.2 2.01.51 2.97l-4.89 6.84c-.69.96-2.01 1.2-2.97.51l-2.64-1.56z"
+        fill="#172B4D"
+      />
+      <path
+        d="M20.76 5.94c.84.84.96 2.16.27 3.12l-4.89 6.84c-.69.96-2.01 1.2-2.97.51l-2.4-1.71c-.96-.69-1.2-2.01-.51-2.97l4.89-6.84c.69-.96 2.01-1.2 2.97-.51l2.64 1.56z"
+        fill="#0052CC"
+      />
+    </svg>
+  )
+}
+
 /**
  * Universal SourceIcon resolver
  */
@@ -100,6 +150,8 @@ export function SourceIcon({ source, size = 14, className = '', style = {} }) {
   if (norm.includes('slack')) return <SlackIcon size={size} className={className} style={style} />
   if (norm.includes('linear')) return <LinearIcon size={size} className={className} style={style} />
   if (norm.includes('github') || norm.startsWith('pr-')) return <GitHubIcon size={size} className={className} style={style} />
+  if (norm.includes('jira')) return <JiraIcon size={size} className={className} style={style} />
+  if (norm.includes('confluence') || norm.startsWith('rfc-') || norm.startsWith('adr-')) return <ConfluenceIcon size={size} className={className} style={style} />
   if (norm.includes('pagerduty')) return <PagerDutyIcon size={size} className={className} style={style} />
 
   // Generic System / Graph Node

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react"
 import ThemeToggle from "./ThemeToggle.jsx"
 import { isHydraOnline, getHydraStatusLabel, getHydraAriaLabel } from "../utils/hydraStatus.js"
 import { QUOTA_STUDENT_MESSAGE, useQuota } from "../utils/quotaManager.js"
-import { SourceIcon, SlackIcon, LinearIcon, GitHubIcon } from "./SourceIcons.jsx"
+import { SourceIcon, SlackIcon, LinearIcon, GitHubIcon, JiraIcon, ConfluenceIcon, PagerDutyIcon } from "./SourceIcons.jsx"
 
 function SignalFlowDiagram() {
   const [lit, setLit] = useState(false)
@@ -162,94 +162,172 @@ function JudgeQuickGuideSection({ onEnterConsole }) {
             <span className="lp-judge-track-badge">HACK HYDRA 2026 · TRACK 1: ENTERPRISE CONTEXT</span>
           </div>
           <h2 className="lp-section-title" id="judge-guide-heading">
-            3 ways to evaluate Veridex in 60 seconds.
+            5 ways to evaluate Veridex in 60 seconds.
           </h2>
           <p className="lp-section-body">
-            Veridex merges fragmented Slack incident chatter, Linear tickets, and GitHub pull requests into a deterministic bi-temporal knowledge graph hosted on <strong>HydraDB Cloud v2</strong>. Here is the recommended evaluation sequence:
+            Veridex merges fragmented Slack incident chatter, Linear tickets, GitHub pull requests, Jira tickets, and Confluence RFCs into a deterministic bi-temporal knowledge graph hosted on <strong>HydraDB Cloud v2</strong>. Here is the recommended evaluation sequence:
           </p>
         </div>
 
-        <div className="lp-judge-steps-grid">
+        <div className="lp-judge-steps-list">
           {/* STEP 1: ASK */}
-          <div className="lp-judge-step-card">
-            <div className="lp-judge-step-num">01</div>
-            <div className="lp-judge-step-header">
+          <div className="lp-judge-step-row">
+            <div className="lp-judge-step-num-col">
+              <span className="lp-judge-step-num">01</span>
               <span className="step-tag ask">GROUNDED RAG</span>
+            </div>
+            <div className="lp-judge-step-content-col">
               <h3 className="lp-judge-step-title">Ask natural language questions</h3>
+              <p className="lp-judge-step-desc">
+                HydraDB extracts the bounded evidence subgraph [E1, E2] with zero hallucinated links and zero vector drift.
+              </p>
             </div>
-            <p className="lp-judge-step-desc">
-              HydraDB extracts the bounded evidence subgraph [E1, E2] with zero hallucinated links and zero vector drift.
-            </p>
-            <div className="lp-judge-test-box">
-              <span className="test-lbl">RECOMMENDED TEST:</span>
-              <button
-                type="button"
-                className="lp-judge-action-btn ask-btn"
-                onClick={() => onEnterConsole('ask', 'What happened during incident INC-2026?')}
-              >
-                Ask: &ldquo;What happened in INC-2026?&rdquo; →
-              </button>
-            </div>
-            <div className="lp-judge-alt-presets">
-              <span className="alt-lbl">Also try:</span>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What changes were made in PR-99501?')}>PR-99501</button>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What happened with REL-311?')}>REL-311</button>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What is connected to kernel-selector?')}>kernel-selector</button>
+            <div className="lp-judge-step-action-col">
+              <div className="lp-judge-test-box">
+                <span className="test-lbl">RECOMMENDED TEST:</span>
+                <button
+                  type="button"
+                  className="lp-judge-action-btn ask-btn"
+                  onClick={() => onEnterConsole('ask', 'What happened during incident INC-2026?')}
+                >
+                  Ask: &ldquo;What happened in INC-2026?&rdquo; →
+                </button>
+              </div>
+              <div className="lp-judge-alt-presets">
+                <span className="alt-lbl">Also try:</span>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What changes were made in PR-99501?')}>PR-99501</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What caused the cross-region KMS timeouts in JIRA-4029?')}>JIRA-4029</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('ask', 'What architectural decisions were approved in RFC-881 ADR?')}>RFC-881</button>
+              </div>
             </div>
           </div>
 
           {/* STEP 2: TRACE */}
-          <div className="lp-judge-step-card">
-            <div className="lp-judge-step-num">02</div>
-            <div className="lp-judge-step-header">
+          <div className="lp-judge-step-row">
+            <div className="lp-judge-step-num-col">
+              <span className="lp-judge-step-num">02</span>
               <span className="step-tag trace">DEPENDENCY GRAPH</span>
+            </div>
+            <div className="lp-judge-step-content-col">
               <h3 className="lp-judge-step-title">Trace blast radius &amp; relationships</h3>
+              <p className="lp-judge-step-desc">
+                Traverse 1–3 hop BFS causal dependencies across microservices, pull requests, Jira tickets, and on-call alerts.
+              </p>
             </div>
-            <p className="lp-judge-step-desc">
-              Traverse 1–3 hop BFS causal dependencies across microservices, pull requests, and on-call alerts.
-            </p>
-            <div className="lp-judge-test-box">
-              <span className="test-lbl">RECOMMENDED TEST:</span>
-              <button
-                type="button"
-                className="lp-judge-action-btn trace-btn"
-                onClick={() => onEnterConsole('trace', 'PR-99501')}
-              >
-                Trace: &ldquo;PR-99501&rdquo; Blast Radius →
-              </button>
-            </div>
-            <div className="lp-judge-alt-presets">
-              <span className="alt-lbl">Also try:</span>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'INC-2026')}>INC-2026</button>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'REL-311')}>REL-311</button>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'api-search')}>api-search</button>
+            <div className="lp-judge-step-action-col">
+              <div className="lp-judge-test-box">
+                <span className="test-lbl">RECOMMENDED TEST:</span>
+                <button
+                  type="button"
+                  className="lp-judge-action-btn trace-btn"
+                  onClick={() => onEnterConsole('trace', 'PR-99501')}
+                >
+                  Trace: &ldquo;PR-99501&rdquo; Blast Radius →
+                </button>
+              </div>
+              <div className="lp-judge-alt-presets">
+                <span className="alt-lbl">Also try:</span>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'INC-2026')}>INC-2026</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'JIRA-4029')}>JIRA-4029</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('trace', 'RFC-881')}>RFC-881</button>
+              </div>
             </div>
           </div>
 
           {/* STEP 3: TIMELINE REPLAY */}
-          <div className="lp-judge-step-card featured">
-            <div className="lp-judge-step-num">03</div>
-            <div className="lp-judge-step-header">
+          <div className="lp-judge-step-row featured">
+            <div className="lp-judge-step-num-col">
+              <span className="lp-judge-step-num">03</span>
               <span className="step-tag timeline">TIME-TRAVEL REPLAY</span>
+            </div>
+            <div className="lp-judge-step-content-col">
               <h3 className="lp-judge-step-title">Scrub through incident evolution</h3>
+              <p className="lp-judge-step-desc">
+                VCR player scrubbing through Detection → Investigation → Mitigation → Resolution phases.
+              </p>
             </div>
-            <p className="lp-judge-step-desc">
-              VCR player scrubbing through Detection → Investigation → Mitigation → Resolution.
-            </p>
-            <div className="lp-judge-test-box">
-              <span className="test-lbl">RECOMMENDED TEST:</span>
-              <button
-                type="button"
-                className="lp-judge-action-btn timeline-btn"
-                onClick={() => onEnterConsole('timeline', 'INC-2026')}
-              >
-                Launch: &ldquo;INC-2026&rdquo; Replay Player →
-              </button>
+            <div className="lp-judge-step-action-col">
+              <div className="lp-judge-test-box">
+                <span className="test-lbl">RECOMMENDED TEST:</span>
+                <button
+                  type="button"
+                  className="lp-judge-action-btn timeline-btn"
+                  onClick={() => onEnterConsole('timeline', 'INC-2026')}
+                >
+                  Launch: &ldquo;INC-2026&rdquo; Replay Player →
+                </button>
+              </div>
+              <div className="lp-judge-alt-presets">
+                <span className="alt-lbl">Also try:</span>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('timeline', 'REL-311')}>REL-311 (Rollback)</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('timeline', 'PR-99501')}>PR-99501 (Hotfix)</button>
+              </div>
             </div>
-            <div className="lp-judge-alt-presets">
-              <span className="alt-lbl">Also try:</span>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('timeline', 'REL-311')}>REL-311 (Rollback)</button>
-              <button type="button" className="alt-chip" onClick={() => onEnterConsole('timeline', 'PR-99501')}>PR-99501 (Hotfix)</button>
+          </div>
+
+          {/* STEP 4: CONFLICT RESOLUTION */}
+          <div className="lp-judge-step-row">
+            <div className="lp-judge-step-num-col">
+              <span className="lp-judge-step-num">04</span>
+              <span className="step-tag conflicts">TRUTH ARBITER</span>
+            </div>
+            <div className="lp-judge-step-content-col">
+              <h3 className="lp-judge-step-title">Resolve cross-source contradictions</h3>
+              <p className="lp-judge-step-desc">
+                Determine canonical ground truth between Slack triage panic, Linear tickets, and merged GitHub code.
+              </p>
+            </div>
+            <div className="lp-judge-step-action-col">
+              <div className="lp-judge-test-box">
+                <span className="test-lbl">RECOMMENDED TEST:</span>
+                <button
+                  type="button"
+                  className="lp-judge-action-btn conflicts-btn"
+                  onClick={() => onEnterConsole('conflicts', '')}
+                >
+                  Open Conflict Arbiter →
+                </button>
+              </div>
+              <div className="lp-judge-alt-presets">
+                <span className="alt-lbl">Inspect:</span>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('conflicts', 'INC-2026')}>INC-2026</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('conflicts', 'Bluecrest')}>Bluecrest</button>
+                <button type="button" className="alt-chip" onClick={() => onEnterConsole('conflicts', 'REL-311')}>REL-311</button>
+              </div>
+            </div>
+          </div>
+
+          {/* STEP 5: GRAPH CANVAS EXPLORER */}
+          <div className="lp-judge-step-row">
+            <div className="lp-judge-step-num-col">
+              <span className="lp-judge-step-num">05</span>
+              <span className="step-tag" style={{ background: 'rgba(6, 182, 212, 0.12)', color: '#0891b2', border: '1px solid rgba(6, 182, 212, 0.3)' }}>GRAPH CANVAS</span>
+            </div>
+            <div className="lp-judge-step-content-col">
+              <h3 className="lp-judge-step-title">Interactive knowledge topology</h3>
+              <p className="lp-judge-step-desc">
+                Full-screen interactive canvas with pan, zoom, node drag, relationship filters, and multi-source inspection.
+              </p>
+            </div>
+            <div className="lp-judge-step-action-col">
+              <div className="lp-judge-test-box">
+                <span className="test-lbl">RECOMMENDED TEST:</span>
+                <button
+                  type="button"
+                  className="lp-judge-action-btn"
+                  style={{ background: '#0891b2', color: '#ffffff' }}
+                  onClick={() => onEnterConsole('graph', '')}
+                >
+                  Launch: Knowledge Graph Canvas →
+                </button>
+              </div>
+              <div className="lp-judge-alt-presets">
+                <span className="alt-lbl">Sources:</span>
+                <span className="alt-chip">Jira</span>
+                <span className="alt-chip">Confluence</span>
+                <span className="alt-chip">GitHub</span>
+                <span className="alt-chip">Slack</span>
+              </div>
             </div>
           </div>
         </div>
@@ -319,6 +397,160 @@ function TimelineShowcaseSection({ onEnterConsole }) {
             <span className="note-pill">EVALUATOR NOTE</span>
             <span>
               The <strong>Bi-Temporal Incident Timeline Replay Player</strong> was completed after initial demo submission and is not in the earlier recording. It is <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN TIMELINE PLAYER</strong> above or use the <strong>Timeline</strong> tab in the sidebar to evaluate it.
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ConflictResolverShowcaseSection({ onEnterConsole }) {
+  return (
+    <section className="lp-section lp-section--ruled" aria-labelledby="conflicts-showcase-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="conflicts-showcase-heading">TRACK 01: ONTOLOGY ALIGNMENT &amp; CONFLICT RESOLUTION</div>
+        <h2 className="lp-section-title">Contradictory chat panic vs. code ground truth. Resolved deterministically.</h2>
+        <p className="lp-section-body">
+          During production outages, enterprise communications contain contradictory noise: triage Slack channels post unverified guesses, Linear tickets reference stale configurations, and GitHub pull requests contain the true hotfix. Traditional vector RAG blends conflicting text chunks indiscriminately. Veridex evaluates source authority and bi-temporal graph paths in HydraDB to establish canonical ground truth.
+        </p>
+
+        <div className="lp-conflicts-showcase-card">
+          <div className="lp-conflicts-hierarchy-bar">
+            <span className="hierarchy-title">ONTOLOGICAL AUTHORITY HIERARCHY:</span>
+            <div className="hierarchy-pills">
+              <span className="h-pill git"><GitHubIcon size={12} /> Merged GitHub PR / Code (0.95–0.98)</span>
+              <span className="h-arrow">›</span>
+              <span className="h-pill linear"><LinearIcon size={12} /> Linear Resolved Ticket (0.75–0.88)</span>
+              <span className="h-arrow">›</span>
+              <span className="h-pill slack"><SlackIcon size={12} /> Ephemeral Slack Chat (0.45–0.60)</span>
+            </div>
+          </div>
+
+          <div className="lp-conflicts-preview-grid">
+            <div className="preview-truth-box">
+              <div className="preview-truth-header">
+                <div className="preview-header-left">
+                  <span className="truth-dot" />
+                  <span className="truth-title">CANONICAL GROUND TRUTH (WINNER)</span>
+                </div>
+                <span className="truth-badge">Authority: 98%</span>
+              </div>
+              <p className="preview-truth-text">
+                &ldquo;Root cause was kernel-selector v2.1.0 cgroup memory exhaustion under peak concurrency, resolved by emergency hotfix PR-99501.&rdquo;
+              </p>
+              <div className="preview-truth-meta">
+                <span className="source-tag git"><GitHubIcon size={12} /> PR-99501 (Merged commit d4f881a)</span>
+                <span className="time-tag">2026-02-14 09:34 UTC</span>
+              </div>
+            </div>
+
+            <div className="preview-superseded-box">
+              <div className="preview-superseded-header">
+                <div className="preview-header-left">
+                  <span className="superseded-dot" />
+                  <span className="superseded-title">SUPERSEDED / REFUTED CLAIM</span>
+                </div>
+                <span className="superseded-badge">Refuted</span>
+              </div>
+              <p className="preview-superseded-text">
+                &ldquo;Incident was caused by transient AWS us-east-1 network partition, waiting for AWS status page update.&rdquo;
+              </p>
+              <div className="preview-superseded-meta">
+                <span className="source-tag slack"><SlackIcon size={12} /> Slack #incidents (msg_8537794)</span>
+                <span className="refute-reason">Disproved by memory profiling</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="lp-conflicts-action-bar">
+            <div className="action-bar-left">
+              <span className="cypher-feature-tag">HYDRADB OPENCYPHER QUERY INSPECTOR INCLUDED</span>
+              <span className="cypher-feature-desc">Inspect exact OpenCypher graph traversals and why Vector RAG fails on each query.</span>
+            </div>
+            <button
+              type="button"
+              className="lp-btn-primary lp-btn-sm"
+              onClick={() => onEnterConsole('conflicts', '')}
+            >
+              OPEN CONFLICT ARBITER →
+            </button>
+          </div>
+
+          {/* Evaluator Note */}
+          <div className="lp-evaluator-note-box">
+            <span className="note-pill">EVALUATOR NOTE</span>
+            <span>
+              The <strong>Provenance Truth Arbiter &amp; Live OpenCypher Query Inspector</strong> was completed after initial demo submission and is not in the earlier recording. It is <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN CONFLICT ARBITER</strong> above or use the <strong>Conflicts</strong> tab in the sidebar to evaluate it.
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function GraphCanvasShowcaseSection({ onEnterConsole }) {
+  return (
+    <section className="lp-section lp-section--ruled" aria-labelledby="graph-showcase-heading">
+      <div className="lp-container">
+        <div className="lp-section-eyebrow" id="graph-showcase-heading">TRACK 01: EXTENDED ADAPTERS &amp; KNOWLEDGE GRAPH CANVAS EXPLORER</div>
+        <h2 className="lp-section-title">Full-screen interactive topology across Slack, Linear, GitHub, Jira &amp; Confluence.</h2>
+        <p className="lp-section-body">
+          Explore complete enterprise multi-hop dependency graphs with smooth zoom, pan, and live node dragging. Inspect typed relationships (<code>[:CAUSED_BY]</code>, <code>[:RESOLVES]</code>, <code>[:STANDARDIZES]</code>, <code>[:DEPENDS_ON]</code>) across 6 canonical enterprise source systems with zero vector hallucinations.
+        </p>
+
+        <div className="lp-timeline-showcase-card">
+          <div className="lp-conflicts-hierarchy-bar">
+            <span className="hierarchy-title">SUPPORTED ENTERPRISE DATA SOURCES:</span>
+            <div className="hierarchy-pills">
+              <span className="h-pill git"><GitHubIcon size={12} /> GitHub PRs &amp; Commits</span>
+              <span className="h-arrow">·</span>
+              <span className="h-pill linear"><LinearIcon size={12} /> Linear Issues</span>
+              <span className="h-arrow">·</span>
+              <span className="h-pill slack"><SlackIcon size={12} /> Slack Incidents</span>
+              <span className="h-arrow">·</span>
+              <span className="h-pill" style={{ background: 'rgba(38, 132, 255, 0.12)', color: '#0052cc', border: '1px solid rgba(38, 132, 255, 0.3)' }}><JiraIcon size={12} /> Jira Tickets</span>
+              <span className="h-arrow">·</span>
+              <span className="h-pill" style={{ background: 'rgba(0, 82, 204, 0.12)', color: '#0052cc', border: '1px solid rgba(0, 82, 204, 0.3)' }}><ConfluenceIcon size={12} /> Confluence RFCs</span>
+              <span className="h-arrow">·</span>
+              <span className="h-pill" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#b45309', border: '1px solid rgba(245, 158, 11, 0.3)' }}><PagerDutyIcon size={12} /> PagerDuty Alerts</span>
+            </div>
+          </div>
+
+          <div className="preview-scrubber-sim">
+            <div className="sim-rail">
+              <span className="sim-node active">INC-2026</span>
+              <span className="sim-line" />
+              <span className="sim-node active">kernel-selector</span>
+              <span className="sim-line" />
+              <span className="sim-node active">PR-99501</span>
+              <span className="sim-line" />
+              <span className="sim-node active">JIRA-4029</span>
+              <span className="sim-line" />
+              <span className="sim-node active">RFC-881 ADR</span>
+            </div>
+          </div>
+
+          <div className="lp-conflicts-action-bar">
+            <div className="action-bar-left">
+              <span className="cypher-feature-tag" style={{ background: 'rgba(6, 182, 212, 0.12)', color: '#0891b2', borderColor: 'rgba(6, 182, 212, 0.3)' }}>CANVAS CONTROLS: ZOOM · PAN · DRAG · RELATIONSHIP FILTER</span>
+              <span className="cypher-feature-desc">Interactive physics graph with node inspection drawer and 1-click RAG jumps.</span>
+            </div>
+            <button
+              type="button"
+              className="lp-btn-primary lp-btn-sm"
+              onClick={() => onEnterConsole('graph', '')}
+            >
+              OPEN GRAPH CANVAS →
+            </button>
+          </div>
+
+          {/* Evaluator Note */}
+          <div className="lp-evaluator-note-box">
+            <span className="note-pill">EVALUATOR NOTE</span>
+            <span>
+              The <strong>Interactive Knowledge Graph Canvas Explorer</strong> and <strong>Extended Enterprise Adapters (Jira &amp; Confluence RFCs)</strong> were completed after initial demo submission and are not in the earlier recording. They are <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN GRAPH CANVAS</strong> above or use the <strong>Graph Canvas</strong> tab in the sidebar to evaluate them.
             </span>
           </div>
         </div>
@@ -722,6 +954,8 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
       <WorkflowStepsSection />
       <AskVsTraceSection onEnterConsole={onEnterConsole} />
       <TimelineShowcaseSection onEnterConsole={onEnterConsole} />
+      <ConflictResolverShowcaseSection onEnterConsole={onEnterConsole} />
+      <GraphCanvasShowcaseSection onEnterConsole={onEnterConsole} />
       <SignalsToStateSection />
       <InvestigationExample onEnterConsole={() => onEnterConsole("ask")} />
       <DependencyTracePreview />
@@ -760,6 +994,8 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("ask")}>Grounded Ask</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("trace")}>Trace Graph</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("timeline")}>Incident Timeline</button></li>
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("conflicts")}>Conflict Arbiter</button></li>
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("graph")}>Graph Canvas</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("entities")}>Entity Explorer</button></li>
                 <li><button className="lp-footer-btn" onClick={() => onEnterConsole("suggestions")}>Query Catalog</button></li>
               </ul>

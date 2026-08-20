@@ -27,6 +27,10 @@ VALID_ISSUE_PREFIXES = {
     "CR",
     "INV",
     "DX",
+    "JIRA",
+    "RFC",
+    "ADR",
+    "CONF",
 }
 
 # Known common ambiguous single names that require qualifier/handle to resolve

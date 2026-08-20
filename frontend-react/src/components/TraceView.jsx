@@ -8,6 +8,7 @@ import {
   RATE_LIMIT_MESSAGE,
   useQuota,
 } from '../utils/quotaManager.js'
+import CypherModal from './CypherModal.jsx'
 
 function DepPath({ data, onSelectEntity, onNavigateToAsk }) {
   const { root_entity, impact_summary } = data
@@ -90,6 +91,7 @@ export default function TraceView({
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [latencyMs, setLatencyMs] = useState(null)
+  const [showCypher, setShowCypher] = useState(false)
   const inputRef = useRef(null)
   const quota = useQuota()
 
@@ -312,6 +314,16 @@ export default function TraceView({
               <span className="query-text-display">{result.root_entity}</span>
             </div>
             <div className="query-meta-actions">
+              {result.cypher_inspection && (
+                <button
+                  type="button"
+                  className="cypher-mini-btn"
+                  onClick={() => setShowCypher(true)}
+                  title="Inspect HydraDB OpenCypher Traversal Query"
+                >
+                  Inspect HydraDB Cypher Query
+                </button>
+              )}
               {onNavigateToTimeline && (
                 <button
                   type="button"
@@ -437,6 +449,14 @@ export default function TraceView({
           </div>
         </div>
       )}
+
+      {/* Cypher Query Modal */}
+      <CypherModal
+        isOpen={showCypher}
+        onClose={() => setShowCypher(false)}
+        cypherInfo={result?.cypher_inspection}
+        title="Dependency Traversal — HydraDB OpenCypher Query"
+      />
     </section>
   )
 }

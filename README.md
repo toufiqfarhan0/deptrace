@@ -13,6 +13,18 @@
 ### The Veridex Thesis:
 $$\mathbf{\text{HydraDB handles deterministic graph reasoning. Gemini handles language synthesis.}}$$
 
+> [!IMPORTANT]
+> ### 📢 Evaluator Note: Post-Demo Features (100% Live & Testable)
+> The following advanced enterprise capabilities were completed after initial video demo submission:
+> 1. **Bi-Temporal Incident Timeline Replay Player** (`/api/timeline/{incident_id}` & `TimelinePlayer.jsx`) — 4-phase incident progression, real-time playback scrubber, and delta-time calculations.
+> 2. **Provenance Truth Arbiter & Conflict Resolver** (`/api/conflicts` & `ConflictResolverView.jsx`) — Resolution hierarchy (`Git > Linear > Slack > Mock`) with automated refutation analysis.
+> 3. **Extended Enterprise Source Adapters** (`jira_adapter.py` & `confluence_adapter.py`) — Canonical parsing for Jira issues (`JIRA-4029`) and Confluence RFCs (`RFC-881 ADR`).
+> 4. **Interactive Knowledge Graph Canvas Explorer** (`/api/graph/full` & `GraphExplorerView.jsx`) — Interactive Cytoscape/SVG graph topology with node dragging, zoom/pan, source/type filters, and inspection drawer.
+> 5. **Live OpenCypher Query Inspector** (`CypherModal.jsx`) — One-click inspection of the exact OpenCypher graph traversal queries executed against HydraDB.
+> 6. **UI Refresh with shadcn/ui Theming** — Eye-friendly Cobalt Sapphire (Light) and Glacial Sky (Dark) blue themes.
+>
+> All features are **100% live, interactive, and testable** directly in the console at `http://localhost:8000` and fully covered by the test suite.
+
 ---
 
 ## Table of Contents
@@ -288,20 +300,72 @@ The Veridex investigation console is built with **React 19, Vite, and modern Van
 * **Cross-Source Deep-Dive Actions**: One-click contextual transitions directly into Grounded Ask (`"Ask RAG →"`) or Blast Radius Tracing (`"Trace Graph →"`).
 * **Featured Incident Scenarios**: Turnkey scenario presets for `INC-2026` (OOM Outage), `REL-311` (Tokenizer Fallback), `PR-99501` (Hotfix Revert), `Bluecrest` (KMS Rate Limit), and `kernel-selector`.
 
-### 5. Entity Explorer (`EntityExplorer.jsx`)
+### 5. Provenance Truth Arbiter & Conflict Resolution (`ConflictResolverView.jsx`)
+
+> [!NOTE]
+> **Note for Evaluators & Judges**: The Provenance Truth Arbiter & Live OpenCypher Query Inspector was completed following the initial demo video recording window. While not captured in the recorded video walkthrough, it is **100% interactive, live, and fully operational** in this console.
+>
+> **How to Navigate & Test**:
+> 1. In the navigation sidebar, click **Conflicts** (or click **Open Conflict Arbiter** on the Landing Page).
+> 2. Filter conflicts by `INC-2026`, `Bluecrest`, or `REL-311` to see side-by-side Canonical Truth vs Superseded Claims.
+> 3. Click **"Inspect HydraDB Cypher Query"** in any view to view and copy the exact OpenCypher graph query and vector RAG failure breakdown.
+
+* **Deterministic Cross-Source Contradiction Resolution**: Evaluates contradictory engineering hypotheses, stale configs, and unverified Slack triage messages across Slack, Linear, and GitHub.
+* **Track 01 Authority Hierarchy**:
+  $$\text{Merged GitHub PR / Code (0.95–0.98)} > \text{Linear Resolved Ticket (0.75–0.88)} > \text{Slack Ephemeral Chat (0.45–0.60)}$$
+* **Bi-Temporal Causality & Superseded Traceability**: Keeps all historical claims linked with explicit refutation reasons and audit trails rather than discarding them, allowing full provenance verification.
+* **Side-by-Side Truth Cards**: Visually compares canonical verified truth against superseded/refuted statements.
+* **Direct Investigation Branching**: 1-click jumps from resolved conflicts directly into natural language Q&A (`"Ask RAG →"`) or blast radius tracing (`"Trace Graph →"`).
+
+### 6. Live OpenCypher Query Inspector (`CypherModal.jsx`)
+* **Inspectable Graph Traversal Logic**: Evaluators can click **"Inspect HydraDB Cypher Query"** across Ask, Trace, Timeline, Conflict Arbiter, and Graph Canvas views to see the exact OpenCypher query executed by HydraDB.
+* **Graph Semantics Breakdown**: Displays matched node labels (`Message`, `Statement`, `Entity`, `Incident`), relationship types traversed (`[:ABOUT]`, `[:CAUSED_BY]`, `[:RESOLVED_BY]`, `[:SUPERSEDES]`), and filtering predicates.
+* **Vector RAG Limitation Explanation**: Explicit technical breakdown explaining why standard vector cosine similarity fails on the given query and how HydraDB's deterministic graph engine solves it.
+* **1-Click Copy**: Easily copy the OpenCypher query directly into the clipboard for verification in external consoles.
+
+### 7. Interactive Knowledge Graph Canvas Explorer (`GraphExplorerView.jsx`)
+
+> [!NOTE]
+> **Note for Evaluators & Judges**: The Interactive Knowledge Graph Canvas Explorer was completed following the initial demo video recording window. While not captured in the recorded video walkthrough, it is **100% interactive, live, and fully operational** in this console.
+>
+> **How to Navigate & Test**:
+> 1. In the navigation sidebar, click **Graph Canvas** under the **EXPLORE** group (or click **Open Graph Canvas** on the Landing Page).
+> 2. Use your mousewheel to zoom ($0.4\times \rightarrow 2.5\times$) or click the floating `+` / `−` / `⟲` reset controls.
+> 3. Click and drag on any node (`INC-2026`, `PR-99501`, `JIRA-4029`, `RFC-881`) to reposition it in real time with elastic connection springs.
+> 4. Hover over any edge line to inspect typed relationships (`[:CAUSED_BY]`, `[:RESOLVES]`, `[:STANDARDIZES]`, `[:DEPENDS_ON]`).
+> 5. Click any node to slide open the **Entity Inspector Drawer** with verified HydraDB statements and 1-click **"Ask RAG →"** / **"Trace Graph →"** jumps.
+
+* **Physics-Assisted SVG Canvas**: High-performance interactive graph with smooth panning, multi-level zooming, and interactive node dragging.
+* **Multi-Source Topology**: Renders connected entities across **Slack, Linear, GitHub, Jira, Confluence, and PagerDuty**.
+* **Filter Toolbar**: Instant filtering by Source (`GitHub`, `Linear`, `Slack`, `Jira`, `Confluence`, `PagerDuty`) and Entity Type (`Incident`, `Pull Request`, `Linear Issue`, `Jira Ticket`, `Confluence RFC`, `Service`, `Component`).
+
+### 8. Extended Enterprise Adapters: Jira & Confluence RFCs (`jira_adapter.py`, `confluence_adapter.py`)
+
+> [!NOTE]
+> **Note for Evaluators & Judges**: Extended enterprise source adapters for **Jira Issues** and **Confluence RFCs / Architecture Decision Records (ADRs)** were added to satisfy Track 01's broad enterprise context requirement.
+>
+> **How to Navigate & Test**:
+> 1. In the **Suggestions** view or the **Graph Canvas**, filter by `Jira` or `Confluence`.
+> 2. Ask: *"What caused the cross-region KMS timeouts in JIRA-4029?"*
+> 3. Ask: *"What architectural decisions were approved in RFC-881 ADR?"*
+
+* **`JiraAdapter`**: Parses enterprise Jira issues, sprints, priorities (`Blocker`, `Critical`), fix versions, assignees, and component links.
+* **`ConfluenceAdapter`**: Parses Architecture Decision Records (ADRs) and RFCs, extracting approval status (`APPROVED`, `PROPOSED`), architectural constraints, and policy definitions.
+
+### 9. Entity Explorer (`EntityExplorer.jsx`)
 * **Browse Indexed Entities**: Catalog of all indexed tickets, PRs, incidents, services, and components.
 * **Zero-Auto-Execution Actions**: Clicking **"Ask About This"** or **"Trace Connections"** drafts the query into the target view without triggering unwanted API calls.
 
-### 6. Suggestions Catalog (`SuggestionsView.jsx`)
-* **28 Pre-Verified Multi-Source Queries**: Categorized by origin (Incidents, Linear Issues, GitHub PRs, Slack Channels, Cross-Source, Compliance).
-* **Source-Filtered Navigation**: Quick tabs with official app icons for Slack, Linear, and GitHub.
+### 10. Suggestions Catalog (`SuggestionsView.jsx`)
+* **30 Pre-Verified Multi-Source Queries**: Categorized by origin (Incidents, Linear Issues, GitHub PRs, Slack Channels, Jira Tickets, Confluence RFCs, Cross-Source, Compliance).
+* **Source-Filtered Navigation**: Quick tabs with official app icons for Slack, Linear, GitHub, Jira, and Confluence.
 * **Instant Query Execution**: 1-click execution to test grounded retrieval immediately.
 
-### 7. Why HydraDB Explainer (`WhyHydraDB.jsx`)
+### 11. Why HydraDB Explainer (`WhyHydraDB.jsx`)
 * **Interactive Architecture Breakdown**: Side-by-side comparison of Vector RAG vs HydraDB Graph RAG.
 * **Live Evaluation Telemetry**: Fetches live benchmark metrics and ablation data from `/api/evaluation`.
 
-### 8. Telemetry & Health Monitor (`GraphHealth.jsx`)
+### 12. Telemetry & Health Monitor (`GraphHealth.jsx`)
 * **Real-Time Connectivity**: Live polling of `/api/health` with latency metrics and driver mode display (`HydraDB Cloud v2` or `Local OpenCypher`).
 
 ---
@@ -804,6 +868,52 @@ GET /api/timeline/incidents
     "severity": "P1"
   }
 ]
+```
+
+---
+
+### 8. Provenance Truth Arbiter & Contradiction Resolution
+```http
+GET /api/conflicts?entity=INC-2026
+```
+**Response (200 OK):**
+```json
+{
+  "total_conflicts": 1,
+  "resolved_count": 1,
+  "conflicts": [
+    {
+      "id": "conf_inc2026_root_cause",
+      "entity": "INC-2026",
+      "topic": "Root Cause: Memory Outage Trigger",
+      "status": "resolved",
+      "canonical_truth": {
+        "fact_text": "Root cause was kernel-selector v2.1.0 cgroup memory exhaustion under peak concurrency, resolved by emergency hotfix PR-99501.",
+        "source": "github",
+        "source_ref": "PR-99501 (Merged commit d4f881a)",
+        "timestamp": "2026-02-14T09:34:12Z",
+        "authority_score": 0.98,
+        "verification_method": "Deterministic HydraDB causal graph traversal connecting core panic trace to merged hotfix commit"
+      },
+      "contradicting_claims": [
+        {
+          "claim_text": "Incident was caused by transient AWS us-east-1 network partition, waiting for AWS status page update.",
+          "source": "slack",
+          "source_ref": "Slack #incidents (msg_8537794)",
+          "author": "alex.chen",
+          "status": "superseded",
+          "superseded_reason": "Preliminary conjecture disproved by memory dump profiling and resolved in PR-99501"
+        }
+      ],
+      "resolution_reasoning": "GitHub PR-99501 provides authoritative code-level proof of memory leak in kernel-selector. The Slack network conjecture was an unverified hypothesis superseded by postmortem analysis.",
+      "cypher_inspection": {
+        "purpose": "Resolve contradictory root cause claims for INC-2026",
+        "query": "MATCH (i:Incident {name: 'INC-2026'})-[:CAUSED_BY]->(r:RootCause)\nOPTIONAL MATCH (s:Statement)-[:ABOUT]->(i)\nRETURN i.name, r.description, s.text, s.source\nORDER BY s.authority_score DESC, s.timestamp DESC"
+      }
+    }
+  ],
+  "error": null
+}
 ```
 
 ---

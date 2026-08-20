@@ -16,7 +16,9 @@ from __future__ import annotations
 import pytest
 
 from backend.ingestion.adapters import (
+    ConfluenceAdapter,
     GitHubAdapter,
+    JiraAdapter,
     LinearAdapter,
     SlackAdapter,
     get_adapter_for_source,
@@ -126,13 +128,72 @@ def test_github_adapter_parsing() -> None:
     assert "INC-2026" in rec.external_refs
 
 
+JIRA_FIXTURE = """Cross-region KMS replication timeout under spike loads
+Priority: Blocker
+Status: Resolved
+Sprint: 2026-Q1-S4
+Assignee: Aisha Patel
+Reporter: Alex Chen
+Component: kms-replicator
+
+Summary:
+Cross-region KMS sync times out when downstream tokenizers breach 150ms budget.
+Fixes: JIRA-4029 and relates to INC-2026 and PR-99501.
+"""
+
+CONFLUENCE_FIXTURE = """RFC-881: Multi-Region Service-Scoped Key Isolation Architecture
+Status: APPROVED
+Author: Elena Rostova
+Reviewers: Aisha Patel, Marco Alvarez, Lena Cho
+Date: 2026-02-18
+
+Architecture Decision:
+All tenant key rings must enforce strictly isolated KMS partition namespaces.
+Related Issues: JIRA-4029, ENG-30521, and PR-99501.
+"""
+
+
+def test_jira_adapter_parsing() -> None:
+    adapter = JiraAdapter()
+    rec = adapter.parse_content(
+        filename="dsid_00098f89dcd294f369b4a91efe64c2aca__JIRA-4029-kms-timeout.txt",
+        content=JIRA_FIXTURE,
+    )
+    assert isinstance(rec, CanonicalRecord)
+    assert rec.source == "jira"
+    assert rec.source_id == "JIRA-4029"
+    assert rec.author == "Aisha Patel"
+    assert "Alex Chen" in rec.participants
+    assert rec.metadata["priority"] == "Blocker"
+    assert "INC-2026" in rec.external_refs
+    assert "PR-99501" in rec.external_refs
+
+
+def test_confluence_adapter_parsing() -> None:
+    adapter = ConfluenceAdapter()
+    rec = adapter.parse_content(
+        filename="dsid_00077f89dcd294f369b4a91efe64c2aca__RFC-881-kms-adr.txt",
+        content=CONFLUENCE_FIXTURE,
+    )
+    assert isinstance(rec, CanonicalRecord)
+    assert rec.source == "confluence"
+    assert rec.source_id == "RFC-881"
+    assert rec.author == "Elena Rostova"
+    assert "Aisha Patel" in rec.participants
+    assert rec.metadata["status"] == "APPROVED"
+    assert "JIRA-4029" in rec.external_refs
+    assert "PR-99501" in rec.external_refs
+
+
 def test_adapter_factory() -> None:
     assert isinstance(get_adapter_for_source("slack"), SlackAdapter)
     assert isinstance(get_adapter_for_source("linear"), LinearAdapter)
     assert isinstance(get_adapter_for_source("github"), GitHubAdapter)
+    assert isinstance(get_adapter_for_source("jira"), JiraAdapter)
+    assert isinstance(get_adapter_for_source("confluence"), ConfluenceAdapter)
 
     with pytest.raises(ValueError, match="Unsupported enterprise source"):
-        get_adapter_for_source("jira")
+        get_adapter_for_source("unsupported_source_xyz")
 
 
 def test_deterministic_stable_ids() -> None:

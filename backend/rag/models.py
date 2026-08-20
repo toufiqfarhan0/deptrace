@@ -43,4 +43,6 @@ class AnswerResponse(BaseModel):
     confidence: float | None = 1.0
     grounded: bool = False
     cited_evidence_ids: list[str] = Field(default_factory=list)
+    cypher_inspection: Any | None = None
     error: str | None = None
+

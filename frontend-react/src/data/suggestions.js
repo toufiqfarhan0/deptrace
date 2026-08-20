@@ -396,10 +396,35 @@ export const SUGGESTIONS_CATALOG = [
     sourceId: '1766004321',
     entity: '1766004321',
     description: 'Support escalation covering client disconnects, chunked EOF flagging, billing case 98765 credits, and ENG-5432.',
-    query: 'What was investigated for billing case 98765 and client disconnects in support?',
-    type: 'ask',
     badge: 'SLACK',
     tags: ['support', 'billing-case-98765', 'ENG-5432', 'disconnects'],
+  },
+  // 7. JIRA & CONFLUENCE ENTERPRISE ARTIFACTS
+  {
+    id: 'sug-jira-4029',
+    title: 'What caused the JIRA-4029 cross-region KMS timeouts?',
+    category: 'JIRA',
+    source: 'JIRA',
+    sourceId: 'JIRA-4029',
+    entity: 'JIRA-4029',
+    description: 'Investigate cross-region KMS synchronization timeouts observed on Dedicated tier tenants under spike loads.',
+    query: 'What caused the cross-region KMS timeouts in JIRA-4029?',
+    type: 'ask',
+    badge: 'JIRA',
+    tags: ['JIRA-4029', 'KMS', 'replication', 'timeouts'],
+  },
+  {
+    id: 'sug-confluence-rfc-881',
+    title: 'What architectural decisions were approved in RFC-881 ADR?',
+    category: 'CONFLUENCE',
+    source: 'CONFLUENCE',
+    sourceId: 'RFC-881',
+    entity: 'RFC-881',
+    description: 'Review the Architecture Decision Record mandating tenant KMS isolation and partition namespaces across microservices.',
+    query: 'What architectural decisions were approved in RFC-881 ADR?',
+    type: 'ask',
+    badge: 'CONFLUENCE',
+    tags: ['RFC-881', 'ADR', 'architecture', 'KMS', 'isolation'],
   },
 ]
 
@@ -438,6 +463,8 @@ export function getInquiryQueries() {
   return [
     { label: 'INC-2026 incident', query: 'What happened during incident INC-2026?' },
     { label: 'PR-99501 guardrails', query: 'What is PR-99501 about?' },
+    { label: 'JIRA-4029 sync timeout', query: 'What caused the cross-region KMS timeouts in JIRA-4029?' },
+    { label: 'RFC-881 ADR decisions', query: 'What architectural decisions were approved in RFC-881 ADR?' },
     { label: 'ENG-68910 overload fusion', query: 'What is ENG-68910 about?' },
     { label: 'PM-352917 Sealed VPC', query: 'What is PM-352917 about?' },
     { label: 'ENG-233901 KMS chaos', query: 'What is ENG-233901 about?' },
@@ -453,6 +480,8 @@ export function getQuickTraceEntities() {
   return [
     'PR-99501',
     'INC-2026',
+    'JIRA-4029',
+    'RFC-881',
     'PM-352917',
     'ENG-68910',
     'PR-993211',
@@ -460,9 +489,6 @@ export function getQuickTraceEntities() {
     'ENG-762314',
     'ENG-30521',
     'DES-23981',
-    'PM-16842',
-    'PR-482199',
-    'PR-209876',
-    'PR-947999',
+    'Bluecrest',
   ]
 }

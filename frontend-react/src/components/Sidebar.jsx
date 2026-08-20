@@ -9,11 +9,13 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
         { id: 'ask', label: 'Ask', icon: <AskIcon /> },
         { id: 'trace', label: 'Trace', icon: <TraceIcon /> },
         { id: 'timeline', label: 'Timeline', icon: <TimelineIcon /> },
+        { id: 'conflicts', label: 'Conflicts', icon: <ConflictsIcon /> },
       ],
     },
     {
       group: 'EXPLORE',
       items: [
+        { id: 'graph', label: 'Graph Canvas', icon: <GraphCanvasIcon /> },
         { id: 'suggestions', label: 'Suggestions', icon: <SuggestionsIcon /> },
         { id: 'entities', label: 'Entities', icon: <EntityIcon /> },
       ],
@@ -148,6 +150,31 @@ function TimelineIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="10"/>
       <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  )
+}
+
+function ConflictsIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16 3h5v5"/>
+      <path d="M4 20L21 3"/>
+      <path d="M21 16v5h-5"/>
+      <path d="M15 15l6 6"/>
+      <path d="M4 4l5 5"/>
+    </svg>
+  )
+}
+
+function GraphCanvasIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="6" cy="6" r="3"/>
+      <circle cx="18" cy="6" r="3"/>
+      <circle cx="12" cy="18" r="3"/>
+      <line x1="8.5" y1="7.5" x2="15.5" y2="7.5"/>
+      <line x1="7.5" y1="8.5" x2="10.5" y2="15.5"/>
+      <line x1="16.5" y1="8.5" x2="13.5" y2="15.5"/>
     </svg>
   )
 }

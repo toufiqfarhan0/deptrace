@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { SourceIcon, SlackIcon, LinearIcon, GitHubIcon } from './SourceIcons'
+import CypherModal from './CypherModal.jsx'
 
 export default function TimelinePlayer({
   initialEntity = 'INC-2026',
@@ -18,6 +19,7 @@ export default function TimelinePlayer({
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1) // 0.5, 1, 2, 3
   const [selectedNode, setSelectedNode] = useState(null)
+  const [showCypher, setShowCypher] = useState(false)
 
   const playTimerRef = useRef(null)
   const eventCardsRef = useRef({})
@@ -366,6 +368,18 @@ export default function TimelinePlayer({
                 </button>
               ))}
             </div>
+
+            {/* Cypher Inspector Trigger */}
+            {timelineData?.cypher_inspection && (
+              <button
+                type="button"
+                className="cypher-mini-btn"
+                onClick={() => setShowCypher(true)}
+                title="Inspect HydraDB OpenCypher Timeline Query"
+              >
+                Inspect Cypher Query
+              </button>
+            )}
           </div>
 
           {/* Interactive Scrub Track */}
@@ -665,6 +679,14 @@ export default function TimelinePlayer({
           </div>
         </div>
       )}
+
+      {/* Cypher Query Modal */}
+      <CypherModal
+        isOpen={showCypher}
+        onClose={() => setShowCypher(false)}
+        cypherInfo={timelineData?.cypher_inspection}
+        title="Temporal Incident Replay — HydraDB OpenCypher Query"
+      />
     </div>
   )
 }
