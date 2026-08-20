@@ -471,6 +471,12 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
   const isOnline = isHydraOnline(hydraStatus)
   return (
     <div className="lp-root">
+      {/* Announcement Ribbon (navbar.gallery) */}
+      <div className="lp-announcement-bar">
+        <span className="lp-announcement-pill">HACK HYDRA 2026</span>
+        <span className="lp-announcement-text">Track 1: Enterprise Context &amp; Ontology — Live on HydraDB Cloud</span>
+      </div>
+
       <header className={`lp-nav${scrolled ? " lp-nav--scrolled" : ""}`} role="banner">
         <div className="lp-nav-inner">
           <div className="lp-nav-wordmark">
@@ -543,12 +549,64 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
         </div>
       </section>
 
-      <footer className="lp-footer" role="contentinfo">
+      {/* 4-Column Minimal Dark Footer (footer.design) */}
+      <footer className="lp-footer-4col" role="contentinfo">
         <div className="lp-container">
-          <div className="lp-footer-inner">
-            <span className="lp-footer-wordmark">VERIDEX</span>
-            <span className="lp-footer-sep">&#183;</span>
-            <span className="lp-footer-text">Built on HydraDB &#183; EnterpriseRAG-Bench &#183; Hackathon Track 1</span>
+          <div className="lp-footer-grid">
+            <div className="lp-footer-col lp-footer-brand">
+              <div className="lp-footer-brand-title">
+                <span className="lp-footer-dot" />
+                VERIDEX
+              </div>
+              <p className="lp-footer-tagline">
+                Evidence-first dependency intelligence and deterministic knowledge ontology on HydraDB.
+              </p>
+              <div className="lp-footer-status-badge">
+                <span className="lp-footer-status-indicator" />
+                <span>HydraDB Cloud v2 Active</span>
+              </div>
+            </div>
+
+            <div className="lp-footer-col">
+              <div className="lp-footer-col-title">Console</div>
+              <ul className="lp-footer-list">
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("ask")}>Grounded Ask</button></li>
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("trace")}>Trace Graph</button></li>
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("entities")}>Entity Explorer</button></li>
+                <li><button className="lp-footer-btn" onClick={() => onEnterConsole("suggestions")}>Query Catalog</button></li>
+              </ul>
+            </div>
+
+            <div className="lp-footer-col">
+              <div className="lp-footer-col-title">Architecture</div>
+              <ul className="lp-footer-list">
+                <li><button className="lp-footer-btn" onClick={onNavigateToWhyHydra}>Why HydraDB</button></li>
+                <li><span className="lp-footer-static">Deterministic BFS</span></li>
+                <li><span className="lp-footer-static">Zero Hallucination Gate</span></li>
+                <li><span className="lp-footer-static">Provenance Invariants</span></li>
+              </ul>
+            </div>
+
+            <div className="lp-footer-col">
+              <div className="lp-footer-col-title">Benchmark &amp; Track</div>
+              <ul className="lp-footer-list">
+                <li><span className="lp-footer-static">Track 1: Enterprise Context</span></li>
+                <li><span className="lp-footer-static">EnterpriseRAG-Bench</span></li>
+                <li><span className="lp-footer-static">100% Provenance Accuracy</span></li>
+                <li><span className="lp-footer-static">Sub-millisecond Retrieval</span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="lp-footer-bottom">
+            <div className="lp-footer-copy">
+              &copy; 2026 Veridex. Built for Hack Hydra 2026.
+            </div>
+            <div className="lp-footer-meta">
+              <span>OpenCypher + HydraDB Cloud</span>
+              <span>&#183;</span>
+              <span>MIT License</span>
+            </div>
           </div>
         </div>
       </footer>
