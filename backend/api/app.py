@@ -53,6 +53,14 @@ def create_app() -> FastAPI:
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
+        @app.get("/favicon.svg", include_in_schema=False)
+        @app.get("/favicon.ico", include_in_schema=False)
+        def serve_favicon() -> FileResponse:
+            svg_path = REACT_DIST_DIR / "favicon.svg"
+            if svg_path.exists():
+                return FileResponse(svg_path, media_type="image/svg+xml")
+            return FileResponse(REACT_DIST_DIR / "index.html")
+
         @app.get("/", include_in_schema=False)
         def serve_react_root() -> FileResponse:
             return FileResponse(REACT_DIST_DIR / "index.html")
