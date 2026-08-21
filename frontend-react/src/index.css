@@ -441,6 +441,49 @@ input, textarea, select {
   font-size: var(--text-xs);
 }
 
+.sidebar-github-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--c-text-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-2);
+  text-decoration: none;
+  transition: all 0.2s var(--spring);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.sidebar-github-btn:hover {
+  background: var(--c-surface-hover);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+[data-theme="dark"] .sidebar-github-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .sidebar-github-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.nav-item--external {
+  text-decoration: none;
+}
+
 .status-line {
   display: flex;
   align-items: center;
@@ -2413,6 +2456,65 @@ input, textarea, select {
 .lp-nav-status-dot--ok {
   background: var(--c-ok);
   box-shadow: 0 0 6px rgba(5, 150, 105, 0.4);
+}
+
+.lp-nav-github-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  font-family: var(--font-display);
+  font-size: var(--ts-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--c-text-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  transition: all 0.2s var(--spring);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.lp-nav-github-btn:hover {
+  background: var(--c-surface-hover);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+[data-theme="dark"] .lp-nav-github-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--c-text-1);
+}
+
+[data-theme="dark"] .lp-nav-github-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.lp-announcement-sep {
+  opacity: 0.4;
+  margin: 0 4px;
+}
+
+.lp-announcement-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--c-accent);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: var(--ts-xs);
+  transition: opacity 0.15s ease;
+}
+
+.lp-announcement-github-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
 }
 
 /* =============================================

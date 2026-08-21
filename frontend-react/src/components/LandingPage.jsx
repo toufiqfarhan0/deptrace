@@ -868,6 +868,17 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
       <div className="lp-announcement-bar">
         <span className="lp-announcement-pill">HACK HYDRA 2026</span>
         <span className="lp-announcement-text">Track 1: Enterprise Context &amp; Ontology — Live on HydraDB Cloud</span>
+        <span className="lp-announcement-sep" aria-hidden="true">&#183;</span>
+        <a
+          href="https://github.com/toufiqfarhan0/deptrace"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="lp-announcement-github-link"
+          aria-label="View source repository on GitHub"
+        >
+          <GitHubIcon size={12} />
+          <span>GitHub Repo &#8599;</span>
+        </a>
       </div>
 
       <header className={`lp-nav${scrolled ? " lp-nav--scrolled" : ""}`} role="banner">
@@ -901,6 +912,18 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
               <span className={`lp-nav-status-dot${isOnline ? " lp-nav-status-dot--ok" : ""}`} />
               <span>{getHydraStatusLabel(hydraStatus, { format: "landing" })}</span>
             </div>
+            <a
+              href="https://github.com/toufiqfarhan0/deptrace"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="lp-nav-github-btn"
+              id="lp-nav-view-code"
+              title="View source code on GitHub"
+              aria-label="View source code on GitHub"
+            >
+              <GitHubIcon size={14} />
+              <span>VIEW CODE</span>
+            </a>
             <button className="lp-btn-primary lp-btn-sm" onClick={() => onEnterConsole("ask")} id="lp-nav-open-console">OPEN CONSOLE</button>
           </div>
         </div>
@@ -917,8 +940,18 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
               Ask questions about incidents, tickets, pull requests, and engineering decisions. Veridex traverses HydraDB knowledge graph paths to ground every claim with immutable source provenance.
             </p>
             <HeroLiveTerminalDesk onEnterConsole={onEnterConsole} />
-            <div className="lp-hero-dataset-note" style={{ marginTop: '16px' }}>
-              Deterministic graph traversal &#183; 60-document demo slice &#183; Slack &#183; Linear &#183; GitHub
+            <div className="lp-hero-dataset-note" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <span>Deterministic graph traversal &#183; 60-document demo slice &#183; Slack &#183; Linear &#183; GitHub</span>
+              <a
+                href="https://github.com/toufiqfarhan0/deptrace"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="lp-hero-github-badge"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--c-accent)', fontWeight: 600, textDecoration: 'none', fontSize: 'var(--ts-xs)' }}
+              >
+                <GitHubIcon size={13} />
+                <span>View Code on GitHub &#8599;</span>
+              </a>
             </div>
           </div>
           <div className="lp-hero-right" aria-hidden="true">
@@ -989,12 +1022,41 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
             </div>
 
             <div className="lp-footer-col">
-              <div className="lp-footer-col-title">Benchmark &amp; Track</div>
+              <div className="lp-footer-col-title">Repository &amp; Code</div>
               <ul className="lp-footer-list">
-                <li><span className="lp-footer-static">Track 1: Enterprise Context</span></li>
-                <li><span className="lp-footer-static">EnterpriseRAG-Bench</span></li>
+                <li>
+                  <a
+                    href="https://github.com/toufiqfarhan0/deptrace"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="lp-footer-link"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--c-accent)', fontWeight: 600 }}
+                  >
+                    <GitHubIcon size={12} />
+                    <span>GitHub Repository</span>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/toufiqfarhan0/deptrace#readme"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="lp-footer-link"
+                  >
+                    README &amp; Quick Start
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/toufiqfarhan0/deptrace/blob/main/LICENSE"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="lp-footer-link"
+                  >
+                    MIT License
+                  </a>
+                </li>
                 <li><span className="lp-footer-static">100% Provenance Accuracy</span></li>
-                <li><span className="lp-footer-static">Sub-millisecond Retrieval</span></li>
               </ul>
             </div>
           </div>
@@ -1004,6 +1066,16 @@ export default function LandingPage({ onEnterConsole, onNavigateToWhyHydra, hydr
               &copy; 2026 Veridex. Built for Hack Hydra 2026.
             </div>
             <div className="lp-footer-meta">
+              <a
+                href="https://github.com/toufiqfarhan0/deptrace"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <GitHubIcon size={12} />
+                <span>github.com/toufiqfarhan0/deptrace</span>
+              </a>
+              <span>&#183;</span>
               <span>OpenCypher + HydraDB Cloud</span>
               <span>&#183;</span>
               <span>MIT License</span>

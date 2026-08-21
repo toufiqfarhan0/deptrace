@@ -1,5 +1,6 @@
 import React from 'react'
 import { getHydraStatusLabel, getHydraDotClass, getHydraAriaLabel } from '../utils/hydraStatus.js'
+import { GitHubIcon } from './SourceIcons.jsx'
 
 export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome }) {
   const navItems = [
@@ -30,6 +31,13 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
       group: 'SYSTEM',
       items: [
         { id: 'health', label: 'Graph Health', icon: <HealthIcon /> },
+        {
+          id: 'github',
+          label: 'GitHub Repo ↗',
+          icon: <GitHubIcon size={14} />,
+          isExternal: true,
+          href: 'https://github.com/toufiqfarhan0/deptrace',
+        },
       ],
     },
   ]
@@ -57,22 +65,47 @@ export default function Sidebar({ activeView, onNavigate, hydraStatus, onGoHome 
         {navItems.map((group) => (
           <div key={group.group} className="nav-group">
             <div className="nav-group-label">{group.group}</div>
-            {group.items.map((item) => (
-              <button
-                key={item.id}
-                className={`nav-item ${activeView === item.id ? 'active' : ''}`}
-                onClick={() => onNavigate(item.id)}
-                aria-current={activeView === item.id ? 'page' : undefined}
-              >
-                <span className="nav-item-icon" aria-hidden="true">{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
+            {group.items.map((item) =>
+              item.isExternal ? (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="nav-item nav-item--external"
+                  title="Open GitHub repository in new tab"
+                >
+                  <span className="nav-item-icon" aria-hidden="true">{item.icon}</span>
+                  <span>{item.label}</span>
+                </a>
+              ) : (
+                <button
+                  key={item.id}
+                  className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+                  onClick={() => onNavigate(item.id)}
+                  aria-current={activeView === item.id ? 'page' : undefined}
+                >
+                  <span className="nav-item-icon" aria-hidden="true">{item.icon}</span>
+                  {item.label}
+                </button>
+              )
+            )}
           </div>
         ))}
       </nav>
 
       <div className="sidebar-footer">
+        <a
+          href="https://github.com/toufiqfarhan0/deptrace"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="sidebar-github-btn"
+          title="View source code on GitHub"
+          aria-label="View source code on GitHub"
+        >
+          <GitHubIcon size={14} />
+          <span>GitHub Repo &#8599;</span>
+        </a>
         <div
           className="status-line"
           role="status"
