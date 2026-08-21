@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react'
+import {
+  SlackIcon,
+  LinearIcon,
+  GitHubIcon,
+  JiraIcon,
+  ConfluenceIcon,
+  PagerDutyIcon,
+} from './SourceIcons.jsx'
 
-export default function WhyHydraDB() {
+export default function WhyHydraDB({ onNavigateToAsk, onNavigateToTrace, onNavigateToTimeline, onNavigateToConflicts, onNavigateToGraph }) {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -24,119 +32,272 @@ export default function WhyHydraDB() {
     runEvaluation()
   }, [])
 
+  const pipelineSteps = [
+    {
+      badge: '01',
+      name: '6-Source Ingestion',
+      desc: 'Ingests Slack, Linear, GitHub, Jira, Confluence & PagerDuty events.',
+      tag: 'Multi-Source',
+    },
+    {
+      badge: '02',
+      name: 'Ontology Mapping',
+      desc: 'Extracts typed nodes (PR, Ticket, Service) & semantic graph edges.',
+      tag: 'HydraDB Graph',
+    },
+    {
+      badge: '03',
+      name: 'Bi-Temporal Replay',
+      desc: 'Tracks event occurrence timestamps vs. ingestion transaction times.',
+      tag: 'Causal Timeline',
+    },
+    {
+      badge: '04',
+      name: 'Truth Arbitration',
+      desc: 'Scores source authority: Merged PR (0.95+) > Ticket (0.85) > Chat (0.60).',
+      tag: 'Conflict Arbiter',
+    },
+    {
+      badge: '05',
+      name: 'Evidence Bundling',
+      desc: 'Packages bounded facts [E1, E2, ...] with raw message ID provenance.',
+      tag: 'Deterministic [E#]',
+    },
+    {
+      badge: '06',
+      name: 'Grounded Synthesis',
+      desc: 'LLM strictly synthesizes cited facts with auditable OpenCypher queries.',
+      tag: 'Zero Hallucination',
+    },
+  ]
+
+  const corePillars = [
+    {
+      num: '01',
+      title: 'UNIFIED ENTERPRISE ONTOLOGY',
+      tag: '6 Signal Connectors',
+      desc: 'Breaks down organizational communication silos by linking Slack conversations, Linear tickets, GitHub PRs/commits, Jira issues, Confluence RFCs, and PagerDuty alerts into a single unified knowledge graph in HydraDB Cloud.',
+      cta: 'Explore Graph Canvas',
+      action: onNavigateToGraph,
+    },
+    {
+      num: '02',
+      title: 'PROVENANCE TRUTH ARBITER',
+      tag: 'Authority Hierarchy',
+      desc: 'Resolves conflicting engineering claims deterministically. When ephemeral chat panic contradicts merged code, Veridex applies strict source authority weighting (Merged Code 0.95+ > Resolved Ticket 0.85 > Ephemeral Chat 0.60) instead of vector RAG averaging.',
+      cta: 'Inspect Truth Arbiter',
+      action: onNavigateToConflicts,
+    },
+    {
+      num: '03',
+      title: 'BI-TEMPORAL INCIDENT REPLAY',
+      tag: 'VCR State Machine',
+      desc: 'Reconstructs how incidents unfold step-by-step across time. The dual-time model distinguishes when an event happened from when the team discovered it, enabling dynamic graph playback across Detection, Investigation, Mitigation, and Resolution phases.',
+      cta: 'Play Timeline Replay',
+      action: onNavigateToTimeline,
+    },
+    {
+      num: '04',
+      title: 'MULTI-HOP BLAST RADIUS TRACING',
+      tag: 'BFS Graph Traversal',
+      desc: 'Traces dependency paths across microservices, configuration parameters, and deployment rollbacks with bounded traversal depth and cycle prevention—computing precise blast radius without LLM-hallucinated links.',
+      cta: 'Trace Dependencies',
+      action: onNavigateToTrace,
+    },
+    {
+      num: '05',
+      title: 'AUDITABLE OPENCYPHER QUERIES',
+      tag: 'HydraDB Engine',
+      desc: 'Every investigation, dependency trace, and conflict resolution is backed by an auditable OpenCypher query directly inspectable and runnable on HydraDB Cloud, eliminating black-box routing ambiguity.',
+      cta: 'Run Ask Query',
+      action: onNavigateToAsk,
+    },
+    {
+      num: '06',
+      title: 'ZERO-HALLUCINATION GROUNDING',
+      tag: 'Bounded [E#] Citations',
+      desc: 'Veridex never asks the LLM to search the corpus. HydraDB retrieves the exact subgraph facts, packaging them into bounded evidence bundles [E1, E2, ...]. The LLM is restricted to synthesizing claims strictly citing these evidence tokens.',
+      cta: 'Test Grounded QA',
+      action: onNavigateToAsk,
+    },
+  ]
+
+  const comparisonRows = [
+    {
+      capability: 'Multi-Hop Relationship Reasoning',
+      hydra: 'Native graph traversal across services, PRs, and tickets with cycle prevention.',
+      vector: 'Fails on disconnected chunk vectors; cannot traverse multi-hop chains reliably.',
+      advantage: 'Deterministic Graph Traversal',
+    },
+    {
+      capability: 'Contradiction & Conflict Resolution',
+      hydra: 'Deterministic source authority weighting (Merged Code > Linear Ticket > Slack Chat).',
+      vector: 'Blurs and averages conflicting chunks, hallucinating consensus between stale and current claims.',
+      advantage: 'Authority-Based Truth',
+    },
+    {
+      capability: 'Bi-Temporal Timeline Replay',
+      hydra: 'Dual-time state machine: tracks occurrence time vs. transaction ingestion time.',
+      vector: 'Loses chronological causality; treats old and new documents as flat embeddings.',
+      advantage: 'Chronological Integrity',
+    },
+    {
+      capability: 'Dependency Blast Radius Calculation',
+      hydra: 'Computes exact downstream dependency trees up to 5 hops deep.',
+      vector: 'Relies on keyword proximity; cannot compute directional blast radius.',
+      advantage: 'Exact Graph Blast Radius',
+    },
+    {
+      capability: 'Query Auditability & Transparency',
+      hydra: 'Auditable OpenCypher queries with inspectable MATCH and WHERE graph patterns.',
+      vector: 'Black-box cosine similarity scores with opaque chunk selection.',
+      advantage: 'Inspectable OpenCypher',
+    },
+    {
+      capability: 'Provenance & Hallucination Prevention',
+      hydra: '100% bounded evidence bundles with raw message IDs and [E#] citation brackets.',
+      vector: 'High risk of synthesis hallucination and unattributed background extrapolation.',
+      advantage: '100% Provenance Invariants',
+    },
+  ]
+
   return (
     <section aria-label="Why HydraDB architecture and benchmark" className="why-hydra-section">
       <div className="view-header">
+        <div className="why-eyebrow-row">
+          <span className="why-track-badge">TRACK 01: ENTERPRISE CONTEXT & ONTOLOGY ALIGNMENT</span>
+          <span className="why-engine-badge">HYDRADB CLOUD READY</span>
+        </div>
         <h1 className="view-title">How Veridex Works</h1>
         <div className="view-subtitle">
-          Why deterministic graph reasoning with HydraDB is essential for enterprise truth rather than traditional vector RAG.
+          Why deterministic graph reasoning on HydraDB Cloud is essential for enterprise truth, multi-source conflict resolution, and bi-temporal incident replay.
+        </div>
+      </div>
+
+      {/* 6 Enterprise Source Ingestion Banner */}
+      <div className="why-sources-banner">
+        <div className="why-sources-label">
+          <span>UNIFIED INGESTION FROM 6 ENTERPRISE SYSTEMS:</span>
+        </div>
+        <div className="why-sources-pills">
+          <span className="why-src-pill slack"><SlackIcon size={14} /> Slack Discussions</span>
+          <span className="why-src-pill linear"><LinearIcon size={14} /> Linear Issues</span>
+          <span className="why-src-pill github"><GitHubIcon size={14} /> GitHub PRs & Commits</span>
+          <span className="why-src-pill jira"><JiraIcon size={14} /> Jira Incident Tickets</span>
+          <span className="why-src-pill confluence"><ConfluenceIcon size={14} /> Confluence RFCs & ADRs</span>
+          <span className="why-src-pill pagerduty"><PagerDutyIcon size={14} /> PagerDuty Alerts</span>
         </div>
       </div>
 
       {/* Visual Investigation Pipeline */}
-      <div className="pipeline-card" style={{ marginBottom: '24px' }}>
+      <div className="pipeline-card" style={{ marginBottom: '28px' }}>
         <div className="pipeline-header">
-          <span className="section-label">THE 5-STEP INVESTIGATION PIPELINE</span>
+          <span className="section-label">THE 6-STAGE ENTERPRISE GRAPH INTELLIGENCE PIPELINE</span>
         </div>
         <div className="pipeline-flow-steps">
-          <div className="pipeline-step-item">
-            <span className="pipeline-step-badge">01</span>
-            <div className="pipeline-step-name">User Question</div>
-            <div className="pipeline-step-desc">Natural language incident or ticket inquiry</div>
-          </div>
-          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
-          <div className="pipeline-step-item">
-            <span className="pipeline-step-badge">02</span>
-            <div className="pipeline-step-name">HydraDB Resolution</div>
-            <div className="pipeline-step-desc">Graph traversal & relationship resolution</div>
-          </div>
-          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
-          <div className="pipeline-step-item">
-            <span className="pipeline-step-badge">03</span>
-            <div className="pipeline-step-name">Evidence Bundle</div>
-            <div className="pipeline-step-desc">Bounded facts [E1, E2] with doc provenance</div>
-          </div>
-          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
-          <div className="pipeline-step-item">
-            <span className="pipeline-step-badge">04</span>
-            <div className="pipeline-step-name">Gemini Synthesis</div>
-            <div className="pipeline-step-desc">Language generation strictly from evidence</div>
-          </div>
-          <div className="pipeline-step-arrow" aria-hidden="true">→</div>
-          <div className="pipeline-step-item">
-            <span className="pipeline-step-badge">05</span>
-            <div className="pipeline-step-name">Grounded Answer</div>
-            <div className="pipeline-step-desc">Verifiable citations with zero hallucination</div>
-          </div>
+          {pipelineSteps.map((step, idx) => (
+            <React.Fragment key={step.badge}>
+              <div className="pipeline-step-item">
+                <div className="pipeline-step-top">
+                  <span className="pipeline-step-badge">{step.badge}</span>
+                  <span className="pipeline-step-tag">{step.tag}</span>
+                </div>
+                <div className="pipeline-step-name">{step.name}</div>
+                <div className="pipeline-step-desc">{step.desc}</div>
+              </div>
+              {idx < pipelineSteps.length - 1 && (
+                <div className="pipeline-step-arrow" aria-hidden="true">→</div>
+              )}
+            </React.Fragment>
+          ))}
         </div>
       </div>
 
-      {/* Core Architectural Flow */}
+      {/* Core Architectural Pillars */}
       <div className="section-rule">
-        <span className="section-label">THE 5 PRINCIPLES OF VERIDEX GRAPH REASONING</span>
+        <span className="section-label">THE 6 ARCHITECTURAL PILLARS OF VERIDEX</span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-        <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '16px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-accent)', fontWeight: 700, marginBottom: '6px' }}>
-            01 · DETERMINISTIC RESOLUTION
+      <div className="why-principles-grid">
+        {corePillars.map((p) => (
+          <div key={p.num} className="why-principle-card">
+            <div className="principle-header-row">
+              <span className="principle-number">{p.num} · {p.title}</span>
+              <span className="principle-tag">{p.tag}</span>
+            </div>
+            <div className="principle-body">
+              {p.desc}
+            </div>
+            {p.action && (
+              <button
+                type="button"
+                className="principle-cta-btn"
+                onClick={() => p.action && p.action()}
+              >
+                {p.cta} →
+              </button>
+            )}
           </div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--c-text-2)', lineHeight: 1.5 }}>
-            Veridex does not ask the LLM to search the corpus. HydraDB resolves typed statements, entity references, and direct <code style={{ color: 'var(--c-accent)' }}>ABOUT</code> relationships deterministically.
-          </div>
-        </div>
+        ))}
+      </div>
 
-        <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '16px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-accent)', fontWeight: 700, marginBottom: '6px' }}>
-            02 · BOUNDED EVIDENCE BUNDLES
-          </div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--c-text-2)', lineHeight: 1.5 }}>
-            Retrieval packages discrete graph evidence items <code style={{ color: 'var(--c-accent)' }}>[E1, E2, ...]</code> with strict source message ID and document ID provenance.
-          </div>
-        </div>
+      {/* Head-to-Head Comparison: HydraDB vs Vector RAG */}
+      <div className="section-rule" style={{ marginTop: '32px', marginBottom: '16px' }}>
+        <span className="section-label">COMPARISON MATRIX: HYDRADB GRAPH RAG VS. NAIVE VECTOR RAG</span>
+      </div>
 
-        <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '16px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-accent)', fontWeight: 700, marginBottom: '6px' }}>
-            03 · STRICT GROUNDED SYNTHESIS
-          </div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--c-text-2)', lineHeight: 1.5 }}>
-            The LLM synthesizes answers exclusively from the supplied graph bundle. Claims must cite their evidence item bracket <code style={{ color: 'var(--c-accent)' }}>[E#]</code>.
-          </div>
-        </div>
-
-        <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '16px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-accent)', fontWeight: 700, marginBottom: '6px' }}>
-            04 · ZERO-HALLUCINATION TRACING
-          </div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--c-text-2)', lineHeight: 1.5 }}>
-            Dependency tracing traverses real HydraDB graph paths with cycle protection and bounded depth—no LLM-invented services, authors, or links.
-          </div>
-        </div>
-
-        <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '16px', borderRadius: 'var(--radius)' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--c-accent)', fontWeight: 700, marginBottom: '6px' }}>
-            05 · VERIFIABLE PROVENANCE
-          </div>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--c-text-2)', lineHeight: 1.5 }}>
-            Every hop, evidence row, and timeline event traces back to the raw message payload in the EnterpriseRAG-Bench dataset.
-          </div>
-        </div>
+      <div className="comparison-matrix-container">
+        <table className="comparison-matrix-table">
+          <thead>
+            <tr>
+              <th style={{ width: '22%' }}>CAPABILITY</th>
+              <th style={{ width: '38%' }} className="th-hydra">
+                VERIDEX (HYDRADB GRAPH RAG)
+              </th>
+              <th style={{ width: '40%' }} className="th-vector">
+                TRADITIONAL VECTOR / CHUNKING RAG
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {comparisonRows.map((row, idx) => (
+              <tr key={idx}>
+                <td className="matrix-cap-cell">
+                  <strong>{row.capability}</strong>
+                  <span className="matrix-badge">{row.advantage}</span>
+                </td>
+                <td className="matrix-hydra-cell">
+                  <div className="matrix-cell-content">
+                    <span className="matrix-check">✓</span>
+                    <span>{row.hydra}</span>
+                  </div>
+                </td>
+                <td className="matrix-vector-cell">
+                  <div className="matrix-cell-content">
+                    <span className="matrix-cross">✕</span>
+                    <span>{row.vector}</span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Live Benchmark & Evaluation Report */}
-      <div className="section-rule">
+      <div className="section-rule" style={{ marginTop: '36px', marginBottom: '16px' }}>
         <span className="section-label">LIVE HYDRADB BENCHMARK & INVARIANT AUDIT</span>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--c-text-3)', fontFamily: 'var(--font-mono)' }}>
+      <div className="benchmark-toolbar">
+        <div className="benchmark-subtext">
           Real-time deterministic benchmark executed over the HydraDB Cloud knowledge graph.
         </div>
         <button
           className="query-execute-btn"
           onClick={runEvaluation}
           disabled={loading}
-          style={{ padding: '6px 14px', fontSize: 'var(--text-xs)' }}
+          style={{ padding: '7px 16px', fontSize: '0.74rem', borderRadius: 'var(--radius)' }}
           aria-label="Re-run evaluation benchmark"
         >
           {loading ? 'RUNNING BENCHMARK...' : 'RE-RUN BENCHMARK →'}
@@ -145,9 +306,12 @@ export default function WhyHydraDB() {
 
       {loading && (
         <div className="state-block" role="status">
-          <div className="loading-text">
-            Executing deterministic queries on HydraDB
-            <div className="loading-dots" aria-hidden="true"><span/><span/><span/></div>
+          <div className="loading-card">
+            <div className="loading-spinner-ring" />
+            <div>
+              <div className="loading-title">Executing Benchmark...</div>
+              <div className="loading-desc">Running deterministic queries and validating provenance invariants on HydraDB Cloud...</div>
+            </div>
           </div>
         </div>
       )}
@@ -188,29 +352,29 @@ export default function WhyHydraDB() {
             <span className="section-label">ABLATION: HYDRADB GRAPH RETRIEVAL VS. NAIVE TEXT SEARCH</span>
           </div>
 
-          <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', borderRadius: 'var(--radius)', overflowX: 'auto', marginBottom: '24px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)' }}>
+          <div className="ablation-table-container">
+            <table className="ablation-table">
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--c-border)', background: 'var(--c-surface-2)', color: 'var(--c-text-3)' }}>
-                  <th style={{ padding: '10px 14px' }}>INVESTIGATION QUERY</th>
-                  <th style={{ padding: '10px 14px' }}>GRAPH EVIDENCE</th>
-                  <th style={{ padding: '10px 14px' }}>NAIVE TEXT SEARCH</th>
-                  <th style={{ padding: '10px 14px' }}>STRUCTURAL ADVANTAGE</th>
+                <tr>
+                  <th>INVESTIGATION QUERY</th>
+                  <th>GRAPH EVIDENCE</th>
+                  <th>NAIVE TEXT SEARCH</th>
+                  <th>STRUCTURAL ADVANTAGE</th>
                 </tr>
               </thead>
               <tbody>
                 {report.ablation_comparisons?.map((ab, idx) => (
-                  <tr key={idx} style={{ borderBottom: idx < report.ablation_comparisons.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                    <td style={{ padding: '12px 14px', color: 'var(--c-text)', fontWeight: 600, minWidth: '180px' }}>
+                  <tr key={idx}>
+                    <td className="ablation-query-cell">
                       {ab.query}
                     </td>
-                    <td style={{ padding: '12px 14px', color: 'var(--c-ok)', minWidth: '140px' }}>
+                    <td className="ablation-evidence-cell">
                       {ab.graph_evidence_count} items ({ab.graph_relationships_found.join(', ')})
                     </td>
-                    <td style={{ padding: '12px 14px', color: 'var(--c-text-3)', minWidth: '140px' }}>
+                    <td className="ablation-naive-cell">
                       {ab.text_matches_count} keyword matches (0 edges)
                     </td>
-                    <td style={{ padding: '12px 14px', color: 'var(--c-text-2)', minWidth: '220px', lineHeight: 1.4 }}>
+                    <td className="ablation-advantage-cell">
                       {ab.structural_advantage_summary}
                     </td>
                   </tr>

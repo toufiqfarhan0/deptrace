@@ -49,7 +49,7 @@ export default function GraphHealth({ hydraStatus }) {
         <span className="section-label">ACTIVE API ENDPOINTS</span>
       </div>
 
-      <div style={{ border: '1px solid var(--c-border)', background: 'var(--c-surface)', padding: '0 16px', borderRadius: 'var(--radius)' }}>
+      <div className="health-endpoints-card">
         {endpoints.map((ep) => (
           <div key={ep.path} className="endpoint-row">
             <span className="endpoint-method">{ep.method}</span>
@@ -63,18 +63,7 @@ export default function GraphHealth({ hydraStatus }) {
         <span className="section-label">PROTOTYPE KNOWLEDGE GRAPH SLICE</span>
       </div>
 
-      <div
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--c-text-2)',
-          lineHeight: 1.8,
-          border: '1px solid var(--c-border)',
-          background: 'var(--c-surface)',
-          padding: '16px',
-          borderRadius: 'var(--radius)',
-        }}
-      >
+      <div className="health-summary-box">
         <div><strong>Dataset:</strong> EnterpriseRAG-Bench (Verified 10-message prototype)</div>
         <div><strong>Semantic Extractions:</strong> 12 verified records</div>
         <div><strong>Entities / Artifacts:</strong> 20 unique components</div>

@@ -244,7 +244,15 @@ export default function App() {
               onAskEntity={navigateToAsk}
             />
           )}
-          {activeView === 'why-hydra' && <WhyHydraDB />}
+          {activeView === 'why-hydra' && (
+            <WhyHydraDB
+              onNavigateToAsk={navigateToAsk}
+              onNavigateToTrace={navigateToTrace}
+              onNavigateToTimeline={navigateToTimeline}
+              onNavigateToConflicts={() => setActiveView('conflicts')}
+              onNavigateToGraph={() => setActiveView('graph')}
+            />
+          )}
           {activeView === 'health' && <GraphHealth hydraStatus={hydraStatus} />}
         </main>
       </div>
