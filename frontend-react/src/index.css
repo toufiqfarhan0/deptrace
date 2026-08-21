@@ -830,10 +830,11 @@ input, textarea, select {
 
 .query-meta-bar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
-  padding-bottom: 12px;
+  margin-top: 6px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--c-border);
   gap: 16px;
   flex-wrap: wrap;
@@ -841,8 +842,37 @@ input, textarea, select {
 
 .query-meta-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.query-meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.timeline-jump-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--c-accent);
+  background: var(--c-accent-dim);
+  border: 1px solid var(--c-accent-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timeline-jump-btn:hover {
+  background: var(--c-accent);
+  color: #ffffff;
 }
 
 .query-label-small {
@@ -870,7 +900,7 @@ input, textarea, select {
   color: var(--c-text-3);
   background: var(--c-surface-2);
   border: 1px solid var(--c-border);
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: var(--radius);
 }
 
@@ -1499,6 +1529,7 @@ input, textarea, select {
 
 /* IMPACT METRICS */
 .impact-section {
+  margin-top: 16px;
   margin-bottom: 28px;
 }
 
@@ -1508,7 +1539,7 @@ input, textarea, select {
   border: 1px solid var(--c-border);
   background: var(--c-surface);
   border-radius: var(--radius);
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   box-shadow: var(--c-card-shadow);
 }
 

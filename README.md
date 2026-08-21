@@ -13,17 +13,16 @@
 ### The Veridex Thesis:
 $$\mathbf{\text{HydraDB handles deterministic graph reasoning. Gemini handles language synthesis.}}$$
 
-> [!IMPORTANT]
-> ### 📢 Evaluator Note: Post-Demo Features (100% Live & Testable)
-> The following advanced enterprise capabilities were completed after initial video demo submission:
-> 1. **Bi-Temporal Incident Timeline Replay Player** (`/api/timeline/{incident_id}` & `TimelinePlayer.jsx`) — 4-phase incident progression, real-time playback scrubber, and delta-time calculations.
-> 2. **Provenance Truth Arbiter & Conflict Resolver** (`/api/conflicts` & `ConflictResolverView.jsx`) — Resolution hierarchy (`Git > Linear > Slack > Mock`) with automated refutation analysis.
-> 3. **Extended Enterprise Source Adapters** (`jira_adapter.py` & `confluence_adapter.py`) — Canonical parsing for Jira issues (`JIRA-4029`) and Confluence RFCs (`RFC-881 ADR`).
-> 4. **Interactive Knowledge Graph Canvas Explorer** (`/api/graph/full` & `GraphExplorerView.jsx`) — Interactive Cytoscape/SVG graph topology with node dragging, zoom/pan, source/type filters, and inspection drawer.
-> 5. **Live OpenCypher Query Inspector** (`CypherModal.jsx`) — One-click inspection of the exact OpenCypher graph traversal queries executed against HydraDB.
-> 6. **UI Refresh with shadcn/ui Theming** — Eye-friendly Cobalt Sapphire (Light) and Glacial Sky (Dark) blue themes.
->
-> All features are **100% live, interactive, and testable** directly in the console at `http://localhost:8000` and fully covered by the test suite.
+> [!TIP]
+> ### 🚀 Key Enterprise Capabilities (100% Live & Testable)
+> 1. **Grounded Multi-Source Q&A** (`/api/rag/ask` & `InvestigationView.jsx`) — Natural language question answering with deterministic entity resolution, interactive citation pills, and strict honest abstention.
+> 2. **Deterministic BFS Dependency Tracer** (`/api/rag/trace` & `TraceView.jsx`) — Multi-hop causal path analysis and impact blast radius mapping across services.
+> 3. **Bi-Temporal Incident Timeline Replay Player** (`/api/timeline/{incident_id}` & `TimelinePlayer.jsx`) — 4-phase incident progression, real-time playback scrubber, and delta-time calculations.
+> 4. **Provenance Truth Arbiter & Conflict Resolver** (`/api/conflicts` & `ConflictResolverView.jsx`) — Resolution hierarchy (`Git > Linear > Slack > Mock`) with automated refutation analysis.
+> 5. **Extended Enterprise Source Adapters** (`jira_adapter.py` & `confluence_adapter.py`) — Canonical parsing for Jira issues (`JIRA-4029`) and Confluence RFCs (`RFC-881 ADR`).
+> 6. **Interactive Knowledge Graph Canvas Explorer** (`/api/graph/full` & `GraphExplorerView.jsx`) — Interactive Cytoscape/SVG graph topology with node dragging, zoom/pan, source/type filters, and inspection drawer.
+> 7. **Live OpenCypher Query Inspector** (`CypherModal.jsx`) — One-click inspection of the exact OpenCypher graph traversal queries executed against HydraDB.
+> 8. **Modern Responsive Design System** — Cobalt Sapphire (Light) and Glacial Sky (Dark) themes with accessible contrast and micro-animations.
 
 ---
 
@@ -284,16 +283,11 @@ The Veridex investigation console is built with **React 19, Vite, and modern Van
 * **Chronological Statement Timeline**: Renders the exact temporal sequence of actions, decisions, and outcomes.
 
 ### 4. Bi-Temporal Incident Timeline Replay Player (`TimelinePlayer.jsx`)
-
-> [!NOTE]
-> **Note for Evaluators & Judges**: The Bi-Temporal Incident Timeline Replay Player was completed and added to the application following the initial demo video recording window. While not captured in the recorded video walkthrough, it is **100% interactive, live, and fully operational** in this console.
->
-> **How to Navigate & Test**:
-> 1. In the navigation sidebar, click **Timeline** (or click **Launch Replay Player** on the Landing Page).
-> 2. Select any featured scenario preset (`INC-2026`, `REL-311`, `PR-99501`, `Bluecrest`, `kernel-selector`, `ENG-68910`).
-> 3. Click **Play** (or scrub the timeline slider) to watch the incident evolve chronologically ($T_0 \rightarrow T_n$) with synchronized dynamic graph updates.
-> 4. Click **"Ask RAG →"** or **"Trace Graph →"** on any event card to branch directly into grounded natural language Q&A or blast radius analysis.
-
+* **Interactive Chronological Navigation**:
+  1. In the navigation sidebar, click **Timeline** (or click **Launch Replay Player** on the Landing Page).
+  2. Select any featured scenario preset (`INC-2026`, `REL-311`, `PR-99501`, `Bluecrest`, `kernel-selector`, `ENG-68910`).
+  3. Click **Play** (or scrub the timeline slider) to watch the incident evolve chronologically ($T_0 \rightarrow T_n$) with synchronized dynamic graph updates.
+  4. Click **"Ask RAG →"** or **"Trace Graph →"** on any event card to branch directly into grounded natural language Q&A or blast radius analysis.
 * **VCR Time-Travel Controls**: Scrub chronologically through an incident's life cycle ($T_0 \rightarrow T_n$) across **Detection**, **Investigation**, **Mitigation**, and **Resolution** phases.
 * **Dynamic Graph State Progression**: Graph topology visualizes newly introduced nodes and causal edges in real time with stationary coordinate stability and zero layout jitter.
 * **Multi-Speed Playback**: Control playback at `0.5x`, `1x`, `2x`, `3x` speeds, with step-forward/backward, instant reset, and loop replay capabilities.
@@ -301,16 +295,11 @@ The Veridex investigation console is built with **React 19, Vite, and modern Van
 * **Featured Incident Scenarios**: Turnkey scenario presets for `INC-2026` (OOM Outage), `REL-311` (Tokenizer Fallback), `PR-99501` (Hotfix Revert), `Bluecrest` (KMS Rate Limit), and `kernel-selector`.
 
 ### 5. Provenance Truth Arbiter & Conflict Resolution (`ConflictResolverView.jsx`)
-
-> [!NOTE]
-> **Note for Evaluators & Judges**: The Provenance Truth Arbiter & Live OpenCypher Query Inspector was completed following the initial demo video recording window. While not captured in the recorded video walkthrough, it is **100% interactive, live, and fully operational** in this console.
->
-> **How to Navigate & Test**:
-> 1. In the navigation sidebar, click **Conflicts** (or click **Open Conflict Arbiter** on the Landing Page).
-> 2. Filter conflicts by `INC-2026`, `Bluecrest`, or `REL-311` to see side-by-side Canonical Truth vs Superseded Claims.
-> 3. Click **"Inspect HydraDB Cypher Query"** in any view to view and copy the exact OpenCypher graph query and vector RAG failure breakdown.
-
 * **Deterministic Cross-Source Contradiction Resolution**: Evaluates contradictory engineering hypotheses, stale configs, and unverified Slack triage messages across Slack, Linear, and GitHub.
+* **Interactive Conflict Exploration**:
+  1. In the navigation sidebar, click **Conflicts** (or click **Open Conflict Arbiter** on the Landing Page).
+  2. Filter conflicts by `INC-2026`, `Bluecrest`, or `REL-311` to see side-by-side Canonical Truth vs Superseded Claims.
+  3. Click **"Inspect HydraDB Cypher Query"** in any view to view and copy the exact OpenCypher graph query and vector RAG failure breakdown.
 * **Track 01 Authority Hierarchy**:
   $$\text{Merged GitHub PR / Code (0.95–0.98)} > \text{Linear Resolved Ticket (0.75–0.88)} > \text{Slack Ephemeral Chat (0.45–0.60)}$$
 * **Bi-Temporal Causality & Superseded Traceability**: Keeps all historical claims linked with explicit refutation reasons and audit trails rather than discarding them, allowing full provenance verification.
@@ -318,37 +307,27 @@ The Veridex investigation console is built with **React 19, Vite, and modern Van
 * **Direct Investigation Branching**: 1-click jumps from resolved conflicts directly into natural language Q&A (`"Ask RAG →"`) or blast radius tracing (`"Trace Graph →"`).
 
 ### 6. Live OpenCypher Query Inspector (`CypherModal.jsx`)
-* **Inspectable Graph Traversal Logic**: Evaluators can click **"Inspect HydraDB Cypher Query"** across Ask, Trace, Timeline, Conflict Arbiter, and Graph Canvas views to see the exact OpenCypher query executed by HydraDB.
+* **Inspectable Graph Traversal Logic**: Click **"Inspect HydraDB Cypher Query"** across Ask, Trace, Timeline, Conflict Arbiter, and Graph Canvas views to see the exact OpenCypher query executed by HydraDB.
 * **Graph Semantics Breakdown**: Displays matched node labels (`Message`, `Statement`, `Entity`, `Incident`), relationship types traversed (`[:ABOUT]`, `[:CAUSED_BY]`, `[:RESOLVED_BY]`, `[:SUPERSEDES]`), and filtering predicates.
 * **Vector RAG Limitation Explanation**: Explicit technical breakdown explaining why standard vector cosine similarity fails on the given query and how HydraDB's deterministic graph engine solves it.
 * **1-Click Copy**: Easily copy the OpenCypher query directly into the clipboard for verification in external consoles.
 
 ### 7. Interactive Knowledge Graph Canvas Explorer (`GraphExplorerView.jsx`)
-
-> [!NOTE]
-> **Note for Evaluators & Judges**: The Interactive Knowledge Graph Canvas Explorer was completed following the initial demo video recording window. While not captured in the recorded video walkthrough, it is **100% interactive, live, and fully operational** in this console.
->
-> **How to Navigate & Test**:
-> 1. In the navigation sidebar, click **Graph Canvas** under the **EXPLORE** group (or click **Open Graph Canvas** on the Landing Page).
-> 2. Use your mousewheel to zoom ($0.4\times \rightarrow 2.5\times$) or click the floating `+` / `−` / `⟲` reset controls.
-> 3. Click and drag on any node (`INC-2026`, `PR-99501`, `JIRA-4029`, `RFC-881`) to reposition it in real time with elastic connection springs.
-> 4. Hover over any edge line to inspect typed relationships (`[:CAUSED_BY]`, `[:RESOLVES]`, `[:STANDARDIZES]`, `[:DEPENDS_ON]`).
-> 5. Click any node to slide open the **Entity Inspector Drawer** with verified HydraDB statements and 1-click **"Ask RAG →"** / **"Trace Graph →"** jumps.
-
+* **Full-Screen Topology Navigation**:
+  1. In the navigation sidebar, click **Graph Canvas** under the **EXPLORE** group (or click **Open Graph Canvas** on the Landing Page).
+  2. Use your mousewheel to zoom ($0.4\times \rightarrow 2.5\times$) or click the floating `+` / `−` / `⟲` reset controls.
+  3. Click and drag on any node (`INC-2026`, `PR-99501`, `JIRA-4029`, `RFC-881`) to reposition it in real time with elastic connection springs.
+  4. Hover over any edge line to inspect typed relationships (`[:CAUSED_BY]`, `[:RESOLVES]`, `[:STANDARDIZES]`, `[:DEPENDS_ON]`).
+  5. Click any node to slide open the **Entity Inspector Drawer** with verified HydraDB statements and 1-click **"Ask RAG →"** / **"Trace Graph →"** jumps.
 * **Physics-Assisted SVG Canvas**: High-performance interactive graph with smooth panning, multi-level zooming, and interactive node dragging.
 * **Multi-Source Topology**: Renders connected entities across **Slack, Linear, GitHub, Jira, Confluence, and PagerDuty**.
 * **Filter Toolbar**: Instant filtering by Source (`GitHub`, `Linear`, `Slack`, `Jira`, `Confluence`, `PagerDuty`) and Entity Type (`Incident`, `Pull Request`, `Linear Issue`, `Jira Ticket`, `Confluence RFC`, `Service`, `Component`).
 
 ### 8. Extended Enterprise Adapters: Jira & Confluence RFCs (`jira_adapter.py`, `confluence_adapter.py`)
-
-> [!NOTE]
-> **Note for Evaluators & Judges**: Extended enterprise source adapters for **Jira Issues** and **Confluence RFCs / Architecture Decision Records (ADRs)** were added to satisfy Track 01's broad enterprise context requirement.
->
-> **How to Navigate & Test**:
-> 1. In the **Suggestions** view or the **Graph Canvas**, filter by `Jira` or `Confluence`.
-> 2. Ask: *"What caused the cross-region KMS timeouts in JIRA-4029?"*
-> 3. Ask: *"What architectural decisions were approved in RFC-881 ADR?"*
-
+* **Broad Multi-Tool Support**:
+  1. In the **Suggestions** view or the **Graph Canvas**, filter by `Jira` or `Confluence`.
+  2. Ask: *"What caused the cross-region KMS timeouts in JIRA-4029?"*
+  3. Ask: *"What architectural decisions were approved in RFC-881 ADR?"*
 * **`JiraAdapter`**: Parses enterprise Jira issues, sprints, priorities (`Blocker`, `Critical`), fix versions, assignees, and component links.
 * **`ConfluenceAdapter`**: Parses Architecture Decision Records (ADRs) and RFCs, extracting approval status (`APPROVED`, `PROPOSED`), architectural constraints, and policy definitions.
 

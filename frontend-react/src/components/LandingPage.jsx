@@ -392,13 +392,6 @@ function TimelineShowcaseSection({ onEnterConsole }) {
               </div>
             </div>
           </div>
-
-          <div className="lp-evaluator-note-box">
-            <span className="note-pill">EVALUATOR NOTE</span>
-            <span>
-              The <strong>Bi-Temporal Incident Timeline Replay Player</strong> was completed after initial demo submission and is not in the earlier recording. It is <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN TIMELINE PLAYER</strong> above or use the <strong>Timeline</strong> tab in the sidebar to evaluate it.
-            </span>
-          </div>
         </div>
       </div>
     </section>
@@ -476,14 +469,6 @@ function ConflictResolverShowcaseSection({ onEnterConsole }) {
               OPEN CONFLICT ARBITER →
             </button>
           </div>
-
-          {/* Evaluator Note */}
-          <div className="lp-evaluator-note-box">
-            <span className="note-pill">EVALUATOR NOTE</span>
-            <span>
-              The <strong>Provenance Truth Arbiter &amp; Live OpenCypher Query Inspector</strong> was completed after initial demo submission and is not in the earlier recording. It is <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN CONFLICT ARBITER</strong> above or use the <strong>Conflicts</strong> tab in the sidebar to evaluate it.
-            </span>
-          </div>
         </div>
       </div>
     </section>
@@ -544,14 +529,6 @@ function GraphCanvasShowcaseSection({ onEnterConsole }) {
             >
               OPEN GRAPH CANVAS →
             </button>
-          </div>
-
-          {/* Evaluator Note */}
-          <div className="lp-evaluator-note-box">
-            <span className="note-pill">EVALUATOR NOTE</span>
-            <span>
-              The <strong>Interactive Knowledge Graph Canvas Explorer</strong> and <strong>Extended Enterprise Adapters (Jira &amp; Confluence RFCs)</strong> were completed after initial demo submission and are not in the earlier recording. They are <strong>100% live, interactive, and testable</strong> in this console. Click <strong>OPEN GRAPH CANVAS</strong> above or use the <strong>Graph Canvas</strong> tab in the sidebar to evaluate them.
-            </span>
           </div>
         </div>
       </div>
